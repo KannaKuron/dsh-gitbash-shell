@@ -1,6 +1,6 @@
 {
   "id": "dsh-external/dsh-gitbash-shell",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "main": "./src/index.js",
   "description": "Windows 全模式 Git Bash:用 Git for Windows bash 替换 PowerShell 执行器,并物化 standard/minimal/code/cordis 的 Git Bash 变体 preset。联动 dsh-ptc-cordis-preset:两者同装时 PTC 创造模式自动物化为 Git Bash 版。",
   "engines": {

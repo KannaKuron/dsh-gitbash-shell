@@ -246,18 +246,32 @@ export function installRegisterShim(reg) {
 // this plugin returns the sidebar to what it was before.
 
 const SIDEBAR_NS = 'dsh-better-sidebar'
+const SIDEBAR_TRIES = 12
+const SIDEBAR_RETRY_MS = 1500
 
 /**
- * Fill the sidebar's `terminalShell` pref through the settings service.
- * One-shot; retries once after a short delay in case the sidebar's
- * namespace registration lands a beat after our row ran. Never throws.
+ * Write the sidebar's `terminalShell` pref through the settings service.
+ * Polls until the settings service (and the sidebar's namespace) are ready:
+ * at boot the service may not be provided yet when this row's apply runs, so
+ * the first attempt can silently see nothing — every attempt after the first
+ * catches the service once it exists. Never throws; always logs the outcome.
  */
 function adoptSidebarShell(ctx, bashPath) {
   let tried = 0
+  let timer = null
+  ctx.effect(() => () => { if (timer) clearTimeout(timer) }, 'dsh-gitbash-shell: sidebar adoption polling')
   const run = async () => {
     tried += 1
     const settings = ctx.get('settings')
-    if (!settings || typeof settings.update !== 'function') return
+    const ready = settings && typeof settings.update === 'function' && typeof settings.get === 'function'
+    if (!ready) {
+      if (tried < SIDEBAR_TRIES) {
+        timer = setTimeout(run, SIDEBAR_RETRY_MS)
+        return
+      }
+      console.log(`${TAG} better-sidebar shell adoption skipped: settings service unavailable after ${tried} tries`)
+      return
+    }
     let current
     try {
       current = settings.get(SIDEBAR_NS)
@@ -269,9 +283,8 @@ function adoptSidebarShell(ctx, bashPath) {
     try {
       await settings.update(SIDEBAR_NS, { terminalShell: bashPath })
     } catch (error) {
-      if (tried < 2) {
-        const timer = setTimeout(run, 1500)
-        ctx.effect(() => () => clearTimeout(timer), 'dsh-gitbash-shell: sidebar adoption retry')
+      if (tried < SIDEBAR_TRIES) {
+        timer = setTimeout(run, SIDEBAR_RETRY_MS)
         return
       }
       console.log(`${TAG} better-sidebar shell adoption unavailable: ${error?.message ?? error}`)
@@ -291,7 +304,7 @@ function adoptSidebarShell(ctx, bashPath) {
           return
         }
         if (String(now?.terminalShell ?? '') === bashPath) {
-          s.update(SIDEBAR_NS, { terminalShell: '' }).catch(() => {})
+          s.update(SIDEBAR_NS, { terminalShell: previous }).catch(() => {})
         }
       },
       'dsh-gitbash-shell: sidebar shell revert',
