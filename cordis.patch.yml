@@ -48,4 +48,5 @@
 - id: better-sidebar
   name: dsh-better-sidebar
   config:
-    shell: !!js process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : ''
+    shell: !!js >-
+      process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : ''
