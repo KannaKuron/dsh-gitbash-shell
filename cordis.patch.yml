@@ -36,4 +36,4 @@
         bashPath: "C:/Program Files/Git/bin/bash.exe"
 
     - id: gitbash-presets
-      name: dsh-gitbash-shell/presets
+      name: dsh-gitbash-shell
