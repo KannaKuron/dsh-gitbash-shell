@@ -4,13 +4,13 @@
 > Harness (dsh) — replaces the PowerShell executor and materializes Git Bash
 > variants of all four agent presets.
 
-## Install (public GitHub plugin)
+## Install (public npm package)
 
 ```sh
-dsh plugin --profile web add github:KannaKuron/dsh-gitbash-shell
+dsh plugin --profile web add dsh-gitbash-shell
 # optional TUI surfaces
-dsh plugin --profile tui add github:KannaKuron/dsh-gitbash-shell
-dsh plugin --profile cc-tui add github:KannaKuron/dsh-gitbash-shell
+dsh plugin --profile tui add dsh-gitbash-shell
+dsh plugin --profile cc-tui add dsh-gitbash-shell
 ```
 
 `dsh plugin add` installs the dependency via pnpm and, seeing the

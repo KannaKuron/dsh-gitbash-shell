@@ -24,20 +24,21 @@
 Git Bash host 下会拿到"暗示 PowerShell 语法的工具",请改用上面的变体;
 已装 dsh-ptc-cordis-preset 的话,`PTC 创造模式` 用户 preset 不受影响。
 
-## 安装(公开 GitHub 插件,推荐)
+## 安装(公开 npm 插件,推荐)
 
-仓库: <https://github.com/KannaKuron/dsh-gitbash-shell>
+npm: [dsh-gitbash-shell](https://www.npmjs.com/package/dsh-gitbash-shell)，
+源码与 Release: [github.com/KannaKuron/dsh-gitbash-shell](https://github.com/KannaKuron/dsh-gitbash-shell)
 
 ```sh
 # web 图形界面
-dsh plugin --profile web add github:KannaKuron/dsh-gitbash-shell
+dsh plugin --profile web add dsh-gitbash-shell
 
 # 可选:TUI / 自定义 TUI 也启用(命令行各 profile 需要)
-dsh plugin --profile tui add github:KannaKuron/dsh-gitbash-shell
-dsh plugin --profile cc-tui add github:KannaKuron/dsh-gitbash-shell
+dsh plugin --profile tui add dsh-gitbash-shell
+dsh plugin --profile cc-tui add dsh-gitbash-shell
 ```
 
-`dsh plugin add` 会自动:① pnpm 安装 `github:KannaKuron/dsh-gitbash-shell`;
+`dsh plugin add` 会自动:① pnpm 安装 npm 包 `dsh-gitbash-shell`;
 ② 检测到包声明的 `dsh.bundle` 后把它追加进该 profile 的
 `dsh.profile.bundles`。**重启该 profile 的 host 后生效。**
 

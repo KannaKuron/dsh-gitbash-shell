@@ -5,9 +5,10 @@
 ## 环境与工具
 
 - 本机已安装 GitHub CLI(gh)与 npm 且均已认证;建仓、推送、tag、release **优先用 gh**;
-- 分发**双通道**:GitHub(tag + Release)+ npm(公开包 `dsh-gitbash-shell`);
-  GitHub Release 的 published 事件自动触发 npm publish(见 .github/workflows/npm-publish.yml,
-  需要仓库 secret `NPM_TOKEN` —— npm 自动化令牌)。
+- 分发**双通道**:GitHub(tag + Release,源码与发布说明)+ npm(公开包 `dsh-gitbash-shell`,用户安装入口);
+  GitHub Release 的 published 事件自动触发 npm publish —— **Trusted Publishing (OIDC)**,
+  workflow 用 `id-token: write` + 无令牌 `npm publish`(见 .github/workflows/npm-publish.yml,
+  npm 包设置里须登记同名 workflow 为 trusted publisher)。
 
 ## 项目一句话
 
@@ -46,5 +47,4 @@
 2. `npm version minor|patch`(能力变化 minor,修复 patch);
 3. `git push --tags`;
 4. `gh release create <tag>`(notes 带安装命令与变更摘要)——published 事件自动触发 npm publish;
-5. 用户侧更新 = `dsh plugin --profile <name> add github:KannaKuron/dsh-gitbash-shell`
-   (或 npm 名 `dsh-gitbash-shell`);host 半变更需重启 DSH。
+5. 用户侧更新 = `dsh plugin --profile <name> add dsh-gitbash-shell`(npm 包名);host 半变更需重启 DSH。
