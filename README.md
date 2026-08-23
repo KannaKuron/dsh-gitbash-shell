@@ -75,7 +75,7 @@ bundle patch(`cordis.patch.yml`)应用三个改动:
     default: ptc-cordis   # 或 standard-gitbash / minimal-gitbash
 ```
 
-## 配置
+## 配置(执行器)
 
 `gitbash-executor` 行支持:
 
