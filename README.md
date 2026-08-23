@@ -69,6 +69,26 @@ bundle patch(`cordis.patch.yml`)应用三个改动:
 
 ## 配置
 
+`gitbash-presets` 行支持 `presets` 数组,只物化你常用的模式(未列出的旧物化目录、
+且未被用户修改过的,会自动清理):
+
+```yaml
+- id: gitbash-presets
+  config:
+    presets: [standard-gitbash, minimal-gitbash]   # 默认物化全部 4 个
+```
+
+配合 `agent-presets` 的 `default`,新会话直接落在 Git Bash 模式,免去每次在
+模式选择器里翻找(原版 shipped 模式无法替换或隐藏——部署级、只读):
+
+```yaml
+- id: agent-presets
+  config:
+    default: ptc-cordis   # 或 standard-gitbash / minimal-gitbash
+```
+
+## 配置
+
 `gitbash-executor` 行支持:
 
 ```yaml

@@ -53,7 +53,7 @@ const TAG = '[gitbash-shell]'
 const MANAGED_BY = 'dsh-gitbash-shell'
 const MARKER_FILE = '.plugin-managed.json'
 
-/** Preset ids this plugin materializes, in roster order. */
+/** Default preset ids this plugin materializes, in roster order (configurable). */
 export const PRESET_IDS = ['standard-gitbash', 'minimal-gitbash', 'code-gitbash', 'cordis-gitbash']
 
 /** Git Bash binary default — must match src/shell.js. */
@@ -252,7 +252,37 @@ async function findSkillsSource(agentPresets) {
   }
 }
 
-export async function apply(ctx) {
+/**
+ * Purge preset directories this plugin materialized in earlier versions but
+ * that are no longer in the configured materialization set. Only an
+ * UNMODIFIED tree is removed; a user-edited one stays (and is left alone).
+ * @param userRoot - the user-trust preset root path.
+ * @param keep - preset ids to keep.
+ */
+function purgeOrphans(userRoot, keep) {
+  try {
+    for (const entry of readdirSync(userRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const id = entry.name
+      if (keep.includes(id)) continue
+      const target = join(userRoot, id)
+      const marker = readMarker(target)
+      if (!marker || marker.managedBy !== MANAGED_BY) continue
+      if (classify(target) === 'unmodified') {
+        rmSync(target, { recursive: true, force: true })
+        console.log(`${TAG} removed orphan preset '${id}' (no longer materialized)`)
+      } else {
+        console.log(`${TAG} orphan preset '${id}' was modified after materialization — leaving it alone`)
+      }
+    }
+  } catch (error) {
+    console.log(`${TAG} orphan cleanup skipped: ${error?.message ?? error}`)
+  }
+}
+
+export async function apply(ctx, config = {}) {
+  const presetIds = Array.isArray(config.presets) && config.presets.length > 0 ? config.presets : PRESET_IDS
+
   // The shim rides along every mount of this plugin and degrades silently if
   // the upstream shape differs from what we verified.
   let shim = { installed: false, restore: () => {} }
@@ -291,8 +321,9 @@ export async function apply(ctx) {
 
   const skillsSource = await findSkillsSource(ctx.agentPresets)
   const userRootPath = userRoot.path
+  purgeOrphans(userRootPath, presetIds)
 
-  for (const presetId of PRESET_IDS) {
+  for (const presetId of presetIds) {
     const target = join(userRootPath, presetId)
     const state = classify(target)
     if (state === 'foreign') {
