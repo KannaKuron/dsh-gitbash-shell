@@ -53,8 +53,8 @@ preset stays as its own plugin manages it.
 
 When [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (v0.15.2+) is installed, on Windows this plugin adopts its official runtime settings seam (`terminalShell` — by the sidebar's own contract, "settings-page overrides win for terminals opened afterwards"), so both the sidebar's UI terminal tabs and the model-facing `terminal_*` tools open Git Bash — no upstream change, new terminals pick it up immediately. Rules:
 
-- A shell you set yourself (settings page / `cordis.patch.yml`) is respected, never overridden;
-- Removing this plugin reverts the pref to empty (the sidebar returns to its default pwsh / powershell resolution);
+- **The plugin owns the pref while installed**: on every Windows boot it unconditionally sets `terminalShell` to Git Bash — a value you set elsewhere is overwritten again on the next boot;
+- Removing this plugin restores the previous value (the sidebar returns to what it had before, e.g. its default pwsh / powershell resolution);
 - Disable the adoption with `betterSidebarShell: false` in this plugin's row config.
 
 ## License

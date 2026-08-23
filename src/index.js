@@ -239,10 +239,11 @@ export function installRegisterShim(reg) {
 // (their own words: "values here win for terminals opened afterwards").
 // So this plugin adopts that official runtime seam — zero upstream change,
 // no restart needed — and points the sidebar's UI terminal tabs AND the
-// model-facing terminal_* tools at Git Bash on Windows. A terminal shell
-// the user set themselves is respected (we only fill an empty field), and
-// the write is reverted on disposal (reload/update/uninstall), so removing
-// this plugin returns the sidebar to its auto/default shell.
+// model-facing terminal_* tools at Git Bash on Windows. The plugin TAKES
+// OVER the pref unconditionally while installed (a value set elsewhere is
+// overwritten at every boot — that is the contract); the previous value is
+// captured and restored on disposal (reload/update/uninstall), so removing
+// this plugin returns the sidebar to what it was before.
 
 const SIDEBAR_NS = 'dsh-better-sidebar'
 
@@ -264,8 +265,7 @@ function adoptSidebarShell(ctx, bashPath) {
       current = undefined // namespace not registered yet / sidebar absent
     }
     const value = current && typeof current === 'object' ? current : {}
-    const existing = typeof value.terminalShell === 'string' ? value.terminalShell.trim() : ''
-    if (existing !== '') return // user/deployment choice — never override
+    const previous = typeof value.terminalShell === 'string' ? value.terminalShell : ''
     try {
       await settings.update(SIDEBAR_NS, { terminalShell: bashPath })
     } catch (error) {
@@ -296,7 +296,10 @@ function adoptSidebarShell(ctx, bashPath) {
       },
       'dsh-gitbash-shell: sidebar shell revert',
     )
-    console.log(`${TAG} dsh-better-sidebar terminal shell -> Git Bash (${bashPath})`)
+    console.log(
+      `${TAG} dsh-better-sidebar terminal shell -> Git Bash (${bashPath})` +
+        (previous ? ` (took over from '${previous}')` : ''),
+    )
   }
   void run()
 }
