@@ -232,6 +232,75 @@ export function installRegisterShim(reg) {
   }
 }
 
+// ── dsh-better-sidebar shell cooperation ───────────────────────────────────
+//
+// dsh-better-sidebar (v0.15.2+) resolves its terminal shell PER OPEN: a
+// settings-page `terminalShell` value wins over the yaml/plugin default
+// (their own words: "values here win for terminals opened afterwards").
+// So this plugin adopts that official runtime seam — zero upstream change,
+// no restart needed — and points the sidebar's UI terminal tabs AND the
+// model-facing terminal_* tools at Git Bash on Windows. A terminal shell
+// the user set themselves is respected (we only fill an empty field), and
+// the write is reverted on disposal (reload/update/uninstall), so removing
+// this plugin returns the sidebar to its auto/default shell.
+
+const SIDEBAR_NS = 'dsh-better-sidebar'
+
+/**
+ * Fill the sidebar's `terminalShell` pref through the settings service.
+ * One-shot; retries once after a short delay in case the sidebar's
+ * namespace registration lands a beat after our row ran. Never throws.
+ */
+function adoptSidebarShell(ctx, bashPath) {
+  let tried = 0
+  const run = async () => {
+    tried += 1
+    const settings = ctx.get('settings')
+    if (!settings || typeof settings.update !== 'function') return
+    let current
+    try {
+      current = settings.get(SIDEBAR_NS)
+    } catch {
+      current = undefined // namespace not registered yet / sidebar absent
+    }
+    const value = current && typeof current === 'object' ? current : {}
+    const existing = typeof value.terminalShell === 'string' ? value.terminalShell.trim() : ''
+    if (existing !== '') return // user/deployment choice — never override
+    try {
+      await settings.update(SIDEBAR_NS, { terminalShell: bashPath })
+    } catch (error) {
+      if (tried < 2) {
+        const timer = setTimeout(run, 1500)
+        ctx.effect(() => () => clearTimeout(timer), 'dsh-gitbash-shell: sidebar adoption retry')
+        return
+      }
+      console.log(`${TAG} better-sidebar shell adoption unavailable: ${error?.message ?? error}`)
+      return
+    }
+    let reverted = false
+    ctx.effect(
+      () => () => {
+        if (reverted) return
+        reverted = true
+        const s = ctx.get('settings')
+        if (!s || typeof s.update !== 'function') return
+        let now
+        try {
+          now = s.get(SIDEBAR_NS)
+        } catch {
+          return
+        }
+        if (String(now?.terminalShell ?? '') === bashPath) {
+          s.update(SIDEBAR_NS, { terminalShell: '' }).catch(() => {})
+        }
+      },
+      'dsh-gitbash-shell: sidebar shell revert',
+    )
+    console.log(`${TAG} dsh-better-sidebar terminal shell -> Git Bash (${bashPath})`)
+  }
+  void run()
+}
+
 // ── plugin ──────────────────────────────────────────────────────────────────
 
 /** First user-trust root: the roster's authoring target. */
@@ -304,6 +373,14 @@ export async function apply(ctx, config = {}) {
   const gitBashCapability = { active: process.platform === 'win32', bashPath: DEFAULT_GIT_BASH }
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
+
+  // ── dsh-better-sidebar terminal adoption (Windows only) ────────────────
+  // The sidebar resolves its terminal shell through the settings seam per
+  // open; adopt it through that seam (see adoptSidebarShell for rationale).
+  // Disable with `betterSidebarShell: false` in the plugin row config.
+  if (config.betterSidebarShell !== false && process.platform === 'win32') {
+    adoptSidebarShell(ctx, gitBashCapability.bashPath)
+  }
 
   const roots = ctx.agentPresets?.roots ?? []
   const userRoot = firstUserRoot(roots)

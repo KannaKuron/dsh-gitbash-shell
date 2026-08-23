@@ -116,6 +116,14 @@ preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 > 切换生效后若 `ptc-cordis` 目录已存在且被旧版本物化,删除
 > `~/.dsh/.agent-presets/ptc-cordis` 并重启,即由新逻辑重新物化。
 
+## 与 dsh-better-sidebar 联动
+
+装了 [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar)(v0.15.2+) 时,Windows 上本插件会通过**它的官方设置补丁口**(运行时 `terminalShell` 设置,对方文档明示"settings-page overrides win for terminals opened afterwards")把它打开的终端 shell 指向 Git Bash——**UI 终端标签与模型侧 `terminal_*` 工具统一生效**,不改对方一行代码、新开的终端即生效。规则:
+
+- 你在设置页或 `cordis.patch.yml` 里手动设置过 shell → **尊重你的选择**,绝不覆盖;
+- 卸载本插件 → 自动把该设置还原为空(回到它的默认解析:pwsh / powershell);
+- 想关掉本联动 → 本插件 row 配置加 `betterSidebarShell: false`。
+
 ## 许可
 
 MIT © KannaKuron。参考与致敬:[dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset)。
