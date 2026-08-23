@@ -36,3 +36,16 @@
 
     - id: gitbash-presets
       name: dsh-gitbash-shell
+
+# Edit the dsh-better-sidebar row when it is mounted (their own bundle
+# inserted it; our bundle is later in the stack, so this edit lands on the
+# existing row — empty-config rows absorb it, missing rows warn and skip, so
+# profiles without the sidebar are unaffected). The boot-time shell
+# resolution drives BOTH the spawn chain and the client tab title
+# ('shell.get' name), so pointing config.shell at Git Bash on Windows makes
+# the sidebar terminal open bash AND display a 'bash' tab label; per-open
+# settings overrides (which this plugin also fills) then agree with it.
+- id: better-sidebar
+  name: dsh-better-sidebar
+  config:
+    shell: !!js process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : ''
