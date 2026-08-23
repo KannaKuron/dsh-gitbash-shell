@@ -43,5 +43,12 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://github.com/KannaKuron/dsh-gitbash-shell",
+  "bugs": {
+    "url": "https://github.com/KannaKuron/dsh-gitbash-shell/issues"
   }
 }
