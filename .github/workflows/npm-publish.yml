@@ -1,10 +1,14 @@
 name: npm-publish
 
+# Trusted publishing (OIDC) — no npm token needed:
+# npmjs.com package settings must declare this workflow file name
+# (npm-publish.yml) as a trusted publisher for the matching repo.
 on:
   release:
     types: [published]
 
 permissions:
+  id-token: write # Required for OIDC (npm trusted publishing)
   contents: read
 
 jobs:
@@ -14,9 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: npm publish
+          package-manager-cache: false
+      - name: npm publish (OIDC)
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
