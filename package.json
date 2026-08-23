@@ -1,6 +1,6 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "DSH plugin: run every agent shell command through Git for Windows bash on Windows instead of PowerShell. Replaces the pwsh executor with a Git Bash ctx.shell provider and materializes Git Bash variants of the standard/minimal/code/cordis agent presets into your user preset root at startup.",
   "type": "module",
   "repository": {
