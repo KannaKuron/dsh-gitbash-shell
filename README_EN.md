@@ -43,6 +43,15 @@ config:
   bashPath: "D:/Tools/Git/bin/bash.exe"   # default C:/Program Files/Git/bin/bash.exe
 ```
 
+## Cooperation with dsh-ptc-cordis-preset
+
+This plugin publishes a `gitBash` host capability (`{ active, bashPath }`,
+active only on Windows). [dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset)
+v0.5.0+ detects it while materializing `PTC 创造模式`: with both installed,
+the PTC preset is materialized as Git Bash automatically (tool-bash on,
+tool-pwsh off) — no extra mode, no manual edits. Without this plugin the PTC
+preset stays as its own plugin manages it.
+
 ## License
 
 MIT © KannaKuron. Inspired by

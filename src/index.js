@@ -56,6 +56,9 @@ const MARKER_FILE = '.plugin-managed.json'
 /** Preset ids this plugin materializes, in roster order. */
 export const PRESET_IDS = ['standard-gitbash', 'minimal-gitbash', 'code-gitbash', 'cordis-gitbash']
 
+/** Git Bash binary default — must match src/shell.js. */
+const DEFAULT_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
+
 /** The shipped preset whose skills/ dir seeds cordis-gitbash. */
 const SKILLS_SOURCE_PRESET = 'cordis'
 
@@ -262,6 +265,15 @@ export async function apply(ctx) {
     ctx.effect(() => () => shim.restore(), 'dsh-gitbash-shell: inspect-registry shim')
     console.log(`${TAG} inspect-registry compatibility shim active (multiple cordis-mode sessions supported)`)
   }
+
+  // ── cooperation capability ────────────────────────────────────────────────
+  // Publish whether the Git Bash shell stack is active on this host so peer
+  // plugins (e.g. dsh-ptc-cordis-preset) can adopt it in the presets they
+  // materialize: service present, 'active: true' on Windows, 'active: false'
+  // where the bundle is installed but the platform stack stayed native.
+  const gitBashCapability = { active: process.platform === 'win32', bashPath: DEFAULT_GIT_BASH }
+  const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
+  ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
   const roots = ctx.agentPresets?.roots ?? []
   const userRoot = firstUserRoot(roots)

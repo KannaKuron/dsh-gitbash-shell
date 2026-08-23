@@ -97,6 +97,17 @@ dsh plugin --profile web remove dsh-gitbash-shell
 `dsh plugin --profile web install`。卸载并重启后,未改过的 `* -gitbash`
 preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 
+## 与 dsh-ptc-cordis-preset 联动
+
+本插件在 host 上发布 `gitBash` 能力服务(`{ active, bashPath }`,仅 Windows 为 active)。
+[dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset) v0.5.0+ 在物化
+`PTC 创造模式` 时会检测该信号:两个插件都安装时,**PTC 创造模式自动物化为 Git Bash 版**
+(`tool-bash` 启用、`tool-pwsh` 禁用),无需新增模式、无需手工修改 preset;
+只装本插件时 PTC 创造模式保持原样(由它自己的插件管理)。
+
+> 切换生效后若 `ptc-cordis` 目录已存在且被旧版本物化,删除
+> `~/.dsh/.agent-presets/ptc-cordis` 并重启,即由新逻辑重新物化。
+
 ## 许可
 
 MIT © KannaKuron。参考与致敬:[dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset)。
