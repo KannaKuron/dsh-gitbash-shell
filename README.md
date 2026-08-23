@@ -32,24 +32,11 @@ npm: [dsh-gitbash-shell](https://www.npmjs.com/package/dsh-gitbash-shell)，
 ```sh
 # web 图形界面
 dsh plugin --profile web add dsh-gitbash-shell
-
-# 可选:TUI / 自定义 TUI 也启用(命令行各 profile 需要)
-dsh plugin --profile tui add dsh-gitbash-shell
-dsh plugin --profile cc-tui add dsh-gitbash-shell
 ```
 
 `dsh plugin add` 会自动:① pnpm 安装 npm 包 `dsh-gitbash-shell`;
 ② 检测到包声明的 `dsh.bundle` 后把它追加进该 profile 的
 `dsh.profile.bundles`。**重启该 profile 的 host 后生效。**
-
-TUI/cc-tui 额外:在其 `cordis.patch.yml` 里翻转 host 工具行(web 不需要):
-
-```yaml
-- id: tool-bash
-  disabled: false
-- id: tool-pwsh
-  disabled: true
-```
 
 ## 它做了什么
 

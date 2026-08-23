@@ -2,7 +2,7 @@
 #
 # Installed through the official CLI —
 #
-#   dsh plugin --profile <name> add github:KannaKuron/dsh-gitbash-shell
+#   dsh plugin --profile <name> add dsh-gitbash-shell
 #
 # — the command reconciles `dsh.profile.bundles` against installed packages
 # and, seeing this declaration, appends dsh-gitbash-shell to the bundle
@@ -22,8 +22,7 @@
 #
 # This patch deliberately does NOT flip the base host tool-bash/tool-pwsh
 # rows: the web surface disables them and lets agent presets provide the
-# model-facing shell tools, while base-only surfaces (TUI) flip them in
-# their own patch layer.
+# model-facing shell tools instead.
 - id: pwsh-sandbox
   disabled: true
 

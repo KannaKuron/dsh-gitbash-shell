@@ -8,9 +8,6 @@
 
 ```sh
 dsh plugin --profile web add dsh-gitbash-shell
-# optional TUI surfaces
-dsh plugin --profile tui add dsh-gitbash-shell
-dsh plugin --profile cc-tui add dsh-gitbash-shell
 ```
 
 `dsh plugin add` installs the dependency via pnpm and, seeing the

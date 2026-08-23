@@ -32,7 +32,7 @@
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
-   本机 web/tui/cc-tui 三个 profile 的 patch。
+   本机 web profile 的 patch。
 
 ## 验证清单(改动后)
 
