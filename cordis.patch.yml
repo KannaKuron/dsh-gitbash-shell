@@ -1,0 +1,39 @@
+# dsh-gitbash-shell bundle patch
+#
+# Installed through the official CLI —
+#
+#   dsh plugin --profile <name> add github:KannaKuron/dsh-gitbash-shell
+#
+# — the command reconciles `dsh.profile.bundles` against installed packages
+# and, seeing this declaration, appends dsh-gitbash-shell to the bundle
+# stack. The profile boot then merges this patch:
+#
+#   1. withdraw the PowerShell executor (the framework composes exactly one
+#      ctx.shell provider per process);
+#   2. insert the Git Bash executor row (a subclass of the shipped
+#      @deepseek-ai/dsh-bash-sandbox, so sandbox policy, denial
+#      classification, background jobs, and settings behave identically);
+#   3. insert the preset-materialization row, which writes the
+#      standard/minimal/code/cordis Git Bash variants into the first
+#      user-trust preset root.
+#
+# On non-Windows hosts the executor row is disabled and the bundle is inert
+# apart from the preset materialization (bash is already the native stack).
+#
+# This patch deliberately does NOT flip the base host tool-bash/tool-pwsh
+# rows: the web surface disables them and lets agent presets provide the
+# model-facing shell tools, while base-only surfaces (TUI) flip them in
+# their own patch layer.
+- id: pwsh-sandbox
+  disabled: true
+
+- insert:
+    - id: gitbash-executor
+      name: dsh-gitbash-shell/shell
+      disabled: !!js process.platform !== 'win32'
+      config:
+        timeoutMs: 60000
+        bashPath: "C:/Program Files/Git/bin/bash.exe"
+
+    - id: gitbash-presets
+      name: dsh-gitbash-shell/presets
