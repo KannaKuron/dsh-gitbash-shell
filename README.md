@@ -1,5 +1,7 @@
 # dsh-gitbash-shell
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 > 让 DeepSeek Harness (dsh) 在 Windows 上**全部使用 Git Bash** 的官方风格插件
 > —— 以 Git for Windows 的 `bash.exe` 替换 PowerShell 执行器,并为所有模式
 > 物化对应的 Git Bash 版 agent preset。
