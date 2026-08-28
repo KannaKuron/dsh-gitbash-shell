@@ -1,3 +1,7 @@
+# ERA: one text serves both dsh eras — the built-in `minimal` preset did not
+# change across the 0.1.1 → 0.1.2 code→ptc rename, so no agent.cordis.ptc.yml
+# twin exists here. The plugin probes the roster and writes this file as the
+# preset's own agent.cordis.yml either way.
 # The `minimal` agent preset: a fixed-prompt, two-tool coding-agent composition.
 #
 # The persona is the complete system prompt, so global identity, Web orientation,

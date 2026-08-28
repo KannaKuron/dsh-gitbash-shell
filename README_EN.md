@@ -16,6 +16,19 @@ dsh plugin --profile web add dsh-gitbash-shell
 `dsh.bundle` declaration, appends the package to `dsh.profile.bundles`.
 **Restart the profile's host to activate.**
 
+## Works with both dsh 0.1.1 and 0.1.2+
+
+dsh 0.1.2 renamed the built-in `code` preset to `ptc` (`mode: code` → `mode: ptc`,
+no compatibility aliases) and added new built-in rows (`command-goal`, …). For
+the affected variants (standard/code/cordis) this plugin **ships both committed
+era texts**, probes the built-in roster at every boot, records the choice in
+`.plugin-managed.json` (`base`), and re-materializes automatically when the
+detection flips. `minimal-gitbash`'s built-in base did not change across the
+rename, so one text serves both eras. **Preset ids never change**
+(`code-gitbash` keeps its historical id — sessions are pinned to ids, and a
+rename would orphan them). Either upgrade order converges automatically; directories
+you modified are still never touched.
+
 ## What it does
 
 The bundle patch (`cordis.patch.yml`):

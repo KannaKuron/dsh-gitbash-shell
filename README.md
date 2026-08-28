@@ -26,6 +26,17 @@
 Git Bash host 下会拿到"暗示 PowerShell 语法的工具",请改用上面的变体;
 已装 dsh-ptc-cordis-preset 的话,`PTC 创造模式` 用户 preset 不受影响。
 
+### dsh 版本双适配(0.1.1 与 0.1.2+)
+
+dsh 0.1.2 把内置 `code` preset 改名为 `ptc`(`mode: code` → `mode: ptc`,官方不做
+兼容别名),并给各内置 preset 新增 `command-goal` 等行。本插件为受影响的变体
+(standard/code/cordis)**同时携带两个 era 的已提交组合文本**,启动时探测内置
+roster 自动选择,并记进 `.plugin-managed.json` 的 `base` 字段;探测翻转(dsh
+升级前后)自动重物化。`minimal-gitbash` 的内置底稿跨版本未变,单文本服务两个
+era。**preset id 保持 `code-gitbash` 不变**(会话钉在 id 上,改名会让已固定的
+会话报 preset not found)。无论先升级插件还是先升级 dsh,都会自动收敛;用户改
+过的目录照旧不碰。
+
 ## 安装(公开 npm 插件,推荐)
 
 npm: [dsh-gitbash-shell](https://www.npmjs.com/package/dsh-gitbash-shell)，

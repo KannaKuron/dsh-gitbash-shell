@@ -1,32 +1,25 @@
-# ERA: dsh <= 0.1.1 text (built-in preset id `code`, presented with mode: code).
-# The dsh >= 0.1.2 era text (built-in id `ptc`) lives in agent.cordis.ptc.yml; the
-# plugin probes the roster at materialization and writes the picked text as the
-# preset's own agent.cordis.yml.
-# The `code` agent preset: the standard coding agent, presented as Code Mode.
+# ERA: dsh >= 0.1.2 text (renamed built-in rows, incl. the new `command-goal`).
+# The dsh <= 0.1.1 era text lives in agent.cordis.yml; the plugin probes the
+# roster at materialization and writes the picked text as the preset's own
+# agent.cordis.yml.
+# The `standard` agent preset: the full coding agent, mounted once per process.
 #
-# Everything in `standard` is here unchanged. What is added is the `tool-presentation`
-# row: instead of one tool call per action, the model writes a TypeScript
-# program against a generated SDK and `run_code` executes it, so a sequence
-# that would be five round trips becomes one.
-#
-# The registry itself stays on the host plane — the agent loop's scheduler and
-# the API proxy's presenters are its consumers — so what this preset owns is
-# the PRESENTATION of that registry for this agent alone. Native sessions run
-# beside this one in the same process, each seeing its own catalog.
-#
-# This file is an AGENT-PLANE composition. It is mounted under one agent's
-# scope context, so every tool and prompt section it registers belongs to that
-# session alone. The host composition (`base.cordis.yml` + `web.cordis.yml`)
-# keeps everything a preset must not own: the registries themselves, the
-# sandbox and approval stack, persistence, and the model route.
+# This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
+# standing scope; every session naming it joins by scope parentage, so the
+# tools and prompt sections registered here cover each joined agent while a
+# session's own state stays keyed per Session/Agent inside the plugins. The
+# host composition (`base.cordis.yml` + `web.cordis.yml`) keeps everything a
+# preset must not own: the registries themselves, the sandbox and approval
+# stack, persistence, and the model route.
 #
 # A service row here MUST sit inside a group carrying an `isolate` realm.
-# Without one it publishes into the root realm, where it is process-global
-# rather than per-session and the second session mounting this preset collides
-# with the first; `dsh-agent-presets` rejects that at mount. `true` means an
-# entry-local realm — one private instance per mounted session, which is the
-# default this deployment wants. A shared label would instead pool one instance
-# across every session naming it.
+# Without one it publishes into the root realm, where it is process-global —
+# another preset publishing the same name collides, and a host reader would
+# resolve one preset's instance for every session; `dsh-agent-presets` rejects
+# that at mount. `true` means an entry-local realm: this standing mount's own
+# private instance, apart from every other preset's. (A shared label does NOT
+# pool instances — `provide()` throws on the second registration under the
+# same realm symbol; labels join REALMS, and are not what this file needs.)
 
 # ── identity ────────────────────────────────────────────────────────────────
 
@@ -100,12 +93,12 @@
 
 # ── goals ───────────────────────────────────────────────────────────────────
 
-# Only the model-facing tool. The goal SERVICE, its session driver, and the
-# `/goal` command stay on the host plane: the Gateway serves the goal domain as
-# Remote endpoints whose receiver comes from a generated descriptor, so it
-# resolves `goals` on the host and an entry-local realm here would hide it. The
-# registry is keyed by session anyway, so one host instance serves every
-# session. What a preset chooses is whether its agent can call the goal tool.
+# The goal service and session driver stay on the host plane, where the Gateway
+# can resolve them. The human command and model-facing tool register into this
+# preset's scoped layers.
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
+
 - id: tool-goal
   name: '@deepseek-ai/dsh-tool-goal'
 
@@ -177,6 +170,12 @@
 # `workflows` is different — nothing outside an agent reads it — so every row
 # that reaches it shares one entry-local realm here, and a consumer left
 # outside would resolve a host registry this preset does not populate.
+#
+# `tool-subagent-report` is host-plane for the same reason as the registry,
+# not because a preset may not want it: it registers a CONTINUABLE SETUP on
+# that singleton rather than a tool this agent calls, and the setup list is
+# not scope-aware — one copy per mounted preset means every child gets
+# `report` registered once per live session, which throws on the second.
 - id: delegation
   name: cordis:group
   group: true
@@ -194,8 +193,13 @@
       config:
         provider: spawn
         toolName: subagent
+        modelSelectionSettings: true
         backgroundMode: continuable
 
+    # Fork omits model selection so provider/model stay equal to the parent and
+    # the inherited history remains eligible for KV Cache reuse. This preset
+    # keeps fork continuable and accepts its child-scoped `report` additions invalidating
+    # that prefix; issue #2124 tracks cache-preserving continuable fork.
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
@@ -254,15 +258,5 @@
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:
-    fetch: false
+    fetch: true
     searchTimeoutMs: 60000
-
-# ── presentation ────────────────────────────────────────────────────────────
-
-# Code Mode for this agent alone. The row waits for the host's `codeRuntime`
-# rather than assuming it: a deployment that composes no TypeScript runtime
-# fails this preset at mount, naming this id, instead of at the first request.
-- id: tool-presentation
-  name: '@deepseek-ai/dsh-agent-tool-presentation'
-  config:
-    mode: code

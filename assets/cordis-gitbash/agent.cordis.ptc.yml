@@ -1,42 +1,36 @@
-# ERA: dsh <= 0.1.1 text (built-in preset id `code`, presented with mode: code).
-# The dsh >= 0.1.2 era text (built-in id `ptc`) lives in agent.cordis.ptc.yml; the
-# plugin probes the roster at materialization and writes the picked text as the
-# preset's own agent.cordis.yml.
-# The `code` agent preset: the standard coding agent, presented as Code Mode.
+# ERA: dsh >= 0.1.2 text (renamed built-in rows, incl. the new `command-goal`).
+# The dsh <= 0.1.1 era text lives in agent.cordis.yml; the plugin probes the
+# roster at materialization and writes the picked text as the preset's own
+# agent.cordis.yml.
+# The `cordis` agent preset: the standard coding agent, plus the ability to
+# read and write the runtime it is running in.
 #
-# Everything in `standard` is here unchanged. What is added is the `tool-presentation`
-# row: instead of one tool call per action, the model writes a TypeScript
-# program against a generated SDK and `run_code` executes it, so a sequence
-# that would be five round trips becomes one.
+# It exists so a person can ask an agent to author another agent. Everything in
+# `standard` is here unchanged; what is added is the self-referential Cordis
+# toolset, a skill that teaches composition authoring, and a persona that says
+# which of the two planes an edit belongs to.
 #
-# The registry itself stays on the host plane — the agent loop's scheduler and
-# the API proxy's presenters are its consumers — so what this preset owns is
-# the PRESENTATION of that registry for this agent alone. Native sessions run
-# beside this one in the same process, each seeing its own catalog.
-#
-# This file is an AGENT-PLANE composition. It is mounted under one agent's
-# scope context, so every tool and prompt section it registers belongs to that
-# session alone. The host composition (`base.cordis.yml` + `web.cordis.yml`)
-# keeps everything a preset must not own: the registries themselves, the
-# sandbox and approval stack, persistence, and the model route.
-#
-# A service row here MUST sit inside a group carrying an `isolate` realm.
-# Without one it publishes into the root realm, where it is process-global
-# rather than per-session and the second session mounting this preset collides
-# with the first; `dsh-agent-presets` rejects that at mount. `true` means an
-# entry-local realm — one private instance per mounted session, which is the
-# default this deployment wants. A shared label would instead pool one instance
-# across every session naming it.
+# TRUST: `cordis_mount` evaluates model-written JavaScript against the live
+# runtime, and a composition this agent writes becomes a preset other sessions
+# mount. Treat a session on this preset as shell access — the toolset's own
+# documentation makes the same statement.
 
-# ── identity ────────────────────────────────────────────────────────────────
 
 # The preset's own persona, shadowing the deployment default for this agent.
 # `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: >-
-      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+    text: |-
+      You are a coding agent powered by the {{model}} model, running on the DeepSeek Harness. Your working directory is {{cwd}}.
+
+      You can read and modify the harness you run on. Its composition is Cordis: every capability is a plugin row in a `cordis.yml`, and an agent preset is one such file mounted for a single session.
+
+      Two planes decide where an edit belongs. The HOST composition holds the registries and anything shared across sessions — persistence, the sandbox and approval stack, the model route, the subagent registry and its backends. An AGENT PRESET holds what one session contributes to those registries: its tools, its persona, its prompt sections. A row that publishes a service belongs in the host composition, or inside an `isolate` realm if the preset genuinely owns that service and nothing outside one agent reads it.
+
+      Presets you author live one directory per preset under `${DSH_HOME:-$HOME/.dsh}/.agent-presets/<id>/`; the roster reports each preset's real path, so take the one you edit from there. NEVER edit or delete the shipped preset install (the `agent-presets` directory beside the deployment's own config): it belongs to the deployment, an upgrade overwrites it, and corrupting the `cordis` preset would disable this very mode. To change what a shipped preset does, copy its composition into a new preset directory and edit the copy.
+
+      Load the `editing-cordis-compositions` skill before writing or changing a composition.
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
@@ -85,27 +79,14 @@
 - id: tool-jobs
   name: '@deepseek-ai/dsh-tool-jobs'
 
-# ── skills ──────────────────────────────────────────────────────────────────
-
-# The skill REGISTRY lives in the host composition and is layered per scope:
-# these rows register into THIS preset's layer of it, so they need no realm.
-# `skill-filesystem` contributes local-root discovery for agents on this preset, and
-# `tool-skill` gives them the catalog and loader; the merged catalog also
-# carries whatever the deployment registered globally (repository plugins).
-- id: skill-filesystem
-  name: '@deepseek-ai/dsh-skill-filesystem'
-
-- id: tool-skill
-  name: '@deepseek-ai/dsh-tool-skill'
-
 # ── goals ───────────────────────────────────────────────────────────────────
 
-# Only the model-facing tool. The goal SERVICE, its session driver, and the
-# `/goal` command stay on the host plane: the Gateway serves the goal domain as
-# Remote endpoints whose receiver comes from a generated descriptor, so it
-# resolves `goals` on the host and an entry-local realm here would hide it. The
-# registry is keyed by session anyway, so one host instance serves every
-# session. What a preset chooses is whether its agent can call the goal tool.
+# The goal service and session driver stay on the host plane, where the Gateway
+# can resolve them. The human command and model-facing tool register into this
+# preset's scoped layers.
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
+
 - id: tool-goal
   name: '@deepseek-ai/dsh-tool-goal'
 
@@ -177,6 +158,12 @@
 # `workflows` is different — nothing outside an agent reads it — so every row
 # that reaches it shares one entry-local realm here, and a consumer left
 # outside would resolve a host registry this preset does not populate.
+#
+# `tool-subagent-report` is host-plane for the same reason as the registry,
+# not because a preset may not want it: it registers a CONTINUABLE SETUP on
+# that singleton rather than a tool this agent calls, and the setup list is
+# not scope-aware — one copy per mounted preset means every child gets
+# `report` registered once per live session, which throws on the second.
 - id: delegation
   name: cordis:group
   group: true
@@ -194,8 +181,13 @@
       config:
         provider: spawn
         toolName: subagent
+        modelSelectionSettings: true
         backgroundMode: continuable
 
+    # Fork omits model selection so provider/model stay equal to the parent and
+    # the inherited history remains eligible for KV Cache reuse. This preset
+    # keeps fork continuable and accepts its child-scoped `report` additions invalidating
+    # that prefix; issue #2124 tracks cache-preserving continuable fork.
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
@@ -254,15 +246,28 @@
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:
-    fetch: false
+    fetch: true
     searchTimeoutMs: 60000
 
-# ── presentation ────────────────────────────────────────────────────────────
+# ── self-modification ───────────────────────────────────────────────────────
 
-# Code Mode for this agent alone. The row waits for the host's `codeRuntime`
-# rather than assuming it: a deployment that composes no TypeScript runtime
-# fails this preset at mount, naming this id, instead of at the first request.
-- id: tool-presentation
-  name: '@deepseek-ai/dsh-agent-tool-presentation'
+# Read the live runtime, mount a temporary plugin, unmount it. The toolset is a
+# trust boundary, not a sandbox — see this file's header.
+- id: tool-cordis
+  name: '@deepseek-ai/dsh-tool-cordis'
+
+# The composition-authoring skill travels with this preset rather than living
+# in the user's skill root: it documents THIS deployment's two planes, and a
+# preset is the unit that gets copied and edited. `baseUrl` is the preset's
+# own directory, so the root resolves wherever the preset is installed.
+# Both rows register into THIS preset's layer of the host skill registry, so
+# they need no realm; the agent's merged catalog also carries whatever the
+# deployment registered globally (repository plugins).
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
   config:
-    mode: code
+    customSkillDirs:
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,7 +28,7 @@ test('hashTree/classify roundtrip with marker', () => {
 })
 
 test('syncDecision refreshes on version change only', () => {
-  const marker = { version: '0.1.0', files: {} }
+  const marker = { version: '0.1.0', base: 'code', files: {} }
   assert.equal(_internal.syncDecision({ state: 'unmodified', marker, version: '0.1.0', sourceHashes: null }), 'idle')
   assert.equal(_internal.syncDecision({ state: 'unmodified', marker, version: '0.2.0', sourceHashes: null }), 'refresh')
   assert.equal(_internal.syncDecision({ state: 'absent', marker: null, version: '0.1.0', sourceHashes: null }), 'refresh')
@@ -60,3 +60,79 @@ test('inspect registry shim tolerates duplicate registrations', () => {
   assert.equal(providers.size, 1)
   assert.equal(typeof dup, 'function')
 })
+// ── built-in era split (dsh 0.1.2 renamed `code` → `ptc`, no alias) ────────
+
+test('baseForRoster maps the built-in roster to the composition era', () => {
+  assert.equal(_internal.baseForRoster(['standard', 'minimal', 'code', 'cordis']), 'code')
+  assert.equal(_internal.baseForRoster(['standard', 'minimal', 'ptc', 'cordis']), 'ptc')
+  assert.equal(_internal.baseForRoster(['code', 'ptc']), 'ptc') // newer wins if both exist
+  assert.equal(_internal.baseForRoster(['standard']), 'code') // unknown roster → conservative
+  assert.equal(_internal.baseForRoster([]), 'code')
+})
+
+test('variant assets carry era twins where the built-in changed; minimal serves both', () => {
+  const here = fileURLToPath(new URL('.', import.meta.url))
+  const read = (id, f) => readFileSync(join(here, '..', 'assets', id, f), 'utf8')
+  for (const id of ['standard-gitbash', 'code-gitbash', 'cordis-gitbash']) {
+    const old_ = read(id, 'agent.cordis.yml')
+    const ptc = read(id, 'agent.cordis.ptc.yml')
+    // era split: the ptc-era twin has the new rows, the base file does not
+    assert.match(ptc, /command-goal/, id + ' twin lost command-goal')
+    assert.doesNotMatch(old_, /command-goal/, id + ' base must stay on the old era')
+    // both eras keep the Git Bash swap
+    assert.match(old_, /disabled: false/)
+    assert.match(ptc, /disabled: false/)
+    assert.doesNotMatch(old_, /disabled: !!js process\.platform === 'win32'/)
+    assert.doesNotMatch(ptc, /disabled: !!js process\.platform === 'win32'/)
+  }
+  // the code variant additionally splits on the mode value
+  assert.match(read('code-gitbash', 'agent.cordis.yml'), /mode: code/)
+  assert.doesNotMatch(read('code-gitbash', 'agent.cordis.yml'), /mode: ptc/)
+  assert.match(read('code-gitbash', 'agent.cordis.ptc.yml'), /mode: ptc/)
+  assert.doesNotMatch(read('code-gitbash', 'agent.cordis.ptc.yml'), /mode: code/)
+  // minimal: no twin, and the built-in did not change across the rename
+  assert.ok(!existsSync(join(here, '..', 'assets', 'minimal-gitbash', 'agent.cordis.ptc.yml')))
+})
+
+test('pickComposition prefers the era twin and falls back to the base file', () => {
+  assert.equal(_internal.pickComposition('ptc', ['agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.ptc.yml')
+  assert.equal(_internal.pickComposition('code', ['agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.yml')
+  // minimal case: no twin on disk → the base file serves both eras
+  assert.equal(_internal.pickComposition('ptc', ['agent.cordis.yml']), 'agent.cordis.yml')
+  assert.equal(_internal.pickComposition('code', []), 'agent.cordis.yml')
+})
+
+test('detectBase reads the roster; a failing roster falls back to the code era', async () => {
+  assert.equal(await _internal.detectBase({ list: async () => [{ id: 'standard' }, { id: 'ptc' }, { id: 'cordis' }] }), 'ptc')
+  assert.equal(await _internal.detectBase({ list: async () => [{ id: 'standard' }, { id: 'code' }] }), 'code')
+  assert.equal(await _internal.detectBase({ list: async () => { throw new Error('boom') } }), 'code')
+})
+
+test('materialize writes the ptc-era text and records the era in the marker', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gitbash-shell-'))
+  const target = join(dir, 'code-gitbash')
+  try {
+    _internal.materialize({ target, presetId: 'code-gitbash', skillsSource: null, version: '0.6.0', base: 'ptc' })
+    const written = readFileSync(join(target, 'agent.cordis.yml'), 'utf8')
+    assert.match(written, /mode: ptc/)
+    assert.doesNotMatch(written, /mode: code/)
+    assert.match(written, /disabled: false/)
+    const marker = JSON.parse(readFileSync(join(target, '.plugin-managed.json'), 'utf8'))
+    assert.equal(marker.base, 'ptc')
+    assert.equal(_internal.classify(target), 'unmodified')
+    // the code era still writes the historical text
+    _internal.materialize({ target, presetId: 'code-gitbash', skillsSource: null, version: '0.6.0', base: 'code' })
+    assert.match(readFileSync(join(target, 'agent.cordis.yml'), 'utf8'), /mode: code/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('syncDecision refreshes when the detected built-in era flips', () => {
+  const marker = { version: '0.6.0', base: 'code', files: {} }
+  assert.equal(_internal.syncDecision({ state: 'unmodified', marker, version: '0.6.0', sourceHashes: null, base: 'ptc' }), 'refresh')
+  assert.equal(_internal.syncDecision({ state: 'unmodified', marker, version: '0.6.0', sourceHashes: null, base: 'code' }), 'idle')
+  // a pre-0.6.0 marker has no base at all → refresh (one-time re-materialization)
+  assert.equal(_internal.syncDecision({ state: 'unmodified', marker: { version: '0.6.0', files: {} }, version: '0.6.0', sourceHashes: null, base: 'code' }), 'refresh')
+})
+

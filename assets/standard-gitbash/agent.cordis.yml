@@ -1,3 +1,6 @@
+# ERA: dsh <= 0.1.1 text (pre-rename built-in rows). The dsh >= 0.1.2 era text
+# lives in agent.cordis.ptc.yml; the plugin probes the roster at materialization
+# and writes the picked text as the preset's own agent.cordis.yml.
 # The `standard` agent preset: the full coding agent, mounted once per process.
 #
 # This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
