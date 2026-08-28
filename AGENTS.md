@@ -61,4 +61,7 @@
 2. `npm version minor|patch`(能力变化 minor,修复 patch);
 3. `git push --tags`;
 4. `gh release create <tag>`(notes 带安装命令与变更摘要)——published 事件自动触发 npm publish;
-5. 用户侧更新 = `dsh plugin --profile <name> add dsh-gitbash-shell`(npm 包名);host 半变更需重启 DSH。
+5. **触发 npmmirror 同步**(机器默认 registry 是 npmmirror,不触发要等它自行同步,
+   期间 `dshmarket`/pnpm 对新版本号解析会报 ERR_PNPM_NO_MATCHING_VERSION):
+   `curl -X PUT https://registry.npmmirror.com/dsh-gitbash-shell/sync`;
+6. 用户侧更新 = `dsh plugin --profile <name> add dsh-gitbash-shell`(npm 包名);host 半变更需重启 DSH。
