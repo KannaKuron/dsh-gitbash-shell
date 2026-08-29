@@ -43,7 +43,8 @@
    字面量(`mode: ptc` / `mode: code`),smoke 测试有断言把关。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
-   `2026-08-25-rename-code-mode-to-ptc` 的 Deferred 一节)。落地时复查双 era 划分;dsh-better-sidebar
+   `2026-08-25-rename-code-mode-to-ptc` 的 Deferred 一节)。落地时复查双 era 划分(2026-08-29 复核:
+   dsh 0.1.2-alpha.1 仍为 SESSION_FORMAT_VERSION=0,迁移未落地);dsh-better-sidebar
    的命名空间(`terminalShell`/`shell`)演化同样需在其升级后复核。
 
 ## 验证清单(改动后)
@@ -52,8 +53,10 @@
 2. 真机验证:重启 DSH → 物化日志(含 era 字样)→ 模式选择器出现 `* · Git Bash` → 新会话 bash 工具存在、
    `command -v bash` 指向 Git 安装目录;
 3. 组合文本改动后:用 cordis 会话跑 `agentPresets.standingKeyFor('<variant>')` 挂载校验;
-4. era 相关改动另需双向验证:当前本机 dsh(<= 0.1.1)物化 `code` era;有条件时在新版 dsh(>= 0.1.2)上
-   验证 `ptc` era 挂载 + `marker.base='ptc'`;以及「旧 marker(无 base)首启刷新一次」路径。
+4. era 相关改动另需双向验证,两个方向均已真机通过:`code` era(<= 0.1.1,2026-08 前)与 `ptc` era
+   (2026-08-29,dsh 0.1.2-alpha.1 真机:三个物化变体 marker 全为 `base:"ptc"`、`standingKeyFor` 挂载
+   全 OK、roster 无重复/无 broken/无 orphan;此前本机为 <= 0.1.1)。
+   仍待覆盖:「旧 marker(无 base)首启刷新一次」路径(可手造无 `base` 的 marker 再启动验证)。
 
 ## 发布 checklist(GitHub + npm)
 
