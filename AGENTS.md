@@ -62,6 +62,10 @@
     **ModuleLoader 契约(v0.10.1 事故修复)**:client 半的 factory(require) **必须
     return module.exports**——漏掉 return 时模块物化为 undefined,浏览器插件行报 invalid plugin
     received undefined(0.9.0 埋雷、0.10.0 首启才炸;agent-lang client.js L587 同款 return,smoke 已加防回归断言)。
+    **翻译层冻结修复(v0.10.2)**:registry 在构造 exec 时即 deepFreeze(arguments)——
+    原地写入严格模式下抛 TypeError 被防御吞掉、静默不翻译(0.10.0/0.10.1 真机 read /c/ 报 C:/c/...);
+    改为纯函数返回新对象 + wrapper 替换 exec.arguments 属性(exec 本体到 tools/result 才
+    freeze,signal 替换是 registry 自有先例)。smoke 加冻结输入用例锁定。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步

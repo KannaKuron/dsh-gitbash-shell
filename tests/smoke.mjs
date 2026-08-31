@@ -148,15 +148,27 @@ test('msys path translation helpers', async () => {
   assert.equal(translateMsysPath('C:\\Users'), 'C:\\Users')
   assert.equal(translateMsysPath('AGENTS.md'), 'AGENTS.md')
   assert.equal(translateMsysPath('/home/u'), '/home/u')
-  // argument rewriting: path fields only, bash command untouched
+  // argument rewriting: PURE — a NEW object when any path field changes,
+  // the ORIGINAL reference otherwise; the frozen input is never touched
+  // (0.10.2: the registry deep-freezes exec.arguments, the wrapper replaces
+  // the exec.arguments property instead)
   const args = { file_path: '/c/a/b.txt', command: 'ls /c/a', workdir: '/e/p', pattern: '*.ts' }
-  assert.equal(translatePathArguments(args), true)
-  assert.equal(args.file_path, 'C:/a/b.txt')
-  assert.equal(args.workdir, 'E:/p')
-  assert.equal(args.command, 'ls /c/a')
-  assert.equal(args.pattern, '*.ts')
-  assert.equal(translatePathArguments(null), false)
-  assert.equal(translatePathArguments({}), false)
+  const out = translatePathArguments(args)
+  assert.notEqual(out, args, 'a changed result must be a new object')
+  assert.equal(out.file_path, 'C:/a/b.txt')
+  assert.equal(out.workdir, 'E:/p')
+  assert.equal(out.command, 'ls /c/a', 'bash command stays MSYS-native')
+  assert.equal(out.pattern, '*.ts')
+  assert.equal(args.file_path, '/c/a/b.txt', 'the original (frozen) input is untouched')
+  assert.deepEqual(translatePathArguments(args), out, 'deterministic translation (value equality; fresh reference each call)')
+  const none = { command: 'pwd' }
+  assert.equal(translatePathArguments(none), none, 'unchanged input returns the same reference')
+  assert.equal(translatePathArguments(null), null)
+  const empty = {}
+  assert.equal(translatePathArguments(empty), empty, 'empty object returns the same reference')
+  const frozen = Object.freeze({ file_path: '/c/x/y.txt' })
+  const thawed = translatePathArguments(frozen)
+  assert.equal(thawed.file_path, 'C:/x/y.txt', 'a deep-frozen input still translates into the new object')
 })
 
 test('client half is a ModuleLoader bundle with baseline requires only', () => {

@@ -360,22 +360,30 @@ export function translateMsysPath(value) {
 }
 
 /**
- * Rewrite MSYS drive roots in an arguments object path fields, in place.
- * @returns {boolean} whether any field changed (false also when args is not
- *   an object — the caller treats that as nothing to do).
+ * Return an arguments object whose path fields carry drive-letter roots.
+ * Pure: builds a NEW object when any field changes and returns the ORIGINAL
+ * reference otherwise — the registry deep-freezes exec.arguments at exec
+ * construction (0.10.2 lesson: in-place writes throw in strict mode and were
+ * silently swallowed), so the caller REPLACES the exec.arguments property
+ * (the exec object itself is not frozen until tools/result; signal
+ * replacement is the registry's own precedent).
+ * @returns {object} the translated arguments object, or the input when
+ *   nothing changed (also the input itself when args is not an object).
  */
 export function translatePathArguments(args) {
-  if (!args || typeof args !== 'object') return false
+  if (!args || typeof args !== 'object') return args
   let changed = false
-  for (const key of Object.keys(args)) {
+  const next = { ...args }
+  for (const key of Object.keys(next)) {
     if (!TRANSLATABLE_PATH_FIELDS.has(key)) continue
-    const value = args[key]
+    const value = next[key]
     if (typeof value !== 'string') continue
     const translated = translateMsysPath(value)
     if (translated === value) continue
-    try { args[key] = translated; changed = true } catch { /* frozen: degrade */ }
+    next[key] = translated
+    changed = true
   }
-  return changed
+  return changed ? next : args
 }
 
 // ── dsh-better-sidebar shell cooperation ───────────────────────────────────
@@ -623,7 +631,8 @@ export async function apply(ctx, config = {}) {
       ctx.on('tools/execute', (exec, next) => {
         try {
           if (exec && exec.arguments && typeof exec.arguments === 'object' && readPosixPaths(ctx)) {
-            translatePathArguments(exec.arguments)
+            const translated = translatePathArguments(exec.arguments)
+            if (translated !== exec.arguments) exec.arguments = translated
           }
         } catch { /* never block a call on translation */ }
         return next()
