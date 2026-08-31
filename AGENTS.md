@@ -59,6 +59,9 @@
     裸路径到空白/闭标点截止,lookbehind 排除 URL scheme 与 file://);不删减任何
     官方内容、不动工具 schema(官方工具描述无盘符示例,盲改有 pattern/default
     误伤风险)。指令缩为一句纯事实(源头已统一,无校准规则)。默认 posixPaths=true。
+    **ModuleLoader 契约(v0.10.1 事故修复)**:client 半的 factory(require) **必须
+    return module.exports**——漏掉 return 时模块物化为 undefined,浏览器插件行报 invalid plugin
+    received undefined(0.9.0 埋雷、0.10.0 首启才炸;agent-lang client.js L587 同款 return,smoke 已加防回归断言)。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步

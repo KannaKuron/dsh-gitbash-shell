@@ -276,5 +276,7 @@ window.__ModuleLoader__.load({
 				console.warn(TAG + " settings card registration failed:", error && error.message ? error.message : error);
 			}
 		};
+
+		return module.exports;
 	},
 });
