@@ -290,6 +290,31 @@ export function installRegisterShim(reg) {
   }
 }
 
+// ── unified path dialect: settings namespace + gate (v0.9.0) ───────────────
+//
+// The dialect (directive + translation wrapper) is OFF by default and gated
+// by the posixPaths boolean in the 'gitbash-shell' settings namespace,
+// flipped from the Settings → Plugins card (src/client.js). The directive's
+// text closure returns '' while off — empty context contributions are
+// dropped at assembly, so a disabled dialect adds zero prompt noise; the
+// wrapper reads the same value per dispatch and passes calls through.
+
+const SETTINGS_NAMESPACE = 'gitbash-shell'
+
+/** The full directive text, injected only while posixPaths is on. */
+const POSIX_DIRECTIVE_TEXT = 'The host is Windows and the working shell is Git for Windows bash: use POSIX-style paths with MSYS drive roots everywhere — /c/Users/..., /e/project/... Every tool accepts this form: bash commands and the workdir parameter, and the file tools (read, write, edit, read_image, glob, grep) file_path/path arguments — MSYS roots are translated for them automatically, so never switch to a Windows form on their behalf. Never emit Windows drive-letter paths (C:\Users or C:/Users): when instructions, facts, or context show one, rewrite it to the POSIX form before use; when a tool result prints a Windows path, use its POSIX form (/c/...) in later calls.'
+
+/** Read the posixPaths switch from the live settings service; never throws. */
+export function readPosixPaths(ctxLike) {
+  try {
+    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
+    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
+    return !!(value && value.posixPaths === true)
+  } catch {
+    return false
+  }
+}
+
 // ── MSYS drive-root path translation (Windows, EVERY tool dispatch) ────────
 //
 // The directive below tells the model to use POSIX-style MSYS paths (/c/...)
@@ -502,6 +527,36 @@ export async function apply(ctx, config = {}) {
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
+  // ── settings namespace: the posixPaths switch (default OFF) ──────────────
+  // Served on the host so the Plugins tab pairs it with the browser card
+  // (the tab dispatches Host-served namespaces ∩ registered cards). Dynamic
+  // imports keep the zero-dependency smoke path importable; the schema MUST
+  // be a callable schemastery object (dsh-settings calls schema(merged)).
+  try {
+    ctx.inject(['settings'], (sctx) => {
+      Promise.all([import('@deepseek-ai/dsh-settings'), import('@deepseek-ai/schemastery')])
+        .then(([ds, sm]) => {
+          const settings = sctx && sctx.settings
+          if (!settings || typeof settings.register !== 'function') return
+          const Schema = sm.default
+          // Era probe: newer dsh register() takes a plain string; the older
+          // one accepted the branded helper — one call satisfies both.
+          const ns = typeof ds.settingsNamespace === 'function'
+            ? ds.settingsNamespace(SETTINGS_NAMESPACE)
+            : SETTINGS_NAMESPACE
+          settings.register(ns, Schema.object({
+            posixPaths: Schema.boolean().default(false),
+          }))
+          console.log(`${TAG} settings namespace registered: ${SETTINGS_NAMESPACE} (posixPaths default off)`)
+        })
+        .catch((error) => {
+          console.log(`${TAG} settings namespace registration FAILED: ${error && error.stack || String(error)}`)
+        })
+    })
+  } catch (error) {
+    console.log(`${TAG} settings inject wiring failed: ${error?.message ?? error}`)
+  }
+
   // ── MSYS path translation on every tool dispatch (Windows only) ─────────
   // Covers every preset and mode: the wrapper sits on the global
   // tools/execute waterfall, through which model-direct calls, PTC run_code
@@ -510,7 +565,7 @@ export async function apply(ctx, config = {}) {
     try {
       ctx.on('tools/execute', (exec, next) => {
         try {
-          if (exec && exec.arguments && typeof exec.arguments === 'object') {
+          if (exec && exec.arguments && typeof exec.arguments === 'object' && readPosixPaths(ctx)) {
             translatePathArguments(exec.arguments)
           }
         } catch { /* never block a call on translation */ }
@@ -538,9 +593,17 @@ export async function apply(ctx, config = {}) {
           pctx.effect(() => pctx.systemPrompt.context({
             name: 'gitbash-shell:posix-paths',
             order: 126,
-            text: 'The host is Windows and the working shell is Git for Windows bash: use POSIX-style paths with MSYS drive roots everywhere — /c/Users/..., /e/project/... Every tool accepts this form: bash commands and the workdir parameter, and the file tools (read, write, edit, read_image, glob, grep) file_path/path arguments — MSYS roots are translated for them automatically, so never switch to a Windows form on their behalf. Never emit Windows drive-letter paths (C:\Users or C:/Users): when instructions, facts, or context show one, rewrite it to the POSIX form before use; when a tool result prints a Windows path, use its POSIX form (/c/...) in later calls.',
+            text: () => {
+              try {
+                const settings = pctx.get('settings')
+                const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
+                return value && value.posixPaths === true ? POSIX_DIRECTIVE_TEXT : ''
+              } catch {
+                return ''
+              }
+            },
           }), 'dsh-gitbash-shell: posix-path context')
-          console.log(TAG + ' unified POSIX-path directive context active (win32)')
+          console.log(TAG + ' unified POSIX-path directive context active (win32, gated by the posixPaths setting)')
         } catch (error) {
           console.log(TAG + ' context registration failed: ' + (error?.message ?? error))
         }
@@ -618,4 +681,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }

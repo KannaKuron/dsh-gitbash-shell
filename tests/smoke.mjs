@@ -158,3 +158,42 @@ test('msys path translation helpers', async () => {
   assert.equal(translatePathArguments(null), false)
   assert.equal(translatePathArguments({}), false)
 })
+
+test('client half is a ModuleLoader bundle with baseline requires only', () => {
+  const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(text, /window\.__ModuleLoader__\.load\(/)
+  assert.match(text, /id: "dsh-gitbash-shell"/)
+  const requires = [...text.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1])
+  const baseline = new Set(['react', '@deepseek-ai/dsh-client-ui-primitives'])
+  for (const specifier of requires) {
+    assert.ok(baseline.has(specifier), 'non-baseline require: ' + specifier)
+  }
+  assert.ok(requires.length > 0)
+  assert.doesNotMatch(text, /(^|\n)\s*import\s/)
+  assert.doesNotMatch(text, /(^|\n)\s*export\s/)
+  assert.doesNotMatch(text, /=> </, 'JSX arrow syntax is forbidden')
+  new Function(text)
+})
+
+test('client dictionaries stay key-aligned', () => {
+  const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  const zhBlock = text.slice(text.indexOf('var zh = {'), text.indexOf('var en = {'))
+  const enBlock = text.slice(text.indexOf('var en = {'), text.indexOf('// ── styles'))
+  const keysOf = (block) => new Set([...block.matchAll(/"([a-zA-Z][^"]*)":/g)].map((m) => m[1]))
+  const zhKeys = keysOf(zhBlock)
+  const enKeys = keysOf(enBlock)
+  assert.ok(zhKeys.size > 0)
+  assert.deepEqual([...enKeys].sort(), [...zhKeys].sort(), 'zh/en dictionaries must be key-aligned')
+})
+
+test('host gates the path dialect behind the posixPaths setting', async () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(text, /SETTINGS_NAMESPACE = 'gitbash-shell'/)
+  assert.match(text, /posixPaths: Schema\.boolean\(\)\.default\(false\)/)
+  assert.match(text, /readPosixPaths\(ctx\)/, 'wrapper must read the gate per dispatch')
+  assert.match(text, /pctx\.get\('settings'\)/, 'directive closure must read settings via ctx.get')
+  const { _internal } = await import('../src/index.js')
+  assert.equal(_internal.readPosixPaths({ get: () => undefined }), false)
+  assert.equal(_internal.readPosixPaths(undefined), false)
+  assert.equal(_internal.readPosixPaths({ get: () => ({ get: () => ({ posixPaths: true }) }) }), true)
+})

@@ -1,6 +1,6 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "DSH plugin: run every agent shell command through Git for Windows bash on Windows instead of PowerShell. Replaces the pwsh executor with a Git Bash ctx.shell provider and materializes Git Bash variants of the standard/minimal/code/cordis agent presets into your user preset root at startup. On Windows it also adopts dsh-better-sidebar's terminal shell (UI tabs and the model-facing terminal_* tools) through the sidebar's official settings seam, and pairs with dsh-ptc-cordis-preset so the PTC Creation-mode preset materializes as its Git Bash variant. Ships both composition eras for dsh <= 0.1.1 (built-in preset id 'code') and dsh >= 0.1.2 (renamed id 'ptc') — the era is probed per boot and re-materialized automatically after a dsh upgrade, in either upgrade order; preset ids never change so pinned sessions stay valid.",
   "type": "module",
   "repository": {
@@ -10,7 +10,8 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./shell": "./src/shell.js"
+    "./shell": "./src/shell.js",
+    "./client": "./src/client.js"
   },
   "engines": {
     "node": ">=18"
@@ -18,6 +19,15 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     }
   },
   "files": [
@@ -42,7 +52,8 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1"
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
   "publishConfig": {
     "access": "public"

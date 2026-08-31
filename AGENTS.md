@@ -45,6 +45,13 @@
     tools/execute 官方契约写「只能改 signal」,实现层 mutableExec 同对象透传
     给工具体;wrapper 防御式写入(冻结即吞异常降级),上游收紧时自动退化为
     纯指令模式。指令文本改动需同步复核 smoke 的翻译断言。
+    **设置化(v0.9.0)**:方言默认关闭,由 settings 命名空间 gitbash-shell 的
+    posixPaths(布尔,默认 false)门控——设置卡与默认关闭:client 半(手写
+    ModuleLoader bundle,src/client.js)注册 settings.plugin.item 卡片(key=
+    gitbash-shell,宿主不注册命名空间卡片永不出现),经 settingsScope.bind 写入;
+    host 侧指令 text 闭包读设置(关→空文本,组装期丢弃,零提示噪声),wrapper
+    每次分发读同一值(关→原样放行)。设置 schema 必须 schemastery(动态 import,
+    冒烟零依赖);readPosixPaths 走 ctx.get('settings')(SERVICE READ RULE)。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
