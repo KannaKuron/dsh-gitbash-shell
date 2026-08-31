@@ -129,6 +129,10 @@ preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 > 切换生效后若 `ptc-cordis` 目录已存在且被旧版本物化,删除
 > `~/.dsh/.agent-presets/ptc-cordis` 并重启,即由新逻辑重新物化。
 
+## POSIX 路径指示(v0.7.0)
+
+Windows 上本插件把宿主 shell 换成 Git Bash 的同时,会向**每个会话的系统提示**注入一条全局指示(仅 Win32,走 `systemPrompt.context`,不影响任何 preset/组合文本):**bash 命令里一律用 POSIX 风格路径**(`/c/Users/...`、`/c/Program Files/...`),不要 `C:/...` 或 `C:\...`。这样模型在工具调用里不会再拿 Windows 盘符路径喂给 Git Bash——标准/极简/PTC/创造及用户自建模式全部覆盖,无需任何模式单独改。
+
 ## 与 dsh-better-sidebar 联动
 
 装了 [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar)(v0.15.2+) 时,Windows 上本插件会通过**它的官方设置补丁口**(运行时 `terminalShell` 设置,对方文档明示"settings-page overrides win for terminals opened afterwards")把它打开的终端 shell 指向 Git Bash——**UI 终端标签与模型侧 `terminal_*` 工具统一生效**,不改对方一行代码、新开的终端即生效。此外,**本插件的 bundle patch 还会给对方的行补上 `config.shell`**(启动期解析,连 **tab 标题也会显示 bash**;对方未安装时该行无害跳过)。规则:

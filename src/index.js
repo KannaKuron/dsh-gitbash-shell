@@ -448,6 +448,33 @@ export async function apply(ctx, config = {}) {
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
+  // ── POSIX path directive (Windows Git Bash, EVERY session) ─────────────
+  // The host shell is Git for Windows bash for every mode/preset on this
+  // machine: drive-letter paths (C:/..., C:\...) are a Windows-shell idiom
+  // that Git Bash only sometimes tolerates, /c/... is the unambiguous form.
+  // One global runtime-context directive (same channel dsh-agent-lang uses;
+  // order 126 sits after the official CONTEXT_ORDERS 110/115/120 and beside
+  // the 125 free slot) so no preset/persona has to carry it. Non-Windows
+  // mounts inject nothing.
+  if (process.platform === 'win32') {
+    try {
+      ctx.inject(['systemPrompt'], (pctx) => {
+        try {
+          pctx.effect(() => pctx.systemPrompt.context({
+            name: 'gitbash-shell:posix-paths',
+            order: 126,
+            text: 'The working shell is Git for Windows bash: use POSIX-style paths in every command — /c/Users/..., /c/Program Files/... — never C:/... or C:\... (Git Bash misreads drive-letter paths).',
+          }), 'dsh-gitbash-shell: posix-path context')
+          console.log(TAG + ' POSIX-path directive context active (win32)')
+        } catch (error) {
+          console.log(TAG + ' context registration failed: ' + (error?.message ?? error))
+        }
+      })
+    } catch (error) {
+      console.log(TAG + ' systemPrompt inject wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
   // ── dsh-better-sidebar terminal adoption (Windows only) ────────────────
   // The sidebar resolves its terminal shell through the settings seam per
   // open; adopt it through that seam (see adoptSidebarShell for rationale).

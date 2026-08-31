@@ -64,6 +64,10 @@ the PTC preset is materialized as Git Bash automatically (tool-bash on,
 tool-pwsh off) — no extra mode, no manual edits. Without this plugin the PTC
 preset stays as its own plugin manages it.
 
+## POSIX path directive (v0.7.0)
+
+While replacing the host shell with Git Bash, this plugin also injects one global per-session system-prompt directive (Win32 only, via systemPrompt.context; no preset or composition text is touched): **always use POSIX-style paths in bash commands** (/c/Users/..., /c/Program Files/...) — never C:/... or C:\... . Every mode — standard/minimal/PTC/creation and user-authored presets — is covered; nothing needs a per-mode change.
+
 ## Cooperation with dsh-better-sidebar
 
 When [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (v0.15.2+) is installed, on Windows this plugin adopts its official runtime settings seam (`terminalShell` — by the sidebar's own contract, "settings-page overrides win for terminals opened afterwards"), so both the sidebar's UI terminal tabs and the model-facing `terminal_*` tools open Git Bash — no upstream change, new terminals pick it up immediately. In addition, this bundle's patch also sets `config.shell` on the sidebar's row (boot-time resolution, so the **tab label reads `bash` too**; the row edit is harmless-skipped when the sidebar is not installed). Rules:
