@@ -189,11 +189,27 @@ test('client dictionaries stay key-aligned', () => {
 test('host gates the path dialect behind the posixPaths setting', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   assert.match(text, /SETTINGS_NAMESPACE = 'gitbash-shell'/)
-  assert.match(text, /posixPaths: Schema\.boolean\(\)\.default\(false\)/)
+  assert.match(text, /posixPaths: Schema\.boolean\(\)\.default\(true\)/)
   assert.match(text, /readPosixPaths\(ctx\)/, 'wrapper must read the gate per dispatch')
   assert.match(text, /pctx\.get\('settings'\)/, 'directive closure must read settings via ctx.get')
   const { _internal } = await import('../src/index.js')
   assert.equal(_internal.readPosixPaths({ get: () => undefined }), false)
   assert.equal(_internal.readPosixPaths(undefined), false)
   assert.equal(_internal.readPosixPaths({ get: () => ({ get: () => ({ posixPaths: true }) }) }), true)
+})
+
+test('windowsToMsys rewrites Windows absolute paths to MSYS roots', async () => {
+  const { _internal } = await import('../src/index.js')
+  const w = _internal.windowsToMsys
+  const BS = String.fromCharCode(92) // backslash, assembled to survive any transport layer
+  const q = (s) => String.fromCharCode(34) + s + String.fromCharCode(34)
+  assert.equal(w('C:' + BS + 'Users' + BS + 'kanna' + BS + 'sandbox'), '/c/Users/kanna/sandbox')
+  assert.equal(w('C:/Users/kanna'), '/c/Users/kanna')
+  assert.equal(w('E:' + BS + 'project' + BS + 'deepseek-harness'), '/e/project/deepseek-harness')
+  assert.equal(w('see C:' + BS + 'Users' + BS + 'kanna, then stop'), 'see /c/Users/kanna, then stop')
+  assert.equal(w('root (C:' + BS + 'Users' + BS + 'kanna) done'), 'root (/c/Users/kanna) done')
+  assert.equal(w(q('C:' + BS + 'Program Files' + BS + 'Git')), q('/c/Program Files/Git'))
+  assert.equal(w('https://x.dev/a and file://C:/x stay'), 'https://x.dev/a and file://C:/x stay')
+  assert.equal(w('/c/already/posix stays'), '/c/already/posix stays')
+  assert.equal(w('no paths here'), 'no paths here')
 })

@@ -52,6 +52,13 @@
     host 侧指令 text 闭包读设置(关→空文本,组装期丢弃,零提示噪声),wrapper
     每次分发读同一值(关→原样放行)。设置 schema 必须 schemastery(动态 import,
     冒烟零依赖);readPosixPaths 走 ctx.get('settings')(SERVICE READ RULE)。
+    **源头替换(v0.10.0,默认开启)**:开关语义升级为「模型看到的官方提示词的路径方言版本」——
+    开启时 system-prompt/assemble waterfall 把 assembly 的 sections[].text、
+    contexts[].text(跳过自身指令防套娃)与 variables 值里的 Windows 绝对路径
+    **原位替换**为 /c/ 盘根(windowsToMsys 纯函数:引号内含空格路径整体翻译、
+    裸路径到空白/闭标点截止,lookbehind 排除 URL scheme 与 file://);不删减任何
+    官方内容、不动工具 schema(官方工具描述无盘符示例,盲改有 pattern/default
+    误伤风险)。指令缩为一句纯事实(源头已统一,无校准规则)。默认 posixPaths=true。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步

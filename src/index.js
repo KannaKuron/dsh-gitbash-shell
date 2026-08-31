@@ -302,7 +302,7 @@ export function installRegisterShim(reg) {
 const SETTINGS_NAMESPACE = 'gitbash-shell'
 
 /** The full directive text, injected only while posixPaths is on. */
-const POSIX_DIRECTIVE_TEXT = 'The host is Windows and the working shell is Git for Windows bash: use POSIX-style paths with MSYS drive roots everywhere — /c/Users/..., /e/project/... Every tool accepts this form: bash commands and the workdir parameter, and the file tools (read, write, edit, read_image, glob, grep) file_path/path arguments — MSYS roots are translated for them automatically, so never switch to a Windows form on their behalf. Never emit Windows drive-letter paths (C:\Users or C:/Users): when instructions, facts, or context show one, rewrite it to the POSIX form before use; when a tool result prints a Windows path, use its POSIX form (/c/...) in later calls.'
+const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly.'
 
 /** Read the posixPaths switch from the live settings service; never throws. */
 export function readPosixPaths(ctxLike) {
@@ -313,6 +313,25 @@ export function readPosixPaths(ctxLike) {
   } catch {
     return false
   }
+}
+
+// Windows absolute path -> MSYS drive-root form, for rewriting the OFFICIAL
+// prompt text in place (v0.10.0). Two patterns keep quoted spaced paths
+// ("C:\Program Files\Git") whole while bare paths stop at whitespace or a
+// closing punctuation; the lookbehind set rejects URL schemes (https:),
+// file:// forms, and anything already mid-word, so only real drive-letter
+// paths are translated. Separators normalize to single slashes.
+const BARE_WIN_PATH = /(?<![A-Za-z0-9:\\/"'`])([A-Za-z]):(?:\\|\/)([^\s"'`<>|),;:!?]+)/g
+const QUOTED_WIN_PATH = /(["'`])([A-Za-z]):(?:\\|\/)([^`]*?)\1/g
+
+/** Rewrite every Windows absolute path in a text to the MSYS form; pure. */
+export function windowsToMsys(text) {
+  if (typeof text !== 'string' || text.length === 0) return text
+  return text
+    .replace(QUOTED_WIN_PATH, (_whole, quote, drive, rest) =>
+      quote + '/' + drive.toLowerCase() + '/' + rest.replace(/[\\/]+/g, '/') + quote)
+    .replace(BARE_WIN_PATH, (_whole, drive, rest) =>
+      '/' + drive.toLowerCase() + '/' + rest.replace(/[\\/]+/g, '/'))
 }
 
 // ── MSYS drive-root path translation (Windows, EVERY tool dispatch) ────────
@@ -545,9 +564,9 @@ export async function apply(ctx, config = {}) {
             ? ds.settingsNamespace(SETTINGS_NAMESPACE)
             : SETTINGS_NAMESPACE
           settings.register(ns, Schema.object({
-            posixPaths: Schema.boolean().default(false),
+            posixPaths: Schema.boolean().default(true),
           }))
-          console.log(`${TAG} settings namespace registered: ${SETTINGS_NAMESPACE} (posixPaths default off)`)
+          console.log(`${TAG} settings namespace registered: ${SETTINGS_NAMESPACE} (posixPaths default on)`)
         })
         .catch((error) => {
           console.log(`${TAG} settings namespace registration FAILED: ${error && error.stack || String(error)}`)
@@ -555,6 +574,44 @@ export async function apply(ctx, config = {}) {
     })
   } catch (error) {
     console.log(`${TAG} settings inject wiring failed: ${error?.message ?? error}`)
+  }
+
+  // ── prompt-assembly path dialect (Windows only, gated; v0.10.0) ────────
+  // While posixPaths is on, EVERY Windows absolute path the model would
+  // see — section text, context text, and prompt variables — is rewritten
+  // IN PLACE to the MSYS drive-root form. Nothing is added or removed: the
+  // official prompt keeps its exact shape and only the path examples
+  // change dialect, so the model meets a /c/ world at the source instead
+  // of being asked to translate Windows forms it sees. Our own directive
+  // context is skipped (self-reference), and tool schemas stay untouched
+  // (they carry no drive-letter examples today, and blind string rewriting
+  // could corrupt pattern/default fields).
+  if (process.platform === 'win32') {
+    try {
+      ctx.on('system-prompt/assemble', (assembly, _assembleContext, next) => {
+        try {
+          if (readPosixPaths(ctx) && assembly && typeof assembly === 'object') {
+            for (const section of Array.isArray(assembly.sections) ? assembly.sections : []) {
+              if (section && typeof section.text === 'string') section.text = windowsToMsys(section.text)
+            }
+            for (const assembled of Array.isArray(assembly.contexts) ? assembly.contexts : []) {
+              if (!assembled || assembled.name === 'gitbash-shell:posix-paths') continue
+              if (typeof assembled.text === 'string') assembled.text = windowsToMsys(assembled.text)
+            }
+            const variables = assembly.variables
+            if (variables && typeof variables === 'object') {
+              for (const key of Object.keys(variables)) {
+                if (typeof variables[key] === 'string') variables[key] = windowsToMsys(variables[key])
+              }
+            }
+          }
+        } catch { /* never block assembly */ }
+        return next()
+      })
+      console.log(TAG + ' prompt-assembly path dialect active (gated by the posixPaths setting)')
+    } catch (error) {
+      console.log(TAG + ' system-prompt/assemble wiring failed: ' + (error?.message ?? error))
+    }
   }
 
   // ── MSYS path translation on every tool dispatch (Windows only) ─────────
@@ -681,4 +738,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
