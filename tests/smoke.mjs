@@ -227,3 +227,21 @@ test('windowsToMsys rewrites Windows absolute paths to MSYS roots', async () => 
   assert.equal(w('/c/already/posix stays'), '/c/already/posix stays')
   assert.equal(w('no paths here'), 'no paths here')
 })
+
+test('rewriteResultPaths rewrites result metadata, never content', async () => {
+  const { _internal } = await import('../src/index.js')
+  const rr = _internal.rewriteResultPaths
+  const BS = String.fromCharCode(92)
+  const rd = rr('read', { path: 'C:' + BS + 'Users' + BS + 'x' + BS + 'f.txt', lines: [{ n: 1, text: 'see C:' + BS + 'Users in content' }] })
+  assert.equal(rd.path, '/c/Users/x/f.txt')
+  assert.equal(rd.lines[0].text, 'see C:' + BS + 'Users in content', 'file content is never rewritten')
+  const gl = rr('glob', { paths: ['a' + BS + 'b' + BS + 'c.txt'] })
+  assert.equal(gl.paths[0], 'a/b/c.txt')
+  const gp = rr('grep', { matches: [{ path: 'd' + BS + 's' + BS + 'i.js', line: 'C:' + BS + 'x stays' }] })
+  assert.equal(gp.matches[0].path, 'd/s/i.js')
+  assert.equal(gp.matches[0].line, 'C:' + BS + 'x stays', 'match text is never rewritten')
+  const bash = { stdout: 'x' }
+  assert.equal(rr('bash', bash), bash, 'non-path tools pass through untouched')
+  const already = { path: '/c/already.txt' }
+  assert.equal(rr('read', already), already, 'an unchanged value returns the same reference')
+})

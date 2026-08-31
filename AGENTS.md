@@ -70,6 +70,10 @@
     slots.inject(洞名, 回调),回调体内 return slots.register(options, card)——直接把
     (options, component) 作为 slots.inject 的第二三参会静默不注册、卡片永不出现
     (agent-lang/better-workspace 均两段式;smoke 已加形状断言)。
+    **输出侧回流修复(v0.10.4)**:成功结果的路径元数据(read/write/edit 的 path、
+    glob paths[]、grep matches[].path——后者为相对路径,仅分隔符归一)经 tools/post-execute
+    waterfall(官方允许 replace value projection)改写回 MSYS 方言;文件内容行与错误结果
+    绝不动。模型不再从成功调用中收到 Windows 形式路径回声。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步

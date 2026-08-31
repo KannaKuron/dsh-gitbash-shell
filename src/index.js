@@ -334,6 +334,57 @@ export function windowsToMsys(text) {
       '/' + drive.toLowerCase() + '/' + rest.replace(/[\\/]+/g, '/'))
 }
 
+/** Normalize backslash separators in a RELATIVE result path to slashes; pure. */
+function posixSeparators(value) {
+  return typeof value === 'string' && value.includes(String.fromCharCode(92))
+    ? value.split(String.fromCharCode(92)).join('/')
+    : value
+}
+
+/**
+ * Rewrite result METADATA path fields to the MSYS dialect (pure, 0.10.4).
+ * Only the well-known metadata fields per tool are touched — read/write/edit
+ * `path` (absolute, via windowsToMsys), glob `paths[]` and grep
+ * `matches[].path` (workspace-relative, separator-normalized). File CONTENT
+ * (read lines, grep match text) and error results are never modified: the
+ * tool result is data, only its path metadata changes dialect so the model
+ * never meets a Windows-form path flowing back from a successful call.
+ * @returns {object} a new value when any field changed, the input otherwise.
+ */
+export function rewriteResultPaths(name, value) {
+  if (!value || typeof value !== 'object') return value
+  if (name === 'read' || name === 'read_image' || name === 'write' || name === 'edit') {
+    if (typeof value.path === 'string' && value.path !== '') {
+      const out = windowsToMsys(value.path)
+      if (out !== value.path) return { ...value, path: out }
+    }
+    return value
+  }
+  if (name === 'glob' && Array.isArray(value.paths)) {
+    let changed = false
+    const paths = value.paths.map((p) => {
+      if (typeof p !== 'string') return p
+      const out = posixSeparators(windowsToMsys(p))
+      if (out === p) return p
+      changed = true
+      return out
+    })
+    return changed ? { ...value, paths } : value
+  }
+  if (name === 'grep' && Array.isArray(value.matches)) {
+    let changed = false
+    const matches = value.matches.map((m) => {
+      if (!m || typeof m !== 'object' || typeof m.path !== 'string') return m
+      const out = posixSeparators(windowsToMsys(m.path))
+      if (out === m.path) return m
+      changed = true
+      return { ...m, path: out }
+    })
+    return changed ? { ...value, matches } : value
+  }
+  return value
+}
+
 // ── MSYS drive-root path translation (Windows, EVERY tool dispatch) ────────
 //
 // The directive below tells the model to use POSIX-style MSYS paths (/c/...)
@@ -643,6 +694,38 @@ export async function apply(ctx, config = {}) {
     }
   }
 
+  // ── result-path dialect on tools/post-execute (Windows only, gated; v0.10.4) ──
+  // Successful results carry Windows-form path METADATA (read.path, glob
+  // paths[], grep matches[].path) out of the Node fs layer. The official
+  // post-execute waterfall allows replacing the value projection, so while
+  // posixPaths is on those metadata fields flow back in the MSYS dialect and
+  // the model never sees a Windows path echoed by a successful call. File
+  // content and error results are untouched (see rewriteResultPaths).
+  if (process.platform === 'win32') {
+    try {
+      ctx.on('tools/post-execute', (exec, result, next) => {
+        let patch
+        try {
+          if (readPosixPaths(ctx) && result && result.isError === false && result.value && typeof result.value === 'object') {
+            const value = rewriteResultPaths(exec && exec.name, result.value)
+            if (value !== result.value) patch = value
+          }
+        } catch { /* never block a result */ }
+        const chain = next()
+        if (patch === undefined) return chain
+        return chain.then((decision) => {
+          try {
+            if (decision && decision.kind === 'accept') return { ...decision, value: patch }
+          } catch { /* keep the downstream decision */ }
+          return decision
+        })
+      })
+      console.log(TAG + ' result-path dialect active on tools/post-execute')
+    } catch (error) {
+      console.log(TAG + ' tools/post-execute wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
   // ── Unified POSIX path directive (Windows Git Bash, EVERY session) ─────
   // ONE path style for every tool: MSYS drive roots (/c/Users/...). Bash
   // digests them natively; the file tools receive the drive-letter form
@@ -747,4 +830,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
