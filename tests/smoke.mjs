@@ -136,3 +136,25 @@ test('syncDecision refreshes when the detected built-in era flips', () => {
   assert.equal(_internal.syncDecision({ state: 'unmodified', marker: { version: '0.6.0', files: {} }, version: '0.6.0', sourceHashes: null, base: 'code' }), 'refresh')
 })
 
+
+test('msys path translation helpers', async () => {
+  const { _internal } = await import('../src/index.js')
+  const { translateMsysPath, translatePathArguments } = _internal
+  assert.equal(translateMsysPath('/c/Users/kanna'), 'C:/Users/kanna')
+  assert.equal(translateMsysPath('/e/project/x'), 'E:/project/x')
+  assert.equal(translateMsysPath('/c/'), 'C:/')
+  // non-MSYS shapes pass through unchanged
+  assert.equal(translateMsysPath('C:/Users'), 'C:/Users')
+  assert.equal(translateMsysPath('C:\\Users'), 'C:\\Users')
+  assert.equal(translateMsysPath('AGENTS.md'), 'AGENTS.md')
+  assert.equal(translateMsysPath('/home/u'), '/home/u')
+  // argument rewriting: path fields only, bash command untouched
+  const args = { file_path: '/c/a/b.txt', command: 'ls /c/a', workdir: '/e/p', pattern: '*.ts' }
+  assert.equal(translatePathArguments(args), true)
+  assert.equal(args.file_path, 'C:/a/b.txt')
+  assert.equal(args.workdir, 'E:/p')
+  assert.equal(args.command, 'ls /c/a')
+  assert.equal(args.pattern, '*.ts')
+  assert.equal(translatePathArguments(null), false)
+  assert.equal(translatePathArguments({}), false)
+})

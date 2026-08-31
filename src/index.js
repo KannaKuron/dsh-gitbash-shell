@@ -290,6 +290,50 @@ export function installRegisterShim(reg) {
   }
 }
 
+// ── MSYS drive-root path translation (Windows, EVERY tool dispatch) ────────
+//
+// The directive below tells the model to use POSIX-style MSYS paths (/c/...)
+// for EVERY tool. Bash digests those natively, but the Node-backed file tools
+// resolve an MSYS root against the current drive (/c/Users -> C:/c/Users), so a
+// global tools/execute wrapper rewrites the path-bearing ARGUMENT FIELDS (by
+// field NAME, not by tool name — dynamic tools using the standard field names
+// are covered too) into the drive-letter form the host accepts. The bash
+// command field is deliberately untouched: MSYS roots are Git Bash native
+// there. Defensive by design: the waterfall hands the same mutable exec object
+// to the tool body, but if a future registry freezes it the write throws, is
+// swallowed, and the call proceeds with the model original arguments (the
+// directive still stands).
+
+const MSYS_DRIVE_ROOT = /^\/([a-z])\/(.*)$/i
+const TRANSLATABLE_PATH_FIELDS = new Set(['file_path', 'path', 'workdir'])
+
+/** '/c/Users/x' -> 'C:/Users/x'; any other shape returns the input unchanged. */
+export function translateMsysPath(value) {
+  if (typeof value !== 'string') return value
+  const match = MSYS_DRIVE_ROOT.exec(value)
+  if (!match) return value
+  return match[1].toUpperCase() + ':/' + match[2]
+}
+
+/**
+ * Rewrite MSYS drive roots in an arguments object path fields, in place.
+ * @returns {boolean} whether any field changed (false also when args is not
+ *   an object — the caller treats that as nothing to do).
+ */
+export function translatePathArguments(args) {
+  if (!args || typeof args !== 'object') return false
+  let changed = false
+  for (const key of Object.keys(args)) {
+    if (!TRANSLATABLE_PATH_FIELDS.has(key)) continue
+    const value = args[key]
+    if (typeof value !== 'string') continue
+    const translated = translateMsysPath(value)
+    if (translated === value) continue
+    try { args[key] = translated; changed = true } catch { /* frozen: degrade */ }
+  }
+  return changed
+}
+
 // ── dsh-better-sidebar shell cooperation ───────────────────────────────────
 //
 // dsh-better-sidebar (v0.15.2+) resolves its terminal shell PER OPEN: a
@@ -458,14 +502,35 @@ export async function apply(ctx, config = {}) {
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
-  // ── POSIX path directive (Windows Git Bash, EVERY session) ─────────────
-  // The host shell is Git for Windows bash for every mode/preset on this
-  // machine: drive-letter paths (C:/..., C:\...) are a Windows-shell idiom
-  // that Git Bash only sometimes tolerates, /c/... is the unambiguous form.
-  // One global runtime-context directive (same channel dsh-agent-lang uses;
+  // ── MSYS path translation on every tool dispatch (Windows only) ─────────
+  // Covers every preset and mode: the wrapper sits on the global
+  // tools/execute waterfall, through which model-direct calls, PTC run_code
+  // sub-dispatches, and dynamic-tool calls all pass.
+  if (process.platform === 'win32') {
+    try {
+      ctx.on('tools/execute', (exec, next) => {
+        try {
+          if (exec && exec.arguments && typeof exec.arguments === 'object') {
+            translatePathArguments(exec.arguments)
+          }
+        } catch { /* never block a call on translation */ }
+        return next()
+      })
+      console.log(TAG + ' MSYS drive-root translation active on tool dispatch')
+    } catch (error) {
+      console.log(TAG + ' tools/execute wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
+  // ── Unified POSIX path directive (Windows Git Bash, EVERY session) ─────
+  // ONE path style for every tool: MSYS drive roots (/c/Users/...). Bash
+  // digests them natively; the file tools receive the drive-letter form
+  // through the translation wrapper above, so the model never has to switch
+  // dialects. The directive also pins the rewrite rules that neutralize the
+  // Windows-form facts the harness injects elsewhere (backslash cwd strings,
+  // tool results printing drive-letter paths). Same channel as dsh-agent-lang;
   // order 126 sits after the official CONTEXT_ORDERS 110/115/120 and beside
-  // the 125 free slot) so no preset/persona has to carry it. Non-Windows
-  // mounts inject nothing.
+  // the 125 free slot. Non-Windows mounts inject nothing.
   if (process.platform === 'win32') {
     try {
       ctx.inject(['systemPrompt'], (pctx) => {
@@ -473,9 +538,9 @@ export async function apply(ctx, config = {}) {
           pctx.effect(() => pctx.systemPrompt.context({
             name: 'gitbash-shell:posix-paths',
             order: 126,
-            text: 'The working shell is Git for Windows bash: use POSIX-style paths only — drive roots are /c/, /d/, ... (/c/Users/..., /c/Program Files/...). Windows drive-letter path forms are not accepted.',
+            text: 'The host is Windows and the working shell is Git for Windows bash: use POSIX-style paths with MSYS drive roots everywhere — /c/Users/..., /e/project/... Every tool accepts this form: bash commands and the workdir parameter, and the file tools (read, write, edit, read_image, glob, grep) file_path/path arguments — MSYS roots are translated for them automatically, so never switch to a Windows form on their behalf. Never emit Windows drive-letter paths (C:\Users or C:/Users): when instructions, facts, or context show one, rewrite it to the POSIX form before use; when a tool result prints a Windows path, use its POSIX form (/c/...) in later calls.',
           }), 'dsh-gitbash-shell: posix-path context')
-          console.log(TAG + ' POSIX-path directive context active (win32)')
+          console.log(TAG + ' unified POSIX-path directive context active (win32)')
         } catch (error) {
           console.log(TAG + ' context registration failed: ' + (error?.message ?? error))
         }
@@ -553,4 +618,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
