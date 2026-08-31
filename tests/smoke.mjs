@@ -175,6 +175,7 @@ test('client half is a ModuleLoader bundle with baseline requires only', () => {
   const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.match(text, /window\.__ModuleLoader__\.load\(/)
   assert.match(text, /return module\.exports/, 'factory must return its exports (0.10.1 guard: without it the module materializes undefined and the loader rejects the plugin)')
+  assert.match(text, /slots\.inject\("settings\.plugin\.item", function \(\) \{[\s\S]*return slots\.register\(/, 'two-stage slot registration: slots.inject(hole, cb) whose body calls slots.register — direct options/component args never register (0.10.3 lesson)')
   assert.match(text, /id: "dsh-gitbash-shell"/)
   const requires = [...text.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1])
   const baseline = new Set(['react', '@deepseek-ai/dsh-client-ui-primitives'])

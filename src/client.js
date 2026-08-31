@@ -261,17 +261,19 @@ window.__ModuleLoader__.load({
 					console.warn(TAG + " slots service unavailable; settings card idle");
 					return;
 				}
-				slots.inject("settings.plugin.item",
-					{
+				slots.inject("settings.plugin.item", function () {
+					return slots.register({
 						name: "settings.plugin.item",
 						key: SETTINGS_NAMESPACE,
 						locale: NS,
+						// The inject factory's returned members become the component's
+						// props: the bound settings scope rides here as a PLAIN member
+						// (top-level options fields do NOT reach the component).
 						inject: function () { return { scope: scope }; },
-					},
-					function (props) {
+					}, function CardWithBoundary(props) {
 						return E(QuietBoundary, null, E(GitBashCard, props));
-				},
-				);
+					});
+				});
 			} catch (error) {
 				console.warn(TAG + " settings card registration failed:", error && error.message ? error.message : error);
 			}

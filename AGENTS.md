@@ -66,6 +66,10 @@
     原地写入严格模式下抛 TypeError 被防御吞掉、静默不翻译(0.10.0/0.10.1 真机 read /c/ 报 C:/c/...);
     改为纯函数返回新对象 + wrapper 替换 exec.arguments 属性(exec 本体到 tools/result 才
     freeze,signal 替换是 registry 自有先例)。smoke 加冻结输入用例锁定。
+    **两段式槽注册(v0.10.3)**:settings.plugin.item 的正确形状是
+    slots.inject(洞名, 回调),回调体内 return slots.register(options, card)——直接把
+    (options, component) 作为 slots.inject 的第二三参会静默不注册、卡片永不出现
+    (agent-lang/better-workspace 均两段式;smoke 已加形状断言)。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
