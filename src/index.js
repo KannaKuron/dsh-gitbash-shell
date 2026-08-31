@@ -463,7 +463,7 @@ export async function apply(ctx, config = {}) {
           pctx.effect(() => pctx.systemPrompt.context({
             name: 'gitbash-shell:posix-paths',
             order: 126,
-            text: 'The working shell is Git for Windows bash: use POSIX-style paths in every command — /c/Users/..., /c/Program Files/... — never C:/... or C:\... (Git Bash misreads drive-letter paths).',
+            text: 'The working shell is Git for Windows bash: use POSIX-style paths only — drive roots are /c/, /d/, ... (/c/Users/..., /c/Program Files/...). Windows drive-letter path forms are not accepted.',
           }), 'dsh-gitbash-shell: posix-path context')
           console.log(TAG + ' POSIX-path directive context active (win32)')
         } catch (error) {
