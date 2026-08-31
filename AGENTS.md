@@ -29,6 +29,12 @@
    孤儿清理只删 `managedBy === 'dsh-gitbash-shell'` 且 unmodified 的目录。
 4. **`gitBash` 能力服务**是联动契约:`{ active, bashPath }`,仅 Windows 为 active;
    形状变更要同步 dsh-ptc-cordis-preset(v0.6.0+ 依赖)。
+ 4a. **inspect-registry shim 的安装时机(v0.7.2,对齐 ptc 0.6.3)**:shim 曾在 apply() 里
+    一次性 ctx.get('cordisInspect') 采样——宿主 runner 行激活晚于本插件行,服务尚未
+    provide,shim 静默未安装,之后第二个 cordis 模式 preset(如内置 cordis + cordis-gitbash)
+    挂载即撞 "already registered" 直到重启。修复:ctx.inject(['cordisInspect'], ...) 服务
+    就绪那一刻安装,与行激活顺序无关;上游形状不符时仍防御式退化为裸挂。动到 shim 需重跑
+    「cordis 先挂 + 选 cordis-gitbash 成功」方向验证。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
