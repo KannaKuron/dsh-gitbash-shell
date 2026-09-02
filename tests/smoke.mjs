@@ -90,6 +90,18 @@ test('variant assets carry era twins where the built-in changed; minimal serves 
   assert.doesNotMatch(read('code-gitbash', 'agent.cordis.yml'), /mode: ptc/)
   assert.match(read('code-gitbash', 'agent.cordis.ptc.yml'), /mode: ptc/)
   assert.doesNotMatch(read('code-gitbash', 'agent.cordis.ptc.yml'), /mode: code/)
+  // dsh 0.1.2-alpha.4 disabled `workflow` in the built-in `ptc` preset (run_code
+  // stays the only model-authored orchestration surface; the engine row keeps
+  // `ralph` alive): the code variant's ptc-era twin carries the disabled row,
+  // its code-era text keeps the 0.1.1 shape (row enabled), and the
+  // standard/cordis variants never disable it (their built-ins did not).
+  const workflowRow = /- id: tool-workflow\n\s+name: '@deepseek-ai\/dsh-tool-workflow'\n(?:\s+#[^\n]*\n)*\s+disabled: true/
+  assert.match(read('code-gitbash', 'agent.cordis.ptc.yml'), workflowRow, 'code-gitbash ptc era lost the alpha.4 workflow disable')
+  assert.doesNotMatch(read('code-gitbash', 'agent.cordis.yml'), workflowRow, 'code era must keep workflow enabled (0.1.1 text)')
+  for (const id of ['standard-gitbash', 'cordis-gitbash']) {
+    assert.doesNotMatch(read(id, 'agent.cordis.yml'), workflowRow, id + ' must keep workflow enabled')
+    assert.doesNotMatch(read(id, 'agent.cordis.ptc.yml'), workflowRow, id + ' ptc era must keep workflow enabled')
+  }
   // minimal: no twin, and the built-in did not change across the rename
   assert.ok(!existsSync(join(here, '..', 'assets', 'minimal-gitbash', 'agent.cordis.ptc.yml')))
 })

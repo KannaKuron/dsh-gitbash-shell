@@ -85,11 +85,17 @@
    `detectBase` 每启动探测 roster 选文件,marker 记 `base`,探测翻转 → `syncDecision` 刷新。
    **preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);
    内置 preset 变化时两个 era 文件都要对照各自版本的内置手工同步;组合文本里不得出现另一 era 的
-   字面量(`mode: ptc` / `mode: code`),smoke 测试有断言把关。
+   字面量(`mode: ptc` / `mode: code`),smoke 测试有断言把关。**ptc era 组成随 alpha 演进继续漂移
+   (v0.10.5,2026-09-02 同步 dsh 0.1.2-alpha.4)**:内置 `ptc` preset 给 `tool-workflow` 行加
+   `disabled: true`(#3425:`run_code` 为唯一模型编排面,引擎保留给 `ralph`),内置 standard/cordis
+   删 subagent-report 注释块、更新 fork 注释;`code-gitbash` 的 ptc-era(含头部文案与 preset.yml
+   描述)与 `standard-gitbash`/`cordis-gitbash` 的 ptc-era 已同步;smoke 增加「code-gitbash ptc-era
+   必须 disabled、其 code-era 及 standard/cordis 两 era 必须启用」断言。code-era 文本(↔0.1.1)不动。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
    `2026-08-25-rename-code-mode-to-ptc` 的 Deferred 一节)。落地时复查双 era 划分(2026-08-29 复核:
-   dsh 0.1.2-alpha.1 仍为 SESSION_FORMAT_VERSION=0,迁移未落地);dsh-better-sidebar
+   dsh 0.1.2-alpha.1 仍为 SESSION_FORMAT_VERSION=0,迁移未落地;2026-09-02 复核:dsh 0.1.2-alpha.4
+   仍为 0,Session 重构只到 branded types,消费面无变化);dsh-better-sidebar
    的命名空间(`terminalShell`/`shell`)演化同样需在其升级后复核。
 
 ## 验证清单(改动后)
