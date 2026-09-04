@@ -304,6 +304,14 @@ const SETTINGS_NAMESPACE = 'gitbash-shell'
 /** The full directive text, injected only while posixPaths is on. */
 const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly.'
 
+// Official runtime counterpart to the directive (v0.11.0): dsh-shell-env is
+// the host-plane registry behind the model-visible $DSH_* facts, and the
+// bash tool's schema tells the model to inspect them — so the dialect also
+// lives there, verifiable at runtime instead of only stated in the prompt.
+const PATH_DIALECT_KEY = 'DSH_PATH_DIALECT'
+const PATH_DIALECT_VALUE = 'msys'
+const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results: MSYS drive roots (/c/Users/...); every tool accepts this form directly.'
+
 /** Read the posixPaths switch from the live settings service; never throws. */
 export function readPosixPaths(ctxLike) {
   try {
@@ -633,6 +641,41 @@ export async function apply(ctx, config = {}) {
     })
   } catch (error) {
     console.log(`${TAG} settings inject wiring failed: ${error?.message ?? error}`)
+  }
+
+  // ── official shell-env fact: DSH_PATH_DIALECT (Windows only, gated; v0.11.0) ──
+  // dsh-shell-env owns the model-visible $DSH_* facts (host-plane service;
+  // the web composition injects it and publishes DSH_WEB_URL beside the
+  // built-ins), and the bash tool's schema points the model straight at them
+  // ("inspect them when needed"). While posixPaths is on, every shell call
+  // therefore also carries a runtime-verifiable dialect declaration: the
+  // prompt rewrite states the dialect once at the source, the environment
+  // answers on demand. The resolver reads the live switch per execution, so
+  // toggling the setting empties the variable without re-registration; the
+  // disposer rides the plugin fiber. ctx.inject keeps the wiring independent
+  // of row activation order and a silent no-op where the registry is absent.
+  if (process.platform === 'win32') {
+    try {
+      ctx.inject(['shellEnv'], (envCtx) => {
+        try {
+          const shellEnv = envCtx && envCtx.shellEnv
+          if (!shellEnv || typeof shellEnv.register !== 'function') return
+          const unregister = shellEnv.register({
+            name: 'gitbash-shell',
+            variables: { [PATH_DIALECT_KEY]: { description: PATH_DIALECT_DESCRIPTION } },
+            resolve() {
+              return readPosixPaths(envCtx) ? { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE } : {}
+            },
+          })
+          envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
+          console.log(`${TAG} shellEnv fact registered: ${PATH_DIALECT_KEY} (gated by the posixPaths setting)`)
+        } catch (error) {
+          console.log(`${TAG} shellEnv fact registration failed: ${error?.message ?? error}`)
+        }
+      })
+    } catch (error) {
+      console.log(`${TAG} shellEnv wiring failed: ${error?.message ?? error}`)
+    }
   }
 
   // ── prompt-assembly path dialect (Windows only, gated; v0.10.0) ────────

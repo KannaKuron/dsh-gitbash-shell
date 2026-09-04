@@ -74,6 +74,13 @@
     glob paths[]、grep matches[].path——后者为相对路径,仅分隔符归一)经 tools/post-execute
     waterfall(官方允许 replace value projection)改写回 MSYS 方言;文件内容行与错误结果
     绝不动。模型不再从成功调用中收到 Windows 形式路径回声。
+    **官方 shell-env 事实(v0.11.0)**:方言声明进驻官方 `dsh-shell-env` 注册表(宿主层
+    服务,web 组合注入、实测下发 DSH_WEB_URL/DSH_HOME/DSH_SESSION_ID/DSH_SHELL=1,bash 工具
+    schema 官方措辞本就指向 $DSH_*「inspect them when needed」)——ctx.inject(['shellEnv'])
+    服务就绪即注册贡献者 `gitbash-shell`,键 `DSH_PATH_DIALECT`(值 `msys`);resolver 每次
+    执行读活设置(关→返回空对象,免重注册),unregister 经 envCtx.effect 挂插件 fiber 可逆;
+    组合里没有该服务时静默无操作。DSH_HOME/DSH_SHELL/DSH_SESSION_ID 为注册表保留键,不可也
+    不应覆盖。提示词源头替换(说一次)+ 运行时环境事实(按需核验)互为印证。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步

@@ -226,6 +226,20 @@ test('host gates the path dialect behind the posixPaths setting', async () => {
   assert.equal(_internal.readPosixPaths({ get: () => ({ get: () => ({ posixPaths: true }) }) }), true)
 })
 
+test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // registered through the official dsh-shell-env registry at service-ready
+  // timing — never by mutating the process environment
+  assert.match(text, /ctx\.inject\(\['shellEnv'\], \(envCtx\) => \{/)
+  assert.match(text, /shellEnv\.register\(\{/)
+  assert.match(text, /DSH_PATH_DIALECT/)
+  // the resolver reads the live switch per execution: flipping the setting
+  // empties the variable with no re-registration
+  assert.match(text, /resolve\(\) \{\s*return readPosixPaths\(envCtx\) \? \{ \[PATH_DIALECT_KEY\]: PATH_DIALECT_VALUE \} : \{\}/)
+  // effect-scoped and reversible: the disposer rides the plugin fiber
+  assert.match(text, /envCtx\.effect\(\(\) => unregister/)
+})
+
 test('windowsToMsys rewrites Windows absolute paths to MSYS roots', async () => {
   const { _internal } = await import('../src/index.js')
   const w = _internal.windowsToMsys
