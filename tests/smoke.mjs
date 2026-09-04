@@ -72,7 +72,9 @@ test('baseForRoster maps the built-in roster to the composition era', () => {
 
 test('variant assets carry era twins where the built-in changed; minimal serves both', () => {
   const here = fileURLToPath(new URL('.', import.meta.url))
-  const read = (id, f) => readFileSync(join(here, '..', 'assets', id, f), 'utf8')
+  // Normalize CRLF: Windows checkouts (core.autocrlf) carry \r\n while the
+  // committed assets are LF; line-sensitive assertions below must pass on both.
+  const read = (id, f) => readFileSync(join(here, '..', 'assets', id, f), 'utf8').replace(/\r\n/g, '\n')
   for (const id of ['standard-gitbash', 'code-gitbash', 'cordis-gitbash']) {
     const old_ = read(id, 'agent.cordis.yml')
     const ptc = read(id, 'agent.cordis.ptc.yml')
