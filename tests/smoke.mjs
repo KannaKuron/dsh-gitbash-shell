@@ -104,16 +104,24 @@ test('variant assets carry era twins where the built-in changed; minimal serves 
     assert.doesNotMatch(read(id, 'agent.cordis.yml'), workflowRow, id + ' must keep workflow enabled')
     assert.doesNotMatch(read(id, 'agent.cordis.ptc.yml'), workflowRow, id + ' ptc era must keep workflow enabled')
   }
-  // minimal: no twin, and the built-in did not change across the rename
+  // minimal: no ptc twin (the built-in did not change across the rename), but
+  // v0.12.0 adds its persona-split twin for dsh >= 0.1.3-alpha.2
   assert.ok(!existsSync(join(here, '..', 'assets', 'minimal-gitbash', 'agent.cordis.ptc.yml')))
+  assert.ok(existsSync(join(here, '..', 'assets', 'minimal-gitbash', 'agent.cordis.ps.yml')))
 })
 
 test('pickComposition prefers the era twin and falls back to the base file', () => {
-  assert.equal(_internal.pickComposition('ptc', ['agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.ptc.yml')
-  assert.equal(_internal.pickComposition('code', ['agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.yml')
+  assert.equal(_internal.pickComposition('ptc', 'text', ['agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.ptc.yml')
+  assert.equal(_internal.pickComposition('code', 'text', ['agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.yml')
   // minimal case: no twin on disk → the base file serves both eras
-  assert.equal(_internal.pickComposition('ptc', ['agent.cordis.yml']), 'agent.cordis.yml')
-  assert.equal(_internal.pickComposition('code', []), 'agent.cordis.yml')
+  assert.equal(_internal.pickComposition('ptc', 'text', ['agent.cordis.yml']), 'agent.cordis.yml')
+  assert.equal(_internal.pickComposition('code', 'text', []), 'agent.cordis.yml')
+  // persona-split (v0.12.0): the .ptc.ps twin wins for era'd variants…
+  assert.equal(_internal.pickComposition('ptc', 'split', ['agent.cordis.ptc.ps.yml', 'agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.ptc.ps.yml')
+  // …minimal's .ps twin serves the split form (it never had a ptc twin)…
+  assert.equal(_internal.pickComposition('ptc', 'split', ['agent.cordis.ps.yml', 'agent.cordis.yml']), 'agent.cordis.ps.yml')
+  // …and pre-split assets still resolve when the split twin is absent
+  assert.equal(_internal.pickComposition('ptc', 'split', ['agent.cordis.ptc.yml', 'agent.cordis.yml']), 'agent.cordis.ptc.yml')
 })
 
 test('detectBase reads the roster; a failing roster falls back to the code era', async () => {
@@ -137,6 +145,14 @@ test('materialize writes the ptc-era text and records the era in the marker', ()
     // the code era still writes the historical text
     _internal.materialize({ target, presetId: 'code-gitbash', skillsSource: null, version: '0.6.0', base: 'code' })
     assert.match(readFileSync(join(target, 'agent.cordis.yml'), 'utf8'), /mode: code/)
+    // the persona-split twin (v0.12.0) writes the split-form persona and records it
+    _internal.materialize({ target, presetId: 'code-gitbash', skillsSource: null, version: '0.12.0', base: 'ptc', persona: 'split' })
+    const splitText = readFileSync(join(target, 'agent.cordis.yml'), 'utf8')
+    assert.match(splitText, /mode: ptc/)
+    assert.match(splitText, /suffix: Your working directory is \{\{cwd\}\}\./)
+    assert.match(splitText, /prefix:/)
+    const splitMarker = JSON.parse(readFileSync(join(target, '.plugin-managed.json'), 'utf8'))
+    assert.equal(splitMarker.persona, 'split')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -148,6 +164,70 @@ test('syncDecision refreshes when the detected built-in era flips', () => {
   assert.equal(_internal.syncDecision({ state: 'unmodified', marker, version: '0.6.0', sourceHashes: null, base: 'code' }), 'idle')
   // a pre-0.6.0 marker has no base at all → refresh (one-time re-materialization)
   assert.equal(_internal.syncDecision({ state: 'unmodified', marker: { version: '0.6.0', files: {} }, version: '0.6.0', sourceHashes: null, base: 'code' }), 'refresh')
+})
+
+test('syncDecision refreshes when the persona form flips (0.1.3-alpha.2 split)', () => {
+  const same = { state: 'unmodified', version: '0.12.0', sourceHashes: null, base: 'ptc' }
+  assert.equal(_internal.syncDecision({ ...same, marker: { version: '0.12.0', base: 'ptc', persona: 'split', files: {} }, persona: 'split' }), 'idle')
+  assert.equal(_internal.syncDecision({ ...same, marker: { version: '0.12.0', base: 'ptc', persona: 'text', files: {} }, persona: 'split' }), 'refresh')
+  assert.equal(_internal.syncDecision({ ...same, marker: { version: '0.12.0', base: 'ptc', persona: 'split', files: {} }, persona: 'text' }), 'refresh')
+  // a pre-0.12.0 marker has no persona field → treated as 'text': idle on a
+  // pre-split host, one-time refresh after the host crosses the split
+  assert.equal(_internal.syncDecision({ ...same, marker: { version: '0.12.0', base: 'ptc', files: {} }, persona: 'text' }), 'idle')
+  assert.equal(_internal.syncDecision({ ...same, marker: { version: '0.12.0', base: 'ptc', files: {} }, persona: 'split' }), 'refresh')
+})
+
+test('persona-split twins carry the split keys; pre-split texts keep text', () => {
+  const here = fileURLToPath(new URL('.', import.meta.url))
+  const read = (id, f) => readFileSync(join(here, '..', 'assets', id, f), 'utf8').replace(/\r\n/g, '\n')
+  const personaRow = (text) => {
+    const m = text.match(/- id: persona[\s\S]*?(?=\n- id: )/)
+    assert.ok(m, 'persona row present')
+    return m[0]
+  }
+  for (const id of ['standard-gitbash', 'code-gitbash', 'cordis-gitbash']) {
+    const ps = personaRow(read(id, 'agent.cordis.ptc.ps.yml'))
+    assert.match(ps, /prefix:/, id + ' ps twin carries the split prefix key')
+    assert.match(ps, /suffix: Your working directory is /, id + ' ps twin carries the cwd suffix')
+    assert.doesNotMatch(ps, /\btext:/, id + ' ps twin drops the retired text key')
+    assert.doesNotMatch(personaRow(read(id, 'agent.cordis.ptc.yml')), /prefix:/, id + ' pre-split twin keeps the text key')
+    assert.doesNotMatch(personaRow(read(id, 'agent.cordis.yml')), /prefix:/, id + ' code era keeps the text key')
+  }
+  const minimalPs = personaRow(read('minimal-gitbash', 'agent.cordis.ps.yml'))
+  assert.match(minimalPs, /prefix: You are a helpful software engineer assistant\./)
+  assert.match(minimalPs, /complete: true/, 'minimal keeps its complete-prompt policy')
+  assert.match(minimalPs, /includeRuntimeContext: false/)
+  assert.doesNotMatch(minimalPs, /\btext:/)
+  assert.doesNotMatch(personaRow(read('minimal-gitbash', 'agent.cordis.yml')), /prefix:/)
+})
+
+test('persona era detection reads the shipped persona form, built-ins only', async () => {
+  const { personaEraForText, detectPersonaEra } = _internal
+  const newText = "- id: persona\n  name: '@deepseek-ai/dsh-persona'\n  config:\n    suffix: Your working directory is {{cwd}}.\n    prefix: >-\n      You are a coding agent.\n"
+  const oldText = "- id: persona\n  name: '@deepseek-ai/dsh-persona'\n  config:\n    text: >-\n      You are a coding agent.\n"
+  assert.equal(personaEraForText(newText), 'split')
+  assert.equal(personaEraForText(oldText), 'text')
+  assert.equal(personaEraForText('no persona row at all'), 'text')
+  const split = mkdtempSync(join(tmpdir(), 'persona-era-'))
+  const preSplit = mkdtempSync(join(tmpdir(), 'persona-era-'))
+  try {
+    writeFileSync(join(split, 'agent.cordis.yml'), newText)
+    writeFileSync(join(preSplit, 'agent.cordis.yml'), oldText)
+    // own variants on the roster are ignored — only built-in ids are probed
+    const roster = { list: async () => [
+      { id: 'standard-gitbash', path: join(preSplit, 'agent.cordis.yml') },
+      { id: 'standard', path: join(split, 'agent.cordis.yml') },
+    ] }
+    assert.equal(await detectPersonaEra(roster), 'split')
+    // a directory-shaped path resolves to its agent.cordis.yml
+    assert.equal(await detectPersonaEra({ list: async () => [{ id: 'ptc', path: split }] }), 'split')
+    // failures degrade conservatively to the pre-split form
+    assert.equal(await detectPersonaEra({ list: async () => { throw new Error('boom') } }), 'text')
+    assert.equal(await detectPersonaEra({ list: async () => [] }), 'text')
+  } finally {
+    rmSync(split, { recursive: true, force: true })
+    rmSync(preSplit, { recursive: true, force: true })
+  }
 })
 
 

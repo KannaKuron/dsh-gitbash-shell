@@ -97,7 +97,18 @@
    `disabled: true`(#3425:`run_code` 为唯一模型编排面,引擎保留给 `ralph`),内置 standard/cordis
    删 subagent-report 注释块、更新 fork 注释;`code-gitbash` 的 ptc-era(含头部文案与 preset.yml
    描述)与 `standard-gitbash`/`cordis-gitbash` 的 ptc-era 已同步;smoke 增加「code-gitbash ptc-era
-   必须 disabled、其 code-era 及 standard/cordis 两 era 必须启用」断言。code-era 文本(↔0.1.1)不动。
+   必须 disabled、其 code-era 及 standard/cordis 两 era 必须启用」断言。code-era 文本(↔0.1.1)不动。**persona 拆分第三维(v0.12.0,2026-09-04 同步 dsh 0.1.3-alpha.2)**:
+    dsh 0.1.3-alpha.2(40792330c0)把 dsh-persona 的单一 `text` 键拆成 `prefix:`+`suffix:`
+    (schema `prefix: required`,**无兼容别名**),shipped 四预设全部跟进——旧键组合在新宿主上
+    persona 行校验失败。维度:`detectPersonaEra` 读 roster 内置条目(仅 ptc/standard/cordis/
+    minimal,**绝不探测自家变体**——会回声旧形态)的 agent.cordis.yml,`personaEraForText` 判
+    split/text;marker 记 `persona`(旧 marker 无此字段视为 text);`pickComposition(base, persona,
+    available)` 候选链 `.ptc.ps.yml` → `.ptc.yml` → `.ps.yml`(minimal 专属)→ 基文件。资产:
+    standard/code/cordis 各加 `agent.cordis.ptc.ps.yml`,minimal 加 `agent.cordis.ps.yml`(首次
+    分叉);code-era(≤0.1.1)与 0.1.2~alpha.1 ptc-era 文件原样保留。**升级顺序无关**:新插件装在
+    alpha.1 宿主上探测得 text、物化旧式(与 0.11.x 行为一致);宿主升 alpha.2+ 后首启探测翻转
+    → 同版本自动刷新。smoke:ps 键形/旧文件保形/pickComposition 矩阵/syncDecision persona 翻转/
+    探测忽略自家变体,共 20 项。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
    `2026-08-25-rename-code-mode-to-ptc` 的 Deferred 一节)。落地时复查双 era 划分(2026-08-29 复核:

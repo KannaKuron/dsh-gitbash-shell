@@ -170,24 +170,65 @@ function eraSuffix(base) {
   return base === 'ptc' ? '.ptc' : ''
 }
 
+// ── persona-form detection (dsh 0.1.3-alpha.2 split the persona row) ──────
+
+/**
+ * Which persona config shape does one composition text use? 0.1.3-alpha.2
+ * (40792330c0) split dsh-persona's single `text` key into `prefix:` +
+ * `suffix:` with no compatibility alias, so compositions carrying a persona
+ * row are persona-form-specific. Pure companion of `detectPersonaEra`.
+ */
+export function personaEraForText(text) {
+  return /- id:\s*persona[\s\S]{0,600}?\bprefix:/.test(text) ? 'split' : 'text'
+}
+
+/**
+ * Async probe of a SHIPPED preset's composition through the live roster;
+ * never throws. Built-in ids only — this plugin's own variants sit on the
+ * roster too and would echo whichever form they were materialized with. The
+ * roster entry path is the preset file (or its directory); either way we
+ * read agent.cordis.yml. A missing probe conservatively maps to 'text'.
+ */
+export async function detectPersonaEra(agentPresets) {
+  try {
+    const list = await agentPresets.list()
+    const entries = Array.isArray(list) ? list : []
+    const entry = ['ptc', 'standard', 'cordis', 'minimal']
+      .map((id) => entries.find((p) => p && p.id === id && typeof p.path === 'string'))
+      .find(Boolean)
+    if (!entry) return 'text'
+    const file = /\.yml$/.test(entry.path) ? entry.path : join(entry.path, 'agent.cordis.yml')
+    return personaEraForText(readFileSync(file, 'utf8'))
+  } catch (error) {
+    console.log(`${TAG} persona-form probe failed (${error?.message ?? error}) — assuming the pre-split 'text' form`)
+    return 'text'
+  }
+}
+
 /**
  * Pick the committed composition asset inside one variant directory (pure).
- * The ptc-era twin is preferred when the roster says `ptc`; variants without
- * a twin (minimal — its built-in did not change) fall back to the plain base
- * file. Every candidate is a committed file — no runtime text synthesis.
+ * The ptc-era twin is preferred when the roster says `ptc`; the persona-split
+ * twin (`.ps`, v0.12.0) is preferred when the shipped persona row carries the
+ * split keys; variants without a twin fall back down the chain (minimal never
+ * had a ptc twin and gained its `.ps` twin instead). Every candidate is a
+ * committed file — no runtime text synthesis.
  */
-function pickComposition(base, available) {
+function pickComposition(base, persona, available) {
   const era = eraSuffix(base)
-  const candidates = [`agent.cordis${era}.yml`, 'agent.cordis.yml']
+  const ps = persona === 'split' ? '.ps' : ''
+  const candidates = base === 'ptc'
+    ? [`agent.cordis${era}${ps}.yml`, `agent.cordis${era}.yml`, ...(ps ? ['agent.cordis.ps.yml'] : []), 'agent.cordis.yml']
+    : ['agent.cordis.yml']
   for (const file of candidates) if (available.includes(file)) return file
   return 'agent.cordis.yml'
 }
 
 /** Startup decision for an existing unmodified tree: 'refresh' or 'idle'. */
-function syncDecision({ state, marker, version, sourceHashes, base = 'code' }) {
+function syncDecision({ state, marker, version, sourceHashes, base = 'code', persona = 'text' }) {
   if (state !== 'unmodified' || !marker) return 'refresh'
   if (marker.version !== version) return 'refresh'
   if (marker.base !== base) return 'refresh'
+  if ((marker.persona ?? 'text') !== persona) return 'refresh'
   const recorded = {}
   for (const k of Object.keys(marker.files)) if (k.startsWith('skills/')) recorded[k] = marker.files[k]
   if (sourceHashes === null) return Object.keys(recorded).length === 0 ? 'idle' : 'refresh'
@@ -201,12 +242,12 @@ function syncDecision({ state, marker, version, sourceHashes, base = 'code' }) {
 // ── materialization ─────────────────────────────────────────────────────────
 
 /** Write one preset directory from scratch. Returns 'ok' or 'no-skills-source'. */
-function materialize({ target, presetId, skillsSource, version, base = 'code' }) {
+function materialize({ target, presetId, skillsSource, version, base = 'code', persona = 'text' }) {
   rmSync(target, { recursive: true, force: true })
   mkdirSync(target, { recursive: true })
 
   const available = readdirSync(join(pkgDir, 'assets', presetId)).filter((f) => f.endsWith('.yml'))
-  const compositionFile = pickComposition(base, available)
+  const compositionFile = pickComposition(base, persona, available)
   writeFileSync(join(target, 'agent.cordis.yml'), readFileSync(join(pkgDir, 'assets', presetId, compositionFile)))
   writeFileSync(join(target, 'preset.yml'), readFileSync(join(pkgDir, 'assets', presetId, 'preset.yml')))
 
@@ -221,7 +262,7 @@ function materialize({ target, presetId, skillsSource, version, base = 'code' })
     }
   }
 
-  const marker = { managedBy: MANAGED_BY, version, presetId, base, files: hashTree(target) }
+  const marker = { managedBy: MANAGED_BY, version, presetId, base, persona, files: hashTree(target) }
   writeFileSync(join(target, MARKER_FILE), JSON.stringify(marker, null, 2) + '\n')
   return skills
 }
@@ -829,6 +870,7 @@ export async function apply(ctx, config = {}) {
 
   const skillsSource = await findSkillsSource(ctx.agentPresets)
   const base = await detectBase(ctx.agentPresets)
+  const persona = await detectPersonaEra(ctx.agentPresets)
   const userRootPath = userRoot.path
   purgeOrphans(userRootPath, presetIds)
 
@@ -858,19 +900,19 @@ export async function apply(ctx, config = {}) {
 
     const sourceHashes = presetId === 'cordis-gitbash' ? skillsHashes(skillsSource) : null
     const marker = readMarker(target)
-    if (state === 'unmodified' && syncDecision({ state, marker, version, sourceHashes, base }) === 'idle') {
-      ctx.logger?.('gitbash-shell')?.debug?.( `preset '${presetId}' up to date (v${version}, ${base}-era) — idle`)
+    if (state === 'unmodified' && syncDecision({ state, marker, version, sourceHashes, base, persona }) === 'idle') {
+      ctx.logger?.('gitbash-shell')?.debug?.( `preset '${presetId}' up to date (v${version}, ${base}-era${persona === 'split' ? ', persona-split' : ''}) — idle`)
       continue
     }
 
-    const skills = materialize({ target, presetId, skillsSource, version, base })
+    const skills = materialize({ target, presetId, skillsSource, version, base, persona })
     const verb = state === 'absent' ? 'materialized' : 'refreshed'
     console.log(
-      `${TAG} ${verb} preset '${presetId}' into ${userRootPath} (v${version}, ${base}-era composition)` +
+      `${TAG} ${verb} preset '${presetId}' into ${userRootPath} (v${version}, ${base}-era composition${persona === 'split' ? ', persona-split' : ''})` +
         (skills === 'copied' ? " (skills copied from the installed 'cordis' preset)" : '')
     )
   }
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra }
