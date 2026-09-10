@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -352,4 +352,82 @@ test('rewriteResultPaths rewrites result metadata, never content', async () => {
   assert.equal(rr('bash', bash), bash, 'non-path tools pass through untouched')
   const already = { path: '/c/already.txt' }
   assert.equal(rr('read', already), already, 'an unchanged value returns the same reference')
+})
+test('injectPresentRow: anchor splice, tail append, idempotent (dsh 0.1.5-alpha.2 sync)', () => {
+  const inject = _internal.injectPresentRow
+  const anchorText = [
+    "- id: tool-presentation",
+    "  name: '@deepseek-ai/dsh-agent-tool-presentation'",
+    '  config:',
+    '    mode: ptc',
+    '',
+    '# tail section',
+    "- id: tool-cordis",
+    "  name: '@deepseek-ai/dsh-tool-cordis'",
+  ].join('\n')
+  const spliced = inject(anchorText)
+  const at = spliced.indexOf("  name: '@deepseek-ai/dsh-tool-present'")
+  const presentation = spliced.indexOf('tool-presentation')
+  const cordis = spliced.indexOf('tool-cordis')
+  assert.ok(at !== -1 && at > presentation && at < cordis, 'present sits right after the presentation block')
+  assert.equal(inject(spliced), spliced, 'already-injected text is untouched (idempotent)')
+  const tailed = inject('- id: tool-web\n  name: web\n')
+  assert.ok(tailed.endsWith("- id: present\n  name: '@deepseek-ai/dsh-tool-present'\n"), 'anchor-less texts gain the row at the tail')
+  const noNewline = inject('- id: x')
+  assert.ok(noNewline.includes('\n- id: present\n'), 'a missing trailing newline is repaired')
+})
+
+test('syncDecision refreshes when the host gains the present package (capability flip)', () => {
+  const marker = { managedBy: 'dsh-gitbash-shell', version: '0.13.0', base: 'ptc', persona: 'split', present: false, files: {} }
+  assert.equal(_internal.syncDecision({ state: 'unmodified', marker, version: '0.13.0', sourceHashes: null, base: 'ptc', persona: 'split', present: false }), 'idle')
+  assert.equal(_internal.syncDecision({ state: 'unmodified', marker, version: '0.13.0', sourceHashes: null, base: 'ptc', persona: 'split', present: true }), 'refresh', 'host upgrade must re-materialize')
+  const legacy = { managedBy: 'dsh-gitbash-shell', version: '0.13.0', base: 'ptc', persona: 'split', files: {} }
+  assert.equal(_internal.syncDecision({ state: 'unmodified', marker: legacy, version: '0.13.0', sourceHashes: null, base: 'ptc', persona: 'split', present: false }), 'idle', 'markers without the field default to no-present')
+})
+
+test('materialize injects present only for .ptc. twins and only when the host resolves it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gitbash-shell-present-'))
+  try {
+    const withRow = _internal.materialize({ target: join(dir, 'a'), presetId: 'code-gitbash', skillsSource: null, version: '0.13.0', base: 'ptc', persona: 'split', present: true })
+    void withRow
+    const text = readFileSync(join(dir, 'a', 'agent.cordis.yml'), 'utf8')
+    assert.ok(text.includes("name: '@deepseek-ai/dsh-tool-present'"), 'ptc twin gains the row')
+    assert.ok(text.indexOf('dsh-tool-present') > text.indexOf('tool-presentation'), 'row lands after presentation')
+    const marker = JSON.parse(readFileSync(join(dir, 'a', '.plugin-managed.json'), 'utf8'))
+    assert.equal(marker.present, true, 'marker records the capability')
+    _internal.materialize({ target: join(dir, 'b'), presetId: 'code-gitbash', skillsSource: null, version: '0.13.0', base: 'ptc', persona: 'split', present: false })
+    assert.ok(!readFileSync(join(dir, 'b', 'agent.cordis.yml'), 'utf8').includes('dsh-tool-present'), 'capability-less host gets no row')
+    _internal.materialize({ target: join(dir, 'c'), presetId: 'minimal-gitbash', skillsSource: null, version: '0.13.0', base: 'ptc', persona: 'split', present: true })
+    assert.ok(!readFileSync(join(dir, 'c', 'agent.cordis.yml'), 'utf8').includes('dsh-tool-present'), 'minimal never gains the row (single-tool preset)')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('minimal twins are single-tool: no filesystem group, environment-dependent network line', () => {
+  for (const file of ['agent.cordis.yml', 'agent.cordis.ps.yml']) {
+    const text = readFileSync(join(fileURLToPath(new URL('../assets/minimal-gitbash/', import.meta.url)), file), 'utf8')
+    assert.ok(!text.includes('str-replace-editor'), file + ': str_replace_editor must be gone')
+    assert.ok(!text.includes('- id: filesystem'), file + ': the bare filesystem group must be gone')
+    assert.ok(text.includes('Network access depends on the task environment'), file + ': bash description follows the one-shot shell contract')
+    assert.ok(!text.includes('mirror of common linux and python packages'), file + ': the old fixed network lines are gone')
+    assert.ok(text.includes('single-tool coding-agent composition'), file + ': banner is single-tool')
+  }
+  const preset = readFileSync(fileURLToPath(new URL('../assets/minimal-gitbash/preset.yml', import.meta.url)), 'utf8')
+  assert.ok(preset.includes('单工具编码 Agent'), 'preset.yml描述 follows the official wording')
+})
+
+test('ptc-era assets stay present-row free (injection is a materialization concern)', () => {
+  const assetsDir = fileURLToPath(new URL('../assets/', import.meta.url))
+  for (const presetId of _internal.PRESET_IDS) {
+    const dir = join(assetsDir, presetId)
+    for (const file of readdirSync(dir)) {
+      if (!file.includes('.ptc.')) continue
+      const text = readFileSync(join(dir, file), 'utf8')
+      assert.ok(!text.includes('dsh-tool-present'), presetId + '/' + file + ': the row must never be committed into an asset')
+    }
+  }
+  // code-gitbash's ptc twin is ptc-derived and MUST offer the anchor splice.
+  const codePtc = readFileSync(join(assetsDir, 'code-gitbash', 'agent.cordis.ptc.yml'), 'utf8')
+  assert.ok(codePtc.includes("'@deepseek-ai/dsh-agent-tool-presentation'"), 'ptc-derived twin carries the presentation anchor')
 })

@@ -24,7 +24,8 @@
    `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash(父类硬编码裸
    `bash`,Windows 上会解析到 WSL 占位)。
 2. **preset 组合文本可审查**:assets/*/agent.cordis.yml 是完整组合,物化只做逐字节拷贝,
-   绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。
+   绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**唯一例外:v0.13.0 的 present 行条件注入**
+   ——按锚点做纯字符串拼接(`injectPresentRow`),仍不解析 YAML,`!!js` 字面量照旧安全。
 3. **用户改过的 preset 绝不覆盖、绝不删除**:.plugin-managed.json 哈希是唯一判据;
    孤儿清理只删 `managedBy === 'dsh-gitbash-shell'` 且 unmodified 的目录。
 4. **`gitBash` 能力服务**是联动契约:`{ active, bashPath }`,仅 Windows 为 active;
@@ -108,7 +109,17 @@
     分叉);code-era(≤0.1.1)与 0.1.2~alpha.1 ptc-era 文件原样保留。**升级顺序无关**:新插件装在
     alpha.1 宿主上探测得 text、物化旧式(与 0.11.x 行为一致);宿主升 alpha.2+ 后首启探测翻转
     → 同版本自动刷新。smoke:ps 键形/旧文件保形/pickComposition 矩阵/syncDecision persona 翻转/
-    探测忽略自家变体,共 20 项。
+    探测忽略自家变体,共 20 项。**present 能力维度(v0.13.0,2026-09-10 同步 dsh 0.1.5-alpha.2→rc.1)**:
+    官方给 ptc/standard/cordis 三模式组合追加 `- id: present / name: '@deepseek-ai/dsh-tool-present'`
+    (不可变文件交付下载卡片;minimal 不加——单工具预设)。该包 **0.1.5-alpha.2 首发**,而组合里
+    一行 import 失败会拒绝**整棵 preset 挂载**(agent-presets mount.ts),所以 present 行**绝不写进
+    资产**,改由物化时探测宿主(`hostHasToolPresent`:createRequire.resolve,按 boot 缓存)注入:
+    仅 `.ptc.` 文件、有 tool-presentation 块者锚点后相邻插入、无锚者( cordis/standard 孪生)尾部
+    追加(与官方位置一致)、幂等。marker 记 `present`(旧 marker 无字段视为 false),宿主升级使探测
+    翻转 → syncDecision 自动重物化补行。minimal 资产同步官方单工具化(v0.13.0):删 filesystem
+    组(fs-local + str_replace_editor)、bash 描述的固定网络两行换为环境相关单行、banner 与 preset.yml
+    描述改单工具——这些是纯内容变化,全 era 安全直接改。smoke:注入锚/尾追加/幂等/syncDecision 翻转/
+    materialize 端到端(含 minimal 不注入)/资产不得写死 present,共 25 项。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
    `2026-08-25-rename-code-mode-to-ptc` 的 Deferred 一节)。落地时复查双 era 划分(2026-08-29 复核:
