@@ -206,6 +206,32 @@ export async function detectPersonaEra(agentPresets) {
 }
 
 /**
+ * Does the SHIPPED composition already carry the official `present` row? The
+ * row (`@deepseek-ai/dsh-tool-present`, immutable file-delivery download
+ * cards) first shipped with dsh 0.1.5-alpha.2, and a composition row that
+ * cannot be imported rejects the WHOLE preset mount — so the row is injected
+ * only on hosts whose own shipped presets have it. The live roster is the
+ * authority: package resolution alone would lie on CLI installs (first-party
+ * packages live outside the profile) and on linked development trees.
+ * `minimal` never gains the row (single-tool preset). Never throws.
+ */
+async function detectPresentSupport(agentPresets) {
+  try {
+    const list = await agentPresets.list()
+    const entries = Array.isArray(list) ? list : []
+    const entry = ['ptc', 'standard', 'cordis']
+      .map((id) => entries.find((p) => p && p.id === id && typeof p.path === 'string'))
+      .find(Boolean)
+    if (!entry) return false
+    const file = /\.yml$/.test(entry.path) ? entry.path : join(entry.path, 'agent.cordis.yml')
+    return readFileSync(file, 'utf8').includes("'@deepseek-ai/dsh-tool-present'")
+  } catch (error) {
+    console.log(`${TAG} present-row probe failed (${error?.message ?? error}) — not injecting the row`)
+    return false
+  }
+}
+
+/**
  * Pick the committed composition asset inside one variant directory (pure).
  * The ptc-era twin is preferred when the roster says `ptc`; the persona-split
  * twin (`.ps`, v0.12.0) is preferred when the shipped persona row carries the
@@ -920,7 +946,11 @@ export async function apply(ctx, config = {}) {
   const skillsSource = await findSkillsSource(ctx.agentPresets)
   const base = await detectBase(ctx.agentPresets)
   const persona = await detectPersonaEra(ctx.agentPresets)
-  const present = await hostHasToolPresent()
+  // Two independent signals, either of which is sufficient: the shipped
+  // composition text (authoritative on every install layout) and the package
+  // resolving from this plugin's own tree (covers hosts where the roster
+  // probe is unavailable).
+  const present = (await detectPresentSupport(ctx.agentPresets)) || (await hostHasToolPresent())
   const userRootPath = userRoot.path
   purgeOrphans(userRootPath, presetIds)
 
@@ -965,4 +995,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport }

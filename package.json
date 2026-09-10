@@ -41,7 +41,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test tests/smoke.mjs"
+    "test": "node --test tests/smoke.mjs",
+    "version": "node -e \"const fs=require('fs');const m=JSON.parse(fs.readFileSync('dsh.plugin.json','utf8'));const v=JSON.parse(fs.readFileSync('package.json','utf8')).version;m.version=v;fs.writeFileSync('dsh.plugin.json',JSON.stringify(m,null,2)+'\\n')\" && git add dsh.plugin.json"
   },
   "keywords": [
     "dsh",
