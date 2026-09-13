@@ -461,3 +461,63 @@ test('manifest and package versions stay in sync', () => {
   assert.equal(manifest.id, 'dsh-external/dsh-gitbash-shell')
   assert.equal(pkg.scripts.version !== undefined, true, 'the version script must exist so bumps stay in sync')
 })
+
+test('executor: Windows confined calls run unconfined and say so (issue #1)', async () => {
+  const src = readFileSync('src/shell.js', 'utf8')
+  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  class FakeBase {
+    constructor() { this.calls = [] }
+    async run(spec) { this.calls.push(['super.run', spec]); return { via: 'super.run' } }
+    start(spec) { this.calls.push(['super.start', spec]); return { via: 'super.start' } }
+    async runArgv(spec, argv) { this.calls.push(['runArgv', argv]); return { exitCode: 0, stdout: {}, stderr: {} } }
+    startArgv(spec, argv) { this.calls.push(['startArgv', argv]); return { started: true } }
+  }
+  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
+  const make = (platform) => {
+    const mod = scope(FakeBase, chain, { platform })
+    const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
+    ex.config = { bashPath: 'X:/git/bin/bash.exe' }
+    ex.calls = []
+    return ex
+  }
+  const spec = { command: 'echo hi', sandboxPolicy: { mode: 'workspace-write' } }
+  const byKind = (ex, kind) => ex.calls.filter((c) => c[0] === kind)
+
+  const logs = []
+  const origLog = console.log
+  console.log = (...a) => logs.push(a.join(' '))
+  try {
+    // Windows confined: unconfined argv path, honest label, sandbox stack untouched.
+    const ex = make('win32')
+    const r = await ex.run(spec)
+    assert.equal(byKind(ex, 'runArgv').length, 1)
+    assert.deepEqual(byKind(ex, 'runArgv')[0][1], ['X:/git/bin/bash.exe', '-c', 'echo hi'])
+    assert.deepEqual(r.sandbox, { mode: 'workspace-write', denied: false, enforcement: 'unconfined' })
+    assert.equal(byKind(ex, 'super.run').length, 0)
+    const p = ex.start(spec)
+    assert.deepEqual(p.sandbox, { mode: 'workspace-write', denied: false, enforcement: 'unconfined' })
+    assert.equal(byKind(ex, 'super.start').length, 0)
+    // One-time notice: the second confined call logs nothing more.
+    await ex.run(spec)
+    assert.equal(logs.length, 1)
+    assert.ok(logs[0].includes('UNCONFINED'))
+    // danger-full-access keeps its exact label (no enforcement key).
+    const exFull = make('win32')
+    const rFull = await exFull.run({ command: 'x', sandboxPolicy: { mode: 'danger-full-access' } })
+    assert.deepEqual(rFull.sandbox, { mode: 'danger-full-access', denied: false })
+    // Non-Windows confined keeps the shipped sandboxed path.
+    const exLinux = make('linux')
+    await exLinux.run(spec)
+    assert.equal(byKind(exLinux, 'super.run').length, 1)
+    assert.equal(byKind(exLinux, 'runArgv').length, 0)
+    exLinux.start(spec)
+    assert.equal(byKind(exLinux, 'super.start').length, 1)
+    // No policy: fully inherited.
+    const exNone = make('win32')
+    await exNone.run({ command: 'x' })
+    assert.equal(byKind(exNone, 'super.run').length, 1)
+  } finally {
+    console.log = origLog
+  }
+})

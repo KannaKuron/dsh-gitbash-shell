@@ -20,9 +20,17 @@
 
 ## 核心不变量(改代码前必读)
 
-1. **执行器只替换 argv,不替换行为**:沙箱策略、拒绝分类、后台任务、设置节全部沿用
-   `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash(父类硬编码裸
-   `bash`,Windows 上会解析到 WSL 占位)。
+1. **执行器只替换 argv,不替换行为——除 Windows 受限分支(v0.13.2,issue #1)**:沙箱策略、拒绝分类、
+   后台任务、设置节全部沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash
+   (父类硬编码裸 `bash`,Windows 上会解析到 WSL 占位)。**Windows confined 分支同样必须单独接**:
+   MSYS2 在 restricted-token(dsh-sandbox-windows-acl)下 DLL 初始化即死(msys-2.0.dll 的 cygheap
+   映射与 signal pipe 的 DACL 只含用户 SID,WRITE_RESTRICTED 的 pass-2 写检查要求 restricting-SID
+   ACE → Win32 error 5 / 0xC0000142;0.6.0 起所有版本;cmd/pwsh 走匿名管道不受影响)——OS 层冲突
+   无插件内解,故 win32 的 read-only/workspace-write 调用改走 runArgv/startArgv(不受限执行),结果
+   sandbox 标注 `enforcement: 'unconfined'` + 实例级一次性 console.log 提示;fs 工具沙箱不受影响
+   (另一层)。**红线:绝不静默假成功**——要么真受限、要么明示 unconfined、失败如实带错误码。
+   社区同类取舍:绕过(zimzaza4/dsh-bash-win、Jyleaves/dsh-win-bash-fix)vs 拒绝(liceses/
+   dsh-gitbash-preset);本插件选绕过+如实标注。
 2. **preset 组合文本可审查**:assets/*/agent.cordis.yml 是完整组合,物化只做逐字节拷贝,
    绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**唯一例外:v0.13.0 的 present 行条件注入**
    ——按锚点做纯字符串拼接(`injectPresentRow`),仍不解析 YAML,`!!js` 字面量照旧安全。

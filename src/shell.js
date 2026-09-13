@@ -15,7 +15,18 @@
  *   - overrides run/start ONLY for danger-full-access (the parent's
  *     full-access branch calls LocalBashExecutor.run, which hardcodes the
  *     bare `bash` name), routing through runArgv/startArgv with the same
- *     argv as the confined branch.
+ *     argv as the confined branch;
+ *   - on Windows ALSO overrides the confined branch itself (issue #1):
+ *     MSYS2 cannot start under the restricted-token sandbox — msys-2.0.dll
+ *     init creates its cygheap mapping and signal pipe with DACLs naming
+ *     only the user SID, a WRITE_RESTRICTED token's pass-2 write check
+ *     demands a restricting-SID ACE, so init dies with Win32 error 5 /
+ *     0xC0000142 before argv ever runs (silent fake-success or a hard
+ *     crash, every version since 0.6.0; cmd/pwsh are unaffected —
+ *     anonymous pipes). OS-level conflict with no in-plugin cure, so
+ *     confined Windows calls run Git Bash UNCONFINED, labelled as such in
+ *     the result (sandbox.enforcement === 'unconfined') plus a one-time
+ *     notice. The fs-tool sandbox policy still applies to file tools.
  *
  * Environment inheritance: bash.exe is spawned as a direct child of the host
  * process (never through the git-bash.exe login launcher), so it inherits the
@@ -31,6 +42,9 @@ import z from '@deepseek-ai/schemastery'
 
 /** Default Git for Windows bash (forward slashes work on Windows too). */
 export const DEFAULT_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
+
+/** Log prefix, matching src/index.js. */
+const TAG = '[gitbash-shell]'
 
 /** Resolved configuration: the local executor's knobs, plus the Git Bash path. */
 export const Config = z.object({
@@ -69,6 +83,11 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * delegates to LocalBashExecutor.run, which hardcodes the bare `bash`
    * name, so override that branch here and keep everything else inherited.
    */
+  /**
+   * Confined Windows calls cannot use the restricted-token runner (issue
+   * #1, see the file header): route them through the unconfined argv path
+   * and label the result honestly so callers can tell.
+   */
   async run(spec) {
     const policy = spec.sandboxPolicy
     if (policy === undefined) return super.run(spec)
@@ -76,6 +95,11 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     if (mode === 'danger-full-access') {
       const result = await this.runArgv(spec, [this.bashPath, '-c', spec.command])
       return { ...result, sandbox: { mode, denied: false } }
+    }
+    if (process.platform === 'win32') {
+      this.warnConfinedUnconfined(mode)
+      const result = await this.runArgv(spec, [this.bashPath, '-c', spec.command])
+      return { ...result, sandbox: { mode, denied: false, enforcement: 'unconfined' } }
     }
     return super.run(spec)
   }
@@ -89,7 +113,20 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
       proc.sandbox = { mode, denied: false }
       return proc
     }
+    if (process.platform === 'win32') {
+      this.warnConfinedUnconfined(mode)
+      const proc = this.startArgv(spec, [this.bashPath, '-c', spec.command])
+      proc.sandbox = { mode, denied: false, enforcement: 'unconfined' }
+      return proc
+    }
     return super.start(spec)
+  }
+
+  /** One-per-instance notice that confined Windows calls run unconfined. */
+  warnConfinedUnconfined(mode) {
+    if (this._warnedUnconfined) return
+    this._warnedUnconfined = true
+    console.log(TAG + ' Windows: MSYS2 cannot start under the restricted-token sandbox (msys-2.0.dll init: cygheap/signal-pipe DACLs carry no restricting-SID ACE -> Win32 error 5 / 0xC0000142; issue #1). Confined call (' + mode + ') ran Git Bash UNCONFINED; the fs-tool sandbox policy still applies.')
   }
 }
 
