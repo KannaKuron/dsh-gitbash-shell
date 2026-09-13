@@ -10,6 +10,16 @@
   workflow 用 `id-token: write` + 无令牌 `npm publish`(见 .github/workflows/npm-publish.yml,
   npm 包设置里须登记同名 workflow 为 trusted publisher)。
 
+## 变更记录纪律(2026-09-13 起)
+
+- **所有版本发布、修复、事故复盘、复现/验证记录一律写进本仓库 `CHANGELOG.md`**,不再追加进本文件;
+  本文件只保留仍然有效的规则、不变量与当前事实,历史叙事由 CHANGELOG 承载(需引用时写
+  「见 CHANGELOG vX.Y.Z」)。
+- **发版 checklist 新增强制步骤**:更新 CHANGELOG(写好新版本条目)→ 随版本提交 → 再打 tag /
+  发 Release;顺序不能反。
+- CHANGELOG 条目格式:倒序排列;`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+
+  要点 bullet + 相关链接(issue / PR / discussion / Release)。
+
 ## 项目一句话
 
 `dsh-gitbash-shell`:Windows 上把 dsh 的 `ctx.shell` 换成 Git for Windows bash 的插件。
@@ -30,11 +40,7 @@
    sandbox 标注 `enforcement: 'unconfined'` + 实例级一次性 console.log 提示;fs 工具沙箱不受影响
    (另一层)。**红线:绝不静默假成功**——要么真受限、要么明示 unconfined、失败如实带错误码。
    社区同类取舍:绕过(zimzaza4/dsh-bash-win、Jyleaves/dsh-win-bash-fix)vs 拒绝(liceses/
-   dsh-gitbash-preset);本插件选绕过+如实标注。
-   **本机复现记录(2026-09-13,0.13.2 发布后补做)**:直接以官方 AclSandbox(sandbox-windows-acl)
-   workspace-write 模式驱动 bash.exe,stderr 逐字出现 `CreateFileMapping S-1-5-21-…-1001.1, Win32
-   error 5` fatal error(与 issue #1 补充报告一致);同一 argv 不经 confine 直接 spawn 则 exit 0
-   正常——证明根因在受限令牌而非 bash 安装,且修复采用的 runArgv 路径本身可用。
+   dsh-gitbash-preset);本插件选绕过+如实标注。本机复现记录见 CHANGELOG v0.13.2。
 2. **preset 组合文本可审查**:assets/*/agent.cordis.yml 是完整组合,物化只做逐字节拷贝,
    绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**唯一例外:v0.13.0 的 present 行条件注入**
    ——按锚点做纯字符串拼接(`injectPresentRow`),仍不解析 YAML,`!!js` 字面量照旧安全。
@@ -145,18 +151,18 @@
 2. 真机验证:重启 DSH → 物化日志(含 era 字样)→ 模式选择器出现 `* · Git Bash` → 新会话 bash 工具存在、
    `command -v bash` 指向 Git 安装目录;
 3. 组合文本改动后:用 cordis 会话跑 `agentPresets.standingKeyFor('<variant>')` 挂载校验;
-4. era 相关改动另需双向验证,两个方向均已真机通过:`code` era(<= 0.1.1,2026-08 前)与 `ptc` era
-   (2026-08-29,dsh 0.1.2-alpha.1 真机:三个物化变体 marker 全为 `base:"ptc"`、`standingKeyFor` 挂载
-   全 OK、roster 无重复/无 broken/无 orphan;此前本机为 <= 0.1.1)。
-   仍待覆盖:「旧 marker(无 base)首启刷新一次」路径(可手造无 `base` 的 marker 再启动验证)。
+4. era 相关改动另需双向验证,两个方向(`code` era ≤ 0.1.1 / `ptc` era)均已真机通过,记录见
+   CHANGELOG v0.6.0;仍待覆盖:「旧 marker(无 base)首启刷新一次」路径(可手造无 `base` 的
+   marker 再启动验证)。
 
 ## 发布 checklist(GitHub + npm)
 
 1. `npm test` 全绿;
-2. `npm version minor|patch`(能力变化 minor,修复 patch);
-3. `git push --tags`;
-4. `gh release create <tag>`(notes 带安装命令与变更摘要)——published 事件自动触发 npm publish;
-5. **触发 npmmirror 同步**(机器默认 registry 是 npmmirror,不触发要等它自行同步,
+2. **更新 `CHANGELOG.md`**(新版本条目,随版本提交——见「变更记录纪律」);
+3. `npm version minor|patch`(能力变化 minor,修复 patch);
+4. `git push --tags`;
+5. `gh release create <tag>`(notes 带安装命令与变更摘要)——published 事件自动触发 npm publish;
+6. **触发 npmmirror 同步**(机器默认 registry 是 npmmirror,不触发要等它自行同步,
    期间 `dshmarket`/pnpm 对新版本号解析会报 ERR_PNPM_NO_MATCHING_VERSION):
    `curl -X PUT https://registry.npmmirror.com/dsh-gitbash-shell/sync`;
-6. 用户侧更新 = `dsh plugin --profile <name> add dsh-gitbash-shell`(npm 包名);host 半变更需重启 DSH。
+7. 用户侧更新 = `dsh plugin --profile <name> add dsh-gitbash-shell`(npm 包名);host 半变更需重启 DSH。
