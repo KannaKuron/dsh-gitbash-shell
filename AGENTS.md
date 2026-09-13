@@ -31,6 +31,10 @@
    (另一层)。**红线:绝不静默假成功**——要么真受限、要么明示 unconfined、失败如实带错误码。
    社区同类取舍:绕过(zimzaza4/dsh-bash-win、Jyleaves/dsh-win-bash-fix)vs 拒绝(liceses/
    dsh-gitbash-preset);本插件选绕过+如实标注。
+   **本机复现记录(2026-09-13,0.13.2 发布后补做)**:直接以官方 AclSandbox(sandbox-windows-acl)
+   workspace-write 模式驱动 bash.exe,stderr 逐字出现 `CreateFileMapping S-1-5-21-…-1001.1, Win32
+   error 5` fatal error(与 issue #1 补充报告一致);同一 argv 不经 confine 直接 spawn 则 exit 0
+   正常——证明根因在受限令牌而非 bash 安装,且修复采用的 runArgv 路径本身可用。
 2. **preset 组合文本可审查**:assets/*/agent.cordis.yml 是完整组合,物化只做逐字节拷贝,
    绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**唯一例外:v0.13.0 的 present 行条件注入**
    ——按锚点做纯字符串拼接(`injectPresentRow`),仍不解析 YAML,`!!js` 字面量照旧安全。
