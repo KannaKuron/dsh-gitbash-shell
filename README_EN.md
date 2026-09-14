@@ -2,6 +2,8 @@
 
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
+[简体中文](README.md) | English
+
 > Run **every agent shell command through Git Bash** on Windows with DeepSeek
 > Harness (dsh) — replaces the PowerShell executor and materializes Git Bash
 > variants of all four agent presets.
