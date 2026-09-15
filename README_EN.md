@@ -83,9 +83,36 @@ the PTC preset is materialized as Git Bash automatically (tool-bash on,
 tool-pwsh off) — no extra mode, no manual edits. Without this plugin the PTC
 preset stays as its own plugin manages it.
 
-## POSIX path directive (v0.7.0)
+## POSIX path dialect (introduced in v0.7.0, gated by the `posixPaths` switch)
 
-While replacing the host shell with Git Bash, this plugin also injects one global per-session system-prompt directive (Win32 only, via systemPrompt.context; no preset or composition text is touched): **always use POSIX-style paths in bash commands** (/c/Users/..., /c/Program Files/...) — never C:/... or C:\... . Every mode — standard/minimal/PTC/creation and user-authored presets — is covered; nothing needs a per-mode change.
+While replacing the host shell with Git Bash on Windows, this plugin makes every path the
+model sees use the MSYS drive-root POSIX form (/c/Users/..., /c/Program Files/...). The switch
+is the `posixPaths` boolean in the `gitbash-shell` settings namespace; it is **on by default**
+(since v0.10.0) and can be toggled any time on this plugin's "Git Bash path dialect" card in
+**Settings → Plugins**. No preset or composition file is touched, and every mode —
+standard/minimal/PTC/creation and user-authored presets — is covered.
+
+While it is on (Windows only), `posixPaths` gates all of the following:
+
+- **Source-level rewrite**: during assembly (`system-prompt/assemble`) every Windows absolute
+  path in the official prompt's sections, contexts, and variables is rewritten in place to the
+  /c/... form — nothing is added or removed, and tool schemas stay untouched;
+- **One-sentence directive**: a global directive via `systemPrompt.context` (order 126) — the
+  shell is Git for Windows bash, paths use MSYS drive roots, and every tool accepts that form
+  directly;
+- **Argument translation**: on `tools/execute` the file tools' path arguments (`file_path` /
+  `path` / `workdir`) are translated from /c/... back to C:/... for the Node-backed file tools;
+  a bash command's `command` field is left alone — that is Git Bash's native form;
+- **Result round-trip**: path metadata in successful results (`path` of read/write/edit,
+  `paths[]` of glob, `matches[].path` of grep) flows back in the MSYS form; file contents and
+  error results are untouched;
+- **Runtime fact**: `DSH_PATH_DIALECT=msys` is contributed to the official `dsh-shell-env`
+  registry, so the model can verify the dialect at execution time (it follows the live switch).
+
+With the switch off, dsh-native behavior returns: the directive text is empty (dropped at
+assembly, so zero prompt noise), path arguments and result metadata are no longer rewritten, and
+the file tools receive Windows paths. **Bash stays Git Bash either way** — the switch only
+governs the cross-tool path dialect.
 
 ## Cooperation with dsh-better-sidebar
 

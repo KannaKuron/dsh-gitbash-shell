@@ -923,7 +923,7 @@ export async function apply(ctx, config = {}) {
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
-  // ── settings namespace: the posixPaths switch (default OFF) ──────────────
+  // ── settings namespace: the posixPaths switch (default ON, v0.10.0) ──────
   // Served on the host so the Plugins tab pairs it with the browser card
   // (the tab dispatches Host-served namespaces ∩ registered cards). Dynamic
   // imports keep the zero-dependency smoke path importable; the schema MUST

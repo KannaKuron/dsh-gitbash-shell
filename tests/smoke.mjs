@@ -283,15 +283,119 @@ test('client half is a ModuleLoader bundle with baseline requires only', () => {
   new Function(text)
 })
 
-test('client dictionaries stay key-aligned', () => {
+test('every shipped dictionary carries the same key set as zh', () => {
+  // A locale block is preceded by a /* locale: <tag> */ marker, so the blocks
+  // can be sliced without parsing the file. Equality matters because a key
+  // missing from a third language falls back to English at lookup time — a
+  // silent half-translated card, which is exactly what this catches.
   const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
-  const zhBlock = text.slice(text.indexOf('var zh = {'), text.indexOf('var en = {'))
-  const enBlock = text.slice(text.indexOf('var en = {'), text.indexOf('// ── styles'))
-  const keysOf = (block) => new Set([...block.matchAll(/"([a-zA-Z][^"]*)":/g)].map((m) => m[1]))
-  const zhKeys = keysOf(zhBlock)
-  const enKeys = keysOf(enBlock)
-  assert.ok(zhKeys.size > 0)
-  assert.deepEqual([...enKeys].sort(), [...zhKeys].sort(), 'zh/en dictionaries must be key-aligned')
+  const keysOf = (segment) => [...segment.matchAll(/^\s*"([^"]+)":\s*"/gm)].map((match) => match[1]).sort()
+
+  const zhKeys = keysOf(text.slice(text.indexOf('var zh = {'), text.indexOf('var en = {')))
+  assert.ok(zhKeys.length >= 9, 'the zh dictionary looks truncated: ' + zhKeys.length)
+  assert.deepEqual(
+    keysOf(text.slice(text.indexOf('var en = {'), text.indexOf('var LOCALES = {'))),
+    zhKeys,
+    'en must stay key-aligned with zh',
+  )
+
+  const table = text.slice(text.indexOf('var LOCALES = {'), text.indexOf('// ── locale resolution'))
+  const parts = table.split('/* locale: ')
+  assert.ok(parts.length - 1 >= 19, 'expected at least nineteen third-language dictionaries, saw ' + (parts.length - 1))
+  const shipped = new Set()
+  for (let index = 1; index < parts.length; index += 1) {
+    const tag = parts[index].slice(0, parts[index].indexOf(' */'))
+    shipped.add(tag)
+    assert.deepEqual(keysOf(parts[index]), zhKeys, 'dictionary ' + tag + ' does not match the zh key set')
+  }
+  for (const tag of ['ar', 'de', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ru', 'sv', 'th', 'tr', 'vi', 'zh-hk', 'zh-mo', 'zh-tw']) {
+    assert.ok(shipped.has(tag), 'missing shipped locale: ' + tag)
+  }
+})
+
+test('client dictionaries resolve live, never from a captured table', () => {
+  const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(text, /function dictionaryFor\(active\)/, 'locale tags must resolve through dictionaryFor')
+  assert.match(text, /function translatorOf\(ctx\)/, 'the live lookup must exist')
+  assert.match(text, /var t = translatorOf\(ctx\)/, 'the card copy must come from the live lookup')
+  assert.match(text, /locale\.subscribe\(/, 'the card must repaint on a live language switch')
+  assert.match(text, /ctx\.locale\.register\(NS, Object\.assign\(\{ zh: zh, en: en \}, LOCALES\)\)/, 'every shipped dictionary must ride ctx.locale.register')
+  assert.doesNotMatch(text, /var \w+ = dictionaryFor\(/, 'the dictionary must not be captured once at activation')
+
+  // Drive the real bundle: apply() against a fake cordis ctx, then render the
+  // registered card once per active locale. A switch must change the strings on
+  // the SAME registration (no re-apply), which is what "live" means here.
+  const react = {
+    createElement: (type, props, ...children) => ({
+      type,
+      props: props === null || props === undefined ? {} : props,
+      children: children.filter((child) => child !== null && child !== undefined && child !== false),
+    }),
+    useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+    useEffect: (effect) => effect(),
+    Component: class Component { constructor(props) { this.props = props; this.state = {} } },
+  }
+  let bundle = null
+  const navigatorStub = { language: 'en-US' }
+  new Function('window', 'navigator', text)({ __ModuleLoader__: { load: (value) => { bundle = value } } }, navigatorStub)
+  assert.equal(bundle.id, 'dsh-gitbash-shell')
+
+  const dictionaries = new Map()
+  const subscribers = []
+  const locale = {
+    register: (ns, dicts) => { dictionaries.set(ns, dicts); return () => {} },
+    getSnapshot: () => ({ active: activeLocale }),
+    subscribe: (fn) => { subscribers.push(fn); return () => {} },
+  }
+  let activeLocale = 'en'
+  let registration = null
+  const scope = { getSnapshot: () => ({ status: 'ready', value: { posixPaths: true } }), set: async () => {} }
+  const ctx = {
+    get: (name) => (name === 'locale' ? locale : undefined),
+    settingsScope: { bind: () => scope },
+    slots: {
+      inject: (hole, callback) => { callback() },
+      register: (options, component) => { registration = { options, component }; return () => {} },
+    },
+    locale,
+    effect: (body) => body(),
+  }
+  bundle.factory((specifier) => (specifier === 'react' ? react : {})).apply(ctx)
+
+  const shipped = dictionaries.get('gitbashShell')
+  assert.equal(Object.keys(shipped).length, 21, 'zh + en + 19 third languages must ride the registry')
+  assert.equal(shipped.ja['title'], 'Git Bash パス方言')
+
+  const render = () => {
+    const props = Object.assign({}, registration.options.inject())
+    const wrapper = registration.component(props)          // CardWithLocale -> LocaleLive element
+    const live = wrapper.type(wrapper.props)               // LocaleLive render (subscribes on mount)
+    const card = live.children[0]
+    const strings = []
+    const walk = (node) => {
+      if (typeof node === 'string') { strings.push(node); return }
+      if (node === null || typeof node !== 'object') return
+      for (const child of node.children || []) walk(child)
+    }
+    walk(card.type(card.props))
+    return strings
+  }
+
+  activeLocale = 'ja'
+  assert.ok(render().includes('Git Bash パス方言'), 'ja must answer from its own dictionary')
+  activeLocale = 'de'
+  assert.ok(render().includes('Git-Bash-Pfaddialekt'), 'a switch must repaint without re-applying the plugin')
+  activeLocale = 'zh-Hant-TW'
+  assert.ok(render().includes('Git Bash 路徑方言'), 'a bare zh-Hant-* tag falls back to the HK copy')
+  activeLocale = 'pt-BR'
+  assert.ok(render().includes('Dialeto de caminhos do Git Bash'), 'a regional tag resolves through its primary subtag')
+  activeLocale = ''
+  navigatorStub.language = 'fr'
+  assert.ok(render().includes('Dialecte de chemins Git Bash'), 'an empty preference falls back to the browser language')
+  activeLocale = ''
+  navigatorStub.language = 'xx-YY'
+  assert.ok(render().includes('Git Bash path dialect'), 'an unsupported language shows English, never a raw key')
+  assert.ok(subscribers.length >= 1 && subscribers.every((fn) => typeof fn === 'function'), 'the card subscribes to the locale service for the repaint')
 })
 
 test('host gates the path dialect behind the posixPaths setting', async () => {

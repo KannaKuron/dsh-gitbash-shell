@@ -144,9 +144,30 @@ preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 > 切换生效后若 `ptc-cordis` 目录已存在且被旧版本物化,删除
 > `~/.dsh/.agent-presets/ptc-cordis` 并重启,即由新逻辑重新物化。
 
-## POSIX 路径指示(v0.7.0)
+## POSIX 路径方言(v0.7.0 引入,受 `posixPaths` 开关门控)
 
-Windows 上本插件把宿主 shell 换成 Git Bash 的同时,会向**每个会话的系统提示**注入一条全局指示(仅 Win32,走 `systemPrompt.context`,不影响任何 preset/组合文本):**bash 命令里一律用 POSIX 风格路径**(`/c/Users/...`、`/c/Program Files/...`),不要 `C:/...` 或 `C:\...`。这样模型在工具调用里不会再拿 Windows 盘符路径喂给 Git Bash——标准/极简/PTC/创造及用户自建模式全部覆盖,无需任何模式单独改。
+Windows 上本插件把宿主 shell 换成 Git Bash 的同时,让**模型看到的路径**统一成 MSYS 盘根
+POSIX 形式(`/c/Users/...`、`/c/Program Files/...`)。开关是 settings 命名空间
+`gitbash-shell` 的布尔字段 `posixPaths`,**默认开启**(v0.10.0 起),可在 **设置 → 插件**
+里本插件的「Git Bash 路径方言」卡片上随时切换;不修改任何 preset / 组合文件,标准/极简/
+PTC/创造及用户自建模式一律覆盖。
+
+开启时(仅 Win32),`posixPaths` 门控以下全部行为:
+
+- **提示词源头替换**:组装期(`system-prompt/assemble`)把官方提示词 sections / contexts /
+  variables 里的 Windows 绝对路径**原位**改写成 `/c/...`——不增删任何内容、不动工具 schema;
+- **一句话指示**:经 `systemPrompt.context`(order 126)注入全局指示——shell 是 Git for
+  Windows bash,路径用 MSYS 盘根,所有工具都直接接受这种写法;
+- **参数翻译**:`tools/execute` 上把文件工具的路径参数(`file_path` / `path` / `workdir`)由
+  `/c/...` 翻回 `C:/...` 交给 Node 文件工具;bash 的 `command` 字段不动——那是 Git Bash 母语;
+- **结果回流**:成功结果里的路径元数据(`read`/`write`/`edit` 的 `path`、`glob` 的 `paths[]`、
+  `grep` 的 `matches[].path`)改写回 MSYS 形式;文件内容与错误结果不动;
+- **运行时事实**:向官方 `dsh-shell-env` 注册表贡献 `DSH_PATH_DIALECT=msys`,模型可在执行时
+  核验(随开关实时生效)。
+
+关闭后回到 dsh 原生行为:指示文本为空(组装期直接丢弃,零提示噪声),路径参数与结果元数据
+都不再改写,文件工具收 Windows 路径。**bash 始终是 Git Bash,不受此开关影响**——它只决定
+跨工具的路径方言。
 
 ## 与 dsh-better-sidebar 联动
 
