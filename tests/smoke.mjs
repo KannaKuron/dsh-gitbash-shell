@@ -521,3 +521,176 @@ test('executor: Windows confined calls run unconfined and say so (issue #1)', as
     console.log = origLog
   }
 })
+
+test('row forms: host spelling is read, aligned to, and idempotent (0.1.6 rename)', () => {
+  const { rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow } = _internal
+  const OLD = "    - id: workflow-worker-thread\n      name: '@deepseek-ai/dsh-workflow-worker-thread'\n      config:\n        provider: spawn\n"
+  const NEW = "    - id: workflow-ptc\n      name: '@deepseek-ai/dsh-workflow-ptc'\n      disabled: true\n      config:\n        provider: spawn\n"
+  const RALPH_OFF = "    - id: tool-ralph\n      name: '@deepseek-ai/dsh-tool-ralph'\n      disabled: true\n      config:\n        maxRounds: 64\n"
+  const RALPH_ON = "    - id: tool-ralph\n      name: '@deepseek-ai/dsh-tool-ralph'\n      config:\n        maxRounds: 64\n"
+
+  assert.equal(rowFormOf(OLD, 'workflow-worker-thread').disabled, false)
+  assert.equal(rowFormOf(NEW, 'workflow-ptc').disabled, true)
+  assert.equal(rowFormOf(OLD, 'workflow-ptc'), undefined, 'an absent row reads as undefined')
+  assert.equal(rowFormOf(RALPH_OFF, 'tool-ralph').disabled, true)
+  assert.equal(rowFormOf(RALPH_ON, 'tool-ralph').disabled, false)
+  // A later row's disabled must never leak into the engine row's own block.
+  const stacked = OLD + RALPH_OFF
+  assert.equal(rowFormOf(stacked, 'workflow-worker-thread').disabled, false)
+  assert.equal(rowFormsOf(stacked).ralph.disabled, true)
+  assert.equal(rowFormsOf(RALPH_ON).engine, undefined, 'no engine row at all')
+
+  // Aligning to the NEW host rewrites id + package and copies the host states.
+  const host = { engine: rowFormOf(NEW, 'workflow-ptc'), ralph: rowFormOf(RALPH_OFF, 'tool-ralph') }
+  const aligned = alignRalphRow(alignEngineRow(OLD + RALPH_ON, host.engine), host.ralph)
+  assert.ok(aligned.includes('- id: workflow-ptc'), 'engine id takes the host spelling')
+  assert.ok(aligned.includes("name: '@deepseek-ai/dsh-workflow-ptc'"), 'engine package follows the id')
+  assert.ok(!aligned.includes('workflow-worker-thread'), 'the deleted package name is gone')
+  assert.equal(rowFormOf(aligned, 'workflow-ptc').disabled, true, 'the host disabled state is copied')
+  assert.equal(rowFormOf(aligned, 'tool-ralph').disabled, true, 'ralph follows the host default')
+  assert.equal(alignRalphRow(alignEngineRow(aligned, host.engine), host.ralph), aligned, 'alignment is idempotent')
+
+  // Aligning to an OLD host is a no-op for the committed spelling...
+  const oldHost = { engine: rowFormOf(OLD, 'workflow-worker-thread'), ralph: rowFormOf(RALPH_ON, 'tool-ralph') }
+  assert.equal(alignRalphRow(alignEngineRow(OLD + RALPH_ON, oldHost.engine), oldHost.ralph), OLD + RALPH_ON)
+  // ...and rewrites a new-spelling asset back for it.
+  const back = alignRalphRow(alignEngineRow(NEW + RALPH_OFF, oldHost.engine), oldHost.ralph)
+  assert.ok(back.includes('- id: workflow-worker-thread'))
+  assert.ok(!back.includes('- id: workflow-ptc'))
+  assert.equal(rowFormOf(back, 'tool-ralph').disabled, false, 'ralph is re-enabled to match the old host')
+
+  // A composition without the rows (minimal) is returned untouched.
+  const minimal = "    - id: tool-bash\n      name: '@deepseek-ai/dsh-tool-bash'\n"
+  assert.equal(alignEngineRow(minimal, host.engine), minimal)
+  assert.equal(alignRalphRow(minimal, host.ralph), minimal)
+})
+
+test('materialize aligns the engine row to the host and records it in the marker', () => {
+  const { rowFormOf } = _internal
+  const dir = mkdtempSync(join(tmpdir(), 'gitbash-shell-rows-'))
+  try {
+    const ptcHost = { engine: { id: 'workflow-ptc', name: '@deepseek-ai/dsh-workflow-ptc', disabled: true }, ralph: { disabled: true } }
+    _internal.materialize({ target: join(dir, 'a'), presetId: 'code-gitbash', skillsSource: null, version: '0.14.0', base: 'ptc', persona: 'split', rows: { ptc: ptcHost } })
+    const text = readFileSync(join(dir, 'a', 'agent.cordis.yml'), 'utf8')
+    assert.ok(text.includes('- id: workflow-ptc'), 'the engine row takes the host spelling')
+    assert.ok(!text.includes('workflow-worker-thread'), 'no trace of the deleted package')
+    assert.equal(rowFormOf(text, 'tool-ralph').disabled, true, 'ralph follows the host default')
+    const marker = JSON.parse(readFileSync(join(dir, 'a', '.plugin-managed.json'), 'utf8'))
+    assert.equal(marker.rows, 'workflow-ptc:off:off', 'the marker records the aligned form')
+
+    // No probe (roster unavailable): the committed spelling is written as-is.
+    _internal.materialize({ target: join(dir, 'b'), presetId: 'code-gitbash', skillsSource: null, version: '0.14.0', base: 'ptc', persona: 'split' })
+    assert.ok(readFileSync(join(dir, 'b', 'agent.cordis.yml'), 'utf8').includes('- id: workflow-worker-thread'), 'no probe leaves the frozen text alone')
+    assert.equal(JSON.parse(readFileSync(join(dir, 'b', '.plugin-managed.json'), 'utf8')).rows, '', 'no probe records an empty form')
+
+    // standard mirrors the standard preset, whose engine row stays live.
+    const stdHost = { engine: { id: 'workflow-ptc', name: '@deepseek-ai/dsh-workflow-ptc', disabled: false }, ralph: { disabled: true } }
+    _internal.materialize({ target: join(dir, 'c'), presetId: 'standard-gitbash', skillsSource: null, version: '0.14.0', base: 'ptc', persona: 'split', rows: { standard: stdHost } })
+    const std = readFileSync(join(dir, 'c', 'agent.cordis.yml'), 'utf8')
+    assert.equal(rowFormOf(std, 'workflow-ptc').disabled, false, 'standard keeps the engine live')
+
+    // minimal has no engine row and is untouched either way.
+    _internal.materialize({ target: join(dir, 'd'), presetId: 'minimal-gitbash', skillsSource: null, version: '0.14.0', base: 'ptc', persona: 'split', rows: { ptc: ptcHost } })
+    assert.ok(!readFileSync(join(dir, 'd', 'agent.cordis.yml'), 'utf8').includes('workflow-'), 'minimal carries no engine row')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('syncDecision refreshes when the host row form flips (0.1.6 rename)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gitbash-shell-rowsync-'))
+  try {
+    const target = join(dir, 'a')
+    _internal.materialize({ target, presetId: 'code-gitbash', skillsSource: null, version: '0.14.0', base: 'ptc', persona: 'split' })
+    const marker = JSON.parse(readFileSync(join(target, '.plugin-managed.json'), 'utf8'))
+    const state = _internal.classify(target)
+    assert.equal(state, 'unmodified')
+    assert.equal(_internal.syncDecision({ state, marker, version: '0.14.0', sourceHashes: null, base: 'ptc', persona: 'split', present: false, rows: '' }), 'idle')
+    assert.equal(_internal.syncDecision({ state, marker, version: '0.14.0', sourceHashes: null, base: 'ptc', persona: 'split', present: false, rows: 'workflow-ptc:off:off' }), 'refresh', 'a host rename re-materializes')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('assets keep the pre-rename engine spelling; alignment is a materialization concern', () => {
+  const assetsDir = fileURLToPath(new URL('../assets/', import.meta.url))
+  for (const presetId of _internal.PRESET_IDS) {
+    const dir = join(assetsDir, presetId)
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.yml') || file === 'preset.yml') continue
+      const text = readFileSync(join(dir, file), 'utf8')
+      assert.ok(!text.includes("'@deepseek-ai/dsh-workflow-ptc'"), presetId + '/' + file + ': the new package name must never be committed (hosts before 0.1.6 ship only the old one)')
+      if (presetId === 'minimal-gitbash') continue
+      assert.ok(text.includes("'@deepseek-ai/dsh-workflow-worker-thread'"), presetId + '/' + file + ': the engine row keeps the era-neutral committed spelling')
+    }
+  }
+})
+
+test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)', async () => {
+  const src = readFileSync('src/shell.js', 'utf8')
+  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
+  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
+  const build = (Base, platform) => {
+    const mod = scope(Base, chain, { platform })
+    const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
+    ex.config = { bashPath: 'X:/git/bin/bash.exe' }
+    ex.calls = []
+    ex.runArgvReturns = RESULT
+    return ex
+  }
+  // Pre-0.1.6 base: synchronous start, runArgv resolves to the bare result.
+  class SyncBase {
+    async run() { return { via: 'super.run' } }
+    start() { this.calls.push(['super.start']); return { via: 'super.start' } }
+    async runArgv() { return this.runArgvReturns }
+    startArgv() { this.calls.push(['startArgv']); return { started: true } }
+  }
+  // 0.1.6 base: async start, runArgv resolves to the envelope.
+  class AsyncBase extends SyncBase {
+    async start() { this.calls.push(['super.start']); return { via: 'super.start' } }
+  }
+
+  const spec = { command: 'echo hi', sandboxPolicy: { mode: 'workspace-write' } }
+  const logs = []
+  const origLog = console.log
+  console.log = (...a) => logs.push(a.join(' '))
+  try {
+    const legacy = build(SyncBase, 'win32')
+    const rLegacy = await legacy.run(spec)
+    assert.equal(rLegacy.stdout.text, 'hi', 'a bare ShellRunResult reaches the caller unchanged')
+    assert.equal(rLegacy.sandbox.enforcement, 'unconfined')
+
+    const modern = build(AsyncBase, 'win32')
+    modern.runArgvReturns = { result: RESULT, spawnRequested: true }
+    const rModern = await modern.run(spec)
+    assert.equal(rModern.stdout.text, 'hi', 'the { result, spawnRequested } envelope is unwrapped')
+    assert.equal(rModern.exitCode, 0)
+    assert.equal(rModern.result, undefined, 'no wrapper leaks into the result the host reads')
+    assert.equal(rModern.sandbox.enforcement, 'unconfined')
+
+    const cancelled = build(AsyncBase, 'win32')
+    cancelled.runArgvReturns = { result: { ...RESULT, exitCode: null, aborted: true }, spawnRequested: false }
+    const rCancelled = await cancelled.run(spec)
+    assert.deepEqual(rCancelled.sandbox, { mode: 'workspace-write', denied: false }, 'no spawn means nothing to label as unconfined')
+
+    const syncProc = build(SyncBase, 'win32').start(spec)
+    assert.equal(typeof syncProc.then, 'undefined', 'a synchronous host gets the handle itself')
+    const asyncProc = build(AsyncBase, 'win32').start(spec)
+    assert.equal(typeof asyncProc.then, 'function', 'an async host gets a thenable')
+    assert.equal((await asyncProc).sandbox.enforcement, 'unconfined', 'awaiting yields the labelled handle')
+
+    const forwarded = []
+    const owner = build(AsyncBase, 'linux')
+    owner.ctx = { sandbox: { confine: (argv, policy, signal) => { forwarded.push([argv, policy, signal]); return { argv } } } }
+    const signal = { aborted: false }
+    owner.confine('echo hi', { mode: 'read-only' }, signal)
+    assert.equal(forwarded.length, 1)
+    assert.deepEqual(forwarded[0][0], ['X:/git/bin/bash.exe', '-c', 'echo hi'])
+    assert.equal(forwarded[0][2], signal, 'the host deadline reaches the sandbox provider')
+  } finally {
+    console.log = origLog
+  }
+})
+

@@ -42,8 +42,10 @@
    社区同类取舍:绕过(zimzaza4/dsh-bash-win、Jyleaves/dsh-win-bash-fix)vs 拒绝(liceses/
    dsh-gitbash-preset);本插件选绕过+如实标注。本机复现记录见 CHANGELOG v0.13.2。
 2. **preset 组合文本可审查**:assets/*/agent.cordis.yml 是完整组合,物化只做逐字节拷贝,
-   绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**唯一例外:v0.13.0 的 present 行条件注入**
-   ——按锚点做纯字符串拼接(`injectPresentRow`),仍不解析 YAML,`!!js` 字面量照旧安全。
+   绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**两个纯字符串手术例外,都不解析 YAML**:
+   ① v0.13.0 的 present 行条件注入(`injectPresentRow`,按锚点拼接);② v0.14.0 的**行形态对齐**
+   (`alignEngineRow` / `alignRalphRow`,把引擎行与 `tool-ralph` 重写成宿主内置 preset 的拼法 +
+   disabled 状态,见第 9 条)。两者都必须幂等、探测失败即 no-op,`!!js` 字面量照旧安全。
 3. **用户改过的 preset 绝不覆盖、绝不删除**:.plugin-managed.json 哈希是唯一判据;
    孤儿清理只删 `managedBy === 'dsh-gitbash-shell'` 且 unmodified 的目录。
 4. **`gitBash` 能力服务**是联动契约:`{ active, bashPath }`,仅 Windows 为 active;
@@ -145,6 +147,25 @@
    仍为 0,Session 重构只到 branded types,消费面无变化);dsh-better-sidebar
    的命名空间(`terminalShell`/`shell`)演化同样需在其升级后复核。
 
+9. **适配新版 dsh 的核对纪律(2026-09-15 立,dsh 0.1.6-alpha.1 教训)**:物化类插件升级 dsh 时,
+   **绝不只看本站 `assets/` 的自身 diff**——真正的漂移只存在于「本站资产 × 宿主内置 preset」之间。
+   每次跟随升级必须完整做一遍:
+   ① **结构化行序列对比**:取宿主 `packages/preset/agent-presets/presets/{standard,cordis,ptc,minimal}/
+      agent.cordis.yml`,抽出 `- id:` / `name:` / `disabled:` 三行序列,与本插件对应变体逐条对齐;
+      **提示词**(persona 的 `prefix:`/`suffix:` 文本)与**工具行**同样要 diff,不要只看 id 名字。
+   ② **行改名是致命项**:dsh 0.1.6-alpha.1 把引擎行 `workflow-worker-thread` 改名 `workflow-ptc`
+      并**删除**了旧包(`packages/workflow/workflow-worker-thread` 整包消失)。组合里一行 import
+      失败会拒绝**整棵 preset 挂载**(agent-presets `mount.ts`),物化出的 preset 会直接不可用——
+      不是「少个工具」那么轻。
+   ③ **默认值变化同样要跟**:同一版把 `tool-ralph` 改成默认 `disabled: true`(内置预设全改);
+      不跟就是「物化出来的 preset 替部署偷偷打开了一个已被关掉的工具」。
+   ④ **对齐优先用运行时改写,而不是再加 era 资产**:能从宿主内置 preset 现场抄的行一律抄
+      (`rowFormsOf` / `alignEngineRow` / `alignRalphRow` + `detectRowForms`,v0.14.0)。只有整段
+      文本结构变化时才新增变体文件。改写必须是**纯字符串手术**(绝不 YAML parse→dump,`!!js` 必须
+      活下来)、**幂等**、**探测失败即 no-op**(旧宿主保持逐字节原样)。
+   ⑤ marker 用 `rows` 指纹记录对齐结果,宿主形态翻转时 `syncDecision` 自动重物化(与 `base` /
+      `persona` / `present` 同一套维度模式)。
+
 ## 验证清单(改动后)
 
 1. `npm test` 全绿;
@@ -154,6 +175,9 @@
 4. era 相关改动另需双向验证,两个方向(`code` era ≤ 0.1.1 / `ptc` era)均已真机通过,记录见
    CHANGELOG v0.6.0;仍待覆盖:「旧 marker(无 base)首启刷新一次」路径(可手造无 `base` 的
    marker 再启动验证)。
+5. **升级 dsh 后**(v0.14.0 起强制):按第 9 条把四个内置 preset 各核对一遍——行序列 + 提示词 +
+   disabled 默认值;smoke 的 `assets keep the pre-rename engine spelling` 与 `materialize aligns
+   the engine row to the host` 两项锁住对齐行为;真机确认物化日志出现四个变体且模式选择器里都能挂载。
 
 ## 发布 checklist(GitHub + npm)
 

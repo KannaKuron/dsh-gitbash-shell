@@ -70,12 +70,52 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   /**
    * Wrap one shell command via the ctx.sandbox provider, substituting Git Bash
    * for the shipped bare `bash` argv.
+   *
+   * Signature spans both dsh eras: 0.1.6-alpha.1 made the provider's confine
+   * async and handed it the caller's abort signal (the base class now calls
+   * `this.confine(command, policy, signal)` and awaits it). The predecessor
+   * was synchronous and took two arguments. Forwarding the third argument is
+   * safe on both — the old provider ignores it and its synchronous return is
+   * what the old base class still consumes — while dropping it on the new host
+   * would silently detach sandbox preparation from cancellation.
    * @param command - shell source for the confined inner `bash -c`.
    * @param policy - resolved confined execution policy.
-   * @returns the provider's exact argv and settlement-classification facts.
+   * @param signal - caller deadline/cancellation, forwarded when the host provides one.
+   * @returns the provider's exact argv and settlement-classification facts (a promise on dsh >= 0.1.6).
    */
-  confine(command, policy) {
-    return this.ctx.sandbox.confine([this.bashPath, '-c', command], policy)
+  confine(command, policy, signal) {
+    return this.ctx.sandbox.confine([this.bashPath, '-c', command], policy, signal)
+  }
+
+  /**
+   * Whether the LOADED base class declares an async `start`, probed once
+   * (pure). dsh 0.1.6-alpha.1 turned LocalBashExecutor.start into an async
+   * method returning Promise<ShellProcess>; before that it returned the live
+   * handle directly. This override has to match whichever contract the host
+   * actually carries: handing a plain handle to a host that awaits is fine,
+   * but handing a Promise to a synchronous host would give it a thenable
+   * instead of a process. Shape is probed, never inferred from a version.
+   * @returns true when the base class start is an async function.
+   */
+  static baseStartIsAsync() {
+    return SandboxBashExecutor.prototype.start.constructor.name === 'AsyncFunction'
+  }
+
+  /**
+   * Unwrap `runArgv`'s settlement across dsh eras (pure). 0.1.6-alpha.1
+   * changed the protected hook's return value from the bare ShellRunResult to
+   * `{ result, spawnRequested }`, where spawnRequested is false when
+   * preparation was cancelled before any spawn. Spreading the wrapper as if it
+   * were the result would hand the caller an object carrying no exitCode and
+   * no streams at all, so it is unwrapped by shape — never by version.
+   * @param raw - whatever the loaded `runArgv` resolved to.
+   * @returns the bare result plus whether argv ever reached the provider.
+   */
+  static unwrapRunArgv(raw) {
+    if (raw !== null && typeof raw === 'object' && typeof raw.spawnRequested === 'boolean' && raw.result !== undefined) {
+      return { result: raw.result, spawnRequested: raw.spawnRequested }
+    }
+    return { result: raw, spawnRequested: true }
   }
 
   /**
@@ -93,13 +133,17 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     if (policy === undefined) return super.run(spec)
     const { mode } = policy
     if (mode === 'danger-full-access') {
-      const result = await this.runArgv(spec, [this.bashPath, '-c', spec.command])
+      const { result } = GitBashSandboxExecutor.unwrapRunArgv(
+        await this.runArgv(spec, [this.bashPath, '-c', spec.command]))
       return { ...result, sandbox: { mode, denied: false } }
     }
     if (process.platform === 'win32') {
       this.warnConfinedUnconfined(mode)
-      const result = await this.runArgv(spec, [this.bashPath, '-c', spec.command])
-      return { ...result, sandbox: { mode, denied: false, enforcement: 'unconfined' } }
+      const { result, spawnRequested } = GitBashSandboxExecutor.unwrapRunArgv(
+        await this.runArgv(spec, [this.bashPath, '-c', spec.command]))
+      // No spawn means no argv ran, so there is nothing to label as
+      // unconfined; the parent reports the same bare sandbox facts there.
+      return { ...result, sandbox: spawnRequested ? { mode, denied: false, enforcement: 'unconfined' } : { mode, denied: false } }
     }
     return super.run(spec)
   }
@@ -108,16 +152,14 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     const policy = spec.sandboxPolicy
     if (policy === undefined) return super.start(spec)
     const { mode } = policy
-    if (mode === 'danger-full-access') {
+    const fullAccess = mode === 'danger-full-access'
+    if (fullAccess || process.platform === 'win32') {
+      if (!fullAccess) this.warnConfinedUnconfined(mode)
       const proc = this.startArgv(spec, [this.bashPath, '-c', spec.command])
-      proc.sandbox = { mode, denied: false }
-      return proc
-    }
-    if (process.platform === 'win32') {
-      this.warnConfinedUnconfined(mode)
-      const proc = this.startArgv(spec, [this.bashPath, '-c', spec.command])
-      proc.sandbox = { mode, denied: false, enforcement: 'unconfined' }
-      return proc
+      proc.sandbox = fullAccess ? { mode, denied: false } : { mode, denied: false, enforcement: 'unconfined' }
+      // Match the loaded base contract: the async one (dsh >= 0.1.6) is
+      // awaited by its callers, the synchronous one is consumed directly.
+      return GitBashSandboxExecutor.baseStartIsAsync() ? Promise.resolve(proc) : proc
     }
     return super.start(spec)
   }

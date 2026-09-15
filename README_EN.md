@@ -8,6 +8,23 @@
 > Harness (dsh) — replaces the PowerShell executor and materializes Git Bash
 > variants of all four agent presets.
 
+### dsh 0.1.6: the workflow-engine row was renamed
+
+dsh 0.1.6-alpha.1 renamed the built-in presets' workflow-engine row from
+`workflow-worker-thread` to `workflow-ptc` and **deleted** the old package. One row
+that fails to import rejects the **whole preset mount**, so a composition pinning the
+old name simply stops working on the new host. This plugin pins neither spelling: at
+materialization it copies that row — id, package and `disabled` state — straight out
+of the host's own built-in preset (`rowFormsOf` / `alignEngineRow`), and aligns
+`tool-ralph` with the new `disabled: true` default. The rewrite is plain string
+surgery (no YAML round-trip, so `!!js` stays safe) and idempotent; a failed probe (old
+host, no roster) leaves the assets byte-for-byte untouched — **one set of assets serves
+both eras, in either upgrade order**.
+
+The same release made `LocalBashExecutor`'s protected hooks asynchronous: the
+`runArgv` result unwrapping, the `start` return shape and the `confine` cancellation
+signal are all probed at load time, so both host generations behave identically.
+
 ## Install (public npm package)
 
 ```sh

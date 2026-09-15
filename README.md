@@ -39,6 +39,19 @@ era。**preset id 保持 `code-gitbash` 不变**(会话钉在 id 上,改名会�
 会话报 preset not found)。无论先升级插件还是先升级 dsh,都会自动收敛;用户改
 过的目录照旧不碰。
 
+### dsh 0.1.6 适配(工作流引擎行改名)
+
+dsh 0.1.6-alpha.1 把内置预设的工作流引擎行 `workflow-worker-thread` 改名为
+`workflow-ptc`,并**删除**了旧包。组合里一行 import 失败会拒绝**整棵 preset 挂载**,
+所以把旧名钉死在资产里的 preset 在新版上会直接不可用。本插件两个拼法都不钉:物化时
+**从宿主自己的内置 preset 现场抄**那一行的 id、包名与 `disabled` 状态
+(`rowFormsOf` / `alignEngineRow`),并让 `tool-ralph` 跟随新版默认的 `disabled: true`。
+改写是纯字符串手术(不解析 YAML,`!!js` 安全)且幂等;探测失败(旧宿主、无 roster)时
+资产保持逐字节原样——**一份资产通吃两个 era,升级顺序无关**。
+
+同一版还把 `LocalBashExecutor` 的受保护钩子改成了异步:插件的 `runArgv` 结果解包、
+`start` 的返回形态与 `confine` 的取消信号都按**加载期探测**自适应,新旧宿主行为一致。
+
 ## 安装(公开 npm 插件,推荐)
 
 npm: [dsh-gitbash-shell](https://www.npmjs.com/package/dsh-gitbash-shell)，
