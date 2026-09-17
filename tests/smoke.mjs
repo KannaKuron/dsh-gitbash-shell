@@ -398,6 +398,66 @@ test('client dictionaries resolve live, never from a captured table', () => {
   assert.ok(subscribers.length >= 1 && subscribers.every((fn) => typeof fn === 'function'), 'the card subscribes to the locale service for the repaint')
 })
 
+test('client dual settings seat across dsh generations (0.1.6-alpha.2+)', () => {
+  const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(text, /slots\.inject\("settings\.plugin\.item"/)
+  assert.match(text, /slots\.inject\("plugins\.bundle\.config"/)
+  assert.match(text, /key: "dsh-gitbash-shell"/, 'the Plugins-page seat is keyed by the PACKAGE name')
+  assert.match(text, /props\.view === "page"/, 'the page view drops the collapsible shell')
+})
+
+test('sidebar adoption is switchable, default on, and never clobbers manual picks', async () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(text, /adoptSidebar: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(text, /readAdoptSidebar/, 'host reads the switch through the settings service')
+  // OFF restores only while the current value is still ours
+  assert.match(text, /if \(!desired && adopted && current === bashPath\)/)
+  const { _internal } = await import('../src/index.js')
+  assert.equal(_internal.readAdoptSidebar({ get: () => undefined }), true)
+  assert.equal(_internal.readAdoptSidebar({ get: () => ({ get: () => ({ adoptSidebar: false }) }) }), false)
+})
+
+test('plugin-manager row injection mirrors the official per-preset shape (0.1.6-alpha.2)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const base = "\n- id: present\n  name: '@deepseek-ai/dsh-tool-present'\n- id: tool-cordis\n"
+  const on = _internal.injectPluginManagerRow(base, { enabled: true })
+  assert.match(on, /tool-plugin-manager\n  name: '@deepseek-ai\/dsh-plugin-manager\/tools'\n/)
+  assert.ok(!on.includes('disabled: true'), 'enabled form carries no disabled flag')
+  assert.ok(on.indexOf('tool-plugin-manager') > on.indexOf("- id: present"), 'anchored after the present row')
+  const off = _internal.injectPluginManagerRow(base, { enabled: false })
+  assert.match(off, /tool-plugin-manager\n  name: '@deepseek-ai\/dsh-plugin-manager\/tools'\n  disabled: true\n/)
+  // idempotent on both shapes
+  assert.equal(_internal.injectPluginManagerRow(on, { enabled: false }), on)
+  // tail fallback when no present row exists
+  const tail = _internal.injectPluginManagerRow("\n- id: tool-cordis\n", { enabled: true })
+  assert.match(tail, /tool-cordis\n- id: tool-plugin-manager/)
+})
+
+test('plugin-manager row never committed into assets; ps cordis twin carries the alpha.2 persona', () => {
+  for (const presetId of ['code-gitbash', 'standard-gitbash', 'cordis-gitbash', 'minimal-gitbash']) {
+    const dir = new URL(`../assets/${presetId}/`, import.meta.url)
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.yml'))) {
+      const text = readFileSync(new URL(file, dir), 'utf8')
+      assert.ok(!text.includes("'@deepseek-ai/dsh-plugin-manager/tools'"), `${presetId}/${file} must not hard-code the plugin-manager row`)
+    }
+  }
+  const ps = readFileSync(new URL('../assets/cordis-gitbash/agent.cordis.ptc.ps.yml', import.meta.url), 'utf8')
+  assert.match(ps, /Use plugin_manager for persistent bundle installation/)
+  assert.match(ps, /Load `editing-cordis-compositions` for file discovery/)
+  // text-era ptc twin stays the pre-alpha.2 snapshot (self-consistent on its hosts)
+  const text = readFileSync(new URL('../assets/cordis-gitbash/agent.cordis.ptc.yml', import.meta.url), 'utf8')
+  assert.ok(!text.includes('Use plugin_manager for persistent bundle installation'), 'text-era twin keeps the old persona')
+})
+
+test('syncDecision refreshes when the pluginManager capability flips', async () => {
+  const { syncDecision } = _internal
+  const marker = { version: '1', base: 'ptc', persona: 'split', present: true, pluginManager: true, rows: 'x', files: {} }
+  const same = { state: 'unmodified', marker, version: '1', sourceHashes: null, base: 'ptc', persona: 'split', present: true, pluginManager: true, rows: 'x' }
+  assert.equal(syncDecision(same), 'idle')
+  const flipped = { state: 'unmodified', marker, version: '1', sourceHashes: null, base: 'ptc', persona: 'split', present: true, pluginManager: false, rows: 'x' }
+  assert.equal(syncDecision(flipped), 'refresh')
+})
+
 test('host gates the path dialect behind the posixPaths setting', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   assert.match(text, /SETTINGS_NAMESPACE = 'gitbash-shell'/)

@@ -63,6 +63,8 @@ window.__ModuleLoader__.load({
 			"switch.off": "停用",
 			"error": "写入失败",
 			"hint": "启用后:所有工具(bash 命令与 workdir、read/write/edit/read_image/glob/grep 的路径参数)统一使用 MSYS 盘根 POSIX 路径(/c/Users/...);文件工具的路径参数由宿主自动翻译,模型无感。停用后恢复 dsh 原生行为(文件工具用 Windows 路径)。bash 始终是 Git Bash,不受此开关影响。",
+			"adopt.label": "接管侧栏终端",
+			"adopt.hint": "开启时把 dsh-better-sidebar 的终端 shell 写成 Git Bash(默认开启);关闭后恢复接管前的值,已手动改过的终端设置不会被碰。模型侧的 bash 工具不受此开关影响——那由插件本体提供。",
 		};
 
 		var en = {
@@ -75,6 +77,8 @@ window.__ModuleLoader__.load({
 			"switch.off": "Disable",
 			"error": "write failed",
 			"hint": "Enabled: every tool (bash commands and workdir, read/write/edit/read_image/glob/grep path arguments) uses MSYS drive-root POSIX paths (/c/Users/...); the host translates path fields for the file tools automatically. Disabled restores dsh-native behavior (Windows paths for file tools). Bash is always Git Bash while the plugin is installed; this switch only governs the cross-tool path dialect.",
+			"adopt.label": "Adopt sidebar terminal",
+			"adopt.hint": "On (default) writes Git Bash into dsh-better-sidebar's terminal shell; turning it off restores the pre-adoption value and never touches a manually chosen one. The model-side bash tool is unaffected — the plugin itself provides that.",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded
@@ -97,6 +101,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "تعطيل",
 				"error": "فشل الكتابة",
 				"hint": "عند التفعيل: تستخدم كل الأدوات (أوامر bash و workdir، ومعاملات المسار في read/write/edit/read_image/glob/grep) مسارات POSIX من جذر قرص MSYS (/c/Users/...)؛ ويتولّى المضيف ترجمة حقول المسار لأدوات الملفات تلقائيًا. عند التعطيل يعود السلوك الأصلي لـ dsh (مسارات Windows لأدوات الملفات). يبقى bash دائمًا Git Bash ما دامت الإضافة مثبَّتة؛ هذا المفتاح لا يحكم سوى لهجة المسارات بين الأدوات.",
+				"adopt.label": "تبنّي طرفية الشريط الجانبي",
+				"adopt.hint": "عند التفعيل (افتراضي) تُكتب Git Bash كـ shell لطرفية dsh-better-sidebar؛ وعند التعطيل تُستعاد القيمة السابقة ولا تُلمس القيمة المختارة يدويًا أبدًا. أداة bash الخاصة بالنموذج لا تتأثر — الإضافة نفسها توفرها.",
 			},
 			/* locale: de */
 			"de": {
@@ -109,6 +115,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Deaktivieren",
 				"error": "Schreiben fehlgeschlagen",
 				"hint": "Aktiviert: Alle Tools (bash-Befehle und workdir sowie Pfadargumente von read/write/edit/read_image/glob/grep) verwenden POSIX-Pfade ab der MSYS-Laufwerkswurzel (/c/Users/...); der Host übersetzt die Pfadfelder der Dateitools automatisch. Deaktiviert stellt das dsh-native Verhalten wieder her (Windows-Pfade für Dateitools). Bash ist bei installiertem Plugin immer Git Bash; dieser Schalter steuert nur den Pfaddialekt zwischen den Tools.",
+				"adopt.label": "Sidebar-Terminal übernehmen",
+				"adopt.hint": "Ein (Standard) schreibt Git Bash als Shell des dsh-better-sidebar-Terminals; Aus stellt den vorherigen Wert wieder her und fasst nie eine manuell gewählte Einstellung an. Das bash-Werkzeug des Modells bleibt unberührt — das liefert das Plugin selbst.",
 			},
 			/* locale: fr */
 			"fr": {
@@ -121,6 +129,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Désactiver",
 				"error": "échec de l'écriture",
 				"hint": "Activé : tous les outils (commandes bash et workdir, arguments de chemin de read/write/edit/read_image/glob/grep) utilisent des chemins POSIX à racine de lecteur MSYS (/c/Users/...) ; l'hôte traduit automatiquement les champs de chemin des outils de fichiers. Désactivé rétablit le comportement natif de dsh (chemins Windows pour les outils de fichiers). Bash reste toujours Git Bash tant que le plugin est installé ; ce commutateur ne régit que le dialecte de chemins entre outils.",
+				"adopt.label": "Adopter le terminal latéral",
+				"adopt.hint": "Activé (par défaut) : écrit Git Bash comme shell du terminal dsh-better-sidebar ; désactivé : restaure la valeur davant et ne touche jamais un choix manuel. Loutil bash du modèle nest pas concerné — le plugin le fournit lui-même.",
 			},
 			/* locale: hi */
 			"hi": {
@@ -133,6 +143,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "अक्षम करें",
 				"error": "लिखना विफल रहा",
 				"hint": "सक्षम होने पर: सभी टूल (bash कमांड और workdir, तथा read/write/edit/read_image/glob/grep के पथ तर्क) MSYS ड्राइव-रूट POSIX पथ (/c/Users/...) का उपयोग करते हैं; फ़ाइल टूल के पथ फ़ील्ड होस्ट स्वतः अनुवादित करता है। अक्षम करने पर dsh का मूल व्यवहार बहाल होता है (फ़ाइल टूल के लिए Windows पथ)। जब तक प्लगइन इंस्टॉल है bash हमेशा Git Bash रहता है; यह स्विच केवल टूल के बीच पथ शैली नियंत्रित करता है।",
+				"adopt.label": "साइडबार टर्मिनल अपनाएँ",
+				"adopt.hint": "चालू (डिफ़ॉल्ट) होने पर dsh-better-sidebar के टर्मिनल में Git Bash लिखा जाता है; बंद करने पर पहले वाली मान बहाल होती है और मैन्युअल चुनी गई सेटिंग कभी नहीं छुई जाती। मॉडल का bash टूल अप्रभावित रहता है — वह प्लगइन स्वयं देता है।",
 			},
 			/* locale: id */
 			"id": {
@@ -145,6 +157,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Nonaktifkan",
 				"error": "gagal menulis",
 				"hint": "Saat aktif: semua alat (perintah bash dan workdir, serta argumen path read/write/edit/read_image/glob/grep) memakai path POSIX berakar drive MSYS (/c/Users/...); host menerjemahkan bidang path untuk alat berkas secara otomatis. Saat nonaktif, perilaku asli dsh dipulihkan (path Windows untuk alat berkas). Bash selalu Git Bash selama plugin terpasang; sakelar ini hanya mengatur dialek path antaralat.",
+				"adopt.label": "Adopsi terminal sidebar",
+				"adopt.hint": "Nyala (bawaan) menulis Git Bash sebagai shell terminal dsh-better-sidebar; dimatikan memulihkan nilai sebelumnya dan tidak pernah menyentuh pilihan manual. Alat bash sisi model tak terpengaruh — plugin sendiri yang menyediakannya.",
 			},
 			/* locale: it */
 			"it": {
@@ -157,6 +171,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Disattiva",
 				"error": "scrittura non riuscita",
 				"hint": "Attivato: tutti gli strumenti (comandi bash e workdir, argomenti di percorso di read/write/edit/read_image/glob/grep) usano percorsi POSIX con radice di unità MSYS (/c/Users/...); l'host traduce automaticamente i campi di percorso degli strumenti per i file. Disattivato ripristina il comportamento nativo di dsh (percorsi Windows per gli strumenti per i file). Bash resta sempre Git Bash finché il plugin è installato; questo interruttore governa solo il dialetto dei percorsi tra gli strumenti.",
+				"adopt.label": "Adotta il terminale laterale",
+				"adopt.hint": "Attivo (predefinito) imposta Git Bash come shell del terminale di dsh-better-sidebar; disattivo ripristina il valore precedente e non tocca mai una scelta manuale. Lo strumento bash del modello non è interessato — lo fornisce il plugin stesso.",
 			},
 			/* locale: ja */
 			"ja": {
@@ -169,6 +185,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "無効にする",
 				"error": "書き込みに失敗しました",
 				"hint": "有効にすると、すべてのツール(bash コマンドと workdir、read/write/edit/read_image/glob/grep のパス引数)が MSYS ドライブルートの POSIX パス(/c/Users/...)を使います。ファイルツールのパスフィールドはホストが自動的に変換します。無効にすると dsh 本来の動作(ファイルツールは Windows パス)に戻ります。bash はプラグインがインストールされている限り常に Git Bash で、このスイッチの影響を受けません。",
+				"adopt.label": "サイドバーターミナルを引き継ぐ",
+				"adopt.hint": "オン(既定)では dsh-better-sidebar のターミナルシェルに Git Bash を書き込みます。オフにすると以前の値へ戻し、手動で選択した設定には決して触れません。モデル側の bash ツールには影響しません——それはプラグイン本体が提供します。",
 			},
 			/* locale: ko */
 			"ko": {
@@ -181,6 +199,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "사용 안 함",
 				"error": "쓰기 실패",
 				"hint": "켜면 모든 도구(bash 명령과 workdir, read/write/edit/read_image/glob/grep의 경로 인수)가 MSYS 드라이브 루트 POSIX 경로(/c/Users/...)를 사용합니다. 파일 도구의 경로 필드는 호스트가 자동으로 변환합니다. 끄면 dsh 기본 동작(파일 도구에 Windows 경로 사용)으로 돌아갑니다. 플러그인이 설치되어 있는 동안 bash는 항상 Git Bash이며 이 스위치의 영향을 받지 않습니다.",
+				"adopt.label": "사이드바 터미널 인수",
+				"adopt.hint": "켜짐(기본)이면 dsh-better-sidebar 터미널 셸에 Git Bash를 기록하고, 끄면 이전 값을 복원하며 수동으로 고른 설정은 절대 건드리지 않습니다. 모델 측 bash 도구에는 영향이 없습니다 — 플러그인이 직접 제공합니다.",
 			},
 			/* locale: nl */
 			"nl": {
@@ -193,6 +213,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Uitschakelen",
 				"error": "schrijven mislukt",
 				"hint": "Ingeschakeld: alle tools (bash-opdrachten en workdir, padargumenten van read/write/edit/read_image/glob/grep) gebruiken POSIX-paden vanaf de MSYS-schijfwortel (/c/Users/...); de host vertaalt de padvelden voor de bestandstools automatisch. Uitgeschakeld herstelt het oorspronkelijke dsh-gedrag (Windows-paden voor bestandstools). Bash is altijd Git Bash zolang de plugin is geïnstalleerd; deze schakelaar bepaalt alleen het paddialect tussen de tools.",
+				"adopt.label": "Zijbalkterminal overnemen",
+				"adopt.hint": "Aan (standaard) schrijft Git Bash als shell van de dsh-better-sidebar-terminal; uit herstelt de vorige waarde en raakt nooit een handmatige keuze aan. De bash-tool van het model blijft buiten beschouwing — die levert de plugin zelf.",
 			},
 			/* locale: pl */
 			"pl": {
@@ -205,6 +227,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Wyłącz",
 				"error": "zapis nie powiódł się",
 				"hint": "Po włączeniu: wszystkie narzędzia (polecenia bash i workdir oraz argumenty ścieżek w read/write/edit/read_image/glob/grep) używają ścieżek POSIX od korzenia dysku MSYS (/c/Users/...); host automatycznie tłumaczy pola ścieżek narzędzi plikowych. Wyłączenie przywraca natywne zachowanie dsh (ścieżki Windows dla narzędzi plikowych). Bash jest zawsze Git Bash, dopóki wtyczka jest zainstalowana; ten przełącznik reguluje wyłącznie dialekt ścieżek między narzędziami.",
+				"adopt.label": "Przejmij terminal boczny",
+				"adopt.hint": "Włączony (domyślnie) zapisuje Git Bash jako shell terminala dsh-better-sidebar; wyłączony przywraca poprzednią wartość i nigdy nie narusza ręcznie wybranego ustawienia. Narzędzie bash po stronie modelu jest nietknięte — zapewnia je sama wtyczka.",
 			},
 			/* locale: pt */
 			"pt": {
@@ -217,6 +241,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Desativar",
 				"error": "falha ao gravar",
 				"hint": "Ativada: todas as ferramentas (comandos bash e workdir, argumentos de caminho de read/write/edit/read_image/glob/grep) usam caminhos POSIX a partir da raiz da unidade MSYS (/c/Users/...); o host traduz automaticamente os campos de caminho das ferramentas de arquivo. Desativada restaura o comportamento nativo do dsh (caminhos Windows para as ferramentas de arquivo). O bash é sempre Git Bash enquanto o plugin estiver instalado; este interruptor rege apenas o dialeto de caminhos entre ferramentas.",
+				"adopt.label": "Adotar o terminal lateral",
+				"adopt.hint": "Ligado (padrão) grava o Git Bash como shell do terminal do dsh-better-sidebar; desligado restaura o valor anterior e nunca altera uma escolha manual. A ferramenta bash do modelo não é afetada — o próprio plug-in a fornece.",
 			},
 			/* locale: ru */
 			"ru": {
@@ -229,6 +255,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Выключить",
 				"error": "не удалось записать",
 				"hint": "Включено: все инструменты (команды bash и workdir, аргументы путей read/write/edit/read_image/glob/grep) используют POSIX-пути от корня диска MSYS (/c/Users/...); хост автоматически преобразует поля путей для файловых инструментов. Выключение возвращает исходное поведение dsh (пути Windows для файловых инструментов). Пока плагин установлен, bash всегда остаётся Git Bash; этот переключатель управляет только диалектом путей между инструментами.",
+				"adopt.label": "Перехватывать терминал боковой панели",
+				"adopt.hint": "Включено (по умолчанию): Git Bash записывается как shell терминала dsh-better-sidebar; выключено — восстанавливается прежнее значение, вручную выбранные настройки не трогаются. Инструмент bash у модели не затронут — его предоставляет сам плагин.",
 			},
 			/* locale: sv */
 			"sv": {
@@ -241,6 +269,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Inaktivera",
 				"error": "skrivning misslyckades",
 				"hint": "Aktiverad: alla verktyg (bash-kommandon och workdir, sökvägsargument för read/write/edit/read_image/glob/grep) använder POSIX-sökvägar från MSYS-enhetsroten (/c/Users/...); värden översätter sökvägsfälten för filverktygen automatiskt. Inaktiverad återställer dsh:s ursprungliga beteende (Windows-sökvägar för filverktyg). Bash är alltid Git Bash så länge insticksprogrammet är installerat; den här växeln styr bara sökvägsdialekten mellan verktygen.",
+				"adopt.label": "Överta sidolistterminal",
+				"adopt.hint": "På (standard) skriver Git Bash som terminal-shell i dsh-better-sidebar; av återställer det tidigare värdet och rör aldrig ett manuellt val. Modellens bash-verktyg påverkas inte — det tillhandahålls av pluginet självt.",
 			},
 			/* locale: th */
 			"th": {
@@ -253,6 +283,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "ปิดใช้งาน",
 				"error": "เขียนไม่สำเร็จ",
 				"hint": "เมื่อเปิดใช้งาน: เครื่องมือทั้งหมด (คำสั่ง bash และ workdir รวมถึงอาร์กิวเมนต์พาธของ read/write/edit/read_image/glob/grep) ใช้พาธ POSIX จากรากไดรฟ์ของ MSYS (/c/Users/...) โฮสต์จะแปลฟิลด์พาธของเครื่องมือจัดการไฟล์ให้อัตโนมัติ เมื่อปิดใช้งานจะกลับสู่พฤติกรรมดั้งเดิมของ dsh (เครื่องมือจัดการไฟล์ใช้พาธ Windows) bash เป็น Git Bash เสมอเมื่อติดตั้งปลั๊กอินนี้ สวิตช์นี้ควบคุมเฉพาะรูปแบบพาธระหว่างเครื่องมือเท่านั้น",
+				"adopt.label": "รับช่วงเทอร์มินัลแถบข้าง",
+				"adopt.hint": "เปิด (ค่าเริ่มต้น) จะเขียน Git Bash เป็น shell ของเทอร์มินัล dsh-better-sidebar; ปิดแล้วคืนค่าเดิมและไม่แตะการตั้งค่าที่เลือกเอง เครื่องมือ bash ของโมเดลไม่กระทบ — ปลั๊กอินจัดหาเอง",
 			},
 			/* locale: tr */
 			"tr": {
@@ -265,6 +297,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Devre dışı bırak",
 				"error": "yazma başarısız",
 				"hint": "Etkinleştirildiğinde: tüm araçlar (bash komutları ve workdir ile read/write/edit/read_image/glob/grep yol bağımsız değişkenleri) MSYS sürücü kökünden POSIX yolları (/c/Users/...) kullanır; ana süreç dosya araçlarının yol alanlarını otomatik olarak çevirir. Devre dışı bırakıldığında dsh yerel davranışına döner (dosya araçları için Windows yolları). Eklenti kurulu olduğu sürece bash her zaman Git Bash olarak kalır; bu anahtar yalnızca araçlar arası yol lehçesini yönetir.",
+				"adopt.label": "Kenar çubuğu terminalini devral",
+				"adopt.hint": "Açık (varsayılan) Git Bashi dsh-better-sidebar terminalinin shelli olarak yazar; kapalı önceki değeri geri getirir ve elle seçilmiş bir ayara asla dokunmaz. Model tarafındaki bash aracı etkilenmez — onu eklentinin kendisi sağlar.",
 			},
 			/* locale: vi */
 			"vi": {
@@ -277,6 +311,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "Tắt",
 				"error": "ghi thất bại",
 				"hint": "Khi bật: mọi công cụ (lệnh bash và workdir, tham số đường dẫn của read/write/edit/read_image/glob/grep) dùng đường dẫn POSIX từ gốc ổ đĩa MSYS (/c/Users/...); máy chủ tự động chuyển đổi trường đường dẫn cho các công cụ tệp. Khi tắt, hành vi gốc của dsh được khôi phục (công cụ tệp dùng đường dẫn Windows). bash luôn là Git Bash khi plugin được cài đặt; công tắc này chỉ điều khiển phương ngữ đường dẫn giữa các công cụ.",
+				"adopt.label": "Tiếp nhận terminal thanh bên",
+				"adopt.hint": "Bật (mặc định) ghi Git Bash làm shell terminal của dsh-better-sidebar; tắt khôi phục giá trị trước đó và không bao giờ đụng tới lựa chọn thủ công. Công cụ bash phía mô hình không bị ảnh hưởng — chính plugin cung cấp nó.",
 			},
 			/* locale: zh-hk */
 			"zh-hk": {
@@ -289,6 +325,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "停用",
 				"error": "寫入失敗",
 				"hint": "啟用後:所有工具(bash 指令同 workdir、read/write/edit/read_image/glob/grep 嘅路徑參數)統一使用 MSYS 磁碟根 POSIX 路徑(/c/Users/...);檔案工具嘅路徑參數由宿主自動翻譯,模型無感。停用後回復 dsh 原生行為(檔案工具用 Windows 路徑)。bash 永遠係 Git Bash,唔受呢個開關影響。",
+				"adopt.label": "接管側欄終端",
+				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
 			},
 			/* locale: zh-mo */
 			"zh-mo": {
@@ -301,6 +339,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "停用",
 				"error": "寫入失敗",
 				"hint": "啟用後:所有工具(bash 指令同 workdir、read/write/edit/read_image/glob/grep 嘅路徑參數)統一使用 MSYS 磁碟根 POSIX 路徑(/c/Users/...);檔案工具嘅路徑參數由宿主自動翻譯,模型無感。停用後回復 dsh 原生行為(檔案工具用 Windows 路徑)。bash 永遠係 Git Bash,唔受呢個開關影響。",
+				"adopt.label": "接管側欄終端",
+				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
 			},
 			/* locale: zh-tw */
 			"zh-tw": {
@@ -313,6 +353,8 @@ window.__ModuleLoader__.load({
 				"switch.off": "停用",
 				"error": "寫入失敗",
 				"hint": "啟用後:所有工具(bash 指令與 workdir,以及 read/write/edit/read_image/glob/grep 的路徑參數)統一使用 MSYS 磁碟根 POSIX 路徑(/c/Users/...);檔案工具的路徑參數由宿主自動轉譯,模型無感。停用後恢復 dsh 原生行為(檔案工具使用 Windows 路徑)。bash 一律是 Git Bash,不受此開關影響。",
+				"adopt.label": "接管側欄終端機",
+				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端機 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
 			},
 		};
 
@@ -389,6 +431,8 @@ window.__ModuleLoader__.load({
 			".gb-chevron{flex:none;color:var(--dsw-alias-label-tertiary);transition:transform .16s}",
 			".gb-chevron.gb-chevronOpen{transform:rotate(180deg)}",
 			".gb-body{display:flex;flex-direction:column;gap:12px;padding:4px 16px 16px;max-width:640px}",
+			".gb-page{max-width:640px}",
+			".gb-pageBody{display:flex;flex-direction:column;gap:12px;padding:0 0 8px}",
 			".gb-row{display:flex;align-items:baseline;gap:8px;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-secondary)}",
 			".gb-rowLabel{flex:none;color:var(--dsw-alias-label-tertiary)}",
 			".gb-rowValue{min-width:0;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary)}",
@@ -507,10 +551,11 @@ window.__ModuleLoader__.load({
 
 			var value = snap.value || {};
 			var enabled = value.posixPaths === true;
+			var adopt = value.adoptSidebar !== false;
 
-			function write(next) {
+			function writeField(key, next) {
 				setError("");
-				scope.set("posixPaths", next)
+				scope.set(key, next)
 					.then(function () { bumpTick(function (n) { return n + 1; }); })
 					.catch(function (err) {
 						bumpTick(function (n) { return n + 1; });
@@ -519,6 +564,51 @@ window.__ModuleLoader__.load({
 			}
 
 			var Chevron = icon("IconChevronDownOutline14");
+
+			// dsh 0.1.6-alpha.2: the Plugins page renders this card through the
+			// `plugins.bundle.config` slot with view="page" — the page draws the
+			// title itself, so the collapsible shell is only for the legacy seat.
+			var pageView = props.view === "page";
+
+			var bodyContent = E("div", { className: pageView ? "gb-pageBody" : "gb-body" },
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("state.label") + ":"),
+					E("span", { className: "gb-rowValue" }, enabled ? t("state.on") : t("state.off")),
+				),
+				E("div", { className: "gb-seg" },
+					E("button", {
+						type: "button",
+						className: "gb-segBtn" + (enabled ? " gb-segActive" : ""),
+						onClick: function () { if (!enabled) writeField("posixPaths", true); },
+					}, t("switch.on")),
+					E("button", {
+						type: "button",
+						className: "gb-segBtn" + (!enabled ? " gb-segActive" : ""),
+						onClick: function () { if (enabled) writeField("posixPaths", false); },
+					}, t("switch.off")),
+				),
+				E("p", { className: "gb-hint" }, t("hint")),
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("adopt.label") + ":"),
+					E("span", { className: "gb-rowValue" }, adopt ? t("state.on") : t("state.off")),
+				),
+				E("div", { className: "gb-seg" },
+					E("button", {
+						type: "button",
+						className: "gb-segBtn" + (adopt ? " gb-segActive" : ""),
+						onClick: function () { if (!adopt) writeField("adoptSidebar", true); },
+					}, t("switch.on")),
+					E("button", {
+						type: "button",
+						className: "gb-segBtn" + (!adopt ? " gb-segActive" : ""),
+						onClick: function () { if (adopt) writeField("adoptSidebar", false); },
+					}, t("switch.off")),
+				),
+				E("p", { className: "gb-hint" }, t("adopt.hint")),
+				error ? E("p", { className: "gb-error" }, error) : null,
+			);
+
+			if (pageView) return E("div", { className: "gb-page" }, bodyContent);
 
 			return E("li", { className: "gb-card" + (open ? " gb-open" : "") },
 				E("button", {
@@ -535,26 +625,7 @@ window.__ModuleLoader__.load({
 						? E(Chevron, { className: "gb-chevron" + (open ? " gb-chevronOpen" : "") })
 						: E("span", { className: "gb-chevron" + (open ? " gb-chevronOpen" : "") }, "▾"),
 				),
-				open ? E("div", { className: "gb-body" },
-					E("div", { className: "gb-row" },
-						E("span", { className: "gb-rowLabel" }, t("state.label") + ":"),
-						E("span", { className: "gb-rowValue" }, enabled ? t("state.on") : t("state.off")),
-					),
-					E("div", { className: "gb-seg" },
-						E("button", {
-							type: "button",
-							className: "gb-segBtn" + (enabled ? " gb-segActive" : ""),
-							onClick: function () { if (!enabled) write(true); },
-						}, t("switch.on")),
-						E("button", {
-							type: "button",
-							className: "gb-segBtn" + (!enabled ? " gb-segActive" : ""),
-							onClick: function () { if (enabled) write(false); },
-						}, t("switch.off")),
-					),
-					error ? E("p", { className: "gb-error" }, error) : null,
-					E("p", { className: "gb-hint" }, t("hint")),
-				) : null,
+				open ? bodyContent : null,
 			);
 		}
 
@@ -599,19 +670,38 @@ window.__ModuleLoader__.load({
 					console.warn(TAG + " slots service unavailable; settings card idle");
 					return;
 				}
+				var injected = function () {
+					// The inject factory's returned members become the component's
+					// props: the bound settings scope rides here as a PLAIN member
+					// (top-level options fields do NOT reach the component).
+					return { scope: scope };
+				};
+				// Legacy seat (dsh <= 0.1.6-alpha.1): Settings → Plugins card.
 				slots.inject("settings.plugin.item", function () {
 					return slots.register({
 						name: "settings.plugin.item",
 						key: SETTINGS_NAMESPACE,
 						locale: NS,
-						// The inject factory's returned members become the component's
-						// props: the bound settings scope rides here as a PLAIN member
-						// (top-level options fields do NOT reach the component).
-						inject: function () { return { scope: scope }; },
+						inject: injected,
 					}, function CardWithLocale(props) {
 						/* The registration's locale field also hands out the framework's own
 						   t seat; the plugin's lookup wins (21 locale tags against the catalog's
 						   zh/en), passed last so no prop merge order can override it. */
+						return E(LocaleLive, { ctx: ctx, t: t, cardProps: props });
+					});
+				});
+				// dsh 0.1.6-alpha.2+: the Plugins page's bundle configuration seat,
+				// keyed by the PACKAGE name. Each inject waits for its own slot
+				// declaration, so exactly one seat is live on any host version.
+				slots.inject("plugins.bundle.config", function () {
+					return slots.register({
+						name: "plugins.bundle.config",
+						key: "dsh-gitbash-shell",
+						locale: NS,
+						inject: injected,
+					}, function BundleConfigWithBoundary(props) {
+						/* Same LocaleLive wrap as the legacy seat: the plugin's 21-tag
+						   dictionary wins over the catalog's zh/en t seat. */
 						return E(LocaleLive, { ctx: ctx, t: t, cardProps: props });
 					});
 				});

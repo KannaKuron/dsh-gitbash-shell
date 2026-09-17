@@ -427,7 +427,7 @@ function pickComposition(base, persona, available) {
 }
 
 /** Startup decision for an existing unmodified tree: 'refresh' or 'idle'. */
-function syncDecision({ state, marker, version, sourceHashes, base = 'code', persona = 'text', present = false, rows = '' }) {
+function syncDecision({ state, marker, version, sourceHashes, base = 'code', persona = 'text', present = false, pluginManager = false, rows = '' }) {
   if (state !== 'unmodified' || !marker) return 'refresh'
   if (marker.version !== version) return 'refresh'
   if (marker.base !== base) return 'refresh'
@@ -445,6 +445,10 @@ function syncDecision({ state, marker, version, sourceHashes, base = 'code', per
   // host resolves it — and a host upgrade past that point must re-materialize
   // to gain it (same marker-dimension pattern as persona).
   if ((marker.present ?? false) !== present) return 'refresh'
+  // Host-capability flip: @deepseek-ai/dsh-plugin-manager/tools first shipped
+  // with dsh 0.1.6-alpha.2 — same mount-rejection stakes and the same marker
+  // dimension pattern as present above.
+  if ((marker.pluginManager ?? false) !== pluginManager) return 'refresh'
   const recorded = {}
   for (const k of Object.keys(marker.files)) if (k.startsWith('skills/')) recorded[k] = marker.files[k]
   if (sourceHashes === null) return Object.keys(recorded).length === 0 ? 'idle' : 'refresh'
@@ -497,8 +501,48 @@ async function hostHasToolPresent() {
   return toolPresentCache
 }
 
+/*
+ * Conditional plugin-manager-row injection (v0.15.0, dsh 0.1.6-alpha.2 sync).
+ * Official ptc/standard/cordis gained `- id: tool-plugin-manager / name:
+ * '@deepseek-ai/dsh-plugin-manager/tools'` (persistent plugin management;
+ * the official ptc preset carries it DISABLED, Creation keeps it on). The
+ * package only exists from 0.1.6-alpha.2 on, so the row is injected as plain
+ * text behind a host probe — never committed into the assets — anchored
+ * after the present row when there is one, else at the tail, mirroring the
+ * official order (tool-presentation → present → tool-plugin-manager).
+ * Per-variant shape mirrors each variant's official base: code-gitbash (ptc
+ * base) DISABLED, standard/cordis-gitbash ENABLED, minimal untouched
+ * (official minimal never gained the row), code-era files frozen history.
+ */
+const PLUGIN_MANAGER_ROW_ON = "- id: tool-plugin-manager\n  name: '@deepseek-ai/dsh-plugin-manager/tools'\n"
+const PLUGIN_MANAGER_ROW_OFF = "- id: tool-plugin-manager\n  name: '@deepseek-ai/dsh-plugin-manager/tools'\n  disabled: true\n"
+const PRESENT_ROW_FULL = "\n- id: present\n  name: '@deepseek-ai/dsh-tool-present'\n"
+
+function injectPluginManagerRow(text, { enabled }) {
+  if (text.includes("'@deepseek-ai/dsh-plugin-manager/tools'")) return text
+  const body = enabled ? PLUGIN_MANAGER_ROW_ON : PLUGIN_MANAGER_ROW_OFF
+  const at = text.indexOf(PRESENT_ROW_FULL)
+  if (at !== -1) return text.slice(0, at + PRESENT_ROW_FULL.length) + body + text.slice(at + PRESENT_ROW_FULL.length)
+  return text.endsWith('\n') ? text + body : text + '\n' + body
+}
+
+
+let pluginManagerToolsCache
+/** Probe whether THIS host can resolve the plugin-manager tools package (cached per boot). */
+async function hostHasPluginManagerTools() {
+  if (pluginManagerToolsCache !== undefined) return pluginManagerToolsCache
+  try {
+    const { createRequire } = await import('node:module')
+    createRequire(import.meta.url).resolve('@deepseek-ai/dsh-plugin-manager/tools')
+    pluginManagerToolsCache = true
+  } catch {
+    pluginManagerToolsCache = false
+  }
+  return pluginManagerToolsCache
+}
+
 /** Write one preset directory from scratch. Returns 'ok' or 'no-skills-source'. */
-function materialize({ target, presetId, skillsSource, version, base = 'code', persona = 'text', present = false, rows }) {
+function materialize({ target, presetId, skillsSource, version, base = 'code', persona = 'text', present = false, pluginManager = false, rows }) {
   rmSync(target, { recursive: true, force: true })
   mkdirSync(target, { recursive: true })
 
@@ -506,6 +550,12 @@ function materialize({ target, presetId, skillsSource, version, base = 'code', p
   const compositionFile = pickComposition(base, persona, available)
   let composition = readFileSync(join(pkgDir, 'assets', presetId, compositionFile), 'utf8')
   if (present && compositionFile.includes('.ptc.')) composition = injectPresentRow(composition)
+  // v0.15.0: ptc-era files only; the ptc-based variant mirrors the official
+  // ptc DISABLED form, standard/cordis mirror their ENABLED bases, minimal is
+  // untouched (official minimal never gained the row).
+  if (pluginManager && compositionFile.includes('.ptc.') && presetId !== 'minimal-gitbash') {
+    composition = injectPluginManagerRow(composition, { enabled: presetId !== 'code-gitbash' })
+  }
   // Row-form alignment (v0.14.0): the committed assets pin one spelling of the
   // workflow-engine row, but a host renames it out from under them (dsh
   // 0.1.6-alpha.1) and a row whose module fails to import rejects the whole
@@ -531,7 +581,7 @@ function materialize({ target, presetId, skillsSource, version, base = 'code', p
     }
   }
 
-  const marker = { managedBy: MANAGED_BY, version, presetId, base, persona, present, rows: rowFingerprint(rows, presetId), files: hashTree(target) }
+  const marker = { managedBy: MANAGED_BY, version, presetId, base, persona, present, pluginManager, rows: rowFingerprint(rows, presetId), files: hashTree(target) }
   writeFileSync(join(target, MARKER_FILE), JSON.stringify(marker, null, 2) + '\n')
   return skills
 }
@@ -630,6 +680,20 @@ export function readPosixPaths(ctxLike) {
     return !!(value && value.posixPaths === true)
   } catch {
     return false
+  }
+}
+
+/**
+ * Read the adoptSidebar switch (v0.15.0, default ON). Unlike posixPaths the
+ * default is on, so only an explicit false disables the takeover.
+ */
+export function readAdoptSidebar(ctxLike) {
+  try {
+    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
+    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
+    return !(value && value.adoptSidebar === false)
+  } catch {
+    return true
   }
 }
 
@@ -772,72 +836,119 @@ const SIDEBAR_NS = 'dsh-better-sidebar'
 const SIDEBAR_TRIES = 12
 const SIDEBAR_RETRY_MS = 1500
 
+// Owner scope of the gitbash-shell namespace once registered (shared with
+// the register callback so a late registration can reconcile + watch).
+let sidebarScope = undefined
+
+// Reconciler installed by adoptSidebarShell; a no-op until then.
+let reconcileSidebar = () => {}
+
 /**
- * Write the sidebar's `terminalShell` pref through the settings service.
- * Polls until the settings service (and the sidebar's namespace) are ready:
- * at boot the service may not be provided yet when this row's apply runs, so
- * the first attempt can silently see nothing — every attempt after the first
- * catches the service once it exists. Never throws; always logs the outcome.
+ * Reconcile the better-sidebar `terminalShell` takeover with the adoptSidebar
+ * setting (v0.15.0, default ON). ON writes our bashPath (remembering what was
+ * there before); OFF restores that previous value — but only while the current
+ * value is still ours, so a user's manual choice is never clobbered. The
+ * polling keeps the original ready-wait behavior: at boot the settings
+ * service may not be provided yet when this row's apply runs. Never throws.
  */
 function adoptSidebarShell(ctx, bashPath) {
+  let adopted = false
+  let previous = ''
   let tried = 0
   let timer = null
   ctx.effect(() => () => { if (timer) clearTimeout(timer) }, 'dsh-gitbash-shell: sidebar adoption polling')
-  const run = async () => {
-    tried += 1
+
+  const readShell = () => {
     const settings = ctx.get('settings')
-    const ready = settings && typeof settings.update === 'function' && typeof settings.get === 'function'
-    if (!ready) {
-      if (tried < SIDEBAR_TRIES) {
-        timer = setTimeout(run, SIDEBAR_RETRY_MS)
-        return
-      }
-      console.log(`${TAG} better-sidebar shell adoption skipped: settings service unavailable after ${tried} tries`)
-      return
-    }
-    let current
+    if (!settings || typeof settings.get !== 'function' || typeof settings.update !== 'function') return null
     try {
-      current = settings.get(SIDEBAR_NS)
+      const value = settings.get(SIDEBAR_NS)
+      return value && typeof value === 'object' && typeof value.terminalShell === 'string' ? value.terminalShell : ''
     } catch {
-      current = undefined // namespace not registered yet / sidebar absent
+      return null // namespace not registered yet / sidebar absent
     }
-    const value = current && typeof current === 'object' ? current : {}
-    const previous = typeof value.terminalShell === 'string' ? value.terminalShell : ''
-    try {
-      await settings.update(SIDEBAR_NS, { terminalShell: bashPath })
-    } catch (error) {
-      if (tried < SIDEBAR_TRIES) {
-        timer = setTimeout(run, SIDEBAR_RETRY_MS)
-        return
+  }
+
+  reconcileSidebar = (desired) => {
+    const current = readShell()
+    if (current === null) return false
+    const settings = ctx.get('settings')
+    if (desired && current !== bashPath) {
+      const was = current
+      settings.update(SIDEBAR_NS, { terminalShell: bashPath })
+        .then(() => {
+          previous = was
+          adopted = true
+          console.log(
+            `${TAG} dsh-better-sidebar terminal shell -> Git Bash (${bashPath})` +
+              (was ? ` (took over from '${was}')` : ''),
+          )
+        })
+        .catch((error) => {
+          console.log(`${TAG} better-sidebar shell adoption unavailable: ${error?.message ?? error}`)
+        })
+      return true
+    }
+    if (desired && current === bashPath) {
+      adopted = true
+      return true
+    }
+    if (!desired && adopted && current === bashPath) {
+      settings.update(SIDEBAR_NS, { terminalShell: previous })
+        .then(() => {
+          adopted = false
+          console.log(`${TAG} dsh-better-sidebar terminal shell restored ('${previous || 'sidebar default'}') — adoptSidebar off`)
+        })
+        .catch(() => {})
+      return true
+    }
+    return true
+  }
+
+  const run = () => {
+    tried += 1
+    const ok = reconcileSidebar(readAdoptSidebar(ctx))
+    if (ok) {
+      // The namespace scope may register after the settings service; hook
+      // the live watch once it exists (idempotent via the effect disposer).
+      if (sidebarScope && typeof sidebarScope.watch === 'function' && !run.watched) {
+        run.watched = true
+        try {
+          const off = sidebarScope.watch((next) => { reconcileSidebar(next && next.adoptSidebar !== false) })
+          ctx.effect(() => off, 'dsh-gitbash-shell: adoptSidebar watch (polling path)')
+        } catch { /* best effort */ }
       }
-      console.log(`${TAG} better-sidebar shell adoption unavailable: ${error?.message ?? error}`)
       return
     }
-    let reverted = false
-    ctx.effect(
-      () => () => {
-        if (reverted) return
-        reverted = true
-        const s = ctx.get('settings')
-        if (!s || typeof s.update !== 'function') return
-        let now
-        try {
-          now = s.get(SIDEBAR_NS)
-        } catch {
-          return
-        }
-        if (String(now?.terminalShell ?? '') === bashPath) {
-          s.update(SIDEBAR_NS, { terminalShell: previous }).catch(() => {})
-        }
-      },
-      'dsh-gitbash-shell: sidebar shell revert',
-    )
-    console.log(
-      `${TAG} dsh-better-sidebar terminal shell -> Git Bash (${bashPath})` +
-        (previous ? ` (took over from '${previous}')` : ''),
-    )
+    if (tried < SIDEBAR_TRIES) {
+      timer = setTimeout(run, SIDEBAR_RETRY_MS)
+      return
+    }
+    console.log(`${TAG} better-sidebar shell adoption skipped: settings service unavailable after ${tried} tries`)
   }
+  run.watched = false
   void run()
+
+  // Dispose: while we still hold the value, restore what was there before.
+  let reverted = false
+  ctx.effect(
+    () => () => {
+      if (reverted || !adopted) return
+      reverted = true
+      const s = ctx.get('settings')
+      if (!s || typeof s.update !== 'function') return
+      let now
+      try {
+        now = s.get(SIDEBAR_NS)
+      } catch {
+        return
+      }
+      if (String(now?.terminalShell ?? '') === bashPath) {
+        s.update(SIDEBAR_NS, { terminalShell: previous }).catch(() => {})
+      }
+    },
+    'dsh-gitbash-shell: sidebar shell revert',
+  )
 }
 
 // ── plugin ──────────────────────────────────────────────────────────────────
@@ -940,10 +1051,24 @@ export async function apply(ctx, config = {}) {
           const ns = typeof ds.settingsNamespace === 'function'
             ? ds.settingsNamespace(SETTINGS_NAMESPACE)
             : SETTINGS_NAMESPACE
-          settings.register(ns, Schema.object({
+          const scope = settings.register(ns, Schema.object({
             posixPaths: Schema.boolean().default(true),
+            adoptSidebar: Schema.boolean().default(true),
           }))
-          console.log(`${TAG} settings namespace registered: ${SETTINGS_NAMESPACE} (posixPaths default on)`)
+          sidebarScope = scope
+          console.log(`${TAG} settings namespace registered: ${SETTINGS_NAMESPACE} (posixPaths default on, adoptSidebar default on)`)
+          // A late register (settings service up after the adoption polling
+          // finished) still reconciles once, and the live watch flips the
+          // takeover when the user toggles the card switch.
+          try {
+            if (typeof scope?.watch === 'function') {
+              const off = scope.watch((next) => { reconcileSidebar(next && next.adoptSidebar !== false) })
+              ctx.effect(() => off, 'dsh-gitbash-shell: adoptSidebar watch')
+            }
+            reconcileSidebar(readAdoptSidebar(ctx))
+          } catch (error) {
+            console.log(`${TAG} adoptSidebar watch wiring failed: ${error?.message ?? error}`)
+          }
         })
         .catch((error) => {
           console.log(`${TAG} settings namespace registration FAILED: ${error && error.stack || String(error)}`)
@@ -1145,6 +1270,11 @@ export async function apply(ctx, config = {}) {
   // resolving from this plugin's own tree (covers hosts where the roster
   // probe is unavailable).
   const present = (await detectPresentSupport(ctx.agentPresets)) || (await hostHasToolPresent())
+  // v0.15.0 (dsh 0.1.6-alpha.2): official ptc/standard/cordis gained the
+  // tool-plugin-manager row; inject behind the same host-package probe as
+  // present (resolve-only is sufficient — the package cannot exist on an
+  // older host, so a roster text probe adds nothing).
+  const pluginManager = await hostHasPluginManagerTools()
   // Row spellings of the built-in presets these variants mirror: the
   // workflow-engine row was renamed and its old package deleted in dsh
   // 0.1.6-alpha.1, so the materializer copies whatever the host itself ships.
@@ -1179,12 +1309,12 @@ export async function apply(ctx, config = {}) {
     const sourceHashes = presetId === 'cordis-gitbash' ? skillsHashes(skillsSource) : null
     const marker = readMarker(target)
     const markerRows = rowFingerprint(rows, presetId)
-    if (state === 'unmodified' && syncDecision({ state, marker, version, sourceHashes, base, persona, present, rows: markerRows }) === 'idle') {
+    if (state === 'unmodified' && syncDecision({ state, marker, version, sourceHashes, base, persona, present, pluginManager, rows: markerRows }) === 'idle') {
       ctx.logger?.('gitbash-shell')?.debug?.( `preset '${presetId}' up to date (v${version}, ${base}-era${persona === 'split' ? ', persona-split' : ''}) — idle`)
       continue
     }
 
-    const skills = materialize({ target, presetId, skillsSource, version, base, persona, present, rows })
+    const skills = materialize({ target, presetId, skillsSource, version, base, persona, present, pluginManager, rows })
     const verb = state === 'absent' ? 'materialized' : 'refreshed'
     console.log(
       `${TAG} ${verb} preset '${presetId}' into ${userRootPath} (v${version}, ${base}-era composition${persona === 'split' ? ', persona-split' : ''})` +
@@ -1194,4 +1324,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, readAdoptSidebar, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
