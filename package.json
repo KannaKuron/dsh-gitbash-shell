@@ -1,7 +1,7 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.16.0",
-  "description": "DSH plugin: run every agent shell command through Git for Windows bash on Windows instead of PowerShell. Replaces the pwsh executor with a Git Bash ctx.shell provider and materializes Git Bash variants of the standard/minimal/code/cordis agent presets into your user preset root at startup. On Windows it also adopts dsh-better-sidebar's terminal shell (UI tabs and the model-facing terminal_* tools) through the sidebar's official settings seam, and pairs with dsh-ptc-cordis-preset so the PTC Creation-mode preset materializes as its Git Bash variant. Ships both composition eras for dsh <= 0.1.1 (built-in preset id 'code') and dsh >= 0.1.2 (renamed id 'ptc') — the era is probed per boot and re-materialized automatically after a dsh upgrade, in either upgrade order; preset ids never change so pinned sessions stay valid.",
+  "version": "0.16.1",
+  "description": "Windows 上让 agent 的每条 shell 命令改经 Git for Windows bash 执行;物化四个内置预设的 Git Bash 变体,统一 MSYS 盘根路径方言,侧栏终端接管可开关。· Run every agent shell command through Git for Windows bash on Windows; materialize Git Bash variants of the built-in presets, unify the MSYS drive-root path dialect, and adopt the sidebar terminal behind a switch.",
   "type": "module",
   "repository": {
     "type": "git",
