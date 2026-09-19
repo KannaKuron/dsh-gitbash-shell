@@ -157,10 +157,18 @@ PTC/创造及用户自建模式一律覆盖。
 - **提示词源头替换**:组装期(`system-prompt/assemble`)把官方提示词 sections / contexts /
   variables 里的 Windows 绝对路径**原位**改写成 `/c/...`——不增删任何内容、不动工具 schema;
 - **一句话指示**:经 `systemPrompt.context`(order 126)注入全局指示——shell 是 Git for
-  Windows bash,路径用 MSYS 盘根,所有工具都直接接受这种写法;
-- **参数翻译**:`tools/execute` 上把文件工具的路径参数(`file_path` / `path` / `workdir`)由
+  Windows bash,路径用 MSYS 盘根,所有工具都直接接受这种写法——含 `~`、`/tmp`、`/dev/null`、
+  `/usr` 等 bash 原生习惯(v0.17.0 起与 Git Bash 挂载表一致地解析);
+- **参数翻译**:`tools/execute` 上把工具的路径参数(`file_path` / `path` / `workdir`,含 present
+  的嵌套 `files[].path`)由 `/c/...` 翻回 `C:/...` 交给 Node 文件工具;bash 的 `command` 字段
+  不动——那是 Git Bash 母语;**bash 虚拟路径按 Git Bash 挂载表解析(v0.17.0)**:`/tmp` → 用户
+  TEMP、`/dev/null` → Windows NUL 空设备、`~` → 家目录、`/usr` `/bin` `/etc` 等 → Git 安装根,
+  与 bash 写入/读取同一物理位置;glob 的绝对 pattern(`/c/.../*.md`)自动拆成 `path` + 相对
+  `pattern`(原先静默匹配空);
   `/c/...` 翻回 `C:/...` 交给 Node 文件工具;bash 的 `command` 字段不动——那是 Git Bash 母语;
-- **结果回流**:成功结果里的路径元数据(`read`/`write`/`edit` 的 `path`、`glob` 的 `paths[]`、
+- **结果回流**:成功结果里的路径元数据(`read`/`read_image`/`write`/`edit` 的 `path`、`glob` 的
+  `paths[]`、`grep` 的 `matches[].path`、`present` 的 `files[].path`)改写回 MSYS 形式,其中落在
+  用户 TEMP 下的路径回显为 `/tmp/...`(与 bash 的 `$TMP` 一致);文件内容与错误结果不动;
   `grep` 的 `matches[].path`)改写回 MSYS 形式;文件内容与错误结果不动;
 - **运行时事实**:向官方 `dsh-shell-env` 注册表贡献 `DSH_PATH_DIALECT=msys`,模型可在执行时
   核验(随开关实时生效)。

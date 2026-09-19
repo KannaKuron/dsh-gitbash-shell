@@ -99,11 +99,20 @@ While it is on (Windows only), `posixPaths` gates all of the following:
   /c/... form — nothing is added or removed, and tool schemas stay untouched;
 - **One-sentence directive**: a global directive via `systemPrompt.context` (order 126) — the
   shell is Git for Windows bash, paths use MSYS drive roots, and every tool accepts that form
+  directly — including the bash-native habits (`~`, `/tmp`, `/dev/null`, `/usr`), which resolve
+  exactly as bash itself resolves them (v0.17.0, mirroring the Git Bash mount table);
   directly;
-- **Argument translation**: on `tools/execute` the file tools' path arguments (`file_path` /
+- **Argument translation**: on `tools/execute` the tools' path arguments (`file_path` / `path` /
+  `workdir`, plus present's nested `files[].path`) are translated from /c/... back to C:/... for
+  the Node-backed file tools; a bash command's `command` field is left alone — that is Git Bash's
+  native form; **bash virtual paths resolve through the Git Bash mount table (v0.17.0)**: /tmp is
+  the user TEMP dir, /dev/null the Windows NUL device, ~ the home directory, and /usr /bin /etc
+  live under the Git install root — the same physical locations bash itself reads and writes; an
+  absolute glob pattern (/c/.../*.md) is split into `path` + a relative `pattern` (it used to
+  silently match nothing);
   `path` / `workdir`) are translated from /c/... back to C:/... for the Node-backed file tools;
   a bash command's `command` field is left alone — that is Git Bash's native form;
-- **Result round-trip**: path metadata in successful results (`path` of read/write/edit,
+- **Result round-trip**: path metadata in successful results (`path` of read/read_image/write/edit,
   `paths[]` of glob, `matches[].path` of grep) flows back in the MSYS form; file contents and
   error results are untouched;
 - **Runtime fact**: `DSH_PATH_DIALECT=msys` is contributed to the official `dsh-shell-env`

@@ -102,6 +102,7 @@
     执行读活设置(关→返回空对象,免重注册),unregister 经 envCtx.effect 挂插件 fiber 可逆;
     组合里没有该服务时静默无操作。DSH_HOME/DSH_SHELL/DSH_SESSION_ID 为注册表保留键,不可也
     不应覆盖。提示词源头替换(说一次)+ 运行时环境事实(按需核验)互为印证。
+    **虚拟挂载表翻译(v0.17.0)**:入参翻译升级为「盘根 + Git Bash mount 表」两级——`/tmp`→用户 TEMP、`/dev/null`→`\\.\NUL`、`/usr` 系→Git 安装根(buildTranslateEnv 进程内一次探测,默认安装 + PATH 候选 bash.exe,以 `<root>/usr/bin` 存在性排除 WSL shim)、`~`→`$HOME`、裸盘根 `/c`→`C:/`;全部段边界 + 大小写敏感(忠实 msys 挂载表,`/Tmp` 不匹配),探测失败即 no-op。**铁律**:`/dev/null` 只能映射 `\\.\NUL` 设备路径——裸 `NUL` 字符串经 libuv 相对路径会在 cwd 创建真实文件(非即焚);glob 绝对 pattern 按「首个通配符前目录前缀」拆成 `{path, pattern}`(仅 glob 工具、绝对 pattern 覆盖已有 path);present 的嵌套 `files[].path` 入参 + 出参回流均覆盖;出参 TEMP 前缀回显为 `/tmp`。完整设计与实测矩阵见 CHANGELOG v0.17.0。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
@@ -165,6 +166,14 @@
       活下来)、**幂等**、**探测失败即 no-op**(旧宿主保持逐字节原样)。
    ⑤ marker 用 `rows` 指纹记录对齐结果,宿主形态翻转时 `syncDecision` 自动重物化(与 `base` /
       `persona` / `present` 同一套维度模式)。
+   ⑥ **工具面/翻译层覆盖核对(2026-09-19 立,v0.17.0 教训)**:翻译层按「顶层字段名白名单
+      (`file_path`/`path`/`workdir`)+ present 嵌套形状」工作,dsh 新版本**新增或改动工具的
+      路径参数**是独立于 preset 的另一个漂移源(0.1.5 新增 present 的 `files[].path` 嵌套,直到
+      v0.17.0 才覆盖)。每次跟随升级必须盘点**所有带路径参数的工具**:对照宿主工具 schema
+      (harness 源码 packages/ 或 `cordis_inspect_list`)检查新字段名、嵌套路径形状、出参路径
+      元数据字段;有遗漏则补 `TRANSLATABLE_PATH_FIELDS` / 嵌套形状 / `rewriteResultPaths`,
+      并在真机跑一遍「虚拟路径 × 工具」矩阵(~、/tmp、/dev/null、/usr、裸盘根、绝对 glob
+      pattern、present 嵌套、bash workdir)。
 
 ## 验证清单(改动后)
 

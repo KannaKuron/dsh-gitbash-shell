@@ -50,6 +50,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -662,7 +663,7 @@ export function installRegisterShim(reg) {
 const SETTINGS_NAMESPACE = 'gitbash-shell'
 
 /** The full directive text, injected only while posixPaths is on. */
-const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly.'
+const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them.'
 
 // Official runtime counterpart to the directive (v0.11.0): dsh-shell-env is
 // the host-plane registry behind the model-visible $DSH_* facts, and the
@@ -670,7 +671,7 @@ const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths u
 // lives there, verifiable at runtime instead of only stated in the prompt.
 const PATH_DIALECT_KEY = 'DSH_PATH_DIALECT'
 const PATH_DIALECT_VALUE = 'msys'
-const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results: MSYS drive roots (/c/Users/...); every tool accepts this form directly.'
+const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results: MSYS drive roots (/c/Users/...) plus the bash-native mounts (~, /tmp, /dev/null, /usr); every tool accepts these forms directly.'
 
 /** Read the posixPaths switch from the live settings service; never throws. */
 export function readPosixPaths(ctxLike) {
@@ -723,30 +724,44 @@ function posixSeparators(value) {
     : value
 }
 
-/**
- * Rewrite result METADATA path fields to the MSYS dialect (pure, 0.10.4).
- * Only the well-known metadata fields per tool are touched — read/write/edit
- * `path` (absolute, via windowsToMsys), glob `paths[]` and grep
- * `matches[].path` (workspace-relative, separator-normalized). File CONTENT
- * (read lines, grep match text) and error results are never modified: the
- * tool result is data, only its path metadata changes dialect so the model
- * never meets a Windows-form path flowing back from a successful call.
- * @returns {object} a new value when any field changed, the input otherwise.
- */
-export function rewriteResultPaths(name, value) {
+export function rewriteResultPaths(name, value, env) {
   if (!value || typeof value !== 'object') return value
+  // v0.17.0: paths under the user TEMP directory echo back in the bash
+  // /tmp dialect (that IS what /tmp means in Git Bash), so the model sees
+  // the same short root bash itself prints for $TMP.
+  const tempRoot = env && env.tmpDir ? windowsToMsys(env.tmpDir) : ''
+  const toMsys = (p) => {
+    const out = windowsToMsys(p)
+    if (!tempRoot) return out
+    const lower = out.toLowerCase()
+    const rootLower = tempRoot.toLowerCase()
+    if (lower === rootLower) return '/tmp'
+    if (lower.startsWith(rootLower + '/')) return '/tmp' + out.slice(tempRoot.length)
+    return out
+  }
   if (name === 'read' || name === 'read_image' || name === 'write' || name === 'edit') {
     if (typeof value.path === 'string' && value.path !== '') {
-      const out = windowsToMsys(value.path)
+      const out = toMsys(value.path)
       if (out !== value.path) return { ...value, path: out }
     }
     return value
+  }
+  if (name === 'present' && Array.isArray(value.files)) {
+    let changed = false
+    const files = value.files.map((file) => {
+      if (!file || typeof file !== 'object' || typeof file.path !== 'string' || file.path === '') return file
+      const out = posixSeparators(toMsys(file.path))
+      if (out === file.path) return file
+      changed = true
+      return { ...file, path: out }
+    })
+    return changed ? { ...value, files } : value
   }
   if (name === 'glob' && Array.isArray(value.paths)) {
     let changed = false
     const paths = value.paths.map((p) => {
       if (typeof p !== 'string') return p
-      const out = posixSeparators(windowsToMsys(p))
+      const out = posixSeparators(toMsys(p))
       if (out === p) return p
       changed = true
       return out
@@ -757,7 +772,7 @@ export function rewriteResultPaths(name, value) {
     let changed = false
     const matches = value.matches.map((m) => {
       if (!m || typeof m !== 'object' || typeof m.path !== 'string') return m
-      const out = posixSeparators(windowsToMsys(m.path))
+      const out = posixSeparators(toMsys(m.path))
       if (out === m.path) return m
       changed = true
       return { ...m, path: out }
@@ -782,28 +797,128 @@ export function rewriteResultPaths(name, value) {
 // directive still stands).
 
 const MSYS_DRIVE_ROOT = /^\/([a-z])\/(.*)$/i
+const MSYS_BARE_DRIVE = /^\/([a-z])$/i
 const TRANSLATABLE_PATH_FIELDS = new Set(['file_path', 'path', 'workdir'])
 
-/** '/c/Users/x' -> 'C:/Users/x'; any other shape returns the input unchanged. */
-export function translateMsysPath(value) {
+// ── virtual mounts + env (v0.17.0) ─────────────────────────────────────
+//
+// Git Bash resolves a few POSIX roots through its OWN mount table before
+// any drive root applies (`mount` inside Git Bash): /tmp is the user TEMP
+// dir (usertemp), /dev/null is the Windows NUL device, and /usr /bin /etc
+// /var /home /root /mnt live under the Git install root. The model carries
+// those bash habits into EVERY tool, so the translation layer mirrors the
+// same table or the file tools silently misplace them (/tmp becomes a
+// fresh C:/tmp on the current drive; /dev/null becomes a real file under
+// C:/dev). All matches are segment-bounded and case-sensitive, exactly
+// like the msys mount table itself (/Tmp does NOT match).
+//
+// /home is deliberately the GIT mount (git-root/home, usually empty), NOT
+// the user profile: bash itself resolves /home/x there, while the home
+// SHORTHAND ~ expands to $HOME (= C:/Users/<u>) — mirroring both keeps
+// file tools and bash in perfect agreement. A bare '/' is never
+// translated: it would scope tools to the whole Git install tree.
+
+/** The Windows null device — the exact target of Git Bash's /dev/null. */
+const NUL_DEVICE = '\\\\.\\NUL'
+
+/** Git-root mounts: MSYS path -> subdirectory under the Git install root. */
+const GIT_MOUNTS = new Map([
+  ['/usr', 'usr'],
+  ['/bin', 'usr/bin'],
+  ['/etc', 'etc'],
+  ['/var', 'var'],
+  ['/home', 'home'],
+  ['/root', 'root'],
+  ['/mnt', 'mnt'],
+])
+
+/**
+ * The runtime facts the virtual mounts resolve against (all optional — a
+ * missing fact simply leaves its paths untranslated). Probed once per
+ * process: tmpdir/homedir are cheap; the Git root walks the candidate
+ * bash.exe list (the default install plus every PATH entry — which also
+ * covers a Git-usr-bin PATH entry) and accepts a root only when
+ * <root>/usr/bin exists, which excludes the WSL bash shim in WindowsApps.
+ */
+let translateEnvCache
+export function buildTranslateEnv() {
+  if (translateEnvCache) return translateEnvCache
+  const env = { tmpDir: undefined, home: undefined, gitRoot: undefined }
+  try {
+    const t = tmpdir()
+    if (t && existsSync(t)) env.tmpDir = t.replace(/\\/g, '/')
+  } catch { /* keep undefined */ }
+  try {
+    const h = homedir()
+    if (h && existsSync(h)) env.home = h.replace(/\\/g, '/')
+  } catch { /* keep undefined */ }
+  try {
+    const candidates = [DEFAULT_GIT_BASH]
+    for (const dir of String(process.env.PATH ?? '').split(';')) {
+      const clean = dir && dir.trim()
+      if (clean) candidates.push(clean.replace(/\\/g, '/') + '/bash.exe')
+    }
+    for (const candidate of candidates) {
+      try {
+        if (!existsSync(candidate)) continue
+        const root = dirname(dirname(candidate))
+        if (existsSync(join(root, 'usr', 'bin'))) {
+          env.gitRoot = root.replace(/\\/g, '/')
+          break
+        }
+      } catch { /* try the next candidate */ }
+    }
+  } catch { /* keep undefined */ }
+  translateEnvCache = env
+  return env
+}
+
+/**
+ * '/c/Users/x' -> 'C:/Users/x'. With an env, the bash-native habits resolve
+ * first (~ -> home) and the virtual mounts (/tmp, /dev/null, /usr & friends)
+ * resolve after the drive roots; any other shape returns the input
+ * unchanged. Pure: the env is a plain fact bag, nothing is probed here.
+ */
+export function translateMsysPath(value, env) {
   if (typeof value !== 'string') return value
+  if (env && env.home && (value === '~' || value.startsWith('~/'))) {
+    return value === '~' ? env.home : env.home + '/' + value.slice(2)
+  }
   const match = MSYS_DRIVE_ROOT.exec(value)
-  if (!match) return value
-  return match[1].toUpperCase() + ':/' + match[2]
+  if (match) return match[1].toUpperCase() + ':/' + match[2]
+  const bare = MSYS_BARE_DRIVE.exec(value)
+  if (bare) return bare[1].toUpperCase() + ':/'
+  if (value === '/dev/null') return NUL_DEVICE
+  if (env && env.tmpDir && (value === '/tmp' || value.startsWith('/tmp/'))) {
+    return value === '/tmp' ? env.tmpDir : env.tmpDir + value.slice(4)
+  }
+  if (env && env.gitRoot) {
+    for (const [mount, target] of GIT_MOUNTS) {
+      if (value === mount || value.startsWith(mount + '/')) {
+        const rest = value === mount ? '' : value.slice(mount.length)
+        return env.gitRoot + '/' + target + rest
+      }
+    }
+  }
+  return value
 }
 
 /**
  * Return an arguments object whose path fields carry drive-letter roots.
  * Pure: builds a NEW object when any field changes and returns the ORIGINAL
  * reference otherwise — the registry deep-freezes exec.arguments at exec
- * construction (0.10.2 lesson: in-place writes throw in strict mode and were
- * silently swallowed), so the caller REPLACES the exec.arguments property
- * (the exec object itself is not frozen until tools/result; signal
- * replacement is the registry's own precedent).
+ * construction (0.10.2 lesson: in-place writes throw in strict mode and
+ * were silently swallowed), so the caller REPLACES the exec.arguments
+ * property (the exec object itself is not frozen until tools/result;
+ * signal replacement is the registry's own precedent).
+ *
+ * v0.17.0: present's NESTED files[].path rides along (the field-name
+ * whitelist only sees top-level keys, and present is the one tool whose
+ * path arguments live one level down).
  * @returns {object} the translated arguments object, or the input when
  *   nothing changed (also the input itself when args is not an object).
  */
-export function translatePathArguments(args) {
+export function translatePathArguments(args, env) {
   if (!args || typeof args !== 'object') return args
   let changed = false
   const next = { ...args }
@@ -811,13 +926,79 @@ export function translatePathArguments(args) {
     if (!TRANSLATABLE_PATH_FIELDS.has(key)) continue
     const value = next[key]
     if (typeof value !== 'string') continue
-    const translated = translateMsysPath(value)
+    const translated = translateMsysPath(value, env)
     if (translated === value) continue
     next[key] = translated
     changed = true
   }
+  if (Array.isArray(next.files)) {
+    const files = next.files.map((file) => {
+      if (!file || typeof file !== 'object' || typeof file.path !== 'string') return file
+      const translated = translateMsysPath(file.path, env)
+      return translated === file.path ? file : { ...file, path: translated }
+    })
+    if (files.some((file, index) => file !== next.files[index])) {
+      next.files = files
+      changed = true
+    }
+  }
   return changed ? next : args
 }
+
+// ── absolute glob patterns (v0.17.0) ────────────────────────────────────
+//
+// The glob tool takes its search root in the `path` argument and expects a
+// RELATIVE pattern; an absolute pattern ('/c/Users/x/*.md', or the Windows
+// form) is treated as relative text and silently matches nothing. A model
+// raised on bash writes absolute patterns anyway, so for the glob tool the
+// wrapper splits an absolute pattern at the last directory separator
+// before the first wildcard and moves the translated directory into
+// `path` ('/c/a/*/b/*.md' -> path 'C:/a', pattern '*/b/*.md'). An absolute
+// path WITHOUT wildcards splits into directory + basename. Runs only for
+// the glob tool and only for patterns that start absolute.
+
+const GLOB_META = /[*?\[\]]/
+
+/** Split an absolute glob pattern into { prefix, rest }; null when relative. */
+function splitGlobPrefix(pattern) {
+  if (typeof pattern !== 'string') return null
+  let p = pattern
+  // A Windows drive head ('C:' + separator) is normalized to the MSYS form
+  // first so both absolute dialects split through the same code path.
+  const winHead = /^([A-Za-z]):[\\/]+(.*)$/.exec(p)
+  if (winHead) p = '/' + winHead[1].toLowerCase() + '/' + winHead[2].replace(/[\\/]+/g, '/')
+  if (p[0] !== '/') return null
+  const meta = GLOB_META.exec(p)
+  const cut = meta ? p.lastIndexOf('/', meta.index) : p.lastIndexOf('/')
+  if (cut <= 0) return null
+  const rest = p.slice(cut + 1)
+  if (rest === '') return null
+  return { prefix: p.slice(0, cut), rest }
+}
+
+
+/** Translate the (always MSYS-form) directory prefix; null when it is not one. */
+function normalizeAbsolutePrefix(prefix, env) {
+  const translated = translateMsysPath(prefix, env)
+  return translated !== prefix ? translated : null
+}
+
+
+/**
+ * Rewrite a glob call's absolute pattern into the { path, pattern } pair
+ * the tool actually supports; any existing `path` is superseded (an
+ * absolute pattern already names its root). Pure; returns the input on any
+ * miss.
+ */
+export function translateGlobArguments(args, env) {
+  if (!args || typeof args !== 'object' || typeof args.pattern !== 'string') return args
+  const split = splitGlobPrefix(args.pattern)
+  if (!split) return args
+  const prefix = normalizeAbsolutePrefix(split.prefix, env)
+  if (!prefix) return args
+  return { ...args, pattern: split.rest, path: prefix }
+}
+
 
 // ── dsh-better-sidebar shell cooperation ───────────────────────────────────
 //
@@ -1160,7 +1341,12 @@ export async function apply(ctx, config = {}) {
       ctx.on('tools/execute', (exec, next) => {
         try {
           if (exec && exec.arguments && typeof exec.arguments === 'object' && readPosixPaths(ctx)) {
-            const translated = translatePathArguments(exec.arguments)
+            const env = buildTranslateEnv()
+            let translated = translatePathArguments(exec.arguments, env)
+            if (exec.name === 'glob') {
+              const globTranslated = translateGlobArguments(translated, env)
+              if (globTranslated !== translated) translated = globTranslated
+            }
             if (translated !== exec.arguments) exec.arguments = translated
           }
         } catch { /* never block a call on translation */ }
@@ -1185,7 +1371,7 @@ export async function apply(ctx, config = {}) {
         let patch
         try {
           if (readPosixPaths(ctx) && result && result.isError === false && result.value && typeof result.value === 'object') {
-            const value = rewriteResultPaths(exec && exec.name, result.value)
+            const value = rewriteResultPaths(exec && exec.name, result.value, buildTranslateEnv())
             if (value !== result.value) patch = value
           }
         } catch { /* never block a result */ }
@@ -1324,4 +1510,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, readPosixPaths, readAdoptSidebar, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, translateGlobArguments, buildTranslateEnv, readPosixPaths, readAdoptSidebar, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }

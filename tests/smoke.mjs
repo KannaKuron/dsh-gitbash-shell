@@ -265,6 +265,77 @@ test('msys path translation helpers', async () => {
   assert.equal(thawed.file_path, 'C:/x/y.txt', 'a deep-frozen input still translates into the new object')
 })
 
+test('msys virtual mounts, glob split, present nesting, temp echo (v0.17.0)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const { translateMsysPath, translatePathArguments, translateGlobArguments, rewriteResultPaths } = _internal
+  const BS = String.fromCharCode(92)
+  const NUL = BS + BS + '.' + BS + 'NUL'
+  const env = { tmpDir: 'C:/Users/u/AppData/Local/Temp', home: 'C:/Users/u', gitRoot: 'C:/Program Files/Git' }
+  // ~ expands to home exactly like bash ($HOME), ~user stays untouched
+  assert.equal(translateMsysPath('~', env), 'C:/Users/u')
+  assert.equal(translateMsysPath('~/.gitconfig', env), 'C:/Users/u/.gitconfig')
+  assert.equal(translateMsysPath('~other/x', env), '~other/x')
+  // /tmp is the user TEMP dir (usertemp mount), segment-bounded
+  assert.equal(translateMsysPath('/tmp', env), env.tmpDir)
+  assert.equal(translateMsysPath('/tmp/a b.txt', env), env.tmpDir + '/a b.txt')
+  assert.equal(translateMsysPath('/tmpfoo', env), '/tmpfoo')
+  assert.equal(translateMsysPath('/tmpx/y', env), '/tmpx/y')
+  assert.equal(translateMsysPath('/Tmp/x', env), '/Tmp/x', 'mount names are case-sensitive like the msys table')
+  // /dev/null is the Windows NUL device — never a bare 'NUL' string (which
+  // libuv would create as a REAL FILE in cwd) and never a recycle bin
+  assert.equal(translateMsysPath('/dev/null', env), NUL)
+  // /usr & friends live under the Git root; /bin maps to usr/bin (mount table)
+  assert.equal(translateMsysPath('/usr', env), 'C:/Program Files/Git/usr')
+  assert.equal(translateMsysPath('/usr/bin/bash.exe', env), 'C:/Program Files/Git/usr/bin/bash.exe')
+  assert.equal(translateMsysPath('/bin/sh', env), 'C:/Program Files/Git/usr/bin/sh')
+  assert.equal(translateMsysPath('/etc/profile', env), 'C:/Program Files/Git/etc/profile')
+  assert.equal(translateMsysPath('/home/u', env), 'C:/Program Files/Git/home/u', '/home is the GIT mount, matching bash — the shorthand ~ is the user home')
+  // bare drive roots
+  assert.equal(translateMsysPath('/c', env), 'C:/')
+  assert.equal(translateMsysPath('/E', env), 'E:/')
+  // without an env only drive roots translate (backwards compatibility)
+  assert.equal(translateMsysPath('/tmp/x'), '/tmp/x')
+  assert.equal(translateMsysPath('/usr/bin'), '/usr/bin')
+  assert.equal(translateMsysPath('~/.gitconfig'), '~/.gitconfig')
+  // a missing gitRoot fact leaves /usr untranslated (defensive no-op)
+  const noGit = { tmpDir: env.tmpDir, home: env.home }
+  assert.equal(translateMsysPath('/usr/bin/rg', noGit), '/usr/bin/rg')
+
+  // present's nested files[].path rides along, frozen input safe
+  const pa = translatePathArguments({ files: [{ path: '/c/a/b.txt', description: 'd' }, { path: 'plain.md' }] }, env)
+  assert.equal(pa.files[0].path, 'C:/a/b.txt')
+  assert.equal(pa.files[1].path, 'plain.md')
+  const frozenFiles = Object.freeze({ files: Object.freeze([{ path: '/tmp/t.png' }]) })
+  assert.equal(translatePathArguments(frozenFiles, env).files[0].path, env.tmpDir + '/t.png')
+  const plain = translatePathArguments({ command: 'ls /c/a' }, env)
+  assert.equal(plain.command, 'ls /c/a', 'bash command stays MSYS-native')
+
+  // glob: an absolute pattern splits into { path, pattern }; relative stays
+  const tg = translateGlobArguments
+  assert.deepEqual(tg({ pattern: '/c/Users/x/*.md' }, env), { pattern: '*.md', path: 'C:/Users/x' })
+  assert.deepEqual(tg({ pattern: '/c/a/*/b/*.md' }, env), { pattern: '*/b/*.md', path: 'C:/a' })
+  assert.deepEqual(tg({ pattern: '/tmp/t/*.log' }, env), { pattern: '*.log', path: env.tmpDir + '/t' })
+  assert.deepEqual(tg({ pattern: '/c/Users/x/readme.md' }, env), { pattern: 'readme.md', path: 'C:/Users/x' }, 'no wildcard: dir + basename')
+  assert.deepEqual(tg({ pattern: 'C:/Users/x/*.md' }, env), { pattern: '*.md', path: 'C:/Users/x' }, 'Windows-form patterns split too')
+  assert.deepEqual(tg({ pattern: 'C:' + BS + 'Users' + BS + 'x' + BS + '*.md' }, env), { pattern: '*.md', path: 'C:/Users/x' })
+  assert.deepEqual(tg({ pattern: '/c/a/*.md', path: '/e/p' }, env), { pattern: '*.md', path: 'C:/a' }, 'an absolute pattern supersedes an existing path')
+  const rel = { pattern: '*.ts' }
+  assert.equal(tg(rel, env), rel, 'relative patterns return the same reference')
+  const bare = { pattern: '/c' }
+  assert.equal(tg(bare, env), bare, 'a bare drive root is not a pattern split')
+
+  // result echo: TEMP paths come back as /tmp (that IS what /tmp means)
+  const rr = rewriteResultPaths
+  assert.equal(rr('read', { path: 'C:/Users/u/AppData/Local/Temp/x.txt' }, env).path, '/tmp/x.txt')
+  assert.equal(rr('read', { path: 'c:/users/u/appdata/local/temp/x' }, env).path, '/tmp/x', 'case-insensitive prefix')
+  assert.equal(rr('read', { path: 'C:' + BS + 'Users' + BS + 'u' + BS + 'AppData' + BS + 'Local' + BS + 'Temp' + BS + 'y.png' }, env).path, '/tmp/y.png')
+  assert.equal(rr('read', { path: 'C:/Users/u/x/f.txt' }, env).path, '/c/Users/u/x/f.txt', 'non-TEMP paths keep the drive-root dialect')
+  const pv = rr('present', { turn: 1, files: [{ path: 'C:/Users/u/AppData/Local/Temp/o.png', description: 'd' }] }, env)
+  assert.equal(pv.files[0].path, '/tmp/o.png')
+  assert.equal(rr('present', { turn: 1, files: [{ path: 'C:/x/o.png' }] }).files[0].path, '/c/x/o.png', 'present echoes MSYS without an env too')
+  assert.equal(rr('read', { path: 'C:/Users/u/AppData/Local/Temp/x.txt' }).path, '/c/Users/u/AppData/Local/Temp/x.txt', 'no env: no temp substitution (backwards compatible)')
+})
+
 test('client half is a ModuleLoader bundle with baseline requires only', () => {
   const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.match(text, /window\.__ModuleLoader__\.load\(/)

@@ -3,7 +3,19 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## v0.16.1 — 2026-09-17
+## v0.17.0 — 2026-09-19
+
+**类型**:feat(修复 + 能力增强:bash 虚拟路径习惯全工具统一)
+
+- **背景**:模型把 bash 的原生路径习惯带进所有工具时,翻译层只认 `/c/` 盘根形式,其余透传——实测矩阵暴露一串空档:`write /tmp/x` 在当前盘符根**静默创建 `C:\tmp\`**(历史污染实锤:C:\tmp 里躺着旧会话文件);`write /dev/null` 在**用户真实目录 `C:\dev\` 里创建 `null` 文件**;`bash workdir=/tmp` 直接 spawn ENOENT(spawn 的 cwd 原样传 Win32,Posix 形式无效);`~/.gitconfig`、`/usr/bin/...`、裸盘根 `/c`、`present` 的嵌套 `files[].path`、glob 绝对 pattern 全部失效或静默空结果。
+- **虚拟挂载表翻译**:入参翻译升级为「盘根 + Git Bash mount 表」两级——`/tmp` → 用户 TEMP(usertemp 挂载,文件工具与 bash 写**同一物理文件**);`/dev/null` → `\\.\NUL` 空设备(**不是**回收站,忠实 bash 即焚语义;**裸 `NUL` 字符串是陷阱**:libuv 相对路径会在 cwd 下创建名为 NUL 的真实文件,实测内容可读回,只有 `//./NUL` 设备路径才是真即焚);`/usr` `/bin` `/etc` `/var` `/home` `/root` `/mnt` → Git 安装根下对应目录(`/bin`→`usr/bin`、`/home` 是 Git 挂载而 `~` 才是用户主目录——均忠实 bash);`~`/`~/...` → `$HOME` 展开(`~user` 不碰);裸盘根 `/c` → `C:/`。全部段边界匹配、大小写敏感(忠实 msys 挂载表,`/Tmp` 不匹配)、探测失败即 no-op(env 由 `buildTranslateEnv()` 进程内一次探测:默认安装 + PATH 候选 bash.exe,以 `<root>/usr/bin` 存在性排除 WSL shim;tmpdir/homedir 有 existsSync 防御)。
+- **glob 绝对 pattern 拆分**:glob 的绝对 pattern(`/c/.../*.md` 或 Windows 形式)原先静默匹配空;现按「第一个通配符前的目录前缀」拆成 `{ path, pattern }`(无通配符时目录 + basename;绝对 pattern 覆盖已有 path;相对 pattern 原样返回)。仅对 glob 工具生效。
+- **present 嵌套路径**:`files[].path` 入参随翻译层(顶层字段白名单够不着的嵌套形状,v0.17.0 起覆盖);出参回流同步覆盖 `present` 的 `files[].path`。
+- **出参 TEMP → /tmp 回显**:结果元数据落在用户 TEMP 下的路径回显为 `/tmp/...`(与 bash 的 `$TMP` 一致,大小写不敏感前缀匹配),非 TEMP 路径维持 `/c/` 盘根方言;无 env 时保持旧行为(兼容)。
+- **指令与环境事实**:order-126 指示与 `DSH_PATH_DIALECT` 描述补「bash 原生习惯(~、/tmp、/dev/null、/usr)在所有工具同样有效」;设置卡 **21 语言 hint 同步更新**(工具列表补 present + bash 习惯句)。
+- 冒烟测试新增 1 块(~ 展开、虚拟挂载、段边界、大小写、无 env 兼容、present 嵌套/冻结、glob 拆分矩阵、TEMP 回显/大小写/present/无 env),41/41 全绿。
+- 真机矩阵验证:`read`/`write`/`grep` 的 `/tmp` 落 TEMP;`bash workdir=/tmp` 修复;`\\.\NUL` 写 OK 读 EOF;`/usr/bin/bash.exe`、`~/.gitconfig` 可读;`glob pattern=/c/...\*.md` 正常返回。
+
 
 **类型**:docs(npm description 双语化)
 
