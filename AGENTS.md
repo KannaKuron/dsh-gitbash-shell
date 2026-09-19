@@ -122,6 +122,23 @@
     `os.tmpdir()` 在 Windows 上得到 `undefined\temp`。
     改动这一层必须跑 `tests/smoke.mjs` 的「run_code program literals」矩阵(翻译 / 不动 / 整体 no-op
     三类,含 `/dev/null` 经 `eval` 求值、正则引号与除法不串味)。
+ 4d. **失败有「两个面」,必须同方言;以及行尾值为什么是 `input`(v0.22.0)**。
+     「翻译层」的第四张面孔是**失败文本**:一次失败同时产出 `content`(模型在失败调用上读到的文本、UI
+     卡片)与 `error.message`(PTC 桥交给程序的那条 `ToolCallError` 消息)。只翻 content 时,程序里
+     `catch (e) { console.log(e.message) }` 会打出 `C:\Users\...`,而同一失败在未捕获面是 `/c/...`
+     ——同一错误两种方言。修法:`tools/post-execute` 对同一 result 的 `error.message` **原地改写**
+     (注册表在 `normalizeDispatchResult` 按**引用**透传 error,直到 `materializeFinalResult` 才快照,
+     故这次写入同时到达 PTC 桥与最终记录)。**铁律**:① 绝不用官方 `block` 决策去改 message——它会重建
+     `{ message }` 并**丢掉 `error.info`**(`FS_NOT_FOUND` 等结构化身份,记录/UI 在用),冒烟断言锁死正文
+     不得出现 `kind: 'block'`;② 改写函数对冻结/缺字段/非字符串一律 no-op(内容面仍独立生效),
+     半改不算改;③ `/tmp` 回显必须覆盖**句子中间内嵌**的路径(`msysEcho` + `mountTempRoot`),
+     成功面(`rewriteResultPaths`)与失败面共用同一个 helper,三面同源。
+     **行尾值**:执行器注入的是 `core.autocrlf=input` + `core.eol=lf`(**不是 `false`**)。实测:在已经是
+     CRLF 工作区的仓库里(Windows 默认 autocrlf=true 检出的仓库),`false` 会让 `git diff` 把工作区 CRLF 与
+     索引 LF 逐行比对 → 整文件飘红、`git add` 连行尾差异一起暂存(同仓库实测 4387/4233 行,而 `input`/`true`
+     只有真实改动的 198/44 行);`input` 提交侧归一 CRLF→LF、检出侧永不写 CRLF,才是「Linux 访客看到干净
+     工作区」的等价物(代价:`git diff` 对将被归一化的文件打一行 stderr 提示,如实告知即可)。
+     改这一层必须跑冒烟里的「one dialect on BOTH faces」与「post-execute branch」两例。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步

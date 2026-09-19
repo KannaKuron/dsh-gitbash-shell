@@ -1096,23 +1096,82 @@ test('the model git gets Linux line endings from the executor (v0.21.1)', () => 
   assert.match(shell, /withParityEnv\(spec\)/)
   assert.match(shell, /GIT_CONFIG_COUNT: '2'/)
   assert.match(shell, /GIT_CONFIG_KEY_0: 'core\.autocrlf'/)
-  assert.match(shell, /GIT_CONFIG_VALUE_0: 'false'/)
+  assert.match(shell, /GIT_CONFIG_VALUE_0: 'input'/, 'input (not false): a CRLF worktree must read as CLEAN, not as whole-file churn')
   assert.match(shell, /GIT_CONFIG_KEY_1: 'core\.eol'/)
   assert.match(shell, /GIT_CONFIG_VALUE_1: 'lf'/)
   assert.match(shell, /value\.gitAutocrlf === false/, 'the switch must be able to turn it off')
   assert.match(shell, /dshEnv/, 'the facts ride the trusted dshEnv layer')
   // and nothing anywhere writes the user's global git config
+  assert.doesNotMatch(shell, /GIT_CONFIG_VALUE_0: 'false'/, 'false showed every line of a CRLF worktree as modified (v0.22.0 evidence)')
   assert.doesNotMatch(host, /'--global'/)
   assert.doesNotMatch(shell, /'--global'/)
 })
 
 test('a failing run_code program reports paths in the MSYS dialect (v0.21.0)', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(text, /else if \(exec\.name === 'run_code'\) \{/, 'run_code must ride the error-dialect branch')
-  assert.match(text, /rewriteErrorContent\(result\.content, \{ nulHint: false \}\)/, 'paths only — the /dev/null hint is for file tools')
+  assert.match(text, /if \(exec\.name === 'run_code'\) \{/, 'run_code must ride the error-dialect branch')
+  assert.match(text, /rewriteErrorContent\(result\.content, \{ nulHint: false, env \}\)/, 'paths only — the /dev/null hint is for file tools')
   const { rewriteErrorContent } = await import('../src/index.js')
   const err = rewriteErrorContent([{ type: 'text', text: "ENOENT: no such file or directory, open 'C:\\Users\\kanna\\x.txt'" }], { nulHint: false })
   assert.match(err[0].text, /\/c\/Users\/kanna\/x\.txt/, 'the Windows path comes back as an MSYS path')
   assert.match(err[0].text, /ENOENT: no such file or directory/, 'the diagnostic itself stays verbatim')
   assert.equal(err.length, 1, 'no guidance block is appended for a program error')
+})
+
+test('a failure speaks one dialect on BOTH faces (v0.22.0)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const { rewriteErrorMessage, rewriteFailureMessage, rewriteErrorContent, msysEcho } = _internal
+  const BS = String.fromCharCode(92)
+  const Q = String.fromCharCode(34)
+  const env = { tmpDir: 'C:/Users/u/AppData/Local/Temp', home: 'C:/Users/u', gitRoot: 'C:/Program Files/Git' }
+  const raw = 'cannot read ' + Q + 'C:' + BS + 'Users' + BS + 'u' + BS + 'x.txt' + Q + ': not found'
+  const posix = 'cannot read ' + Q + '/c/Users/u/x.txt' + Q + ': not found'
+  // the message face: drive paths become MSYS, every diagnostic byte stays
+  assert.equal(rewriteErrorMessage(raw), posix)
+  assert.equal(rewriteErrorMessage(raw, { env }), posix)
+  // and the /tmp mount echoes exactly like a successful result does
+  const tmpMsg = 'ENOENT: no such file or directory, open ' + Q + env.tmpDir + '/x.txt' + Q
+  assert.equal(rewriteErrorMessage(tmpMsg, { env }), 'ENOENT: no such file or directory, open ' + Q + '/tmp/x.txt' + Q)
+  assert.equal(rewriteErrorMessage(tmpMsg), 'ENOENT: no such file or directory, open ' + Q + '/c/Users/u/AppData/Local/Temp/x.txt' + Q, 'no mount facts: the drive root still translates, the mount does not')
+  assert.equal(rewriteErrorMessage('boom: no such file'), 'boom: no such file', 'nothing to translate → the same value')
+  assert.equal(rewriteErrorMessage(''), '')
+  assert.equal(rewriteErrorMessage(undefined), undefined)
+  assert.equal(msysEcho(null), null, 'non-strings pass straight through')
+  // the result owns the message: patched in place, identity preserved
+  const result = { isError: true, error: { message: raw, info: { name: 'FsError', code: 'FS_NOT_FOUND' } } }
+  assert.equal(rewriteFailureMessage(result, env), true)
+  assert.equal(result.error.message, posix)
+  assert.equal(result.error.info.code, 'FS_NOT_FOUND', 'the structured identity survives — this is why it is not a block decision')
+  assert.equal(rewriteFailureMessage(result, env), false, 'idempotent: nothing left to rewrite')
+  // someone else frozen result must not throw
+  const frozen = Object.freeze({ isError: true, error: Object.freeze({ message: raw }) })
+  assert.equal(rewriteFailureMessage(frozen, env), false)
+  assert.equal(frozen.error.message, raw, 'a frozen error keeps the host form; the content face still carries the dialect')
+  assert.equal(rewriteFailureMessage(undefined, env), false)
+  assert.equal(rewriteFailureMessage({ isError: true }, env), false)
+  // both faces come out of ONE helper, so they cannot disagree
+  const blocks = rewriteErrorContent([{ type: 'text', text: raw }], { env })
+  assert.equal(blocks[0].text, posix)
+})
+
+test('the post-execute branch patches both faces, and never forges a block (v0.22.0)', () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(text, /rewriteFailureMessage\(result, env\)/, 'the message face rides the same branch as the content face')
+  assert.equal((text.match(/\n\s+rewriteFailureMessage\(result, env\)/g) ?? []).length, 2, 'run_code AND the file tools')
+  assert.match(text, /rewriteErrorContent\(result\.content, \{ nulHint: false, env \}\)/, 'run_code still gets paths only')
+  assert.doesNotMatch(text, /kind: 'block'/, 'a block decision rebuilds the error as a bare message and drops its identity')
+})
+
+test('glob patterns may open with a tilde (v0.22.0)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const env = { tmpDir: 'C:/Users/u/AppData/Local/Temp', home: 'C:/Users/u', gitRoot: 'C:/Program Files/Git' }
+  const tg = _internal.translateGlobArguments
+  assert.deepEqual(tg({ pattern: '~/sandbox/*.md' }, env), { pattern: '*.md', path: 'C:/Users/u/sandbox' })
+  assert.deepEqual(tg({ pattern: '~' }, env), { pattern: 'u', path: 'C:/Users' }, 'bare ~ is the home directory itself')
+  const named = { pattern: '~other/x/*.md' }
+  assert.equal(tg(named, env), named, '~user has no fact behind it → untouched, same reference')
+  const noEnv = { pattern: '~/x/*.md' }
+  assert.equal(tg(noEnv, undefined), noEnv, 'no mount facts → no expansion')
+  const rel = { pattern: 'sub/*.md' }
+  assert.equal(tg(rel, env), rel, 'relative patterns still return the same reference')
 })

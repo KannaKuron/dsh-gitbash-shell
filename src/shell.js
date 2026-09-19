@@ -135,10 +135,14 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * with it — so non-DSH parity facts are merged into the trusted dshEnv map
    * HERE, right before the spawn. Windows Git defaults to core.autocrlf=true,
    * so an LF file the model writes comes back CRLF after a checkout (scripts
-   * break on the stray \r, byte assertions fail); a Linux guest has
-   * autocrlf=false. GIT_CONFIG_* are per-invocation settings: only the
-   * commands this executor runs see them, the user's own terminal and a
-   * repository's .gitattributes are untouched.
+   * break on the stray \r); a Linux guest has autocrlf unset. "input"
+   * (v0.22.0) is the value that actually matches Linux HERE: it normalizes
+   * CRLF to LF on the way into the index without ever writing CRLF, so a
+   * worktree a Windows checkout left CRLF reads as CLEAN — with "false" the
+   * same repository showed every line of every file as modified and git add
+   * staged that churn — while core.eol=lf keeps checkouts on LF.
+   * GIT_CONFIG_* are per-invocation settings: only the commands this
+   * executor runs see them, and a repository's .gitattributes still wins.
    * @param {object} spec the shell request
    * @returns {object} the request with the parity facts merged in
    */
@@ -151,7 +155,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
         ...(spec.dshEnv === undefined ? {} : spec.dshEnv),
         GIT_CONFIG_COUNT: '2',
         GIT_CONFIG_KEY_0: 'core.autocrlf',
-        GIT_CONFIG_VALUE_0: 'false',
+        GIT_CONFIG_VALUE_0: 'input',
         GIT_CONFIG_KEY_1: 'core.eol',
         GIT_CONFIG_VALUE_1: 'lf',
       }

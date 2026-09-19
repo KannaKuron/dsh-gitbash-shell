@@ -775,6 +775,53 @@ export function windowsToMsys(text) {
       '/' + drive.toLowerCase() + '/' + rest.replace(/[\\/]+/g, '/'))
 }
 
+/**
+ * The MSYS echo of one text the Windows layer produced (v0.22.0): the
+ * drive-root translation plus the /tmp mount, so a path that came back out
+ * of the host reads as the very path the model wrote. ONE helper for every
+ * echo face — success metadata, failure content, failure message — because
+ * those faces must never disagree about the dialect.
+ */
+function msysEcho(value, env) {
+  const out = windowsToMsys(value)
+  if (typeof out !== 'string' || out.length === 0) return out
+  const tempRoot = env && env.tmpDir ? windowsToMsys(env.tmpDir) : ''
+  if (!tempRoot) return out
+  return mountTempRoot(out, tempRoot)
+}
+
+/**
+ * Swap every /tmp-mount path inside a text for the short bash spelling;
+ * pure. Whole-value path fields hit the first branch; a diagnostic that
+ * QUOTES a temp path ("ENOENT ... open /c/Users/u/AppData/.../x.txt") is
+ * the reason this is an embedded scan rather than a prefix test — the
+ * model must recognise its own /tmp path in an error the way it does in a
+ * successful result. Case-insensitive like the Windows filesystem, and
+ * anchored on a path boundary so a sibling name (…/Temperature) never
+ * matches.
+ */
+function mountTempRoot(text, tempRoot) {
+  const haystack = text.toLowerCase()
+  const needle = tempRoot.toLowerCase()
+  let out = ''
+  let cursor = 0
+  let hits = 0
+  for (;;) {
+    const at = haystack.indexOf(needle, cursor)
+    if (at < 0) break
+    const after = at + needle.length
+    const boundary = after === text.length || text.charCodeAt(after) === 47
+    if (boundary) {
+      out += text.slice(cursor, at) + '/tmp'
+      hits++
+    } else {
+      out += text.slice(cursor, after)
+    }
+    cursor = after
+  }
+  return hits === 0 ? text : out + text.slice(cursor)
+}
+
 /** Normalize backslash separators in a RELATIVE result path to slashes; pure. */
 function posixSeparators(value) {
   return typeof value === 'string' && value.includes(String.fromCharCode(92))
@@ -804,10 +851,11 @@ const ERROR_CONTENT_TOOLS = new Set(['read', 'read_image', 'write', 'edit', 'glo
 export function rewriteErrorContent(content, options) {
   if (!Array.isArray(content)) return content
   const nulHint = !options || options.nulHint !== false
+  const env = options && options.env ? options.env : null
   let changed = false
   const next = content.map((block) => {
     if (!block || typeof block !== 'object' || typeof block.text !== 'string') return block
-    const out = windowsToMsys(block.text)
+    const out = msysEcho(block.text, env)
     if (out === block.text) return block
     changed = true
     return { ...block, text: out }
@@ -827,21 +875,50 @@ export function rewriteErrorContent(content, options) {
   return changed ? next : content
 }
 
+/**
+ * The SECOND face of a failure (v0.22.0). The content blocks are what the
+ * model reads on a failed call and what the UI card shows; error.message is
+ * what the PTC bridge hands a running program as its caught ToolCallError
+ * message (the durable record keeps only the structured identity). Rewriting
+ * only the content left a program that printed a caught error holding the
+ * Windows form while every other face said the MSYS one. Pure; options
+ * mirror rewriteErrorContent.
+ */
+export function rewriteErrorMessage(message, options) {
+  if (typeof message !== 'string' || message.length === 0) return message
+  return msysEcho(message, options && options.env ? options.env : null)
+}
+
+/**
+ * Apply rewriteErrorMessage to a failure RESULT in place (v0.22.0). The
+ * registry keeps result.error by reference through the whole post-execute
+ * waterfall and only snapshots the projection afterwards
+ * (normalizeDispatchResult -> materializeFinalResult), so this write reaches
+ * the PTC bridge, which is where a program meets its caught error.
+ * post-execute block decision: a block rebuilds the error as a bare message
+ * and would drop the structured identity (FS_NOT_FOUND and friends) that the
+ * record and the UI keep. Defensive — a frozen or absent error object leaves
+ * the result untouched, and the content face still carries the dialect alone.
+ */
+export function rewriteFailureMessage(result, env) {
+  try {
+    const error = result && result.error
+    if (!error || typeof error !== 'object' || typeof error.message !== 'string') return false
+    const rewritten = msysEcho(error.message, env)
+    if (rewritten === error.message) return false
+    error.message = rewritten
+    return error.message === rewritten
+  } catch {
+    return false
+  }
+}
+
 export function rewriteResultPaths(name, value, env) {
   if (!value || typeof value !== 'object') return value
   // v0.17.0: paths under the user TEMP directory echo back in the bash
   // /tmp dialect (that IS what /tmp means in Git Bash), so the model sees
   // the same short root bash itself prints for $TMP.
-  const tempRoot = env && env.tmpDir ? windowsToMsys(env.tmpDir) : ''
-  const toMsys = (p) => {
-    const out = windowsToMsys(p)
-    if (!tempRoot) return out
-    const lower = out.toLowerCase()
-    const rootLower = tempRoot.toLowerCase()
-    if (lower === rootLower) return '/tmp'
-    if (lower.startsWith(rootLower + '/')) return '/tmp' + out.slice(tempRoot.length)
-    return out
-  }
+  const toMsys = (p) => msysEcho(p, env)
   if (name === 'read' || name === 'read_image' || name === 'write' || name === 'edit') {
     if (typeof value.path === 'string' && value.path !== '') {
       const out = toMsys(value.path)
@@ -1036,6 +1113,19 @@ function expandLeadingVar(value, env) {
   else return value
   return base ? (rest !== '' ? base + rest : base) : value
 }
+/**
+ * Expand a leading tilde the way Git Bash does (v0.22.0): ~ and ~/... mean
+ * the user home — the same fact the mount table already applies to every
+ * other path argument. A named form (~other/...) is left alone: the plugin
+ * has no such fact, and a wrong guess would search the wrong tree.
+ */
+function expandLeadingTilde(value, env) {
+  if (!env || !env.home || typeof value !== 'string') return value
+  if (value === '~') return env.home
+  if (value.charCodeAt(0) !== 126 || value.charCodeAt(1) !== 47) return value
+  return env.home + value.slice(1)
+}
+
 export function translateMsysPath(value, env) {
   if (typeof value !== 'string') return value
   if (env && env.home && (value === '~' || value.startsWith('~/'))) {
@@ -1401,7 +1491,9 @@ export function translateGlobArguments(args, env) {
   // Expand a leading variable shorthand first (v0.18.1): a pattern opening
   // with $HOME/... must become absolute before the split, or the splitter
   // rejects it and glob silently matches nothing.
-  const expanded = env ? expandLeadingVar(args.pattern, env) : args.pattern
+  // Then the tilde shorthand (v0.22.0): ~/x names the same tree as $HOME/x
+  // in every other tool, so glob must not silently match nothing for it.
+  const expanded = env ? expandLeadingTilde(expandLeadingVar(args.pattern, env), env) : args.pattern
   const split = splitGlobPrefix(expanded)
   if (!split) return args
   const prefix = normalizeAbsolutePrefix(split.prefix, env)
@@ -1819,16 +1911,20 @@ export async function apply(ctx, config = {}) {
               const value = rewriteResultPaths(exec && exec.name, result.value, dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null)
               if (value !== result.value) patch = value
             } else if (result.isError === true && dialect.errorDialect && exec && Array.isArray(result.content)) {
-              if (ERROR_CONTENT_TOOLS.has(exec.name)) {
-                const content = rewriteErrorContent(result.content)
+              // v0.22.0: BOTH faces of a failure carry the dialect — the
+              // content the model reads on a failed call, and the result's own
+              // error.message, which a PTC program receives as its caught
+              // ToolCallError message and the durable record keeps.
+              const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
+              if (exec.name === 'run_code') {
+                // paths only — the /dev/null hint is for file tools
+                const content = rewriteErrorContent(result.content, { nulHint: false, env })
                 if (content !== result.content) contentPatch = content
-              } else if (exec.name === 'run_code') {
-                // v0.21.0: an uncaught program failure carries WINDOWS paths in
-                // its text ("ENOENT: ... open 'C:\\Users\\...'") — the one place where
-                // the dialect the model sees everywhere else broke. Paths only;
-                // the diagnostic stays verbatim and no /dev/null hint is added.
-                const content = rewriteErrorContent(result.content, { nulHint: false })
+                rewriteFailureMessage(result, env)
+              } else if (ERROR_CONTENT_TOOLS.has(exec.name)) {
+                const content = rewriteErrorContent(result.content, { env })
                 if (content !== result.content) contentPatch = content
+                rewriteFailureMessage(result, env)
               }
             }
           }
@@ -1972,4 +2068,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
