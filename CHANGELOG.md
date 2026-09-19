@@ -9,7 +9,7 @@
 
 - **前导变量简写展开**:路径参数开头的 HOME/TMPDIR/TMP/TEMP 变量(裸名与花括号两种形态)按 Git Bash 语义展开(HOME→用户主目录,TMPDIR/TMP/TEMP→/tmp 挂载即用户 TEMP)——bash 的 $HOME/.gitconfig、${TMPDIR}/x 习惯在文件工具直接可用。未知变量与 NAMEX 型误匹配原样透传(工具如实报错,不猜测);无 env 时保持旧行为。
 - **/dev/null 报错引导**:文件工具撞 EINVAL(设备路径被 harness 的 realpath 步骤拒绝)时,在保留原始诊断的前提下**附加**一条引导块(提示经 bash 丢弃输出),模型首次撞错即获得正确路径,无需试错。
-- 实现注记:expandLeadingVar 用字符码手写、源码零 dollar 字面量——PTC run_code 的代码传输层会截断引号内的 dollar 字节(本次开发实测踩坑,详见同日事故:同一事故曾把 index.js 写出 700 行重复段,已用 git checkout + 干净重放恢复)。
+- 实现注记:expandLeadingVar 用字符码手写。归因更正(2026-09-19 复核):开发中曾出现一次长程序输出的截断事故(index.js 被写出 700 行重复段,git checkout + 干净重放恢复),当时疑为 PTC 代码传输层截断引号内 dollar 字节;随后做了两组对照实验(直接 dollar 字面量、charCode 拼接经 code 通道写盘读回)均**完好**,通道无罪——事故归因于模型生成长程序的偶发输出错误,字符码写法仅作为防御习惯保留。
 - 已知边界(不解决,语义限制):路径通配符展开(pkgs/*/x.md 传给单值 path 字段)是 shell 预处理语义,由 glob 工具/bash 承接;run_code 程序文本内的原生 fs 调用不经工具参数翻译(PTC 子进程 env 全空致 os.tmpdir() 异常属上游 bug,另行上报)。
 ## v0.17.1 — 2026-09-19
 
