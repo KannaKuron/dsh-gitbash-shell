@@ -1078,7 +1078,11 @@ function normalizeAbsolutePrefix(prefix, env) {
  */
 export function translateGlobArguments(args, env) {
   if (!args || typeof args !== 'object' || typeof args.pattern !== 'string') return args
-  const split = splitGlobPrefix(args.pattern)
+  // Expand a leading variable shorthand first (v0.18.1): a pattern opening
+  // with $HOME/... must become absolute before the split, or the splitter
+  // rejects it and glob silently matches nothing.
+  const expanded = env ? expandLeadingVar(args.pattern, env) : args.pattern
+  const split = splitGlobPrefix(expanded)
   if (!split) return args
   const prefix = normalizeAbsolutePrefix(split.prefix, env)
   if (!prefix) return args

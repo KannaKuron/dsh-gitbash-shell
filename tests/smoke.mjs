@@ -377,6 +377,17 @@ test('leading variable shorthands + NUL guidance (v0.18.0)', async () => {
   const plain = rewriteErrorContent([{ type: 'text', text: 'Error: cannot read X: not found' }])
   assert.equal(plain.length, 1, 'ordinary errors gain no guidance')
 })
+
+test('glob patterns may open with a variable shorthand (v0.18.1)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const D = String.fromCharCode(36)
+  const env = { tmpDir: 'C:/Users/u/AppData/Local/Temp', home: 'C:/Users/u', gitRoot: 'C:/Program Files/Git' }
+  const tg = _internal.translateGlobArguments
+  assert.deepEqual(tg({ pattern: D + 'HOME/sandbox/*.md' }, env), { pattern: '*.md', path: 'C:/Users/u/sandbox' })
+  assert.deepEqual(tg({ pattern: D + '{TMPDIR}/t/*.log' }, env), { pattern: '*.log', path: env.tmpDir + '/t' })
+  const rel = { pattern: '*.ts' }
+  assert.equal(tg(rel, env), rel, 'relative patterns still return the same reference')
+})
   assert.equal(rd.lines[0].text, 'content mentions C:' + BS + 'Users' + BS + 'kanna inside')
 })
 

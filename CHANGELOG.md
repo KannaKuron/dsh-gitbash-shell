@@ -3,6 +3,12 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.18.1 — 2026-09-19
+
+**类型**:fix(glob 绝对 pattern 的变量前导)
+
+- glob 的绝对 pattern 若以变量简写开头($HOME/.../*.md、花括号形态),原先不参与拆分(pattern 首字符非 / 或盘符)→ 静默匹配空;现先经 expandLeadingVar 展开(同 v0.18.0 的路径字段语义)再走拆分链。
+- 附注(错误翻译的观察通道):PTC run_code 子调用里 ToolCallError.message 取自结果的 error.message 字段,而 v0.17.1 的错误翻译作用于 content 字段(模型直调与 UI 展示面)——在 run_code 内观察 e.message 看不到翻译,不代表翻译未生效;模型直调路径的效果以 UI 工具卡片错误文本为准。
 ## v0.18.0 — 2026-09-19
 
 **类型**:feat(例外交织的最后一轮:变量简写 + 设备路径引导)
