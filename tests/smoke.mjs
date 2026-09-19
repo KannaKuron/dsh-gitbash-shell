@@ -343,14 +343,40 @@ test('error-content dialect: path diagnostics translated, data never (v0.17.1)',
   // a harness path diagnostic comes back in the MSYS dialect
   const ec = rewriteErrorContent([{ type: 'text', text: 'Error: cannot read ' + String.fromCharCode(34) + 'C:' + BS + 'Users' + BS + 'x' + BS + 'f.txt' + String.fromCharCode(34) + ': not found' }])
   assert.equal(ec[0].text, 'Error: cannot read ' + String.fromCharCode(34) + '/c/Users/x/f.txt' + String.fromCharCode(34) + ': not found')
-  // non-drive-letter diagnostics stay verbatim (device paths, URLs)
+  // non-drive-letter diagnostics stay verbatim; a NUL-device EINVAL gains
+  // the v0.18.0 guidance block APPENDED (original text untouched)
   const keep = [{ type: 'text', text: 'EINVAL: invalid argument, realpath ' + BS + BS + '.' + BS + 'NUL' }]
-  assert.equal(rewriteErrorContent(keep), keep, 'device-path errors keep the exact reference')
+  const guidedOld = rewriteErrorContent(keep)
+  assert.equal(guidedOld[0].text, keep[0].text, 'device-path diagnostic text stays verbatim')
+  assert.equal(guidedOld.length, 2, 'plus the appended NUL guidance block (v0.18.0)')
+  const urlKeep = [{ type: 'text', text: 'see https://x.dev/a and file://C:/y stay' }]
+  assert.equal(rewriteErrorContent(urlKeep), urlKeep, 'URLs never match and keep the exact reference')
   // bash is NOT on the error-translation list: failed command output is data
   assert.equal(ERROR_CONTENT_TOOLS.has('bash'), false)
   assert.equal(ERROR_CONTENT_TOOLS.has('read'), true)
   // the red line: file CONTENT in successful results is never rewritten
   const rd = rewriteResultPaths('read', { path: 'C:' + BS + 'x' + BS + 'f.txt', lines: [{ n: 1, text: 'content mentions C:' + BS + 'Users' + BS + 'kanna inside' }] })
+
+test('leading variable shorthands + NUL guidance (v0.18.0)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const { translateMsysPath, rewriteErrorContent } = _internal
+  const D = String.fromCharCode(36)
+  const env = { tmpDir: 'C:/Users/u/AppData/Local/Temp', home: 'C:/Users/u', gitRoot: 'C:/Program Files/Git' }
+  assert.equal(translateMsysPath(D + 'HOME/.gitconfig', env), 'C:/Users/u/.gitconfig')
+  assert.equal(translateMsysPath(D + '{TMPDIR}/x', env), env.tmpDir + '/x')
+  assert.equal(translateMsysPath(D + 'TMP', env), env.tmpDir)
+  assert.equal(translateMsysPath(D + 'OTHER/x', env), D + 'OTHER/x', 'unknown variables stay verbatim')
+  assert.equal(translateMsysPath(D + 'HOMEX', env), D + 'HOMEX', 'NAMEX false positives stay verbatim')
+  assert.equal(translateMsysPath(D + 'HOMEfoo/x', env), D + 'HOMEfoo/x')
+  assert.equal(translateMsysPath(D + 'HOME/x', undefined), D + 'HOME/x', 'no env: no expansion (backwards compatible)')
+  const BS = String.fromCharCode(92)
+  const guided = rewriteErrorContent([{ type: 'text', text: 'EINVAL: invalid argument, realpath ' + BS + BS + '.' + BS + BS + 'NUL' }])
+  assert.equal(guided.length, 2, 'a NUL-device error gains one guidance block')
+  assert.match(guided[1].text, /^hint: \/dev\/null is the NUL device/)
+  assert.equal(guided[0].text.includes('EINVAL'), true, 'the original diagnostic stays verbatim')
+  const plain = rewriteErrorContent([{ type: 'text', text: 'Error: cannot read X: not found' }])
+  assert.equal(plain.length, 1, 'ordinary errors gain no guidance')
+})
   assert.equal(rd.lines[0].text, 'content mentions C:' + BS + 'Users' + BS + 'kanna inside')
 })
 

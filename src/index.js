@@ -753,6 +753,18 @@ export function rewriteErrorContent(content) {
     changed = true
     return { ...block, text: out }
   })
+  // /dev/null x file tools: the harness realpath step rejects device
+  // paths, so the failure is EXPECTED — append one guidance line (v0.18.0)
+  // instead of leaving the model to puzzle over EINVAL. The original
+  // diagnostic stays verbatim; only a hint block is appended.
+  const nulHit = content.some((block) => {
+    const t = block && typeof block === 'object' && typeof block.text === 'string' ? block.text : ''
+    return t.includes('EINVAL') && t.includes('NUL')
+  })
+  if (nulHit) {
+    next.push({ type: 'text', text: 'hint: /dev/null is the NUL device — file tools cannot target device paths (their realpath step rejects them); discard output through bash instead (echo ... > /dev/null)' })
+    changed = true
+  }
   return changed ? next : content
 }
 
@@ -911,10 +923,52 @@ export function buildTranslateEnv() {
  * resolve after the drive roots; any other shape returns the input
  * unchanged. Pure: the env is a plain fact bag, nothing is probed here.
  */
+/**
+ * Expand a leading dollar-sign NAME / braced NAME path variable the way
+ * Git Bash would (pure, string surgery, v0.18.0): HOME is the user home,
+ * TMPDIR/TMP/TEMP all mean the /tmp mount. Unknown names and NAMEX-style
+ * false positives return the input verbatim (written without any dollar
+ * literal — a code-transport layer mangles that byte inside quotes).
+ */
+function expandLeadingVar(value, env) {
+  if (!env || typeof value !== 'string' || value.length < 2) return value
+  if (value.charCodeAt(0) !== 36) return value
+  let name = ''
+  let rest = ''
+  if (value.charCodeAt(1) === 123) {
+    const close = value.indexOf('}', 2)
+    if (close < 0) return value
+    name = value.slice(2, close)
+    rest = value.slice(close + 1)
+  } else {
+    const head = value.slice(1)
+    let i = 0
+    while (i < head.length) {
+      const c = head.charCodeAt(i)
+      const letter = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95
+      const digit = c >= 48 && c <= 57
+      if (i === 0 ? !letter : !(letter || digit)) break
+      i++
+    }
+    if (i === 0) return value
+    name = head.slice(0, i)
+    rest = head.slice(i)
+  }
+  if (rest !== '' && rest.charCodeAt(0) !== 47) return value
+  let base
+  if (name === 'HOME') base = env.home
+  else if (name === 'TMPDIR' || name === 'TMP' || name === 'TEMP') base = env.tmpDir
+  else return value
+  return base ? (rest !== '' ? base + rest : base) : value
+}
 export function translateMsysPath(value, env) {
   if (typeof value !== 'string') return value
   if (env && env.home && (value === '~' || value.startsWith('~/'))) {
     return value === '~' ? env.home : env.home + '/' + value.slice(2)
+  }
+  if (env) {
+    const expanded = expandLeadingVar(value, env)
+    if (expanded !== value) return expanded
   }
   const match = MSYS_DRIVE_ROOT.exec(value)
   if (match) return match[1].toUpperCase() + ':/' + match[2]
