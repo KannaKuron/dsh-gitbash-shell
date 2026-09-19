@@ -136,8 +136,11 @@
      **行尾值**:执行器注入的是 `core.autocrlf=input` + `core.eol=lf`(**不是 `false`**)。实测:在已经是
      CRLF 工作区的仓库里(Windows 默认 autocrlf=true 检出的仓库),`false` 会让 `git diff` 把工作区 CRLF 与
      索引 LF 逐行比对 → 整文件飘红、`git add` 连行尾差异一起暂存(同仓库实测 4387/4233 行,而 `input`/`true`
-     只有真实改动的 198/44 行);`input` 提交侧归一 CRLF→LF、检出侧永不写 CRLF,才是「Linux 访客看到干净
-     工作区」的等价物(代价:`git diff` 对将被归一化的文件打一行 stderr 提示,如实告知即可)。
+     只有真实改动的 198/44 行);input 提交侧归一 CRLF→LF、检出侧永不写 CRLF。**精确措辞(重启后实测)**:
+     它让 git diff 在 CRLF 工作区里**没有幻影改动**、真实改动只算自己(scratch 仓库:纯 CRLF 差异 →
+     diff --shortstat 为空;再加一行 → 1 file changed, 1 insertion(+)),但被 touch 过的文件**仍会被
+     git status --porcelain 列为 modified**(stat 层报告,Linux 遇到 CRLF 工作区同样如此);代价是
+     git diff 对将被归一化的文件打一行 stderr 提示(如实告知即可)。
      改这一层必须跑冒烟里的「one dialect on BOTH faces」与「post-execute branch」两例。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
