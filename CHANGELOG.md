@@ -3,6 +3,22 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.21.0 — 2026-09-19
+
+**类型**:feat(以「减小模型跨系统性能差距」为尺子的三项:行尾对齐 Linux、run_code 的 temp、run_code 的错误方言)
+
+**背景(用户定的尺子)**:插件的 KPI 不是"路径看起来像 Linux",而是**让 Linux/mac 训练出来的模型在 Windows 上表现一致**。据此重新审计后,本轮只做**Windows 特异**的三项;凡是 mac 上同样存在的行为,一律**不碰**(碰了才是制造差异)。
+
+- **① Git 行尾对齐 Linux(v0.21.0 主项)**:Windows 的 Git 默认 `core.autocrlf=true`,模型按 LF 写出的文件**检出后变 CRLF**——脚本报 `\r` 错、字节级断言全挂、diff 整文件飘红(我们在 dsh-ide-git 的夹具上真踩过);而 Linux 访客的 `autocrlf=false`。现在插件经官方 `dsh-shell-env` 注册表,**只给模型执行的 shell** 注入 `GIT_CONFIG_COUNT=2` + `core.autocrlf=false` + `core.eol=lf`:模型跑的每条 git 都是 Linux 行为,**你自己终端的 git、以及仓库的 `.gitattributes` 都不受影响**。设置卡新增开关 `gitAutocrlf`(默认开),21 语言词典同步。
+- **② run_code 的 TEMP/TMP(只补 Windows 会缺的那两个)**:run_code 的程序**故意**跑在空 env 里(官方设计,mac 一样),所以这**不是**"给它一个 shell 环境"。真正 Windows 特异的症状只有一条:空 env 下 Node 的 `os.tmpdir()` 在 Windows 上返回字面量 `undefined\temp`(mac 会回退到真实的 per-user 目录),程序据此写文件会**静默写进一个叫 undefined 的目录**。现在在执行前给程序加**一行 prelude**,只种 `TEMP`/`TMP`(Windows 自己的约定);`HOME`/`PATH` **故意不种**——mac 上没有的值给了 Windows,才会让两个平台行为分叉。prelude 只存在于**那一次执行的派发副本**里(入参在派发前先 `snapshotJsonValue` 再 `deepFreeze`,会话记录/下一轮请求/回放都看不到它),**零上下文负担**;代价是程序报错行号偏移 1 行。
+- **③ run_code 的错误也走方言**:程序未捕获的失败会把**Windows 路径**直接甩给模型(`ENOENT: ... open 'C:\\Users\\...'`)——这是"方言幻觉"唯一破掉的地方(文件工具的错误早就翻译了)。现在 `run_code` 并入错误方言分支:**只翻路径,诊断原文逐字保留**,并且**不追加** `/dev/null` 提示(那是文件工具专用的引导)。
+- **明确不做(本轮的决定,避免以后重复讨论)**:
+  - **给 run_code 种完整 env(HOME/PATH)**:撤回。空 env 是官方设计且 **mac 相同**,种了反而让 Windows 与 mac 行为分叉。
+  - **补齐缺失命令(tree/zip/wget/make/watch)**:撤回。不能装用户的环境,也不该用假 shim 冒充——缺件如实失败,模型自己换 `curl` 这类等价物是一次便宜的自适应。
+  - **`python3` shim**:降级为可选。实测 WindowsApps 的 `python3` 占位**会自动下载安装并跑通**(只是首次慢、有告警),而 mac 上没装 CLT 时 `python3` 同样弹安装——不是 Windows 特有。
+  - **替换 run_code 本体**:不做。那要接管核心运行时 + 会话格式(code-mode 子调用段是落盘词汇),收益(动态拼接路径)远小于风险。
+- **验证**:冒烟 50/50(新增三例:prelude 只种 TEMP/TMP 且恰好一行、git 行尾注入接线且不碰 global config、run_code 错误路径回写 + 诊断保真);客户端 21 份词典键集齐平;设置卡真机渲染确认新开关。**真机行为验证(模型侧)在用户重启 DSH 后于本会话内直接跑**:`git config --get core.autocrlf` 应为 false、run_code 里 `os.tmpdir()` 应为真实临时目录、程序报错里的路径应为 `/c/...`。
+
 ## v0.20.1 — 2026-09-19
 
 **类型**:fix(提示词按场景注入:只在真的有 run_code 的模式里说那句话)

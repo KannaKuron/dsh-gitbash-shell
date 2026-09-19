@@ -696,6 +696,19 @@ const PATH_DIALECT_KEY = 'DSH_PATH_DIALECT'
 const PATH_DIALECT_VALUE = 'msys'
 const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results: MSYS drive roots (/c/Users/...) plus the bash-native mounts (~, /tmp, /dev/null, /usr); every tool accepts these forms directly.'
 
+// v0.21.0 — line endings for the MODEL's git commands. Windows Git defaults to
+// core.autocrlf=true, so an LF file the model writes comes back CRLF after a
+// checkout (scripts break on the stray \r, byte assertions fail); a Linux guest
+// has autocrlf=false. GIT_CONFIG_* are per-invocation settings: they reach only
+// the commands this plugin's shell runs, never the user's own terminal, and a
+// repository's .gitattributes still wins.
+const GIT_CONFIG_COUNT_KEY = 'GIT_CONFIG_COUNT'
+const GIT_CONFIG_KEY_0 = 'GIT_CONFIG_KEY_0'
+const GIT_CONFIG_VALUE_0 = 'GIT_CONFIG_VALUE_0'
+const GIT_CONFIG_KEY_1 = 'GIT_CONFIG_KEY_1'
+const GIT_CONFIG_VALUE_1 = 'GIT_CONFIG_VALUE_1'
+const GIT_EOL_DESCRIPTION = 'Git line endings for model-run commands: core.autocrlf=false / core.eol=lf, matching a Linux guest (the user own git config is untouched).'
+
 /** Read the posixPaths switch from the live settings service; never throws. */
 export function readPosixPaths(ctxLike) {
   try {
@@ -716,7 +729,7 @@ export function readPosixPaths(ctxLike) {
  * first. All default ON (schema defaults); never throws.
  */
 export function readDialectSettings(ctxLike) {
-  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, bashPath: '' }
+  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, gitAutocrlf: false, bashPath: '' }
   try {
     const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
     const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
@@ -727,6 +740,7 @@ export function readDialectSettings(ctxLike) {
       globSplit: v.globSplit === true,
       errorDialect: v.errorDialect === true,
       codePaths: v.codePaths === true,
+      gitAutocrlf: v.gitAutocrlf === true,
       bashPath: typeof v.bashPath === 'string' ? v.bashPath : '',
     }
   } catch {
@@ -793,8 +807,9 @@ function posixSeparators(value) {
  */
 const ERROR_CONTENT_TOOLS = new Set(['read', 'read_image', 'write', 'edit', 'glob', 'grep', 'present'])
 
-export function rewriteErrorContent(content) {
+export function rewriteErrorContent(content, options) {
   if (!Array.isArray(content)) return content
+  const nulHint = !options || options.nulHint !== false
   let changed = false
   const next = content.map((block) => {
     if (!block || typeof block !== 'object' || typeof block.text !== 'string') return block
@@ -811,7 +826,7 @@ export function rewriteErrorContent(content) {
     const t = block && typeof block === 'object' && typeof block.text === 'string' ? block.text : ''
     return t.includes('EINVAL') && t.includes('NUL')
   })
-  if (nulHit) {
+  if (nulHint && nulHit) {
     next.push({ type: 'text', text: 'hint: /dev/null is the NUL device — file tools cannot target device paths (their realpath step rejects them); discard output through bash instead (echo ... > /dev/null)' })
     changed = true
   }
@@ -1285,6 +1300,25 @@ export function scanCodeLiterals(code) {
 }
 
 /**
+ * The one line prepended to a run_code program (v0.21.0). run_code's process
+ * environment is EMPTY BY DESIGN — exactly the same on macOS — so this is NOT
+ * "giving the program a shell env". It exists for one measured Windows-only
+ * symptom: with an empty env, Node's os.tmpdir() on Windows returns the literal
+ * 'undefined\\temp' (macOS falls back to a real per-user directory), so a program
+ * asking for the temp dir silently writes into a bogus 'undefined' folder.
+ * Seeding ONLY TEMP/TMP — Windows' own convention — makes it resolvable again.
+ * HOME/PATH are deliberately NOT seeded: values macOS does not have would make
+ * the two platforms behave DIFFERENTLY, which is the opposite of the goal.
+ * @param {{tmpDir?: string}|null} env
+ * @returns {string} prelude source, or '' when there is no temp fact to seed
+ */
+export function programPrelude(env) {
+  const tmp = env && typeof env.tmpDir === 'string' && env.tmpDir !== '' ? env.tmpDir : ''
+  if (tmp === '') return ''
+  return 'try{const e=process.env;if(e&&!e.TEMP){e.TEMP=' + JSON.stringify(tmp) + ';e.TMP=e.TEMP}}catch{}\n'
+}
+
+/**
  * Translates MSYS path literals inside a run_code program. Returns the input
  * unchanged when nothing matched or when the scan was not certain.
  * @param {string} code the model's program
@@ -1620,6 +1654,7 @@ export async function apply(ctx, config = {}) {
             globSplit: Schema.boolean().default(true),
             errorDialect: Schema.boolean().default(true),
             codePaths: Schema.boolean().default(true),
+            gitAutocrlf: Schema.boolean().default(true),
             bashPath: Schema.string().default(''),
             adoptSidebar: Schema.boolean().default(true),
           }))
@@ -1665,12 +1700,29 @@ export async function apply(ctx, config = {}) {
           if (!shellEnv || typeof shellEnv.register !== 'function') return
           const unregister = shellEnv.register({
             name: 'gitbash-shell',
-            variables: { [PATH_DIALECT_KEY]: { description: PATH_DIALECT_DESCRIPTION } },
+            variables: {
+              [PATH_DIALECT_KEY]: { description: PATH_DIALECT_DESCRIPTION },
+              [GIT_CONFIG_COUNT_KEY]: { description: GIT_EOL_DESCRIPTION },
+              [GIT_CONFIG_KEY_0]: { description: GIT_EOL_DESCRIPTION },
+              [GIT_CONFIG_VALUE_0]: { description: GIT_EOL_DESCRIPTION },
+              [GIT_CONFIG_KEY_1]: { description: GIT_EOL_DESCRIPTION },
+              [GIT_CONFIG_VALUE_1]: { description: GIT_EOL_DESCRIPTION },
+            },
             resolve() {
-              return readPosixPaths(envCtx) ? { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE } : {}
+              const dialect = readDialectSettings(envCtx)
+              if (dialect.posixPaths !== true) return {}
+              const values = { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE }
+              if (dialect.gitAutocrlf === true) {
+                values[GIT_CONFIG_COUNT_KEY] = '2'
+                values[GIT_CONFIG_KEY_0] = 'core.autocrlf'
+                values[GIT_CONFIG_VALUE_0] = 'false'
+                values[GIT_CONFIG_KEY_1] = 'core.eol'
+                values[GIT_CONFIG_VALUE_1] = 'lf'
+              }
+              return values
             },
           })
-          envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
+           envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
           console.log(`${TAG} shellEnv fact registered: ${PATH_DIALECT_KEY} (gated by the posixPaths setting)`)
         } catch (error) {
           console.log(`${TAG} shellEnv fact registration failed: ${error?.message ?? error}`)
@@ -1753,7 +1805,8 @@ export async function apply(ctx, config = {}) {
             // anything unclear leaves the code untouched).
             if (exec.name === 'run_code' && dialect.codePaths && typeof translated.code === 'string') {
               const rewritten = rewriteCodePaths(translated.code, env)
-              if (rewritten !== translated.code) translated = { ...translated, code: rewritten }
+              const next = programPrelude(env) + rewritten
+              if (next !== translated.code) translated = { ...translated, code: next }
             }
             if (translated !== exec.arguments) exec.arguments = translated
           }
@@ -1784,9 +1837,18 @@ export async function apply(ctx, config = {}) {
             if (result.isError === false && result.value && typeof result.value === 'object') {
               const value = rewriteResultPaths(exec && exec.name, result.value, dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null)
               if (value !== result.value) patch = value
-            } else if (result.isError === true && dialect.errorDialect && exec && ERROR_CONTENT_TOOLS.has(exec.name) && Array.isArray(result.content)) {
-              const content = rewriteErrorContent(result.content)
-              if (content !== result.content) contentPatch = content
+            } else if (result.isError === true && dialect.errorDialect && exec && Array.isArray(result.content)) {
+              if (ERROR_CONTENT_TOOLS.has(exec.name)) {
+                const content = rewriteErrorContent(result.content)
+                if (content !== result.content) contentPatch = content
+              } else if (exec.name === 'run_code') {
+                // v0.21.0: an uncaught program failure carries WINDOWS paths in
+                // its text ("ENOENT: ... open 'C:\\Users\\...'") — the one place where
+                // the dialect the model sees everywhere else broke. Paths only;
+                // the diagnostic stays verbatim and no /dev/null hint is added.
+                const content = rewriteErrorContent(result.content, { nulHint: false })
+                if (content !== result.content) contentPatch = content
+              }
             }
           }
         } catch { /* never block a result */ }
@@ -1929,4 +1991,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }

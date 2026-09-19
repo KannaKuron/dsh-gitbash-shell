@@ -605,7 +605,11 @@ test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', (
   assert.match(text, /DSH_PATH_DIALECT/)
   // the resolver reads the live switch per execution: flipping the setting
   // empties the variable with no re-registration
-  assert.match(text, /resolve\(\) \{\s*return readPosixPaths\(envCtx\) \? \{ \[PATH_DIALECT_KEY\]: PATH_DIALECT_VALUE \} : \{\}/)
+  // the resolver reads the live settings per execution: posixPaths off empties
+  // everything, gitAutocrlf on adds the per-invocation GIT_CONFIG_* pair
+  assert.match(text, /resolve\(\) \{\s*const dialect = readDialectSettings\(envCtx\)/)
+  assert.match(text, /if \(dialect\.posixPaths !== true\) return \{\}/)
+  assert.match(text, /values\[GIT_CONFIG_COUNT_KEY\] = '2'/)
   // effect-scoped and reversible: the disposer rides the plugin fiber
   assert.match(text, /envCtx\.effect\(\(\) => unregister/)
 })
@@ -1057,4 +1061,39 @@ test('the run_code sentence is injected only where the tool exists (v0.20.1)', a
   assert.match(hint, /run_code program/, 'a mode WITH run_code gets the sentence')
   assert.match(hint, /translated/, 'and it says what the layer does')
   assert.equal(runCodeHintFor([{ name: 'run_code' }, { name: 'run_code' }]), hint, 'idempotent, one sentence')
+})
+
+test('run_code gets TEMP/TMP only — never a fake HOME or PATH (v0.21.0)', async () => {
+  const { programPrelude } = await import('../src/index.js')
+  assert.equal(programPrelude(null), '', 'no temp fact → no prelude at all')
+  assert.equal(programPrelude({}), '')
+  const prelude = programPrelude({ tmpDir: 'C:/Users/kanna/AppData/Local/Temp' })
+  assert.match(prelude, /e\.TEMP="C:\/Users\/kanna\/AppData\/Local\/Temp"/, 'TEMP is seeded with the real temp dir')
+  assert.match(prelude, /e\.TMP=e\.TEMP/)
+  assert.doesNotMatch(prelude, /HOME|PATH|USERPROFILE/, 'HOME/PATH stay untouched: seeding them would diverge from macOS')
+  assert.ok(prelude.endsWith('\n'), 'the prelude is exactly one line')
+  assert.equal(prelude.split('\n').length, 2, 'one line plus the terminator')
+})
+
+test('the model git gets Linux line endings, the user config stays untouched (v0.21.0)', () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(text, /gitAutocrlf: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(text, /values\[GIT_CONFIG_KEY_0\] = 'core\.autocrlf'/)
+  assert.match(text, /values\[GIT_CONFIG_VALUE_0\] = 'false'/)
+  assert.match(text, /values\[GIT_CONFIG_KEY_1\] = 'core\.eol'/)
+  assert.match(text, /values\[GIT_CONFIG_VALUE_1\] = 'lf'/)
+  // only the plugin's shell-env contribution may carry these — nothing writes
+  // the user's global git config
+  assert.doesNotMatch(text, /git['"], \['config', '--global'/)
+})
+
+test('a failing run_code program reports paths in the MSYS dialect (v0.21.0)', async () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(text, /else if \(exec\.name === 'run_code'\) \{/, 'run_code must ride the error-dialect branch')
+  assert.match(text, /rewriteErrorContent\(result\.content, \{ nulHint: false \}\)/, 'paths only — the /dev/null hint is for file tools')
+  const { rewriteErrorContent } = await import('../src/index.js')
+  const err = rewriteErrorContent([{ type: 'text', text: "ENOENT: no such file or directory, open 'C:\\Users\\kanna\\x.txt'" }], { nulHint: false })
+  assert.match(err[0].text, /\/c\/Users\/kanna\/x\.txt/, 'the Windows path comes back as an MSYS path')
+  assert.match(err[0].text, /ENOENT: no such file or directory/, 'the diagnostic itself stays verbatim')
+  assert.equal(err.length, 1, 'no guidance block is appended for a program error')
 })
