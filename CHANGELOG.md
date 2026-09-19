@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.21.1 — 2026-09-19
+
+**类型**:fix(v0.21.0 的回归:行尾开关把整个 shell-env 贡献一起弄坏了;用户重启后真机自检发现)
+
+- **现象(真机自检)**:重启后 bash 里 `git config --get core.autocrlf` 仍是 `true`,`GIT_CONFIG_COUNT` **与 `DSH_PATH_DIALECT` 都是空的**。隔离实例日志给出答案:`shellEnv fact registration failed: bash env contributor "gitbash-shell" declared invalid key "GIT_CONFIG_COUNT"`。
+- **根因**:官方 `dsh-shell-env` 注册表**只接受 `DSH_*` 键**;v0.21.0 把 `GIT_CONFIG_*` 声明进同一个 contributions 映射 → 注册**抛错**,而注册整段在一个 try/catch 里 → **连原有的 `DSH_PATH_DIALECT` 一起丢掉**(即 v0.11.0 的"官方注册表事实"被这次改动打回原点)。**行尾开关因此从未生效**,而错误只写在日志的一行里、测试又只断言源码形状,两边都没拦住。
+- **修法**:注册表贡献**退回只声明 `DSH_*`**(恢复 `DSH_PATH_DIALECT`);行尾环境改由**我们自己的执行器**注入(`src/shell.js` 新增 `withParityEnv(spec)`,`run`/`start` 入口把 `GIT_CONFIG_COUNT/KEY_0/VALUE_0/KEY_1/VALUE_1` 合并进受信任的 `dshEnv` 层)——这正是子进程 env 真正被组装的地方,且只作用于模型跑的 shell。
+- **防回归(冒烟新增两条硬规则)**:① 注册表贡献里**字面量键必须是 `DSH_*`**、计算键只允许已知的 `PATH_DIALECT_KEY`(且断言其字面量以 `DSH_` 开头)、**声明块里不得出现 `GIT_CONFIG`**;② 行尾注入必须在**执行器**里(`withParityEnv`、五个 GIT_CONFIG 键、`dshEnv` 合并、开关可关)且**任何地方都不得写 `--global`**。`npm test` 50/50。
+- 教训(写进本条,避免重蹈):**"注册表拒绝某个键"这类契约在源码层完全看不出来**,只断言"我声明了什么"的测试是假安全——断言必须写成"**只允许什么**"。真机自检(重启后跑一遍工具面)是这类问题的唯一可靠拦截点。
+
 ## v0.21.0 — 2026-09-19
 
 **类型**:feat(以「减小模型跨系统性能差距」为尺子的三项:行尾对齐 Linux、run_code 的 temp、run_code 的错误方言)

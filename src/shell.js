@@ -128,7 +128,41 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * #1, see the file header): route them through the unconfined argv path
    * and label the result honestly so callers can tell.
    */
+  /**
+   * Linux-parity environment for the MODEL's shell (v0.21.1). The official
+   * shell-env registry accepts DSH_* facts only — registering anything else
+   * throws and takes the whole contribution (including DSH_PATH_DIALECT) down
+   * with it — so non-DSH parity facts are merged into the trusted dshEnv map
+   * HERE, right before the spawn. Windows Git defaults to core.autocrlf=true,
+   * so an LF file the model writes comes back CRLF after a checkout (scripts
+   * break on the stray \r, byte assertions fail); a Linux guest has
+   * autocrlf=false. GIT_CONFIG_* are per-invocation settings: only the
+   * commands this executor runs see them, the user's own terminal and a
+   * repository's .gitattributes are untouched.
+   * @param {object} spec the shell request
+   * @returns {object} the request with the parity facts merged in
+   */
+  withParityEnv(spec) {
+    try {
+      const settings = this.ctx && typeof this.ctx.get === 'function' ? this.ctx.get('settings') : undefined
+      const value = settings && typeof settings.get === 'function' ? settings.get('gitbash-shell') : undefined
+      if (!value || value.posixPaths !== true || value.gitAutocrlf === false) return spec
+      const dshEnv = {
+        ...(spec.dshEnv === undefined ? {} : spec.dshEnv),
+        GIT_CONFIG_COUNT: '2',
+        GIT_CONFIG_KEY_0: 'core.autocrlf',
+        GIT_CONFIG_VALUE_0: 'false',
+        GIT_CONFIG_KEY_1: 'core.eol',
+        GIT_CONFIG_VALUE_1: 'lf',
+      }
+      return { ...spec, dshEnv }
+    } catch {
+      return spec
+    }
+  }
+
   async run(spec) {
+    spec = this.withParityEnv(spec)
     const policy = spec.sandboxPolicy
     if (policy === undefined) return super.run(spec)
     const { mode } = policy
@@ -149,6 +183,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   }
 
   start(spec) {
+    spec = this.withParityEnv(spec)
     const policy = spec.sandboxPolicy
     if (policy === undefined) return super.start(spec)
     const { mode } = policy

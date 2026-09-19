@@ -696,18 +696,12 @@ const PATH_DIALECT_KEY = 'DSH_PATH_DIALECT'
 const PATH_DIALECT_VALUE = 'msys'
 const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results: MSYS drive roots (/c/Users/...) plus the bash-native mounts (~, /tmp, /dev/null, /usr); every tool accepts these forms directly.'
 
-// v0.21.0 — line endings for the MODEL's git commands. Windows Git defaults to
-// core.autocrlf=true, so an LF file the model writes comes back CRLF after a
-// checkout (scripts break on the stray \r, byte assertions fail); a Linux guest
-// has autocrlf=false. GIT_CONFIG_* are per-invocation settings: they reach only
-// the commands this plugin's shell runs, never the user's own terminal, and a
-// repository's .gitattributes still wins.
-const GIT_CONFIG_COUNT_KEY = 'GIT_CONFIG_COUNT'
-const GIT_CONFIG_KEY_0 = 'GIT_CONFIG_KEY_0'
-const GIT_CONFIG_VALUE_0 = 'GIT_CONFIG_VALUE_0'
-const GIT_CONFIG_KEY_1 = 'GIT_CONFIG_KEY_1'
-const GIT_CONFIG_VALUE_1 = 'GIT_CONFIG_VALUE_1'
-const GIT_EOL_DESCRIPTION = 'Git line endings for model-run commands: core.autocrlf=false / core.eol=lf, matching a Linux guest (the user own git config is untouched).'
+// v0.21.1 — line endings for the MODEL's git commands live in the EXECUTOR
+// (src/shell.js, withParityEnv): Windows Git defaults to core.autocrlf=true, so
+// an LF file the model writes comes back CRLF after a checkout (scripts break on
+// the stray \r, byte assertions fail), while a Linux guest has autocrlf=false.
+// They cannot ride the shell-env registry below: that registry accepts DSH_*
+// facts only, and a non-DSH key throws the whole contribution away.
 
 /** Read the posixPaths switch from the live settings service; never throws. */
 export function readPosixPaths(ctxLike) {
@@ -1700,29 +1694,16 @@ export async function apply(ctx, config = {}) {
           if (!shellEnv || typeof shellEnv.register !== 'function') return
           const unregister = shellEnv.register({
             name: 'gitbash-shell',
-            variables: {
-              [PATH_DIALECT_KEY]: { description: PATH_DIALECT_DESCRIPTION },
-              [GIT_CONFIG_COUNT_KEY]: { description: GIT_EOL_DESCRIPTION },
-              [GIT_CONFIG_KEY_0]: { description: GIT_EOL_DESCRIPTION },
-              [GIT_CONFIG_VALUE_0]: { description: GIT_EOL_DESCRIPTION },
-              [GIT_CONFIG_KEY_1]: { description: GIT_EOL_DESCRIPTION },
-              [GIT_CONFIG_VALUE_1]: { description: GIT_EOL_DESCRIPTION },
-            },
+            // The registry accepts DSH_* FACTS ONLY (a non-DSH key makes the
+            // whole contribution throw — learned in v0.21.0, see CHANGELOG):
+            // git line endings and anything else non-DSH_* ride the executor's
+            // own env layer (src/shell.js), not this registry.
+            variables: { [PATH_DIALECT_KEY]: { description: PATH_DIALECT_DESCRIPTION } },
             resolve() {
-              const dialect = readDialectSettings(envCtx)
-              if (dialect.posixPaths !== true) return {}
-              const values = { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE }
-              if (dialect.gitAutocrlf === true) {
-                values[GIT_CONFIG_COUNT_KEY] = '2'
-                values[GIT_CONFIG_KEY_0] = 'core.autocrlf'
-                values[GIT_CONFIG_VALUE_0] = 'false'
-                values[GIT_CONFIG_KEY_1] = 'core.eol'
-                values[GIT_CONFIG_VALUE_1] = 'lf'
-              }
-              return values
+              return readPosixPaths(envCtx) ? { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE } : {}
             },
           })
-           envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
+          envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
           console.log(`${TAG} shellEnv fact registered: ${PATH_DIALECT_KEY} (gated by the posixPaths setting)`)
         } catch (error) {
           console.log(`${TAG} shellEnv fact registration failed: ${error?.message ?? error}`)

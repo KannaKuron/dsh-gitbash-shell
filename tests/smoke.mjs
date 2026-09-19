@@ -605,12 +605,25 @@ test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', (
   assert.match(text, /DSH_PATH_DIALECT/)
   // the resolver reads the live switch per execution: flipping the setting
   // empties the variable with no re-registration
-  // the resolver reads the live settings per execution: posixPaths off empties
-  // everything, gitAutocrlf on adds the per-invocation GIT_CONFIG_* pair
-  assert.match(text, /resolve\(\) \{\s*const dialect = readDialectSettings\(envCtx\)/)
-  assert.match(text, /if \(dialect\.posixPaths !== true\) return \{\}/)
-  assert.match(text, /values\[GIT_CONFIG_COUNT_KEY\] = '2'/)
-  // effect-scoped and reversible: the disposer rides the plugin fiber
+  // the resolver reads the live switch per execution: flipping the setting
+  // empties the variable with no re-registration
+  assert.match(text, /resolve\(\) \{\s*return readPosixPaths\(envCtx\) \? \{ \[PATH_DIALECT_KEY\]: PATH_DIALECT_VALUE \} : \{\}/)
+  // REGRESSION GUARD (v0.21.0 → v0.21.1): the registry accepts DSH_* facts
+  // ONLY. A contributor declaring any other key throws, and the whole
+  // contribution — DSH_PATH_DIALECT included — is lost. Non-DSH parity facts
+  // belong to the executor's env layer (src/shell.js).
+  const declared = /variables: \{([^}]*)\}/.exec(text)
+  assert.ok(declared !== null, 'the contributor must declare its variables')
+  // Literal keys must be DSH_*; computed keys are allowed only for constants
+  // whose own literal value is asserted to start with DSH_.
+  for (const key of declared[1].matchAll(/'([A-Za-z0-9_]+)':/g)) {
+    assert.match(key[1], /^DSH_/, 'a non-DSH key in the shell-env registry kills the contribution: ' + key[1])
+  }
+  for (const key of declared[1].matchAll(/\[([A-Za-z0-9_]+)\]/g)) {
+    assert.equal(key[1], 'PATH_DIALECT_KEY', 'unexpected computed key in the shell-env declaration: ' + key[1])
+  }
+  assert.match(text, /const PATH_DIALECT_KEY = 'DSH_/, 'the computed key must itself be a DSH_* fact')
+  assert.doesNotMatch(declared[1], /GIT_CONFIG/, 'git config belongs to the executor, not to the DSH_* registry')
   assert.match(text, /envCtx\.effect\(\(\) => unregister/)
 })
 
@@ -1075,16 +1088,22 @@ test('run_code gets TEMP/TMP only — never a fake HOME or PATH (v0.21.0)', asyn
   assert.equal(prelude.split('\n').length, 2, 'one line plus the terminator')
 })
 
-test('the model git gets Linux line endings, the user config stays untouched (v0.21.0)', () => {
-  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(text, /gitAutocrlf: Schema\.boolean\(\)\.default\(true\)/)
-  assert.match(text, /values\[GIT_CONFIG_KEY_0\] = 'core\.autocrlf'/)
-  assert.match(text, /values\[GIT_CONFIG_VALUE_0\] = 'false'/)
-  assert.match(text, /values\[GIT_CONFIG_KEY_1\] = 'core\.eol'/)
-  assert.match(text, /values\[GIT_CONFIG_VALUE_1\] = 'lf'/)
-  // only the plugin's shell-env contribution may carry these — nothing writes
-  // the user's global git config
-  assert.doesNotMatch(text, /git['"], \['config', '--global'/)
+test('the model git gets Linux line endings from the executor (v0.21.1)', () => {
+  const host = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
+  assert.match(host, /gitAutocrlf: Schema\.boolean\(\)\.default\(true\)/)
+  // the injection lives where the child env is actually built
+  assert.match(shell, /withParityEnv\(spec\)/)
+  assert.match(shell, /GIT_CONFIG_COUNT: '2'/)
+  assert.match(shell, /GIT_CONFIG_KEY_0: 'core\.autocrlf'/)
+  assert.match(shell, /GIT_CONFIG_VALUE_0: 'false'/)
+  assert.match(shell, /GIT_CONFIG_KEY_1: 'core\.eol'/)
+  assert.match(shell, /GIT_CONFIG_VALUE_1: 'lf'/)
+  assert.match(shell, /value\.gitAutocrlf === false/, 'the switch must be able to turn it off')
+  assert.match(shell, /dshEnv/, 'the facts ride the trusted dshEnv layer')
+  // and nothing anywhere writes the user's global git config
+  assert.doesNotMatch(host, /'--global'/)
+  assert.doesNotMatch(shell, /'--global'/)
 })
 
 test('a failing run_code program reports paths in the MSYS dialect (v0.21.0)', async () => {
