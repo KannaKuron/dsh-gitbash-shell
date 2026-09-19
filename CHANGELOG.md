@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.20.1 — 2026-09-19
+
+**类型**:fix(提示词按场景注入:只在真的有 run_code 的模式里说那句话)
+
+- **问题(用户要求)**:v0.20.0 把「run_code 程序内的路径字面量会被翻译」写进了**基础指令**,于是**每一种模式**都会看到这句——包括根本没有 run_code 的 standard/cordis 会话、以及 code 模式下把 run_code 关掉的会话。对它们来说这是纯噪声,还占提示词预算。
+- **修法**:句子从基础指令里拆出来,变成 `RUN_CODE_DIRECTIVE_TEXT` / `RUN_CODE_DIRECTIVE_STRICT_TEXT`,由 `system-prompt/assemble` 钩子在**本次组装真的带 run_code 时**追加到同一条 context(`gitbash-shell:posix-paths`)末尾。判据来自官方组装体本身:`PromptAssembly.tools`(**在 waterfall 之前**就已填充)里有没有名为 `run_code` 的工具——`runCodeHintFor(tools)` 是纯函数,工具表缺失/为空/不含该工具一律返回空串。标准/cordis 模式与关闭 run_code 的模式因此**一个字都不多说**。
+- **自检**:`tests/smoke.mjs` 新增一例(有 run_code → 有句;无/空/不含 → 空串;重复工具名幂等),并把原断言反转为「**基础指令不得出现 run_code 字样**」+「装配钩子必须用工具表门控」;另一例的开关/指令接线断言同步更新。`npm test` 47/47。
+- 相关:翻译层本身(v0.20.0)与设置卡开关 `codePaths` 不变;本条只动「说给模型听的那句话」的注入条件。
+
 ## v0.20.0 — 2026-09-19
 
 **类型**:feat(run_code 程序内的路径字面量也吃同一张挂载表;用户要求「必须修复」)

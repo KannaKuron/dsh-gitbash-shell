@@ -663,10 +663,30 @@ export function installRegisterShim(reg) {
 const SETTINGS_NAMESPACE = 'gitbash-shell'
 
 /** The full directive text, injected only while posixPaths is on. */
-const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them. Path literals written inside a run_code program are translated the same way before the program runs; shell expansion is not available there, so spell paths out instead of relying on $VARS.'
+const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them.'
 
 /** Strict drive-root-only directive (v0.19.0): used while virtualMounts is off. */
-const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including path literals written inside a run_code program, which are translated before the program runs.'
+const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly.'
+
+/**
+ * The run_code sentence is added ONLY for assemblies whose tool list actually
+ * carries run_code (v0.20.1): a preset without it — standard/cordis sessions,
+ * or a code-mode session whose tool row is disabled — has no program text to
+ * write paths into, so the sentence would be pure noise there. Cheap and
+ * honest: the tool list of the very assembly being rendered decides.
+ */
+const RUN_CODE_DIRECTIVE_TEXT = ' Path literals written inside a run_code program are translated the same way before the program runs; shell expansion is not available there, so spell paths out instead of relying on $VARS.'
+const RUN_CODE_DIRECTIVE_STRICT_TEXT = ' Path literals written inside a run_code program are translated before the program runs.'
+
+/** The run_code sentence for this assembly, or '' when the tool is not offered. */
+export function runCodeHintFor(tools) {
+  if (!Array.isArray(tools)) return ''
+  for (const tool of tools) {
+    const name = tool && typeof tool.name === 'string' ? tool.name : ''
+    if (name === 'run_code') return RUN_CODE_DIRECTIVE_TEXT
+  }
+  return ''
+}
 
 // Official runtime counterpart to the directive (v0.11.0): dsh-shell-env is
 // the host-plane registry behind the model-visible $DSH_* facts, and the
@@ -1687,6 +1707,17 @@ export async function apply(ctx, config = {}) {
             if (variables && typeof variables === 'object') {
               for (const key of Object.keys(variables)) {
                 if (typeof variables[key] === 'string') variables[key] = windowsToMsys(variables[key])
+              }
+            }
+            // v0.20.1: the run_code sentence rides the SAME context entry, but
+            // only when this assembly actually offers the tool (see
+            // runCodeHintFor) — every other mode stays quiet.
+            const hint = runCodeHintFor(assembly.tools)
+            if (hint !== '') {
+              for (const assembled of Array.isArray(assembly.contexts) ? assembly.contexts : []) {
+                if (assembled && assembled.name === 'gitbash-shell:posix-paths' && typeof assembled.text === 'string') {
+                  assembled.text += hint
+                }
               }
             }
           }

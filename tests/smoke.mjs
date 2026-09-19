@@ -1035,8 +1035,26 @@ test('the run_code literal rewrite has its own switch (codePaths)', async () => 
   assert.equal(withFlag({ posixPaths: true, codePaths: true }).codePaths, true)
   assert.equal(withFlag({ posixPaths: true, codePaths: false }).codePaths, false)
   assert.equal(withFlag({ posixPaths: true }).codePaths, false, 'absent value stays off until the schema default applies')
-  // The directive tells the model the same thing the layer does.
-  const directive = /const POSIX_DIRECTIVE_TEXT = '([^']*)'/.exec(text)
-  assert.ok(directive !== null, 'directive text is gone')
-  assert.match(directive[1], /run_code program/, 'the directive must name the run_code case')
+  // v0.20.1: the run_code sentence is NOT in the base directive — it rides the
+  // same context entry only for assemblies whose tool list carries run_code, so
+  // every other mode (standard/cordis sessions, run_code disabled) stays quiet.
+  const base = /const POSIX_DIRECTIVE_TEXT = '([^']*)'/.exec(text)
+  assert.ok(base !== null, 'directive text is gone')
+  assert.doesNotMatch(base[1], /run_code/, 'the base directive must not talk about run_code')
+  const strict = /const POSIX_DIRECTIVE_TEXT_STRICT = '([^']*)'/.exec(text)
+  assert.ok(strict !== null, 'strict directive text is gone')
+  assert.doesNotMatch(strict[1], /run_code/, 'the strict directive must not talk about run_code either')
+  assert.match(text, /const RUN_CODE_DIRECTIVE_TEXT = '/, 'the conditional run_code sentence is gone')
+  assert.match(text, /runCodeHintFor\(assembly\.tools\)/, 'the assembly hook must gate the sentence on the tool list')
+})
+
+test('the run_code sentence is injected only where the tool exists (v0.20.1)', async () => {
+  const { runCodeHintFor } = await import('../src/index.js')
+  assert.equal(runCodeHintFor(undefined), '', 'no tool list → nothing to say')
+  assert.equal(runCodeHintFor([]), '')
+  assert.equal(runCodeHintFor([{ name: 'bash' }, { name: 'read' }, { name: 'present' }]), '', 'a mode without run_code stays quiet')
+  const hint = runCodeHintFor([{ name: 'bash' }, { name: 'run_code' }])
+  assert.match(hint, /run_code program/, 'a mode WITH run_code gets the sentence')
+  assert.match(hint, /translated/, 'and it says what the layer does')
+  assert.equal(runCodeHintFor([{ name: 'run_code' }, { name: 'run_code' }]), hint, 'idempotent, one sentence')
 })
