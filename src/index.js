@@ -892,6 +892,16 @@ export function buildTranslateEnv() {
     const t = tmpdir()
     if (t && existsSync(t)) env.tmpDir = t.replace(/\\/g, '/')
   } catch { /* keep undefined */ }
+  // v0.18.2: in an EMPTY-env process (the PTC run_code child) os.tmpdir()
+  // degrades to a garbage path and the guard above drops it — fall back to
+  // the standard Windows per-user temp layout under the detected home, so
+  // importing this module from inside run_code still translates /tmp.
+  if (!env.tmpDir && process.platform === 'win32') {
+    try {
+      const fallback = join(homedir(), 'AppData', 'Local', 'Temp')
+      if (existsSync(fallback)) env.tmpDir = fallback.replace(/\\/g, '/')
+    } catch { /* keep undefined */ }
+  }
   try {
     const h = homedir()
     if (h && existsSync(h)) env.home = h.replace(/\\/g, '/')

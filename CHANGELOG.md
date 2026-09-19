@@ -3,6 +3,11 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.18.2 — 2026-09-19
+
+**类型**:fix(空环境进程的 /tmp 翻译兜底)
+
+- 在空环境进程(PTC run_code 子进程,官方零环境设计)里 import 本模块做路径翻译时,os.tmpdir() 退化为垃圾串、探测被 existsSync 防御拦截,导致 /tmp 不翻译;新增 Windows 兜底:homedir 下的标准布局 AppData/Local/Temp 存在即用。宿主进程不受影响(tmpdir 正常,兜底不触发)。run_code 内的进阶姿势(import 本模块翻译原生 fs 路径)自此覆盖 /tmp。
 ## v0.18.1 — 2026-09-19
 
 **类型**:fix(glob 绝对 pattern 的变量前导)
