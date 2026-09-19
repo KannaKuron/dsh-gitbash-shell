@@ -103,6 +103,19 @@
     组合里没有该服务时静默无操作。DSH_HOME/DSH_SHELL/DSH_SESSION_ID 为注册表保留键,不可也
     不应覆盖。提示词源头替换(说一次)+ 运行时环境事实(按需核验)互为印证。
     **虚拟挂载表翻译(v0.17.0)**:入参翻译升级为「盘根 + Git Bash mount 表」两级——`/tmp`→用户 TEMP、`/dev/null`→`\\.\NUL`、`/usr` 系→Git 安装根(buildTranslateEnv 进程内一次探测,默认安装 + PATH 候选 bash.exe,以 `<root>/usr/bin` 存在性排除 WSL shim)、`~`→`$HOME`、裸盘根 `/c`→`C:/`;全部段边界 + 大小写敏感(忠实 msys 挂载表,`/Tmp` 不匹配),探测失败即 no-op。**铁律**:`/dev/null` 只能映射 `\\.\NUL` 设备路径——裸 `NUL` 字符串经 libuv 相对路径会在 cwd 创建真实文件(非即焚);harness 文件工具的 realpath 步骤不支持设备路径——文件工具直接 read/write `/dev/null` 报 EINVAL(如实、无副作用),设备语义经 bash 使用;glob 绝对 pattern 按「首个通配符前目录前缀」拆成 `{path, pattern}`(仅 glob 工具、绝对 pattern 覆盖已有 path);present 的嵌套 `files[].path` 入参 + 出参回流均覆盖;出参 TEMP 前缀回显为 `/tmp`。完整设计与实测矩阵见 CHANGELOG v0.17.0。
+ 4c. **已知边界:run_code 程序内的路径字面量不经过翻译层(2026-09-19 记,用户要求先记录)**:翻译层作用在
+    「工具调用的入参 / 出参」上(顶层字段名白名单 + present 嵌套),而 run_code 交给原生 Node 执行的
+    **程序源码里的路径字符串是程序数据**,由 Node 自己解析——`/c/Users/...` 在 Windows 上落到
+    `<当前盘符>:\c\Users\...`(实测真写出了一个 `C:\c\Users\kanna\sandbox\...` 目录),
+    MSYS 运行时不在场。同源的官方事实:run_code 的 `process.env` 为空是**设计**(「empty model
+    environment」,runtime.spec 断言 `env === []`),所以 `os.tmpdir()` 在 Windows 上得到
+    `undefined\temp`。**模型侧纪律**:生成代码 / 验证脚本里的路径一律写 Windows 形式(`C:/...`),
+    只有工具**参数**才用 `/c/...`(2026-09-19 验证 dsh-ide-git v0.5.4 时真机踩过)。
+    **候选修法(均未实施,择一或并行评估)**:
+    ① 提示词侧——posixPaths 指令里补一句「程序内部路径写 `C:/`…」的例外说明(风险最低,挡不住手滑);
+    ② tools/execute 侧——对 run_code 的 `code` 参数做**字符串字面量级**的 MSYS→Windows 改写
+       (仅严格绝对路径形状、设置化、默认关;必须防 URL / 正则里的 `/c/` 误伤,改的是执行代码、需极高谨慎);
+    ③ 系统级——在盘根建 junction(如 `C:\c` → `C:\`)让原生解析自然命中(副作用大、跨盘复杂,不推荐)。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
