@@ -336,6 +336,24 @@ test('msys virtual mounts, glob split, present nesting, temp echo (v0.17.0)', as
   assert.equal(rr('read', { path: 'C:/Users/u/AppData/Local/Temp/x.txt' }).path, '/c/Users/u/AppData/Local/Temp/x.txt', 'no env: no temp substitution (backwards compatible)')
 })
 
+test('error-content dialect: path diagnostics translated, data never (v0.17.1)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const { rewriteErrorContent, rewriteResultPaths, ERROR_CONTENT_TOOLS } = _internal
+  const BS = String.fromCharCode(92)
+  // a harness path diagnostic comes back in the MSYS dialect
+  const ec = rewriteErrorContent([{ type: 'text', text: 'Error: cannot read ' + String.fromCharCode(34) + 'C:' + BS + 'Users' + BS + 'x' + BS + 'f.txt' + String.fromCharCode(34) + ': not found' }])
+  assert.equal(ec[0].text, 'Error: cannot read ' + String.fromCharCode(34) + '/c/Users/x/f.txt' + String.fromCharCode(34) + ': not found')
+  // non-drive-letter diagnostics stay verbatim (device paths, URLs)
+  const keep = [{ type: 'text', text: 'EINVAL: invalid argument, realpath ' + BS + BS + '.' + BS + 'NUL' }]
+  assert.equal(rewriteErrorContent(keep), keep, 'device-path errors keep the exact reference')
+  // bash is NOT on the error-translation list: failed command output is data
+  assert.equal(ERROR_CONTENT_TOOLS.has('bash'), false)
+  assert.equal(ERROR_CONTENT_TOOLS.has('read'), true)
+  // the red line: file CONTENT in successful results is never rewritten
+  const rd = rewriteResultPaths('read', { path: 'C:' + BS + 'x' + BS + 'f.txt', lines: [{ n: 1, text: 'content mentions C:' + BS + 'Users' + BS + 'kanna inside' }] })
+  assert.equal(rd.lines[0].text, 'content mentions C:' + BS + 'Users' + BS + 'kanna inside')
+})
+
 test('client half is a ModuleLoader bundle with baseline requires only', () => {
   const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.match(text, /window\.__ModuleLoader__\.load\(/)

@@ -3,6 +3,12 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.17.1 — 2026-09-19
+
+**类型**:fix(错误消息的方言一致性)
+
+- **错误文本翻译**:文件工具(read/read_image/write/edit/glob/grep/present)的**错误消息**里 harness 生成的 Windows 路径诊断(cannot read 加 C:/ 形式路径的报错)改写回 MSYS 方言——模型不再从失败文本里「重新学到」Windows 形式。实现走 tools/post-execute 的 content 替换通道(registry 明确拒绝错误结果的 value 替换,content 是官方通道)。
+- **内容红线(不变)**:成功结果的文件内容(read 行文本、grep 匹配行)从来不动;错误翻译仅限文件工具名单——bash 等工具失败时的 content 是命令输出(stdout/stderr)= 数据,一律原样;非盘符诊断(设备路径、URL)不匹配 windowsToMsys,原样保留。smoke 新增断言:错误翻译、bash 不在名单、内容红线。
 ## v0.17.0 — 2026-09-19
 
 **类型**:feat(修复 + 能力增强:bash 虚拟路径习惯全工具统一)
