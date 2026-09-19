@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.19.0 — 2026-09-19
+
+**类型**:feat(细粒度开关 + bashPath 设置 + 设置页重做)
+
+- **三个新开关**(默认全开,设置卡分段按钮):`virtualMounts`(虚拟挂载 + ~ + 变量简写;关闭 = 严格 /c/ 盘根-only,指令文本同步切换为严格版)、`errorDialect`(报错路径翻译 + NUL 引导块;关闭保留原文便于排障复制)、`globSplit`(glob 绝对 pattern 拆分;关闭原样传递)。
+- **bashPath 设置项**:设置卡新增自定义 bash.exe 完整路径输入框(保存按钮 + 已保存反馈);buildTranslateEnv 以其为 Git 根探测候选首位(Map 缓存按路径键)——修复自定义安装位置下 /usr 系挂载找错根的问题。
+- **设置页重做(better-workspace 同款形态)**:分区结构(路径方言区:总开关 + 三子开关 + bashPath;侧栏终端区:接管开关);卡片表面加 any-background 磨砂链(backdrop-filter: var(--dsh-any-blur-card-panels, blur(12px) saturate(1.15)),-webkit- 同步);输入框/保存按钮全 token 化。
+- **21 语言词典新增 12 键**(sec.dialect/sec.terminal/mnts.*/errs.*/split.*/bash.*),键集对齐断言保持全绿。
+- host 侧 readDialectSettings 统一读取五项设置;execute/post-execute wrapper 与指令闭包全部改经它分发。
+- 冒烟 44/44(词典 key 对齐 + 组件渲染 smoke 通过新 UI 结构)。
 ## v0.18.2 — 2026-09-19
 
 **类型**:fix(空环境进程的 /tmp 翻译兜底)

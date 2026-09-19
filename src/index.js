@@ -665,6 +665,9 @@ const SETTINGS_NAMESPACE = 'gitbash-shell'
 /** The full directive text, injected only while posixPaths is on. */
 const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them.'
 
+/** Strict drive-root-only directive (v0.19.0): used while virtualMounts is off. */
+const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly.'
+
 // Official runtime counterpart to the directive (v0.11.0): dsh-shell-env is
 // the host-plane registry behind the model-visible $DSH_* facts, and the
 // bash tool's schema tells the model to inspect them — so the dialect also
@@ -681,6 +684,32 @@ export function readPosixPaths(ctxLike) {
     return !!(value && value.posixPaths === true)
   } catch {
     return false
+  }
+}
+
+/**
+ * Read every dialect switch at once (v0.19.0): posixPaths gates the whole
+ * dialect; virtualMounts gates the bash virtual mounts + ~ + $VAR expansion
+ * (off = strict drive-root-only translation); globSplit gates the absolute
+ * glob-pattern rewrite; errorDialect gates error-message translation and the
+ * NUL guidance block; bashPath (optional) joins the Git-root probe candidates
+ * first. All default ON (schema defaults); never throws.
+ */
+export function readDialectSettings(ctxLike) {
+  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, bashPath: '' }
+  try {
+    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
+    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
+    const v = value && typeof value === 'object' ? value : {}
+    return {
+      posixPaths: v.posixPaths === true,
+      virtualMounts: v.virtualMounts === true,
+      globSplit: v.globSplit === true,
+      errorDialect: v.errorDialect === true,
+      bashPath: typeof v.bashPath === 'string' ? v.bashPath : '',
+    }
+  } catch {
+    return fallback
   }
 }
 
@@ -876,17 +905,21 @@ const GIT_MOUNTS = new Map([
   ['/mnt', 'mnt'],
 ])
 
+const translateEnvCache = new Map()
+
 /**
  * The runtime facts the virtual mounts resolve against (all optional — a
  * missing fact simply leaves its paths untranslated). Probed once per
- * process: tmpdir/homedir are cheap; the Git root walks the candidate
- * bash.exe list (the default install plus every PATH entry — which also
- * covers a Git-usr-bin PATH entry) and accepts a root only when
+ * distinct bashPath setting (v0.19.0: a settings-configured bash.exe joins
+ * the candidates FIRST, fixing /usr translation for custom installs);
+ * tmpdir/homedir are cheap; the Git root walks the candidate bash.exe list
+ * (the default install plus every PATH entry) and accepts a root only when
  * <root>/usr/bin exists, which excludes the WSL bash shim in WindowsApps.
  */
-let translateEnvCache
-export function buildTranslateEnv() {
-  if (translateEnvCache) return translateEnvCache
+export function buildTranslateEnv(configuredBashPath) {
+  const cacheKey = typeof configuredBashPath === 'string' && configuredBashPath !== '' ? configuredBashPath : ''
+  const cached = translateEnvCache.get(cacheKey)
+  if (cached) return cached
   const env = { tmpDir: undefined, home: undefined, gitRoot: undefined }
   try {
     const t = tmpdir()
@@ -907,7 +940,9 @@ export function buildTranslateEnv() {
     if (h && existsSync(h)) env.home = h.replace(/\\/g, '/')
   } catch { /* keep undefined */ }
   try {
-    const candidates = [DEFAULT_GIT_BASH]
+    const candidates = []
+    if (cacheKey !== '') candidates.push(cacheKey.replace(/\\/g, '/'))
+    candidates.push(DEFAULT_GIT_BASH)
     for (const dir of String(process.env.PATH ?? '').split(';')) {
       const clean = dir && dir.trim()
       if (clean) candidates.push(clean.replace(/\\/g, '/') + '/bash.exe')
@@ -923,7 +958,7 @@ export function buildTranslateEnv() {
       } catch { /* try the next candidate */ }
     }
   } catch { /* keep undefined */ }
-  translateEnvCache = env
+  translateEnvCache.set(cacheKey, env)
   return env
 }
 
@@ -1334,6 +1369,10 @@ export async function apply(ctx, config = {}) {
             : SETTINGS_NAMESPACE
           const scope = settings.register(ns, Schema.object({
             posixPaths: Schema.boolean().default(true),
+            virtualMounts: Schema.boolean().default(true),
+            globSplit: Schema.boolean().default(true),
+            errorDialect: Schema.boolean().default(true),
+            bashPath: Schema.string().default(''),
             adoptSidebar: Schema.boolean().default(true),
           }))
           sidebarScope = scope
@@ -1440,10 +1479,11 @@ export async function apply(ctx, config = {}) {
     try {
       ctx.on('tools/execute', (exec, next) => {
         try {
-          if (exec && exec.arguments && typeof exec.arguments === 'object' && readPosixPaths(ctx)) {
-            const env = buildTranslateEnv()
+          const dialect = readDialectSettings(ctx)
+          if (exec && exec.arguments && typeof exec.arguments === 'object' && dialect.posixPaths) {
+            const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
             let translated = translatePathArguments(exec.arguments, env)
-            if (exec.name === 'glob') {
+            if (exec.name === 'glob' && dialect.globSplit) {
               const globTranslated = translateGlobArguments(translated, env)
               if (globTranslated !== translated) translated = globTranslated
             }
@@ -1471,11 +1511,12 @@ export async function apply(ctx, config = {}) {
         let patch
         let contentPatch
         try {
-          if (readPosixPaths(ctx) && result && typeof result === 'object') {
+          const dialect = readDialectSettings(ctx)
+          if (dialect.posixPaths && result && typeof result === 'object') {
             if (result.isError === false && result.value && typeof result.value === 'object') {
-              const value = rewriteResultPaths(exec && exec.name, result.value, buildTranslateEnv())
+              const value = rewriteResultPaths(exec && exec.name, result.value, dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null)
               if (value !== result.value) patch = value
-            } else if (result.isError === true && exec && ERROR_CONTENT_TOOLS.has(exec.name) && Array.isArray(result.content)) {
+            } else if (result.isError === true && dialect.errorDialect && exec && ERROR_CONTENT_TOOLS.has(exec.name) && Array.isArray(result.content)) {
               const content = rewriteErrorContent(result.content)
               if (content !== result.content) contentPatch = content
             }
@@ -1519,7 +1560,8 @@ export async function apply(ctx, config = {}) {
               try {
                 const settings = pctx.get('settings')
                 const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
-                return value && value.posixPaths === true ? POSIX_DIRECTIVE_TEXT : ''
+                if (!value || value.posixPaths !== true) return ''
+                return value.virtualMounts === false ? POSIX_DIRECTIVE_TEXT_STRICT : POSIX_DIRECTIVE_TEXT
               } catch {
                 return ''
               }
@@ -1619,4 +1661,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
