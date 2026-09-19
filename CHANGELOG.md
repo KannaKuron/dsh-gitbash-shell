@@ -15,7 +15,7 @@
 - **指令与环境事实**:order-126 指示与 `DSH_PATH_DIALECT` 描述补「bash 原生习惯(~、/tmp、/dev/null、/usr)在所有工具同样有效」;设置卡 **21 语言 hint 同步更新**(工具列表补 present + bash 习惯句)。
 - 冒烟测试新增 1 块(~ 展开、虚拟挂载、段边界、大小写、无 env 兼容、present 嵌套/冻结、glob 拆分矩阵、TEMP 回显/大小写/present/无 env),41/41 全绿。
 - 真机矩阵验证:`read`/`write`/`grep` 的 `/tmp` 落 TEMP;`bash workdir=/tmp` 修复;`\\.\NUL` 写 OK 读 EOF;`/usr/bin/bash.exe`、`~/.gitconfig` 可读;`glob pattern=/c/...\*.md` 正常返回。
-
+- **已知限制(/dev/null × 文件工具)**:read/write 直接指向 `/dev/null` 时,harness 文件工具内部的 `realpath` 步骤对 `\.\NUL` 设备路径报 `EINVAL`——翻译方向正确、**无任何副作用**(不再创建 C:/dev 文件),但设备语义只能在 bash 内完整使用(`echo x > /dev/null` 原生即焚);文件工具撞此错误应改走 bash。如实报错优于伪造成功(红线),见 AGENTS.md 4b 铁律。
 
 **类型**:docs(npm description 双语化)
 

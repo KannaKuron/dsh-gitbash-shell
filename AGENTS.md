@@ -102,7 +102,7 @@
     执行读活设置(关→返回空对象,免重注册),unregister 经 envCtx.effect 挂插件 fiber 可逆;
     组合里没有该服务时静默无操作。DSH_HOME/DSH_SHELL/DSH_SESSION_ID 为注册表保留键,不可也
     不应覆盖。提示词源头替换(说一次)+ 运行时环境事实(按需核验)互为印证。
-    **虚拟挂载表翻译(v0.17.0)**:入参翻译升级为「盘根 + Git Bash mount 表」两级——`/tmp`→用户 TEMP、`/dev/null`→`\\.\NUL`、`/usr` 系→Git 安装根(buildTranslateEnv 进程内一次探测,默认安装 + PATH 候选 bash.exe,以 `<root>/usr/bin` 存在性排除 WSL shim)、`~`→`$HOME`、裸盘根 `/c`→`C:/`;全部段边界 + 大小写敏感(忠实 msys 挂载表,`/Tmp` 不匹配),探测失败即 no-op。**铁律**:`/dev/null` 只能映射 `\\.\NUL` 设备路径——裸 `NUL` 字符串经 libuv 相对路径会在 cwd 创建真实文件(非即焚);glob 绝对 pattern 按「首个通配符前目录前缀」拆成 `{path, pattern}`(仅 glob 工具、绝对 pattern 覆盖已有 path);present 的嵌套 `files[].path` 入参 + 出参回流均覆盖;出参 TEMP 前缀回显为 `/tmp`。完整设计与实测矩阵见 CHANGELOG v0.17.0。
+    **虚拟挂载表翻译(v0.17.0)**:入参翻译升级为「盘根 + Git Bash mount 表」两级——`/tmp`→用户 TEMP、`/dev/null`→`\\.\NUL`、`/usr` 系→Git 安装根(buildTranslateEnv 进程内一次探测,默认安装 + PATH 候选 bash.exe,以 `<root>/usr/bin` 存在性排除 WSL shim)、`~`→`$HOME`、裸盘根 `/c`→`C:/`;全部段边界 + 大小写敏感(忠实 msys 挂载表,`/Tmp` 不匹配),探测失败即 no-op。**铁律**:`/dev/null` 只能映射 `\\.\NUL` 设备路径——裸 `NUL` 字符串经 libuv 相对路径会在 cwd 创建真实文件(非即焚);harness 文件工具的 realpath 步骤不支持设备路径——文件工具直接 read/write `/dev/null` 报 EINVAL(如实、无副作用),设备语义经 bash 使用;glob 绝对 pattern 按「首个通配符前目录前缀」拆成 `{path, pattern}`(仅 glob 工具、绝对 pattern 覆盖已有 path);present 的嵌套 `files[].path` 入参 + 出参回流均覆盖;出参 TEMP 前缀回显为 `/tmp`。完整设计与实测矩阵见 CHANGELOG v0.17.0。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
