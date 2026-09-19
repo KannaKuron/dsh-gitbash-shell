@@ -984,3 +984,59 @@ test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)',
   }
 })
 
+test('run_code program literals ride the same MSYS mount table (v0.20.0)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const { rewriteCodePaths, scanCodeLiterals } = _internal
+  const env = { tmpDir: 'C:/Temp', home: 'C:/Users/kanna', gitRoot: 'C:/Program Files/Git' }
+  // What the model writes stays what it means: the literal becomes the path a
+  // native Node process can actually open.
+  assert.equal(rewriteCodePaths("fs.readFileSync('/c/Users/kanna/x.txt')", env), "fs.readFileSync('C:/Users/kanna/x.txt')")
+  assert.equal(rewriteCodePaths('const p = "/tmp/a.txt"', env), 'const p = "C:/Temp/a.txt"')
+  assert.equal(rewriteCodePaths('x = `/c/Users/a/b`', env), 'x = `C:/Users/a/b`')
+  assert.equal(rewriteCodePaths("const u = '/usr/bin/env'", env), "const u = 'C:/Program Files/Git/usr/bin/env'")
+  assert.equal(rewriteCodePaths("const h = '~/notes.md'", env), "const h = 'C:/Users/kanna/notes.md'")
+  // The NUL device lands as SOURCE text: it must cook back to the device path.
+  const devSource = rewriteCodePaths("const dev = '/dev/null'", env)
+  const devLiteral = devSource.slice(devSource.indexOf("'"), devSource.lastIndexOf("'") + 1)
+  assert.equal(eval(devLiteral), '\\\\' + '.' + '\\' + 'NUL', 'escaped for the literal it is written into')
+  // Anything that is not a path literal is left exactly as written.
+  const untouched = [
+    "// comment '/c/Users/meh'",
+    "/* block '/c/Users/meh' */",
+    "const url = 'http://x/c/y'",
+    "const dollar = '$HOME/c/x'",
+    "const win = 'C:/Users/kanna/ok'",
+    "const rel = 'src/foo/bar'",
+    'const tpl = `/c/${name}/x`',
+    "const esc = '/c/Users/a\\\\nb'",
+    "const quoted = \"see '/c/Users/kanna/inside'\"",
+  ]
+  for (const code of untouched) assert.equal(rewriteCodePaths(code, env), code, 'must stay verbatim: ' + code)
+  // A program the scanner cannot walk is left WHOLE: never half-rewritten.
+  const broken = "const a = '/c/Users/kanna/ok'\nconst b = '/c/Users/unterminated"
+  assert.equal(scanCodeLiterals(broken), null)
+  assert.equal(rewriteCodePaths(broken, env), broken)
+  // Quotes inside a regex literal, and a division, must not desync the scan.
+  assert.equal(rewriteCodePaths("const re = /['\"]/ ; const s = '/c/Users/kanna/y'", env), "const re = /['\"]/ ; const s = 'C:/Users/kanna/y'")
+  assert.equal(rewriteCodePaths('const d = a / b; const s = "/c/Users/kanna/w"', env), 'const d = a / b; const s = "C:/Users/kanna/w"')
+  // Drive roots are the base layer (no env needed); mounts need real facts and
+  // are never invented.
+  assert.equal(rewriteCodePaths("x = '/e/project/x'", null), "x = 'E:/project/x'")
+  assert.equal(rewriteCodePaths("x = '/tmp/x'", null), "x = '/tmp/x'")
+})
+
+test('the run_code literal rewrite has its own switch (codePaths)', async () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(text, /codePaths: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(text, /exec\.name === 'run_code' && dialect\.codePaths/)
+  assert.match(text, /rewriteCodePaths\(translated\.code, env\)/)
+  const { _internal } = await import('../src/index.js')
+  const withFlag = (value) => _internal.readDialectSettings({ get: () => ({ get: () => value }) })
+  assert.equal(withFlag({ posixPaths: true, codePaths: true }).codePaths, true)
+  assert.equal(withFlag({ posixPaths: true, codePaths: false }).codePaths, false)
+  assert.equal(withFlag({ posixPaths: true }).codePaths, false, 'absent value stays off until the schema default applies')
+  // The directive tells the model the same thing the layer does.
+  const directive = /const POSIX_DIRECTIVE_TEXT = '([^']*)'/.exec(text)
+  assert.ok(directive !== null, 'directive text is gone')
+  assert.match(directive[1], /run_code program/, 'the directive must name the run_code case')
+})

@@ -663,10 +663,10 @@ export function installRegisterShim(reg) {
 const SETTINGS_NAMESPACE = 'gitbash-shell'
 
 /** The full directive text, injected only while posixPaths is on. */
-const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them.'
+const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them. Path literals written inside a run_code program are translated the same way before the program runs; shell expansion is not available there, so spell paths out instead of relying on $VARS.'
 
 /** Strict drive-root-only directive (v0.19.0): used while virtualMounts is off. */
-const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly.'
+const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including path literals written inside a run_code program, which are translated before the program runs.'
 
 // Official runtime counterpart to the directive (v0.11.0): dsh-shell-env is
 // the host-plane registry behind the model-visible $DSH_* facts, and the
@@ -696,7 +696,7 @@ export function readPosixPaths(ctxLike) {
  * first. All default ON (schema defaults); never throws.
  */
 export function readDialectSettings(ctxLike) {
-  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, bashPath: '' }
+  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, bashPath: '' }
   try {
     const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
     const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
@@ -706,6 +706,7 @@ export function readDialectSettings(ctxLike) {
       virtualMounts: v.virtualMounts === true,
       globSplit: v.globSplit === true,
       errorDialect: v.errorDialect === true,
+      codePaths: v.codePaths === true,
       bashPath: typeof v.bashPath === 'string' ? v.bashPath : '',
     }
   } catch {
@@ -1076,6 +1077,232 @@ export function translatePathArguments(args, env) {
   return changed ? next : args
 }
 
+// ── MSYS paths written INSIDE a run_code program (v0.20.0) ───────────────
+//
+// run_code hands the model's program to a native Node process: a path literal
+// in that source is plain program DATA, so '/c/Users/x' is resolved by Node
+// against the current drive ('<drive>:\\c\\Users\\x') — that is where the stray
+// C:\\c\\... directories came from, since the tool-argument translation never
+// sees it (see AGENTS.md 4c). The same mount table is therefore applied to the
+// program's string literals — but ONLY when the whole program scans cleanly and
+// a literal's ENTIRE content is an absolute MSYS path. Anything unclear — an
+// unterminated literal, a template with ${} interpolation, a regex we cannot
+// place — turns the whole rewrite into a no-op: a half-rewritten program would
+// be far worse than an untranslated one, and this layer never guesses.
+//
+// Deliberately NOT translated: shell-style '$VAR/x' (a JS literal is data, not
+// a shell word) and anything carrying a scheme ('http://...').
+
+/** Source text allowed inside a rewritten literal: no escapes, no dollar sign. */
+const CODE_LITERAL_SAFE = /^[A-Za-z0-9._@+~\-/ ]+$/
+
+/** Previous significant character that lets a '/' start a regex literal. */
+function regexCanStart(previous) {
+  if (previous === '') return true
+  return '(,=:[!&|?{};+-*%<>~^'.indexOf(previous) >= 0
+}
+
+/** Index after the closing quote of the literal at `index`, or -1. */
+function skipQuotedLiteral(code, index) {
+  const quote = code[index]
+  let i = index + 1
+  while (i < code.length) {
+    const c = code[i]
+    if (c === '\\') { i += 2; continue }
+    if (c === '\n') return -1
+    if (c === quote) return i + 1
+    i += 1
+  }
+  return -1
+}
+
+/** Index after a regex literal (body + flags), or -1 when it cannot be walked. */
+function skipRegexLiteral(code, index) {
+  let i = index + 1
+  let inClass = false
+  while (i < code.length) {
+    const c = code[i]
+    if (c === '\\') { i += 2; continue }
+    if (c === '\n') return -1
+    if (c === '[') inClass = true
+    else if (c === ']') inClass = false
+    else if (c === '/' && inClass === false) {
+      i += 1
+      while (i < code.length && /[a-z]/i.test(code[i])) i += 1
+      return i
+    }
+    i += 1
+  }
+  return -1
+}
+
+/** Index after the '}' matching an already-consumed interpolation, or -1. */
+function skipBracedExpression(code, index) {
+  let depth = 1
+  let i = index
+  let last = ''
+  while (i < code.length) {
+    const c = code[i]
+    const next = code[i + 1]
+    if (c === '/' && next === '/') {
+      const nl = code.indexOf('\n', i)
+      if (nl === -1) return -1
+      i = nl
+      continue
+    }
+    if (c === '/' && next === '*') {
+      const close = code.indexOf('*/', i + 2)
+      if (close === -1) return -1
+      i = close + 2
+      continue
+    }
+    if (c === '"' || c === "'") {
+      const end = skipQuotedLiteral(code, i)
+      if (end === -1) return -1
+      i = end
+      last = 'x'
+      continue
+    }
+    if (c === '`') {
+      const inner = skipTemplateLiteral(code, i)
+      if (inner === null) return -1
+      i = inner.end
+      last = 'x'
+      continue
+    }
+    if (c === '/' && regexCanStart(last)) {
+      const end = skipRegexLiteral(code, i)
+      if (end === -1) return -1
+      i = end
+      last = 'x'
+      continue
+    }
+    if (c === '{') depth += 1
+    else if (c === '}') {
+      depth -= 1
+      if (depth === 0) return i + 1
+    }
+    if (c.trim() !== '') last = c
+    i += 1
+  }
+  return -1
+}
+
+/**
+ * Walk a template literal. Returns { end, plain } — plain means it holds no
+ * interpolation, i.e. its text is one literal value — or null when the
+ * template could not be walked to its end.
+ */
+function skipTemplateLiteral(code, index) {
+  let i = index + 1
+  let plain = true
+  while (i < code.length) {
+    const c = code[i]
+    if (c === '\\') { i += 2; continue }
+    if (c === '`') return { end: i + 1, plain: plain }
+    if (c === '$' && code[i + 1] === '{') {
+      plain = false
+      const after = skipBracedExpression(code, i + 2)
+      if (after === -1) return null
+      i = after
+      continue
+    }
+    i += 1
+  }
+  return null
+}
+
+/**
+ * Every plain string-literal span of a program, or null when the source could
+ * not be walked with certainty. Spans cover the CONTENT (quotes excluded).
+ */
+export function scanCodeLiterals(code) {
+  const spans = []
+  let i = 0
+  let last = ''
+  while (i < code.length) {
+    const c = code[i]
+    const next = code[i + 1]
+    if (c === '/' && next === '/') {
+      const nl = code.indexOf('\n', i)
+      if (nl === -1) return null
+      i = nl
+      continue
+    }
+    if (c === '/' && next === '*') {
+      const close = code.indexOf('*/', i + 2)
+      if (close === -1) return null
+      i = close + 2
+      continue
+    }
+    if (c === '"' || c === "'") {
+      const end = skipQuotedLiteral(code, i)
+      if (end === -1) return null
+      spans.push({ start: i + 1, end: end - 1 })
+      i = end
+      last = 'x'
+      continue
+    }
+    if (c === '`') {
+      const template = skipTemplateLiteral(code, i)
+      if (template === null) return null
+      if (template.plain) spans.push({ start: i + 1, end: template.end - 1 })
+      i = template.end
+      last = 'x'
+      continue
+    }
+    if (c === '/' && regexCanStart(last)) {
+      const end = skipRegexLiteral(code, i)
+      if (end === -1) return null
+      i = end
+      last = 'x'
+      continue
+    }
+    if (c.trim() !== '') last = c
+    i += 1
+  }
+  return spans
+}
+
+/**
+ * Translates MSYS path literals inside a run_code program. Returns the input
+ * unchanged when nothing matched or when the scan was not certain.
+ * @param {string} code the model's program
+ * @param {{tmpDir?: string, home?: string, gitRoot?: string}|null} env mounts
+ * @returns {string} the program to execute
+ */
+export function rewriteCodePaths(code, env) {
+  if (typeof code !== 'string' || code === '') return code
+  if (code.indexOf('/') === -1) return code
+  const spans = scanCodeLiterals(code)
+  if (spans === null) return code
+  let out = ''
+  let cursor = 0
+  let changed = false
+  for (const span of spans) {
+    const raw = code.slice(span.start, span.end)
+    if (raw.charCodeAt(0) !== 47 && raw.startsWith('~/') === false) continue
+    if (raw.indexOf('$') >= 0 || raw.indexOf('\\') >= 0) continue
+    if (CODE_LITERAL_SAFE.test(raw) === false) continue
+    if (raw.indexOf('://') >= 0) continue
+    const translated = translateMsysPath(raw, env)
+    if (typeof translated !== 'string' || translated === raw) continue
+    // What lands in the program is SOURCE text, not the value: a backslash in
+    // the translated path (the NUL device) must be escaped for the literal it
+    // is written into, and a quote inside it (a home directory with an
+    // apostrophe) would end that literal early — refuse rather than corrupt.
+    const quote = code[span.start - 1]
+    if (translated.indexOf(quote) >= 0) continue
+    if (quote === '`' && translated.indexOf('${') >= 0) continue
+    const source = translated.replace(/\\/g, '\\\\')
+    out += code.slice(cursor, span.start) + source
+    cursor = span.end
+    changed = true
+  }
+  if (changed === false) return code
+  return out + code.slice(cursor)
+}
+
 // ── absolute glob patterns (v0.17.0) ────────────────────────────────────
 //
 // The glob tool takes its search root in the `path` argument and expects a
@@ -1372,6 +1599,7 @@ export async function apply(ctx, config = {}) {
             virtualMounts: Schema.boolean().default(true),
             globSplit: Schema.boolean().default(true),
             errorDialect: Schema.boolean().default(true),
+            codePaths: Schema.boolean().default(true),
             bashPath: Schema.string().default(''),
             adoptSidebar: Schema.boolean().default(true),
           }))
@@ -1486,6 +1714,15 @@ export async function apply(ctx, config = {}) {
             if (exec.name === 'glob' && dialect.globSplit) {
               const globTranslated = translateGlobArguments(translated, env)
               if (globTranslated !== translated) translated = globTranslated
+            }
+            // v0.20.0: a run_code program is DATA for a native Node process, so
+            // a '/c/...' literal inside it never reached this layer and landed
+            // on the current drive as '<drive>:\\c\\...'. The same mount table
+            // now covers the program's path literals (see rewriteCodePaths;
+            // anything unclear leaves the code untouched).
+            if (exec.name === 'run_code' && dialect.codePaths && typeof translated.code === 'string') {
+              const rewritten = rewriteCodePaths(translated.code, env)
+              if (rewritten !== translated.code) translated = { ...translated, code: rewritten }
             }
             if (translated !== exec.arguments) exec.arguments = translated
           }
@@ -1661,4 +1898,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
