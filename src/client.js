@@ -683,7 +683,8 @@ window.__ModuleLoader__.load({
 			".gb-chevron{flex:none;color:var(--dsw-alias-label-tertiary);transition:transform .16s}",
 			".gb-chevron.gb-chevronOpen{transform:rotate(180deg)}",
 			".gb-body{display:flex;flex-direction:column;gap:12px;padding:4px 16px 16px;max-width:640px}",
-			".gb-page{max-width:640px}",
+			".gb-pageCard{max-width:640px}",
+			".gb-headerFlat{cursor:default}",
 			".gb-pageBody{display:flex;flex-direction:column;gap:12px;padding:0 0 8px}",
 			".gb-row{display:flex;align-items:baseline;gap:8px;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-secondary)}",
 			".gb-rowLabel{flex:none;color:var(--dsw-alias-label-tertiary)}",
@@ -914,13 +915,21 @@ window.__ModuleLoader__.load({
 				),
 			);
 
-			var bodyContent = E("div", { className: pageView ? "gb-pageBody" : "gb-body" },
+			var bodyContent = E("div", { className: "gb-body" },
 				dialectSection,
 				terminalSection,
 				error ? E("p", { className: "gb-error" }, error) : null,
 			);
 
-			if (pageView) return E("div", { className: "gb-page" }, bodyContent);
+			if (pageView) return E("div", { className: "gb-card gb-pageCard" },
+				E("div", { className: "gb-header gb-headerFlat" },
+					E("span", { className: "gb-headText" },
+						E("span", { className: "gb-name" }, t("title")),
+						E("span", { className: "gb-desc" }, t("cardDesc")),
+					),
+				),
+				bodyContent,
+			);
 
 			return E("li", { className: "gb-card" + (open ? " gb-open" : "") },
 				E("button", {
