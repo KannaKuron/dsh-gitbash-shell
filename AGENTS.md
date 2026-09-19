@@ -91,10 +91,11 @@
     slots.inject(洞名, 回调),回调体内 return slots.register(options, card)——直接把
     (options, component) 作为 slots.inject 的第二三参会静默不注册、卡片永不出现
     (agent-lang/better-workspace 均两段式;smoke 已加形状断言)。
-    **输出侧回流修复(v0.10.4)**:成功结果的路径元数据(read/write/edit 的 path、
-    glob paths[]、grep matches[].path——后者为相对路径,仅分隔符归一)经 tools/post-execute
-    waterfall(官方允许 replace value projection)改写回 MSYS 方言;文件内容行与错误结果
-    绝不动。模型不再从成功调用中收到 Windows 形式路径回声。
+    **输出侧回流(v0.10.4 起;v0.23.0 换挂点)**:成功结果的路径元数据(read/read_image/write/edit 的
+    path、glob paths[]、grep matches[].path、present files[].path)改写回 MSYS 方言;文件内容行与
+    错误结果绝不动。**挂点从 v0.23.0 起是 `tools/execute` 的返回包装(自作结果),不再是 post-execute
+    的 `value` 决策**——原因见 §4d 的铁律;整值路径统一走 `driveToMsys`/`pathEcho`(带空格目录不再
+    混合方言,散文面另有正则规则)。
     **官方 shell-env 事实(v0.11.0)**:方言声明进驻官方 `dsh-shell-env` 注册表(宿主层
     服务,web 组合注入、实测下发 DSH_WEB_URL/DSH_HOME/DSH_SESSION_ID/DSH_SHELL=1,bash 工具
     schema 官方措辞本就指向 $DSH_*「inspect them when needed」)——ctx.inject(['shellEnv'])
@@ -142,6 +143,17 @@
      git status --porcelain 列为 modified**(stat 层报告,Linux 遇到 CRLF 工作区同样如此);代价是
      git diff 对将被归一化的文件打一行 stderr 提示(如实告知即可)。
      改这一层必须跑冒烟里的「one dialect on BOTH faces」与「post-execute branch」两例。
+     **成功面为什么不能挂 post-execute(v0.23.0,issue #2 的结论)**:注册表禁止同一条决策同时带
+     `content` 与 `value`(`postExecute` 抛 `cannot replace both value and content`,且抛在整条瀑布
+     收束之后、任何监听者 try/catch 之外 → 调用直接 isError)。所以:①**成功面一律在 `tools/execute`
+     里自作结果**(`{ ...result, value }`;宿主 `normalizeDispatchResult` 会用新 value 重渲染 content),
+     **任何决策上都不得再出现 `value` 键**;②失败面留在 post-execute,且**只产 `content`**(`value` 对
+     失败结果本就非法),两边都不可能撞车;③结果未变时必须返回**原对象**,否则白白触发一次重渲染。
+     ④整值路径走 `pathEcho`(盘符前缀 + 分隔符归一 + `/tmp` 挂载),**绝不把整值丢给散文改写器**
+     `windowsToMsys`——它遇空格即断(issue #3:带空格目录回流成 `/c/my dir\f.txt`);散文面则只允许
+     「空格后那个词自带分隔符」时跨空格,免得把英文吞进路径。
+     改这一层必须跑冒烟里的「one dialect on BOTH faces」「post-execute branch」「whole-value path」
+     「success echo rides tools/execute」四例。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
 6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步

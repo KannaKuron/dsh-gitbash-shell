@@ -659,6 +659,11 @@ test('rewriteResultPaths rewrites result metadata, never content', async () => {
   assert.equal(rr('bash', bash), bash, 'non-path tools pass through untouched')
   const already = { path: '/c/already.txt' }
   assert.equal(rr('read', already), already, 'an unchanged value returns the same reference')
+  // v0.23.0 (issue #3): a whole-value field goes through pathEcho, so the
+  // prose rewriter can no longer leave a spaced directory half-translated
+  const spaced = rr('read', { path: 'C:' + BS + 'Users' + BS + 'u' + BS + 'my dir' + BS + 'f.txt' })
+  assert.equal(spaced.path, '/c/Users/u/my dir/f.txt')
+  assert.equal(rr('grep', { matches: [{ path: 'my dir' + BS + 's.js', line: 'x' }] }).matches[0].path, 'my dir/s.js')
 })
 test('injectPresentRow: anchor splice, tail append, idempotent (dsh 0.1.5-alpha.2 sync)', () => {
   const inject = _internal.injectPresentRow
@@ -1174,4 +1179,45 @@ test('glob patterns may open with a tilde (v0.22.0)', async () => {
   assert.equal(tg(noEnv, undefined), noEnv, 'no mount facts → no expansion')
   const rel = { pattern: 'sub/*.md' }
   assert.equal(tg(rel, env), rel, 'relative patterns still return the same reference')
+})
+
+test('a whole-value path never goes through the prose rewriter (v0.23.0, issue #3)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const BS = String.fromCharCode(92)
+  const SL = String.fromCharCode(47)
+  const d = _internal.driveToMsys
+  const p = _internal.pathEcho
+  assert.equal(d('C:' + BS + 'my dir' + BS + 'f.txt'), SL + 'c/my dir/f.txt', 'a spaced directory no longer leaks a backslash')
+  assert.equal(d('C:/my dir/f.txt'), SL + 'c/my dir/f.txt')
+  assert.equal(d('my dir' + BS + 'f.txt'), 'my dir/f.txt', 'relative values only normalize')
+  assert.equal(d(SL + 'c/already/posix'), SL + 'c/already/posix', 'an MSYS path passes through')
+  assert.equal(d('C:relative'), 'C:relative', 'a drive-relative path is not a root')
+  assert.equal(d(''), '')
+  assert.equal(d(undefined), undefined)
+  assert.equal(p('C:' + BS + 'Users' + BS + 'u' + BS + 'Temp dir' + BS + 'x', { tmpDir: 'C:/Users/u/Temp dir' }), SL + 'tmp/x', 'the /tmp mount survives a spaced TEMP root')
+  const rr = _internal.rewriteResultPaths
+  assert.equal(rr('read', { path: 'C:' + BS + 'Users' + BS + 'u' + BS + 'my dir' + BS + 'f.txt' }).path, SL + 'c/Users/u/my dir/f.txt')
+  assert.equal(rr('glob', { paths: ['C:' + BS + 'a b' + BS + 'c.txt'] }).paths[0], SL + 'c/a b/c.txt')
+})
+
+test('prose rewriting crosses a space only into a path token (v0.23.0)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const BS = String.fromCharCode(92)
+  const w = _internal.windowsToMsys
+  assert.equal(w('C:' + BS + 'Program Files' + BS + 'Git' + BS + 'bin' + BS + 'bash.exe'), '/c/Program Files/Git/bin/bash.exe', 'a spaced program-files path comes back whole')
+  assert.equal(w('see C:' + BS + 'Users' + BS + 'kanna for details'), 'see /c/Users/kanna for details', 'prose after a path is not swallowed')
+  assert.equal(w('https://x.dev/a and file://C:/x stay'), 'https://x.dev/a and file://C:/x stay')
+  assert.equal(w('no paths here'), 'no paths here')
+})
+
+test('the success echo rides tools/execute, so no decision can collide (v0.23.0, issue #2)', () => {
+  const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(text, /return next\(\)\.then\(\(result\) => \{/, 'the around-dispatch wrapper authors the result')
+  assert.match(text, /rewriteResultPaths\(exec && exec\.name, result\.value, echoEnv\)/)
+  assert.doesNotMatch(text, /value: patch/, 'the old post-execute value projection is gone')
+  assert.doesNotMatch(text, /next\(\)\.catch/, 'a rejecting dispatch must still propagate')
+  const from = text.indexOf('failure dialect on tools/post-execute')
+  const post = text.slice(from, text.indexOf('tools/post-execute wiring failed', from))
+  assert.doesNotMatch(post, /rewriteResultPaths/, 'the decision waterfall no longer authors a value')
+  assert.doesNotMatch(post, /value:/, 'a decision here carries content only')
 })

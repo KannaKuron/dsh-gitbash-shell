@@ -3,6 +3,20 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.23.0 — 2026-09-19
+
+**类型**:fix(两个社区 issue:成功面的 `value` 回流与任何 `content` 替换者互斥;带空格路径的混合方言)
+
+**两条都是真 bug、都不是需求**;修法都换成了比 issue 建议更彻底的那条(issue #2 见 https://github.com/KannaKuron/dsh-gitbash-shell/issues/2,issue #3 见 https://github.com/KannaKuron/dsh-gitbash-shell/issues/3)。
+
+- **① 成功结果的 `value` 回流与 `content` 替换者互斥(issue #2)**:v0.10.4 起,成功结果的路径元数据靠 `tools/post-execute` 的决策补 `value` 回流。而注册表**禁止**同一条决策里同时出现 `content` 与 `value`(`dsh-tools` 的 `postExecute`:`throw new TypeError('tools/post-execute accept decision cannot replace both value and content')`),且这次抛错发生在**整条瀑布收束之后、任何监听者的 try/catch 之外** → 调用以 isError 结束,模型拿到的是校验错误而不是结果。
+  - **本机取证(为什么本机从没炸)**:逐帧解码 85 个会话、3.3 亿字符历史日志,该报错 **0 次**;模型侧发起的根级调用 `run_code=10542`、根级 `glob`/`grep` **0 次**——本机调用几乎全是 PTC 子调用,而官方两个 content 替换者对子调用直接 bail(`acceptedDirectCallValue` 要求 `exec.parent === undefined`),`spill-policy` 还 prepend + 遇 `value` 主动让路 + 跳过 `read`。**所以本机是靠用法躲过,不是代码安全**:issue 作者机器上的 read 内容过滤器、或任何一次根级 glob/grep 截断,都会踩。
+  - **修法(治本)**:成功面的回流**搬出 post-execute**,改在 `tools/execute` 的 around-dispatch 包装里**自作结果**(`return { ...result, value }`)。这是宿主**官方且有测试**的扩展点(`normalizeDispatchResult` → `createSuccessResult` → `render`:注册表会用交回的 value **重新渲染 content**),于是本插件**在任何决策上都不再产出 `value` 键**——冲突结构性消失;附带收益是别的插件渲染的 content(spill 预览之类)也一起变 MSYS。失败面仍留在 post-execute(那里只产 `content`;`value` 对失败结果本就非法,永不冲突)。结果未变时返回**原对象**,注册表据此跳过重渲染。
+  - **为什么不用 issue 给的第 1 条(见到 `content` 就让路)**:那只消除抛错,改写仍会被外层丢弃,换个监听者又会复发;第 2 条(换挂点)才是正解,这里按第 2 条做。
+- **② 带空格路径的混合方言(issue #3)**:`windowsToMsys` 是**散文改写器**,裸路径正则遇空格就断——`C:\my dir\f.txt` 变成 `/c/my dir\f.txt`(反斜杠残留),而这条路径正出现在**成功结果**里。本机复现:`/tmp/my dir/f.txt` 的 `read` 回流为 `/tmp/my dir\f.txt`。实际面比 issue 描述的更宽:`C:\Program Files\Git\bin\bash.exe` → `/c/Program Files\Git\bin\bash.exe`(空格之后整段没转)。
+  - **修法(两个面分开治)**:①新增 `driveToMsys` / `pathEcho`——**整值路径**不再经过散文正则:盘符前缀直接翻、剩余分隔符全归一,再走 `/tmp` 挂载;`read`/`read_image`/`write`/`edit` 的 `path`、`glob` 的 `paths[]`、`grep` 的 `matches[].path`、`present` 的 `files[].path`,以及 `tempDir` 自身全部改走它(带空格的 TEMP 目录同样能挂成 `/tmp`)。②散文面(提示词、错误文本)的裸路径正则改为**只有空格后那个词本身还带分隔符时才跨空格**——`C:\Program Files\Git\bin\bash.exe` 整条转对,而 `see C:\Users\kanna for details` 不会把后面的英文吞进路径。带引号的诊断(harness 的错误信息都加引号)本来就没问题,未动。
+  - **issue 建议的 `posixSeparators(windowsToMsys(...))` 没有照抄**:它只对「整条就是一个路径」成立(而漏的正是这个场合:read/write/edit 分支当时没加),且散文面套上它会把英文当路径。
+- **验证**:`npm test` **56/56**。新增三条:①整值路径矩阵(带空格目录、相对路径只归一、盘符相对路径不误判、带空格 TEMP 的 `/tmp` 挂载);②散文正则的跨空格规则(程序目录整条转对 / 英文不被吞 / URL 不动);③源码守卫——成功面必须在 `tools/execute`、旧写法 `value: patch` 必须消失、post-execute 段内不得出现 `value:`、`next().catch` 不得出现(拒绝必须继续向上抛)。两条 issue 修复后已回复并关闭。
 ## v0.22.0 — 2026-09-19
 
 **类型**:feat(失败消息面统一方言 + glob 认 `~`;含两项实证修正与一项「明确不做」)

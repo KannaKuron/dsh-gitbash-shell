@@ -756,13 +756,17 @@ export function readAdoptSidebar(ctxLike) {
   }
 }
 
-// Windows absolute path -> MSYS drive-root form, for rewriting the OFFICIAL
-// prompt text in place (v0.10.0). Two patterns keep quoted spaced paths
-// ("C:\Program Files\Git") whole while bare paths stop at whitespace or a
-// closing punctuation; the lookbehind set rejects URL schemes (https:),
-// file:// forms, and anything already mid-word, so only real drive-letter
-// paths are translated. Separators normalize to single slashes.
-const BARE_WIN_PATH = /(?<![A-Za-z0-9:\\/"'`])([A-Za-z]):(?:\\|\/)([^\s"'`<>|),;:!?]+)/g
+// Windows absolute path -> MSYS drive-root form, for rewriting PROSE in place
+// (v0.10.0). Quoted spaced paths ("C:\Program Files\Git") are matched whole; a bare
+// path stops at a closing punctuation and crosses a space ONLY into a token that
+// itself carries a separator — so "C:\Program Files\Git\bin" comes back whole (v0.23.0)
+// while "see C:\Users\kanna for details" keeps its prose. An unquoted path whose LAST
+// segment holds the space (…\my dir\f.txt") stays ambiguous in prose; the model meets such
+// a path as a whole-value FIELD, which never goes through here (driveToMsys).
+// The lookbehind set rejects URL schemes (https:), file:// forms, and anything
+// already mid-word, so only real drive-letter paths are translated. Separators
+// normalize to single slashes.
+const BARE_WIN_PATH = /(?<![A-Za-z0-9:\\/"'`])([A-Za-z]):(?:\\|\/)([^\s"'`<>|),;:!?]+(?: [^\s"'`<>|),;:!?]*[\\/][^\s"'`<>|),;:!?]*)*)/g
 const QUOTED_WIN_PATH = /(["'`])([A-Za-z]):(?:\\|\/)([^`]*?)\1/g
 
 /** Rewrite every Windows absolute path in a text to the MSYS form; pure. */
@@ -785,7 +789,7 @@ export function windowsToMsys(text) {
 function msysEcho(value, env) {
   const out = windowsToMsys(value)
   if (typeof out !== 'string' || out.length === 0) return out
-  const tempRoot = env && env.tmpDir ? windowsToMsys(env.tmpDir) : ''
+  const tempRoot = env && env.tmpDir ? driveToMsys(env.tmpDir) : ''
   if (!tempRoot) return out
   return mountTempRoot(out, tempRoot)
 }
@@ -827,6 +831,38 @@ function posixSeparators(value) {
   return typeof value === 'string' && value.includes(String.fromCharCode(92))
     ? value.split(String.fromCharCode(92)).join('/')
     : value
+}
+
+/**
+ * One WHOLE path value -> the MSYS dialect (v0.23.0). windowsToMsys is a PROSE
+ * rewriter: its bare pattern stops at whitespace, so a path whose DIRECTORY
+ * contains a space came back half-translated — "C:\my dir\f.txt" turned into
+ * "/c/my dir\f.txt", and the model met that mixed form in a SUCCESSFUL
+ * read/write/edit result (issue #3). A whole-value field IS exactly one path, so
+ * the drive prefix is translated directly and every remaining separator
+ * normalizes; no prose pattern is involved. Relative values (grep match paths)
+ * only normalize. A UNC root becomes the MSYS spelling "//server/share";
+ * anything without a drive prefix passes through unchanged. Pure.
+ */
+function driveToMsys(value) {
+  if (typeof value !== 'string' || value.length === 0) return value
+  const drive = /^([A-Za-z]):(?=[\\/])/.exec(value)
+  if (drive) return '/' + drive[1].toLowerCase() + '/' + posixSeparators(value.slice(2)).replace(/^\/+/, '')
+  return posixSeparators(value)
+}
+
+/**
+ * The MSYS echo of one whole path VALUE — never prose (v0.23.0): the drive root
+ * and separators through driveToMsys, then the /tmp mount. Every whole-value
+ * face (read/write/edit path, glob paths[], grep matches[].path, present
+ * files[].path) goes through here, so none of them can disagree about the
+ * dialect, and a spaced directory no longer leaks a backslash.
+ */
+function pathEcho(value, env) {
+  const out = driveToMsys(value)
+  if (typeof out !== 'string' || out.length === 0) return out
+  const tempRoot = env && env.tmpDir ? driveToMsys(env.tmpDir) : ''
+  return tempRoot ? mountTempRoot(out, tempRoot) : out
 }
 
 /**
@@ -918,7 +954,11 @@ export function rewriteResultPaths(name, value, env) {
   // v0.17.0: paths under the user TEMP directory echo back in the bash
   // /tmp dialect (that IS what /tmp means in Git Bash), so the model sees
   // the same short root bash itself prints for $TMP.
-  const toMsys = (p) => msysEcho(p, env)
+  // v0.23.0: every value around here is ONE path, so it goes through
+  // pathEcho — the prose rewriter stops at whitespace and left a spaced
+  // directory half-translated (issue #3). posixSeparators now lives inside
+  // pathEcho, so the three nested branches below need no second pass.
+  const toMsys = (p) => pathEcho(p, env)
   if (name === 'read' || name === 'read_image' || name === 'write' || name === 'edit') {
     if (typeof value.path === 'string' && value.path !== '') {
       const out = toMsys(value.path)
@@ -930,7 +970,7 @@ export function rewriteResultPaths(name, value, env) {
     let changed = false
     const files = value.files.map((file) => {
       if (!file || typeof file !== 'object' || typeof file.path !== 'string' || file.path === '') return file
-      const out = posixSeparators(toMsys(file.path))
+      const out = toMsys(file.path)
       if (out === file.path) return file
       changed = true
       return { ...file, path: out }
@@ -941,7 +981,7 @@ export function rewriteResultPaths(name, value, env) {
     let changed = false
     const paths = value.paths.map((p) => {
       if (typeof p !== 'string') return p
-      const out = posixSeparators(toMsys(p))
+      const out = toMsys(p)
       if (out === p) return p
       changed = true
       return out
@@ -952,7 +992,7 @@ export function rewriteResultPaths(name, value, env) {
     let changed = false
     const matches = value.matches.map((m) => {
       if (!m || typeof m !== 'object' || typeof m.path !== 'string') return m
-      const out = posixSeparators(toMsys(m.path))
+      const out = toMsys(m.path)
       if (out === m.path) return m
       changed = true
       return { ...m, path: out }
@@ -1858,90 +1898,121 @@ export async function apply(ctx, config = {}) {
   // ── MSYS path translation on every tool dispatch (Windows only) ─────────
   // Covers every preset and mode: the wrapper sits on the global
   // tools/execute waterfall, through which model-direct calls, PTC run_code
-  // sub-dispatches, and dynamic-tool calls all pass.
+  // sub-dispatches, and dynamic-tool calls all pass. It carries BOTH dialect
+  // faces of one call — the path-bearing ARGUMENTS on the way in, and the
+  // path-bearing RESULT metadata on the way out.
+  //
+  // The result face rides HERE, not tools/post-execute (v0.23.0, issue #2).
+  // The registry rejects a post-execute decision that replaces `value` while
+  // any listener on that waterfall replaced `content` —
+  // "tools/post-execute accept decision cannot replace both value and content",
+  // raised after the waterfall settles and outside every listener try/catch,
+  // so the call ended as an isError and the model lost the result. An
+  // around-dispatch wrapper may author the result instead: the registry re-runs
+  // the owning output contract on what we return (normalizeDispatchResult ->
+  // createSuccessResult -> render), so the content the model reads is rendered
+  // FROM the dialect value handed back, and this plugin never projects a
+  // `value` on a decision at all — the collision cannot happen. An unchanged
+  // value returns the ORIGINAL result object, so the registry re-renders
+  // nothing. Only a SUCCESSFUL result is touched; failures keep their value
+  // (and their dialect rides the post-execute listener below).
   if (process.platform === 'win32') {
     try {
       ctx.on('tools/execute', (exec, next) => {
+        let echo = false
+        let echoEnv = null
         try {
           const dialect = readDialectSettings(ctx)
-          if (exec && exec.arguments && typeof exec.arguments === 'object' && dialect.posixPaths) {
+          if (dialect.posixPaths) {
+            echo = true
             const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
-            let translated = translatePathArguments(exec.arguments, env)
-            if (exec.name === 'glob' && dialect.globSplit) {
-              const globTranslated = translateGlobArguments(translated, env)
-              if (globTranslated !== translated) translated = globTranslated
+            echoEnv = env
+            if (exec && exec.arguments && typeof exec.arguments === 'object') {
+              let translated = translatePathArguments(exec.arguments, env)
+              if (exec.name === 'glob' && dialect.globSplit) {
+                const globTranslated = translateGlobArguments(translated, env)
+                if (globTranslated !== translated) translated = globTranslated
+              }
+              // v0.20.0: a run_code program is DATA for a native Node process, so
+              // a '/c/...' literal inside it never reached this layer and landed
+              // on the current drive as '<drive>:\\c\\...'. The same mount table
+              // now covers the program path literals (see rewriteCodePaths;
+              // anything unclear leaves the code untouched).
+              if (exec.name === 'run_code' && dialect.codePaths && typeof translated.code === 'string') {
+                const rewritten = rewriteCodePaths(translated.code, env)
+                const nextCode = programPrelude(env) + rewritten
+                if (nextCode !== translated.code) translated = { ...translated, code: nextCode }
+              }
+              if (translated !== exec.arguments) exec.arguments = translated
             }
-            // v0.20.0: a run_code program is DATA for a native Node process, so
-            // a '/c/...' literal inside it never reached this layer and landed
-            // on the current drive as '<drive>:\\c\\...'. The same mount table
-            // now covers the program's path literals (see rewriteCodePaths;
-            // anything unclear leaves the code untouched).
-            if (exec.name === 'run_code' && dialect.codePaths && typeof translated.code === 'string') {
-              const rewritten = rewriteCodePaths(translated.code, env)
-              const next = programPrelude(env) + rewritten
-              if (next !== translated.code) translated = { ...translated, code: next }
-            }
-            if (translated !== exec.arguments) exec.arguments = translated
           }
         } catch { /* never block a call on translation */ }
-        return next()
+        if (!echo) return next()
+        return next().then((result) => {
+          try {
+            if (!result || typeof result !== 'object' || result.isError !== false) return result
+            if (!result.value || typeof result.value !== 'object') return result
+            const value = rewriteResultPaths(exec && exec.name, result.value, echoEnv)
+            return value === result.value ? result : { ...result, value }
+          } catch { return result }
+        })
       })
-      console.log(TAG + ' MSYS drive-root translation active on tool dispatch')
+      console.log(TAG + ' MSYS path translation active on tool dispatch (arguments and result metadata)')
     } catch (error) {
       console.log(TAG + ' tools/execute wiring failed: ' + (error?.message ?? error))
     }
   }
 
-  // ── result-path dialect on tools/post-execute (Windows only, gated; v0.10.4) ──
-  // Successful results carry Windows-form path METADATA (read.path, glob
-  // paths[], grep matches[].path) out of the Node fs layer. The official
-  // post-execute waterfall allows replacing the value projection, so while
-  // posixPaths is on those metadata fields flow back in the MSYS dialect and
-  // the model never sees a Windows path echoed by a successful call. File
-  // content and error results are untouched (see rewriteResultPaths).
+  // ── failure dialect on tools/post-execute (Windows only, gated; v0.17.1) ─
+  // A FAILURE has two faces: `content` (the text the model reads on the failed
+  // call, and what the UI card shows) and `error.message` (what the PTC bridge
+  // hands a running program as its caught ToolCallError, while the durable
+  // record keeps the structured identity). Rewriting only the content left a
+  // program that printed a caught error holding the Windows form while every
+  // other face said MSYS (v0.22.0).
+  //
+  // This listener projects CONTENT ONLY, and that is deliberate (v0.23.0,
+  // issue #2): a decision carrying both `content` and `value` makes the
+  // registry throw, and a replacement value is illegal on a failed result
+  // anyway. The SUCCESS face therefore lives on the tools/execute wrapper
+  // above, and this listener can never collide with any other plugin.
+  //
+  // error.message is rewritten IN PLACE on the result the waterfall was handed:
+  // the registry keeps `result.error` by reference until the final
+  // materialization, so this write reaches the PTC bridge and the record.
+  // A post-execute `block` decision would rebuild the error as a bare message
+  // and drop its structured identity — never do that.
   if (process.platform === 'win32') {
     try {
       ctx.on('tools/post-execute', (exec, result, next) => {
-        let patch
         let contentPatch
         try {
           const dialect = readDialectSettings(ctx)
-          if (dialect.posixPaths && result && typeof result === 'object') {
-            if (result.isError === false && result.value && typeof result.value === 'object') {
-              const value = rewriteResultPaths(exec && exec.name, result.value, dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null)
-              if (value !== result.value) patch = value
-            } else if (result.isError === true && dialect.errorDialect && exec && Array.isArray(result.content)) {
-              // v0.22.0: BOTH faces of a failure carry the dialect — the
-              // content the model reads on a failed call, and the result's own
-              // error.message, which a PTC program receives as its caught
-              // ToolCallError message and the durable record keeps.
-              const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
-              if (exec.name === 'run_code') {
-                // paths only — the /dev/null hint is for file tools
-                const content = rewriteErrorContent(result.content, { nulHint: false, env })
-                if (content !== result.content) contentPatch = content
-                rewriteFailureMessage(result, env)
-              } else if (ERROR_CONTENT_TOOLS.has(exec.name)) {
-                const content = rewriteErrorContent(result.content, { env })
-                if (content !== result.content) contentPatch = content
-                rewriteFailureMessage(result, env)
-              }
+          if (dialect.posixPaths && dialect.errorDialect && exec && result && typeof result === 'object'
+            && result.isError === true && Array.isArray(result.content)) {
+            const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
+            if (exec.name === 'run_code') {
+              // paths only — the /dev/null hint is for file tools
+              const content = rewriteErrorContent(result.content, { nulHint: false, env })
+              if (content !== result.content) contentPatch = content
+              rewriteFailureMessage(result, env)
+            } else if (ERROR_CONTENT_TOOLS.has(exec.name)) {
+              const content = rewriteErrorContent(result.content, { env })
+              if (content !== result.content) contentPatch = content
+              rewriteFailureMessage(result, env)
             }
           }
         } catch { /* never block a result */ }
         const chain = next()
-        if (patch === undefined && contentPatch === undefined) return chain
+        if (contentPatch === undefined) return chain
         return chain.then((decision) => {
           try {
-            if (decision && decision.kind === 'accept') {
-              if (patch !== undefined) return { ...decision, value: patch }
-              return { ...decision, content: contentPatch }
-            }
+            if (decision && decision.kind === 'accept') return { ...decision, content: contentPatch }
           } catch { /* keep the downstream decision */ }
           return decision
         })
       })
-      console.log(TAG + ' result-path dialect active on tools/post-execute')
+      console.log(TAG + ' failure dialect active on tools/post-execute (content + error.message)')
     } catch (error) {
       console.log(TAG + ' tools/post-execute wiring failed: ' + (error?.message ?? error))
     }
@@ -2068,4 +2139,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
