@@ -479,6 +479,8 @@ test('client dictionaries resolve live, never from a captured table', () => {
   const ctx = {
     get: (name) => (name === 'locale' ? locale : undefined),
     settingsScope: { bind: () => scope },
+    // the era-split acquisition: the OLD-era optional inject fires at once
+    inject: (names, cb) => { if (names.includes('settingsScope')) cb({ settingsScope: ctx.settingsScope }) },
     slots: {
       inject: (hole, callback) => { callback() },
       register: (options, component) => { registration = { options, component }; return () => {} },
@@ -588,8 +590,11 @@ test('host gates the path dialect behind the posixPaths setting', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   assert.match(text, /SETTINGS_NAMESPACE = 'gitbash-shell'/)
   assert.match(text, /posixPaths: Schema\.boolean\(\)\.default\(true\)/)
-  assert.match(text, /readPosixPaths\(ctx\)/, 'wrapper must read the gate per dispatch')
-  assert.match(text, /pctx\.get\('settings'\)/, 'directive closure must read settings via ctx.get')
+  // dsh 0.1.7: the wrapper and the directive closure read the era-aware
+  // live reader (Config refs on new hosts — re-read per dispatch/assembly;
+  // the registered namespace through the OLD helpers on old hosts).
+  assert.match(text, /liveSettings\.posix\(\)/, 'wrapper must read the gate per dispatch')
+  assert.match(text, /liveSettings\.dialect\(\)/, 'directive closure must read the live dialect')
   const { _internal } = await import('../src/index.js')
   assert.equal(_internal.readPosixPaths({ get: () => undefined }), false)
   assert.equal(_internal.readPosixPaths(undefined), false)
@@ -607,7 +612,9 @@ test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', (
   // empties the variable with no re-registration
   // the resolver reads the live switch per execution: flipping the setting
   // empties the variable with no re-registration
-  assert.match(text, /resolve\(\) \{\s*return readPosixPaths\(envCtx\) \? \{ \[PATH_DIALECT_KEY\]: PATH_DIALECT_VALUE \} : \{\}/)
+  // dsh 0.1.7: the resolver reads the era-aware live reader (Config refs on
+  // new hosts, the registered namespace on old ones) — still per execution.
+  assert.match(text, /resolve\(\) \{\s*return liveSettings\.posix\(\) \? \{ \[PATH_DIALECT_KEY\]: PATH_DIALECT_VALUE \} : \{\}/)
   // REGRESSION GUARD (v0.21.0 → v0.21.1): the registry accepts DSH_* facts
   // ONLY. A contributor declaring any other key throws, and the whole
   // contribution — DSH_PATH_DIALECT included — is lost. Non-DSH parity facts
@@ -1220,4 +1227,73 @@ test('the success echo rides tools/execute, so no decision can collide (v0.23.0,
   const post = text.slice(from, text.indexOf('tools/post-execute wiring failed', from))
   assert.doesNotMatch(post, /rewriteResultPaths/, 'the decision waterfall no longer authors a value')
   assert.doesNotMatch(post, /value:/, 'a decision here carries content only')
+})
+
+// ── dsh 0.1.7 declarative era ────────────────────────────────────────────────
+
+test('compositions: full variants mirror the official 0.1.7 row split', async () => {
+  const { pluginsFor, minimalPluginsFor, PRESET_META } = await import('../src/compositions.js')
+  const row = (rows, id) => rows.find((r) => r.id === id)
+  for (const kind of ['standard', 'cordis']) {
+    const rows = pluginsFor({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '/s' : undefined })
+    const delegation = row(rows, 'delegation').config
+    assert.notEqual(row(delegation, 'workflow-ptc').disabled, true)
+    assert.notEqual(row(delegation, 'tool-workflow').disabled, true)
+    assert.equal(row(delegation, 'tool-ralph').disabled, true)
+    assert.equal(row(rows, 'tool-bash').disabled, undefined)
+    assert.equal(row(rows, 'tool-pwsh').disabled, true)
+    assert.equal(row(rows, 'tool-plugin-manager').disabled, kind === 'standard' ? true : undefined)
+  }
+  const ptc = pluginsFor({ kind: 'ptc', gitBash: true, skillsDir: undefined })
+  const delegation = row(ptc, 'delegation').config
+  assert.equal(row(delegation, 'workflow-ptc').disabled, true)
+  assert.equal(row(delegation, 'tool-workflow').disabled, true)
+  assert.equal(row(ptc, 'tool-presentation').config.mode, 'ptc')
+  assert.equal(row(ptc, 'tool-cordis'), undefined)
+  const cordis = pluginsFor({ kind: 'cordis', gitBash: true, skillsDir: '/s' })
+  assert.equal(row(cordis, 'tool-cordis').name, '@deepseek-ai/dsh-tool-cordis')
+  assert.deepEqual(row(cordis, 'skill-filesystem').config.customSkillDirs, ['/s'])
+  // minimal: single-tool, bash rows pinned on, pwsh off
+  const minimal = minimalPluginsFor()
+  assert.equal(minimal.length, 2)
+  const shell = minimal.find((r) => r.id === 'persistent-shell').config
+  assert.equal(row(shell, 'persistent-bash').disabled, false)
+  assert.equal(row(shell, 'persistent-pwsh').disabled, true)
+  for (const id of ['standard-gitbash', 'code-gitbash', 'minimal-gitbash', 'cordis-gitbash']) {
+    assert.ok(PRESET_META[id], id)
+    assert.equal(typeof PRESET_META[id].name, 'string')
+  }
+})
+
+test('host half: static Config with volatile probing and the era branch', async () => {
+  const mod = await import('../src/index.js')
+  assert.equal(typeof mod.Config, 'function')
+  assert.equal(typeof mod.valueOf, 'function')
+  const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(hostSource, /import Schema from '@deepseek-ai\/schemastery'/)
+  assert.match(hostSource, /typeof ctx\.agentPresets\.register === 'function'/)
+  assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds\)/)
+})
+
+test('client half: era-split settings acquisition, no hard settingsScope inject', () => {
+  const clientSource = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(clientSource, /exports\.inject = \["locale", "slots"\]/)
+  assert.match(clientSource, /ctx\.inject\(\["settingsScope"\]/)
+  assert.match(clientSource, /ctx\.inject\(\["configForms"\]/)
+  assert.match(clientSource, /forms\.get\(SETTINGS_NAMESPACE\)/)
+})
+
+test('package meta: 0.1.7 display assets and the renamed patch row', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(pkg.icon, './icon.svg')
+  assert.equal(pkg.exports['./locale/*.json'], './locale/*.json')
+  assert.ok(pkg.files.includes('locale'))
+  readFileSync(new URL('../icon.svg', import.meta.url), 'utf8')
+  for (const tag of ['en', 'zh']) {
+    const meta = JSON.parse(readFileSync(new URL(`../locale/${tag}.json`, import.meta.url), 'utf8'))
+    assert.equal(typeof meta.meta?.title, 'string')
+  }
+  const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  assert.match(patch, /id: gitbash-shell$/m)
+  assert.doesNotMatch(patch, /id: gitbash-presets/)
 })

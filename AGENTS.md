@@ -29,6 +29,7 @@
 3) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
+0. **双时代总纲(v0.24.0 起,dsh 0.1.7 分界)**:dsh 0.1.7 **删除了目录预设机制**,预设改为声明式——本插件在 register() 可用的宿主上直接 `ctx.agentPresets.register(definition)` 注册四个变体(行数据 = `src/compositions.js`,镜像官方 0.1.7 standard/minimal/ptc/cordis + Git Bash 增量);旧宿主(≤0.1.6)仍走完整物化路径(本文件其余条目继续生效)。时代探测 = `typeof ctx.agentPresets.register === 'function'`。声明式路径要点:变体行集由 `pluginsFor({ kind, gitBash, skillsDir })` / `minimalPluginsFor()` 生成;cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不再拷贝);启动时清理旧物化目录树(仅 marker 判定 unmodified 的);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载)。**设置面同 dsh-agent-lang v0.6.0 双时代**:host 半静态导出 `Config`(8 个开关全 volatile 探测),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半可选注入 settingsScope/configForms;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。
 
 1. **执行器只替换 argv,不替换行为——除 Windows 受限分支(v0.13.2,issue #1)**:沙箱策略、拒绝分类、
    后台任务、设置节全部沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash

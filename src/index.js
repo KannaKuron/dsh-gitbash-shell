@@ -52,7 +52,10 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import Schema from '@deepseek-ai/schemastery'
 import { fileURLToPath } from 'node:url'
+
+import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 
 /** Plugin identity for cordis.yml rows. */
 export const name = 'dsh-gitbash-shell'
@@ -661,6 +664,79 @@ export function installRegisterShim(reg) {
 // wrapper reads the same value per dispatch and passes calls through.
 
 const SETTINGS_NAMESPACE = 'gitbash-shell'
+
+/**
+ * dsh >= 0.1.7 marks a Config field live-editable without remount; a
+ * 0.1.6-era schemastery predates the method and the guard keeps this module
+ * loadable there (values then behave as ordinary config, read through the
+ * registered settings namespace instead).
+ */
+function live(schema) {
+  return typeof schema.volatile === 'function' ? schema.volatile() : schema
+}
+
+/**
+ * Row Config = the settings surface on dsh >= 0.1.7 (values persist under the
+ * row id; the patch row id is 'gitbash-shell', the same string as the old
+ * settings namespace, so the one-shot legacy settings.yaml import maps old
+ * user values onto the new home). Inert metadata on older hosts.
+ */
+export const Config = Schema.object({
+  // Row-level knob predating the Config surface (invariant 6): which preset
+  // variants to serve. Ordinary config — an edit remounts the plugin, which
+  // is the right weight for a list that changes the roster.
+  presets: Schema.array(Schema.string()).default(PRESET_IDS),
+  posixPaths: live(Schema.boolean().default(true)),
+  virtualMounts: live(Schema.boolean().default(true)),
+  globSplit: live(Schema.boolean().default(true)),
+  errorDialect: live(Schema.boolean().default(true)),
+  codePaths: live(Schema.boolean().default(true)),
+  gitAutocrlf: live(Schema.boolean().default(true)),
+  bashPath: live(Schema.string().default('')),
+  adoptSidebar: live(Schema.boolean().default(true)),
+})
+
+/** Read one Config value across eras: Volatile ref (>= 0.1.7) or plain value. */
+export function valueOf(value) {
+  return value && typeof value.get === 'function' ? value.get() : value
+}
+
+/**
+ * Era-aware live settings reader for everything wired inside apply(): the
+ * NEW era reads this plugin's own Config refs (no listener needed — every
+ * consumer here already re-reads per dispatch/assembly), the OLD era keeps
+ * reading the registered namespace through the settings service.
+ * @param {object} ctx - the plugin's mounting context.
+ * @param {object|undefined} config - apply()'s resolved Config.
+ * @returns {{ dialect: () => object, posix: () => boolean, adoptSidebar: () => boolean }}
+ */
+function makeLiveReader(ctx, config) {
+  let legacy = false
+  try {
+    const settings = ctx.get('settings')
+    legacy = !!(settings && typeof settings.register === 'function')
+  } catch { legacy = false }
+  const hasConfig = !!(config && typeof config === 'object')
+  const dialect = () => {
+    if (legacy || !hasConfig) return readDialectSettings(ctx)
+    const bash = valueOf(config.bashPath)
+    return {
+      posixPaths: valueOf(config.posixPaths) === true,
+      virtualMounts: valueOf(config.virtualMounts) === true,
+      globSplit: valueOf(config.globSplit) === true,
+      errorDialect: valueOf(config.errorDialect) === true,
+      codePaths: valueOf(config.codePaths) === true,
+      gitAutocrlf: valueOf(config.gitAutocrlf) === true,
+      bashPath: typeof bash === 'string' ? bash : '',
+      adoptSidebar: valueOf(config.adoptSidebar) !== false,
+    }
+  }
+  return {
+    dialect,
+    posix: () => dialect().posixPaths === true,
+    adoptSidebar: () => dialect().adoptSidebar !== false,
+  }
+}
 
 /** The full directive text, injected only while posixPaths is on. */
 const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them.'
@@ -1630,7 +1706,7 @@ function adoptSidebarShell(ctx, bashPath) {
 
   const run = () => {
     tried += 1
-    const ok = reconcileSidebar(readAdoptSidebar(ctx))
+    const ok = reconcileSidebar(liveSettings.adoptSidebar())
     if (ok) {
       // The namespace scope may register after the settings service; hook
       // the live watch once it exists (idempotent via the effect disposer).
@@ -1722,6 +1798,105 @@ function purgeOrphans(userRoot, keep) {
   }
 }
 
+// ── declarative registration (dsh >= 0.1.7) ──────────────────────────────────
+//
+// dsh 0.1.7 removed directory presets: nothing reads ~/.dsh/.agent-presets
+// any more, and a preset is a definition registered through
+// agentPresets.register(). The era probe is the register method itself; the
+// composition data lives in src/compositions.js (the new-era counterpart of
+// the committed assets/<variant>/ texts).
+
+/** Resolve the Creation-skills dir beside @deepseek-ai/dsh-agent-preset. */
+async function resolveSkillsDir() {
+  try {
+    const { createRequire } = await import('node:module')
+    const here = createRequire(import.meta.url)
+    const pkg = here.resolve('@deepseek-ai/dsh-agent-preset/package.json')
+    return join(dirname(pkg), 'skills')
+  } catch {
+    return undefined
+  }
+}
+
+/** The legacy preset root, best effort (roster roots are gone on 0.1.7). */
+function legacyPresetRoot() {
+  try {
+    const env = process.env.DSH_HOME
+    if (env && env.trim() !== '') return join(env, '.agent-presets')
+    return join(homedir(), '.dsh', '.agent-presets')
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Remove the stale materialized trees a previous (pre-0.1.7-host) version
+ * left behind, when they are still byte-identical to what we wrote (the
+ * marker judges). User-modified and foreign trees stay untouched — the same
+ * ownership rules the materializer itself follows.
+ */
+function cleanupLegacyTrees(presetIds) {
+  const root = legacyPresetRoot()
+  if (!root) return
+  for (const presetId of presetIds) {
+    const target = join(root, presetId)
+    const state = classify(target)
+    if (state === 'unmodified') {
+      try {
+        rmSync(target, { recursive: true, force: true })
+        console.log(TAG + ' removed the stale materialized preset at ' + target + ' (directory presets are no longer read on this host; the declarative registration replaces it)')
+      } catch (error) {
+        console.log(TAG + ' stale preset cleanup failed: ' + (error && error.message ? error.message : error))
+      }
+    } else if (state === 'user-modified') {
+      console.log(TAG + ' a user-modified preset tree remains at ' + target + ' — left untouched (this host ignores it; delete it manually if unwanted)')
+    }
+  }
+}
+
+/**
+ * Register one variant definition; returns the unregister function. Mount
+ * failures stay visible through the roster's broken diagnostic instead of
+ * failing the boot.
+ */
+async function registerVariant(ctx, presetId, { gitBashActive, skillsDir }) {
+  const meta = PRESET_META[presetId]
+  if (!meta) return undefined
+  const plugins = meta.kind === 'minimal'
+    ? minimalPluginsFor()
+    : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir })
+  return ctx.agentPresets.register({
+    id: presetId,
+    name: meta.name,
+    description: meta.description,
+    order: meta.order,
+    plugins,
+  })
+}
+
+/**
+ * Declarative-era wiring: register every configured variant once at startup
+ * and keep exactly one registration per variant for the plugin's lifetime.
+ * The roster picks the entries up immediately; sessions already pinned to a
+ * variant keep their revision until recomposed.
+ */
+async function runDeclarativeEra(ctx, presetIds) {
+  cleanupLegacyTrees(presetIds)
+  const gitBashActive = process.platform === 'win32'
+  const skillsDir = await resolveSkillsDir()
+  const unregisters = []
+  for (const presetId of presetIds) {
+    try {
+      const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir })
+      if (unregister) unregisters.push(unregister)
+    } catch (error) {
+      console.log(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
+    }
+  }
+  console.log(TAG + ' registered ' + unregisters.length + ' preset(s) declaratively (' + presetIds.join(', ') + ')')
+  ctx.effect(() => () => { for (const off of unregisters) void off() }, 'dsh-gitbash-shell: declarative preset registrations')
+}
+
 export async function apply(ctx, config = {}) {
   const presetIds = Array.isArray(config.presets) && config.presets.length > 0 ? config.presets : PRESET_IDS
 
@@ -1757,12 +1932,28 @@ export async function apply(ctx, config = {}) {
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
-  // ── settings namespace: the posixPaths switch (default ON, v0.10.0) ──────
+  // Era-aware live settings: NEW hosts read this plugin's own Config refs
+  // (volatile, re-read per dispatch/assembly), OLD hosts keep the registered
+  // namespace. Every consumer below already re-reads on every use, so a
+  // flipped knob lands on the next dispatch with zero wiring.
+  const liveSettings = makeLiveReader(ctx, config)
+
+  // ── settings namespace: the posixPaths switch (default ON, v0.1.0) — OLD
+  // hosts only; on dsh >= 0.1.7 the row Config above IS the surface.
+
   // Served on the host so the Plugins tab pairs it with the browser card
   // (the tab dispatches Host-served namespaces ∩ registered cards). Dynamic
   // imports keep the zero-dependency smoke path importable; the schema MUST
   // be a callable schemastery object (dsh-settings calls schema(merged)).
-  try {
+  const legacySettings = (() => {
+    try {
+      const settings = ctx.get('settings')
+      return !!(settings && typeof settings.register === 'function')
+    } catch {
+      return false
+    }
+  })()
+  if (legacySettings) try {
     ctx.inject(['settings'], (sctx) => {
       Promise.all([import('@deepseek-ai/dsh-settings'), import('@deepseek-ai/schemastery')])
         .then(([ds, sm]) => {
@@ -1832,7 +2023,7 @@ export async function apply(ctx, config = {}) {
             // own env layer (src/shell.js), not this registry.
             variables: { [PATH_DIALECT_KEY]: { description: PATH_DIALECT_DESCRIPTION } },
             resolve() {
-              return readPosixPaths(envCtx) ? { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE } : {}
+              return liveSettings.posix() ? { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE } : {}
             },
           })
           envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
@@ -1860,7 +2051,7 @@ export async function apply(ctx, config = {}) {
     try {
       ctx.on('system-prompt/assemble', (assembly, _assembleContext, next) => {
         try {
-          if (readPosixPaths(ctx) && assembly && typeof assembly === 'object') {
+          if (liveSettings.posix() && assembly && typeof assembly === 'object') {
             for (const section of Array.isArray(assembly.sections) ? assembly.sections : []) {
               if (section && typeof section.text === 'string') section.text = windowsToMsys(section.text)
             }
@@ -1987,7 +2178,7 @@ export async function apply(ctx, config = {}) {
       ctx.on('tools/post-execute', (exec, result, next) => {
         let contentPatch
         try {
-          const dialect = readDialectSettings(ctx)
+          const dialect = liveSettings.dialect()
           if (dialect.posixPaths && dialect.errorDialect && exec && result && typeof result === 'object'
             && result.isError === true && Array.isArray(result.content)) {
             const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
@@ -2036,10 +2227,9 @@ export async function apply(ctx, config = {}) {
             order: 126,
             text: () => {
               try {
-                const settings = pctx.get('settings')
-                const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
-                if (!value || value.posixPaths !== true) return ''
-                return value.virtualMounts === false ? POSIX_DIRECTIVE_TEXT_STRICT : POSIX_DIRECTIVE_TEXT
+                const dialect = liveSettings.dialect()
+                if (dialect.posixPaths !== true) return ''
+                return dialect.virtualMounts === false ? POSIX_DIRECTIVE_TEXT_STRICT : POSIX_DIRECTIVE_TEXT
               } catch {
                 return ''
               }
@@ -2061,6 +2251,19 @@ export async function apply(ctx, config = {}) {
   // Disable with `betterSidebarShell: false` in the plugin row config.
   if (config.betterSidebarShell !== false && process.platform === 'win32') {
     adoptSidebarShell(ctx, gitBashCapability.bashPath)
+  }
+
+  // ── era split: declarative registration on dsh >= 0.1.7 ──────────────────
+  // The register method IS the era signal. On the new host the whole
+  // materialization path below is dead code (nothing reads the directory any
+  // more), so this branch serves the variants and returns.
+  if (ctx.agentPresets && typeof ctx.agentPresets.register === 'function') {
+    try {
+      await runDeclarativeEra(ctx, presetIds)
+    } catch (error) {
+      console.log(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
+    }
+    return
   }
 
   const roots = ctx.agentPresets?.roots ?? []

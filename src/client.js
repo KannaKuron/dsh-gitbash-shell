@@ -1058,11 +1058,46 @@ window.__ModuleLoader__.load({
 
 		exports.name = "dsh-gitbash-shell/client";
 
-		/** Required client services: locale runtime, settings scopes, slots. */
-		exports.inject = ["locale", "settingsScope", "slots"];
+		/**
+		 * Required client services: only era-guaranteed ones are hard-injected;
+		 * the settings face is acquired OPTIONALLY (dsh 0.1.7 removed the
+		 * settingsScope service and a hard inject would leave this fiber PENDING
+		 * forever, taking the card down with it).
+		 */
+		exports.inject = ["locale", "slots"];
 
 		exports.apply = function (ctx) {
-			var scope = ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE });
+			// Era-split settings face (same contract both eras: getSnapshot/set/unset).
+			var scope = null;
+
+			// OLD era (dsh <= 0.1.6): bound settings scope.
+			try {
+				ctx.inject(["settingsScope"], function (sctx) {
+					try {
+						var svc = sctx && sctx.settingsScope;
+						if (svc && typeof svc.bind === "function") scope = svc.bind({ namespace: SETTINGS_NAMESPACE });
+					} catch (error) {
+						console.warn(TAG + " settingsScope acquisition failed:", error && error.message ? error.message : error);
+					}
+				});
+			} catch (error) {
+				console.warn(TAG + " settingsScope wiring failed:", error && error.message ? error.message : error);
+			}
+
+			// NEW era (dsh >= 0.1.7): one ConfigForm per live profile entry; the form
+			// key is the row id "gitbash-shell" (same string as the old namespace).
+			try {
+				ctx.inject(["configForms"], function (fctx) {
+					try {
+						var forms = fctx && fctx.configForms;
+						if (forms && typeof forms.get === "function") scope = forms.get(SETTINGS_NAMESPACE);
+					} catch (error) {
+						console.warn(TAG + " configForms acquisition failed:", error && error.message ? error.message : error);
+					}
+				});
+			} catch (error) {
+				console.warn(TAG + " configForms wiring failed:", error && error.message ? error.message : error);
+			}
 			/* The card's only copy entry point: a live lookup, never a captured
 			   dictionary — the language preference switches without a reload. */
 			var t = translatorOf(ctx);

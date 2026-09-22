@@ -3,6 +3,20 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.24.0 — 2026-09-22
+
+**类型**:feat(适配 dsh v0.1.7-alpha.1 声明式预设,保持旧版本完全兼容)
+
+- **声明式注册路径(dsh >= 0.1.7)**:dsh 0.1.7 删除了目录预设机制。探测到 `agentPresets.register()` 的宿主上,四个 Git Bash 变体改为直接注册定义:
+  - 新增 `src/compositions.js`:`pluginsFor({ kind, gitBash, skillsDir })`(standard/ptc/cordis 行集,镜像官方 0.1.7 对应预设的 workflow/presentation/plugin-manager 拆分)与 `minimalPluginsFor()`(单工具变体,bash 行钉在 Git Bash);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不再拷贝)。
+  - 启动时清理旧宿主时代物化的目录树(**仅 marker 判定 unmodified 的**;用户改过的/外来的一律不碰只提示)。
+  - 预设清单沿用行配置 `presets`(Config 普通字段,改动触发重挂载)。
+- **设置面双时代**(dsh-agent-lang v0.6.0 同款):host 半静态导出 `Config`(8 个开关全部 volatile 探测),apply 内 `makeLiveReader(ctx, config)` 统一供给 shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar —— 所有消费点逐次读取,翻转下一次分发即生效;旧宿主上保留 settings.register 命名空间路径不变。client 半可选注入 settingsScope/configForms。
+- **行 id 更名**:`gitbash-presets` → `gitbash-shell`(与设置命名空间同串:0.1.7 的 Config 表单键与旧 settings.yaml 一次性导入都按行 id 落位)。
+- **插件管理页展示资产**:icon.svg + locale/{en,zh}.json(旧宿主忽略)。
+- 仓库新增 devDependencies(schemastery),冒烟测试前需 `npm install`;60 项全绿(新增组合数据/Config/双时代获取/包元数据/行 id 断言)。
+- 已知边界:先升 dsh 后未升插件的窗口期内四个变体会从模式选择器消失;升级本插件后恢复。翻译层全部 API(bash-sandbox/shellEnv/tools 瀑布/system-prompt 组装)在 0.1.7 上形状不变,已逐一核对。
+
 ## v0.23.0 — 2026-09-19
 
 **类型**:fix(两个社区 issue:成功面的 `value` 回流与任何 `content` 替换者互斥;带空格路径的混合方言)

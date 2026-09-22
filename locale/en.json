@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Git Bash Shell",
+    "description": "Swaps Windows' PowerShell shell for Git for Windows bash: a bash-sandbox-compatible executor, a unified MSYS path dialect across every tool (posixPaths and friends, live-editable), and the four * Git Bash agent presets declared straight onto the roster on dsh 0.1.7+."
+  }
+}

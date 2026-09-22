@@ -34,7 +34,10 @@
         timeoutMs: 60000
         bashPath: "C:/Program Files/Git/bin/bash.exe"
 
-    - id: gitbash-presets
+    # Row id 'gitbash-shell' (was 'gitbash-presets' through v0.23.0): dsh >= 0.1.7
+    # keys a plugin's live Config form and the one-shot legacy settings.yaml
+    # import by the row id, so it now matches the settings namespace string.
+    - id: gitbash-shell
       name: dsh-gitbash-shell
 
 # Edit the dsh-better-sidebar row when it is mounted (their own bundle
