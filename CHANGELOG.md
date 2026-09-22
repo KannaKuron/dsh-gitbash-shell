@@ -3,6 +3,18 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.24.2 — 2026-09-22
+
+**类型**:fix(0.24.0 埋雷事故:模块级 helper 越域引用 apply() 局部量,win32 全量挂载失败)
+
+- **事故与影响面**:v0.24.0/v0.24.1 在 Windows 上**完全无法加载**——挂载 `gitbash-shell` 行时同步抛 `ReferenceError: liveSettings is not defined`,宿主报 `plugin tree failed to load: failed to apply loader entry gitbash-shell (dsh-gitbash-shell)`,启动守卫直接阻挡启动(用户侧表现:安装即报错、被要求卸载/进安全模式)。非 Windows 不受影响(`gitbash-executor` 行 disabled,sidebar 分支本就 win32 门控)。
+- **埋雷点**:v0.24.0 的 `makeLiveReader` 双时代重构把 `adoptSidebar` 的消费点收进 apply() 的 scope-local `liveSettings`,但 `run()`(模块级 `adoptSidebarShell` 内,`void run()` **同步**执行)仍写 `liveSettings.adoptSidebar()`——该标识符在那个作用域根本不存在,首次 tick 即抛;调用点又不在任何 try/catch 里,一路抛穿 `apply()` → loader。用户启动日志逐字复现:`Error: dsh: plugin tree failed to load: failed to apply loader entry gitbash-shell (dsh-gitbash-shell): liveSettings is not defined`。
+- **为什么 smoke 60 项没拦住**:全部用例从未**执行**过 `apply()`(纯函数 + 源码文本断言);两条 `liveSettings.…` 的文本断言反而给重构后的写法盖了章。教训入册:**消费点接线必须有至少一条真跑 `apply()` 的挂载冒烟**,源码文本断言不能替代执行。
+- **修法**:`adoptSidebarShell(ctx, bashPath, readAdopt)` 接收 apply 的时代感知 gate getter(调用点传 `() => liveSettings.adoptSidebar()`),旧宿主命名空间 / 新宿主 Config refs 的双时代语义原样保留;`run()` 每 tick 经 `readAdopt()` 读活开关,行为与设计一致(v0.24.0 意图本就如此,属接线遗漏)。
+- **防回归(smoke 62 项)**:①源码守卫——`adoptSidebarShell` 函数体不得出现 `liveSettings`,调用点必须传 getter;②挂载冒烟——stub ctx 真跑 `apply()`(legacy 分支早退、零 fs 副作用),win32 上并断言 sidebar 接管真的写进 `dsh-better-sidebar` settings seam。两条均做过反向验证:回植 bug 后双双失败、修复后双双通过。
+- **环境备查(与本事故无关)**:`core.autocrlf=true` 检出的 Windows 克隆把工作区弄成 CRLF 时,`alignEngineRow` 系 LF 纯字符串手术会失配,`materialize aligns the engine row` 一项误报失败;工作区统一 LF(或 `autocrlf=input`)即消失,记录备查。
+- 真机验证(安装 v0.24.2 → 重启 DSH → 不再报 loader 错、模式选择器出现 `* · Git Bash`)按验证清单执行,记录待补。
+
 ## v0.24.1 — 2026-09-22
 
 **类型**:fix(声明式组合文本与官方逐字节对齐)

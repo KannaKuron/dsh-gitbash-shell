@@ -1297,3 +1297,57 @@ test('package meta: 0.1.7 display assets and the renamed patch row', () => {
   assert.match(patch, /id: gitbash-shell$/m)
   assert.doesNotMatch(patch, /id: gitbash-presets/)
 })
+
+test('regression (v0.24.2): apply() mounts — adoptSidebarShell never reaches into apply() scope', () => {
+  // v0.24.0's makeLiveReader refactor left `run()` inside the module-level
+  // adoptSidebarShell() referencing the apply()-local `liveSettings`:
+  // every win32 mount threw `ReferenceError: liveSettings is not defined`
+  // and the host reported "failed to apply loader entry gitbash-shell
+  // (dsh-gitbash-shell)" — the plugin could not load AT ALL on Windows.
+  // The 60 smoke items missed it because none of them ever executed
+  // apply(); the two `liveSettings.…` source greps even blessed the
+  // refactor's wording. Guard both the scope boundary and the wiring.
+  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const body = source.slice(
+    source.indexOf('function adoptSidebarShell('),
+    source.indexOf('// ── plugin'),
+  )
+  assert.ok(body.includes('function adoptSidebarShell('), 'adoptSidebarShell must exist')
+  assert.doesNotMatch(body, /\bliveSettings\b/, 'the module-level helper must receive the gate, not reach into apply() scope')
+  assert.match(
+    source,
+    /adoptSidebarShell\(ctx, gitBashCapability\.bashPath, \(\) => liveSettings\.adoptSidebar\(\)\)/,
+    'apply() must hand its era-aware gate getter to the helper',
+  )
+})
+
+test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async () => {
+  // The runtime twin of the guard above: actually run the mount path the
+  // loader runs. On win32 this exercises the sidebar adoption branch whose
+  // synchronous `void run()` used to throw before the era split.
+  const { apply } = await import('../src/index.js')
+  const updates = []
+  const ctx = {
+    effect: () => {},
+    provide: () => () => {},
+    inject: () => {},
+    on: () => {},
+    // settings present WITHOUT register() = the NEW-era surface (Config
+    // refs, dsh >= 0.1.7); get/update pair lets the reconciler settle on
+    // its first tick instead of polling for 18s.
+    get: (name) => (name === 'settings'
+      ? {
+          get: () => ({ terminalShell: '' }),
+          update: async (ns, patch) => { updates.push([ns, patch]) },
+        }
+      : undefined),
+    agentPresets: { roots: [] }, // no register(): legacy branch, early return, zero fs side effects
+  }
+  await assert.doesNotReject(() => apply(ctx, {}), 'apply() must not throw on mount')
+  if (process.platform === 'win32') {
+    assert.ok(
+      updates.some(([ns, patch]) => ns === 'dsh-better-sidebar' && patch && typeof patch.terminalShell === 'string'),
+      'the sidebar adoption must hand Git Bash to the settings seam',
+    )
+  }
+})

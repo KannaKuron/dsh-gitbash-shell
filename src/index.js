@@ -1649,8 +1649,14 @@ let reconcileSidebar = () => {}
  * value is still ours, so a user's manual choice is never clobbered. The
  * polling keeps the original ready-wait behavior: at boot the settings
  * service may not be provided yet when this row's apply runs. Never throws.
+ *
+ * `readAdopt` is apply()'s era-aware gate getter (`() => liveSettings.
+ * adoptSidebar()`), passed in because this module-level helper cannot see
+ * that scope-local reader itself (v0.24.2 regression fix — referencing
+ * `liveSettings` here threw `ReferenceError: liveSettings is not defined`
+ * from `run()` and aborted the whole plugin mount).
  */
-function adoptSidebarShell(ctx, bashPath) {
+function adoptSidebarShell(ctx, bashPath, readAdopt) {
   let adopted = false
   let previous = ''
   let tried = 0
@@ -1706,7 +1712,7 @@ function adoptSidebarShell(ctx, bashPath) {
 
   const run = () => {
     tried += 1
-    const ok = reconcileSidebar(liveSettings.adoptSidebar())
+    const ok = reconcileSidebar(readAdopt())
     if (ok) {
       // The namespace scope may register after the settings service; hook
       // the live watch once it exists (idempotent via the effect disposer).
@@ -2250,7 +2256,7 @@ export async function apply(ctx, config = {}) {
   // open; adopt it through that seam (see adoptSidebarShell for rationale).
   // Disable with `betterSidebarShell: false` in the plugin row config.
   if (config.betterSidebarShell !== false && process.platform === 'win32') {
-    adoptSidebarShell(ctx, gitBashCapability.bashPath)
+    adoptSidebarShell(ctx, gitBashCapability.bashPath, () => liveSettings.adoptSidebar())
   }
 
   // ── era split: declarative registration on dsh >= 0.1.7 ──────────────────
