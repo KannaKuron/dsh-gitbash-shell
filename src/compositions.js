@@ -22,19 +22,18 @@ function off(value) {
   return value === true ? { disabled: true } : {}
 }
 
-const PLAN_SECTION = [
-  'You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user\'s conversational agreement — including an answer confirming you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.',
-  '',
-  'Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.',
-  '',
-  'The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs to exit_plan_mode.',
-  '',
-  'Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.',
-  '',
-  'Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.',
-  '',
-  'When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch the session mode manually; do not proceed with implementation.',
-].join('\n')
+const PLAN_SECTION = `You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+`
 
 /**
  * The shared full-tool rows for standard / ptc / cordis variants (pure).
@@ -75,12 +74,10 @@ export function pluginsFor({ kind, gitBash, skillsDir }) {
       config: { sampleOverCapGlobResults: false },
     },
     { id: 'tool-jobs', name: '@deepseek-ai/dsh-tool-jobs' },
-    {
-      id: 'skill-filesystem',
-      name: '@deepseek-ai/dsh-skill-filesystem',
-      config: kind === 'cordis' && skillsDir ? { customSkillDirs: [skillsDir] } : {},
-    },
-    { id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
+    ...((kind === 'standard' || kind === 'ptc') ? [
+      { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem' },
+      { id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
+    ] : []),
     { id: 'command-goal', name: '@deepseek-ai/dsh-command-goal' },
     { id: 'tool-goal', name: '@deepseek-ai/dsh-tool-goal' },
     {
@@ -178,6 +175,10 @@ export function pluginsFor({ kind, gitBash, skillsDir }) {
   if (kind === 'cordis') {
     rows.push({ id: 'tool-cordis', name: '@deepseek-ai/dsh-tool-cordis' })
   }
+  if (kind === 'cordis') {
+    rows.push({ id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem', ...(skillsDir ? { config: { customSkillDirs: [skillsDir] } } : {}) })
+    rows.push({ id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' })
+  }
   rows.push({ id: 'present', name: '@deepseek-ai/dsh-tool-present' })
   rows.push({
     id: 'tool-plugin-manager',
@@ -253,13 +254,14 @@ export function minimalPluginsFor() {
           config: {
             timeoutMs: 300000,
             description: [
-              'Run commands in a PowerShell shell',
-              '* When invoking this tool, the contents of the "command" parameter does NOT need to be XML-escaped.',
+              "Run commands in a PowerShell shell",
+              "* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.",
               "* You don't have access to the internet via this tool.",
-              '* Use native Windows paths (C:/...) and $env:NAME variables; this is PowerShell, not bash.',
-              '* Please avoid commands that may produce a very large amount of output.',
-              '* Please run long lived commands in the background, e.g. \'Start-Job\' or start a server with Start-Process.',
-            ].join('\n'),
+              "* State is persistent across command calls and discussions with the user.",
+              "* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.",
+              "* Please avoid commands that may produce a very large amount of output.",
+              "* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
+            ].join('\n') + '\n',
           },
         },
       ],

@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.24.1 — 2026-09-22
+
+**类型**:fix(声明式组合文本与官方逐字节对齐)
+
+- **plan-mode 段落措辞修正**:转写漏字(官方为「including an answer confirming **something** you asked」),现由官方 0.1.7 解析值程序化回填,逐字节一致(含尾换行)。
+- **cordis 变体行序对齐官方 0.1.7**:skill-filesystem/tool-skill 移到 tool-cordis 之后(官方 cordis 把 skills 行放尾部;standard/ptc 仍在 tool-jobs 之后)。
+- **minimal 的 persistent-pwsh 描述补回官方漏抄的一行**(「State is persistent across command calls and discussions with the user.」)并按官方补尾换行;persistent-bash 仅首行 Git Bash 说明是预期增量。
+- **skill-filesystem 行无 skillsDir 时省略 config 键**(官方形态)。
+- 旧时代资产(≤0.1.6 宿主)与 0.1.6 官方预设的配置级核查通过:差异仅剩设计内的运行时对齐(引擎行拼写由 `alignEngineRow` 现场改写、ralph 由 `alignRalphRow` 对齐、bash/pwsh 翻转)。
+- smoke 60 项全绿。
+
 ## v0.24.0 — 2026-09-22
 
 **类型**:feat(适配 dsh v0.1.7-alpha.1 声明式预设,保持旧版本完全兼容)
