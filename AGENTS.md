@@ -42,6 +42,19 @@
    (另一层)。**红线:绝不静默假成功**——要么真受限、要么明示 unconfined、失败如实带错误码。
    社区同类取舍:绕过(zimzaza4/dsh-bash-win、Jyleaves/dsh-win-bash-fix)vs 拒绝(liceses/
    dsh-gitbash-preset);本插件选绕过+如实标注。本机复现记录见 CHANGELOG v0.13.2。
+   **0.1.7 执行器契约(v0.24.4 补齐,issue #6 复盘)**:① `Config` 的六个继承字段
+   (`cwd`/`timeoutMs`/`maxTimeoutMs`/`maxOutputBytes`/`maxSpillBytes`/`graceMs`)**必须经
+   `live()` 探测加 `.volatile()`** —— 0.1.7-alpha.1 起基类把它们读成 `Volatile<T>` 并一律 `.get()`,
+   裸值会让**每一次 shell 调用**抛 `config.timeoutMs.get is not a function`(整个 `ctx.shell` 失效);
+   插件自己的 `bashPath` 保持裸值。② 方法面改了:`run`/`start` 被删除,抽象面是
+   `resolve` + `execute(spec): Promise<ShellExecution>`,后台执行 = `onExpiry: 'none'` 的一次
+   execution,前台/后台由调用方是否 await `result()` 决定 —— 所以**必须覆盖 `execute`** 才能让
+   "全权访问走 Git Bash argv""win32 受限改走 unconfined"两条继续成立(`run`/`start` 只留给
+   ≤0.1.6,`execute` 在无 `super.execute` 时委派给 `run`);父类的 `decorateResult` 是私有的,
+   就地记忆化投影由本插件的 `decorateExecution` 复刻。③ `settings` 服务在 0.1.7 上**没有
+   `get(ns)` 了**(只剩 `describe()`/`update()`):任何"读插件设置"的代码都要按 era 分流,
+   否则静默降级 —— 本插件踩过两处(`withParityEnv` 的 Linux 行尾 env、better-sidebar 的
+   `terminalShell` 接管),现都用 `describe()` 里本行(行 id `gitbash-shell`)的表单值。
 2. **preset 组合文本可审查**:assets/*/agent.cordis.yml 是完整组合,物化只做逐字节拷贝,
    绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**两个纯字符串手术例外,都不解析 YAML**:
    ① v0.13.0 的 present 行条件注入(`injectPresentRow`,按锚点拼接);② v0.14.0 的**行形态对齐**
@@ -212,9 +225,11 @@
 9. **适配新版 dsh 的核对纪律(2026-09-15 立,dsh 0.1.6-alpha.1 教训)**:物化类插件升级 dsh 时,
    **绝不只看本站 `assets/` 的自身 diff**——真正的漂移只存在于「本站资产 × 宿主内置 preset」之间。
    每次跟随升级必须完整做一遍:
-   ① **结构化行序列对比**:取宿主 `packages/preset/agent-presets/presets/{standard,cordis,ptc,minimal}/
-      agent.cordis.yml`,抽出 `- id:` / `name:` / `disabled:` 三行序列,与本插件对应变体逐条对齐;
-      **提示词**(persona 的 `prefix:`/`suffix:` 文本)与**工具行**同样要 diff,不要只看 id 名字。
+   ① **结构化行序列对比**:取宿主当前的预设组合文本 —— dsh 0.1.7 起在
+      `packages/bundle/web-app/presets/{standard,cordis,ptc,minimal}.patch.yml`(行位于
+      `insert[0].config.plugins`;0.1.6 及以前的目录预设路径已不存在),抽出 `- id:` / `name:` /
+      `disabled:` 三行序列,与本插件对应变体逐条对齐;**提示词**(persona 的 `prefix:`/`suffix:`
+      文本)与**工具行**同样要 diff,不要只看 id 名字。
    ② **行改名是致命项**:dsh 0.1.6-alpha.1 把引擎行 `workflow-worker-thread` 改名 `workflow-ptc`
       并**删除**了旧包(`packages/workflow/workflow-worker-thread` 整包消失)。组合里一行 import
       失败会拒绝**整棵 preset 挂载**(agent-presets `mount.ts`),物化出的 preset 会直接不可用——
@@ -235,6 +250,17 @@
       元数据字段;有遗漏则补 `TRANSLATABLE_PATH_FIELDS` / 嵌套形状 / `rewriteResultPaths`,
       并在真机跑一遍「虚拟路径 × 工具」矩阵(~、/tmp、/dev/null、/usr、裸盘根、绝对 glob
       pattern、present 嵌套、bash workdir)。
+   ⑦ **审计窗口从「上一个已知可用版本」起算(v0.24.4 立,issue #6 教训)**:上一轮 rc.1 复核只 diff
+      `alpha.1 → rc.1`,而本插件的基线是 alpha.1 —— 整个 `0.1.6 → 0.1.7-alpha.1` 窗口(#4587 的
+      volatile Config 投影 + shell 包大重构)从未被对照,于是"用户装上就每次 shell 调用报错"这种
+      最粗的破坏直接漏过。规则:每次跟随升级,diff 的起点必须是**本插件上一个真机验证通过的宿主
+      版本**(不是上一个 alpha/rc),并按下面这张**执行器半消费面**清单逐项对照:
+      `LocalBashExecutor.Config` 字段与读法(裸值 vs `Volatile.get()`)、`ShellExecutor` 抽象面
+      (`run`/`start` ↔ `execute`,`runArgv`/`startArgv` ↔ `executeArgv`)、`ShellExecSpec`/
+      `ShellExecution` 类型面、`confine` 签名、`ctx.subprocess` 与 `ctx.sandboxPolicy` 读取面、
+      `settings` 服务方法面(`get(ns)` 是否存在)。**这类契约验证不需要 Windows**:用宿主构建里的
+      真实类 + 打桩 spawn 驱动即可(`apps/desktop/.desktop-build/targets/*/dsh/node_modules/
+      @deepseek-ai/dsh-bash-*`),CHANGELOG v0.24.4 记录的 12 项集成检查就是这么跑的。
 
 ## 验证清单(改动后)
 

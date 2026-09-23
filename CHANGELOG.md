@@ -3,6 +3,25 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.24.4 — 2026-09-23
+
+**类型**:fix(dsh 0.1.7 执行器半整体失修:issue #6 的 Config 缺 `.volatile()` + 同一次审计查出的 `run`/`start`→`execute` 改名 + 两处 `settings.get(ns)` 在新宿主上静默失效)
+
+> 复盘:本轮的 root cause 是**审计窗口**而非某一行代码。0.24.3 的 rc.1 复核只 diff 了 `alpha.1 → rc.1`,而本插件的基线是 alpha.1 —— 整个 0.1.6 → 0.1.7-alpha.1 的窗口(`feat(settings): project volatile Config through profile-backed forms` #4587 与它带动的 shell 包大重构)**从未被对照过**。用户在自己的 Windows 机上装了 0.24.2 后报 issue #6,才把这条线暴露出来。规则已写进 AGENTS.md:审计窗口必须从**上一个已知可用版本**起算。
+
+- **① 真 bug(用户报的 issue #6):`src/shell.js` 的 `Config` 漏了 `.volatile()` ⇒ 每一次 shell 调用 `TypeError`**。dsh 0.1.7-alpha.1(#4587)把 `LocalBashExecutor.Config` 的 `cwd`/`timeoutMs`/`maxTimeoutMs`/`maxOutputBytes`/`maxSpillBytes`/`graceMs` **全部改成 `.volatile()`** 并改为经 `.get()` 读取(`packages/shell/bash-local/src/index.ts:100-107` + `assertServiceableBashConfig`/`resolve`/`spawnSpec`);`SandboxBashExecutor` 自己不声明 Config、原样继承,所以子类这份重声明就是执行器的契约。插件重声明成了裸值 ⇒ 基类第一次 `.get()` 就抛 `config.timeoutMs.get is not a function`,而本 bundle 的 patch 把 `ctx.shell` 换成了这个执行器 ⇒ **整个 agent shell 不可用**;装/卸载插件即坏/即好,宿主日志里没有本插件的加载错误。
+  - **修法**:六个继承字段一律经 `live()` 探测加 `.volatile()`(0.1.7+ 的 schemastery 有该方法、≤0.1.6 没有,而旧基类读的是裸值——一个探测同时服务两个 era);插件自己的 `bashPath` 基类既不声明也不 `.get()`,保持裸值。Config 构造抽成 `export function gitBashShellConfig(z)`,冒烟用"带/不带 volatile 的记录型 schemastery"分别驱动两个 era。
+  - **本机复现(无需 Windows)**:用宿主构建里的真实 `SandboxBashExecutor` + 0.1.7 的 schemastery(3.18.4,有 `volatile`)驱动本插件的执行器半——`HEAD`(0.24.3)抛 `TypeError: this.config.maxSpillBytes.get is not a function`,修复后六个字段全部 `.get()` 正常。
+- **② 同一次审计查出的第二处(0.1.7 执行器方法改名:`run`/`start` → `execute`)**:0.1.7 的 `ShellExecutor` 抽象面只剩 `resolve` + `execute(spec): Promise<ShellExecution>`(`run`/`start` 已删除,后台执行 = `onExpiry: 'none'` 的一次 execution,前台/后台由调用方是否 await `result()` 决定)。插件原有的 `run`/`start` 覆盖在新宿主上**是死代码**:全权访问会走 `LocalBashExecutor.execute` 里硬编码的裸 `bash`(Windows 上解析到 WSL 占位),Windows 受限调用会重新落回 MSYS2 必死的 restricted-token runner(issue #1 回归)——即"Config 修好之后插件本来的两个存在理由都不生效"。
+  - **修法**:新增 `execute(spec)` 覆盖,用 `gitBashRoute()` 判定路由(全权访问恒走 Git Bash argv;win32 受限调用走 unconfined 并如实标注 `enforcement: 'unconfined'`;其余一律 `super.execute` 继承父类,含插件自己 `confine` 覆盖提供的 Git Bash argv),并用 `decorateExecution()` 复刻父类私有 `decorateResult` 的就地记忆化投影。`run`/`start` 保留给 ≤0.1.6 宿主(`execute` 在无 `super.execute` 时委派给 `run`)。
+  - **真实宿主类集成验证(12/12,本机 macOS,spawn 打桩)**:win32 全权访问 → `argv = [bash.exe, -c, cmd]`、未触受限 provider、`sandbox` 事实正确;win32 `workspace-write` → 同样 Git Bash argv + `enforcement: 'unconfined'` + 一次性提示;非 Windows 受限 → 仍走父类 confine 路径且 provider 收到的 argv 也是 Git Bash;`withParityEnv` 仍并入 spec;结果投影按句柄记忆化;≤0.1.6 无 `execute` 的基类 → 委派 `run`。
+- **③ 同类漏网:`settings.get(ns)` 在 0.1.7 上已不存在**(新 `settings` 服务只有 `describe()`/`update()`),两处旧调用因此**静默降级**:
+  - `src/shell.js` 的 `withParityEnv`(v0.21.1/v0.22.0 的 Linux 行尾一致性:GIT_CONFIG autocrlf=input/eol=lf)**在新宿主上从不生效**。现按 era 分流:旧 = `get(ns)`,新 = `describe()` 里本行(行 id `gitbash-shell`)的表单值 —— 与 agent-lang 读 `locale` 命名空间同一姿势。
+  - `src/index.js` 的 `adoptSidebarShell.readShell`(Windows 上把 better-sidebar 的 `terminalShell` 接管到 Git Bash)同样只认 `get(ns)` ⇒ 新宿主上接管被静默跳过。现同样按 era 分流读值,写入仍走 `update(ns, patch)`(两代都有)。
+  - 冒烟新增一项覆盖两个 reader × 两个 era,外加"开关关闭 / 行不存在 / 服务缺失 / describe 抛错"四种降级。
+- **未覆盖**:Windows 真机矩阵仍待用户复验(本机 macOS):三个 `* · Git Bash` 变体挂载、设置卡可写、bash 工具真跑、`command -v bash` 指向 Git 安装目录、以及受限模式下的 `enforcement: 'unconfined'` 标注。本轮所有 win32 结论来自"真实宿主类 + 打桩 spawn"的集成驱动,它覆盖契约与 argv/事实,但不覆盖 Windows 上的进程行为。
+- 相关:issue #6 https://github.com/KannaKuron/dsh-gitbash-shell/issues/6 ;#4587 的契约来源:`packages/shell/bash-local/src/index.ts`、`packages/shell/bash-sandbox/src/index.ts`、`packages/shell/shell/src/types.ts`。
+
 ## v0.24.3 — 2026-09-23
 
 **类型**:fix(适配 dsh 0.1.7-rc.1:exports 缺 manifest 子路径导致桌面客户端 client 半永不进启动图 + 声明 dsh peer + host 半惰性 peer 导入;附一轮 rc.1 资产/契约复核)

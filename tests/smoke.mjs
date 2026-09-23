@@ -782,6 +782,66 @@ test('manifest and package versions stay in sync', () => {
   assert.equal(pkg.scripts.version !== undefined, true, 'the version script must exist so bumps stay in sync')
 })
 
+test('executor: the base class\'s Config fields stay volatile (issue #6)', () => {
+  // dsh 0.1.7-alpha.1 (`feat(settings): project volatile Config through
+  // profile-backed forms`, #4587) made `LocalBashExecutor.Config` declare
+  // exactly these six fields `.volatile()` and read every one of them through
+  // `.get()`
+  // (packages/shell/bash-local/src/index.ts:100-107 + assertServiceableBashConfig).
+  // `SandboxBashExecutor` — our parent — declares no Config of its own and
+  // inherits that one verbatim, so THIS redeclaration is the executor's
+  // contract: plain values here throw `config.timeoutMs.get is not a function`
+  // on the first shell call and take the whole ctx.shell down (issue #6,
+  // 0.24.2). Re-check this list whenever the host's bash-local Config changes.
+  const baseLiveFields = ['cwd', 'timeoutMs', 'maxTimeoutMs', 'maxOutputBytes', 'maxSpillBytes', 'graceMs']
+
+  const src = readFileSync('src/shell.js', 'utf8')
+  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const scope = new Function('SandboxBashExecutor', 'z', 'process',
+    stripped + '\nreturn { gitBashShellConfig, Config, GitBashSandboxExecutor }')
+  class FakeBase {}
+
+  /** A recording schemastery stand-in: `supportsVolatile` picks the host era. */
+  const recorder = (supportsVolatile) => {
+    const nodes = []
+    const node = () => {
+      const n = { marked: 0 }
+      n.default = () => n
+      if (supportsVolatile) n.volatile = () => { n.marked += 1; return n }
+      nodes.push(n)
+      return n
+    }
+    const z = { string: node, number: node, array: node, object: (fields) => fields }
+    return { z, nodes }
+  }
+
+  // 1) 0.1.7+ host (its schemastery HAS volatile): every inherited field must
+  //    come out as a Volatile ref — exactly once — while our own bashPath knob
+  //    stays plain (the base neither declares nor `.get()`s it, and
+  //    `get bashPath()` reads it directly).
+  const withVolatile = recorder(true)
+  const liveFields = scope(FakeBase, withVolatile.z, process).gitBashShellConfig(withVolatile.z)
+  assert.deepEqual(Object.keys(liveFields).sort(), [...baseLiveFields, 'bashPath'].sort(),
+    'the executor Config must declare exactly the inherited fields plus bashPath')
+  for (const key of baseLiveFields) {
+    assert.equal(liveFields[key].marked, 1, key + ' must be marked volatile exactly once (issue #6)')
+  }
+  assert.equal(liveFields.bashPath.marked, 0, 'bashPath is our own knob and must stay a plain value')
+
+  // 2) <=0.1.6 host (schemastery without volatile, base class reads plain
+  //    values): the probe must NOT invent markers, or the old base class would
+  //    receive objects it never calls `.get()` on.
+  const withoutVolatile = recorder(false)
+  const plainFields = scope(FakeBase, withoutVolatile.z, process).gitBashShellConfig(withoutVolatile.z)
+  for (const key of [...baseLiveFields, 'bashPath']) {
+    assert.equal(plainFields[key].marked, 0, key + ' must stay plain where volatile() does not exist')
+  }
+
+  // 3) The shipping Config is built through that same probe.
+  assert.match(src, /export const Config = gitBashShellConfig\(z\)/)
+  assert.match(src, /typeof schema\.volatile === 'function' \? schema\.volatile\(\) : schema/)
+})
+
 test('executor: Windows confined calls run unconfined and say so (issue #1)', async () => {
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
@@ -1012,6 +1072,156 @@ test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)',
   } finally {
     console.log = origLog
   }
+})
+
+test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 follow-up)', async () => {
+  // 0.1.7 replaced the executor surface: `run`/`start` are gone, the runtime
+  // calls `execute(spec): Promise<ShellExecution>` and background work is an
+  // `onExpiry: 'none'` execution. Without an `execute` override the shipped
+  // full-access branch spawns the bare `bash` name and a Windows confined call
+  // goes back through the restricted-token runner MSYS2 cannot start under
+  // (issue #1) — i.e. the plugin's whole reason to exist would be inert even
+  // after the Config fix.
+  const src = readFileSync('src/shell.js', 'utf8')
+  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
+  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
+
+  /** 0.1.7-era base: execute/executeArgv, no run/start. */
+  class NewBase {
+    async execute(spec) { this.calls.push(['super.execute', spec]); return { via: 'super.execute', result: async () => RESULT } }
+    async executeArgv(spec, argv, onStarted) {
+      this.calls.push(['executeArgv', argv, spec])
+      const ex = { status: 'running', result: async () => RESULT }
+      if (onStarted !== undefined) onStarted(ex)
+      return ex
+    }
+  }
+  /** <=0.1.6-era base: no `execute` at all. */
+  class OldBase {
+    async run(spec) { this.calls.push(['super.run', spec]); return { via: 'super.run' } }
+    async runArgv(spec, argv) { this.calls.push(['runArgv', argv]); return RESULT }
+  }
+  const build = (Base, platform) => {
+    const mod = scope(Base, chain, { platform })
+    const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
+    ex.config = { bashPath: 'X:/git/bin/bash.exe' }
+    ex.calls = []
+    return ex
+  }
+  const GIT_BASH_ARGV = ['X:/git/bin/bash.exe', '-c', 'echo hi']
+  const full = { command: 'echo hi', sandboxPolicy: { mode: 'danger-full-access' } }
+  const confined = { command: 'echo hi', sandboxPolicy: { mode: 'workspace-write' } }
+  const kindOf = (ex, kind) => ex.calls.filter((c) => c[0] === kind)
+
+  const logs = []
+  const origLog = console.log
+  console.log = (...a) => logs.push(a.join(' '))
+  try {
+    // Full access on Windows: our argv, labelled like the parent's branch.
+    const fullEx = build(NewBase, 'win32')
+    const fullHandle = await fullEx.execute(full)
+    assert.equal(kindOf(fullEx, 'super.execute').length, 0, 'full access must not reach the bare-bash branch')
+    const fullArgs = kindOf(fullEx, 'executeArgv')
+    assert.equal(fullArgs.length, 1)
+    assert.deepEqual(fullArgs[0][1], GIT_BASH_ARGV, 'the Git Bash argv replaces the shipped bare `bash`')
+    assert.deepEqual((await fullHandle.result()).sandbox, { mode: 'danger-full-access', denied: false })
+
+    // Windows confined: unconfined argv + the honest label (issue #1), and the
+    // restricted-token provider is never consulted.
+    const confinedEx = build(NewBase, 'win32')
+    confinedEx.ctx = { sandbox: { confine: () => { throw new Error('confine must not run on win32') } } }
+    const confinedHandle = await confinedEx.execute(confined)
+    assert.equal(kindOf(confinedEx, 'super.execute').length, 0)
+    assert.deepEqual(kindOf(confinedEx, 'executeArgv')[0][1], GIT_BASH_ARGV)
+    assert.deepEqual((await confinedHandle.result()).sandbox,
+      { mode: 'workspace-write', denied: false, enforcement: 'unconfined' })
+    assert.ok(logs.some((line) => line.includes('UNCONFINED')), 'the one-time notice still fires')
+
+    // Non-Windows confined: inherit the parent unchanged (its confine path
+    // already runs Git Bash through the subclass override).
+    const linuxEx = build(NewBase, 'linux')
+    const linuxHandle = await linuxEx.execute(confined)
+    assert.equal(kindOf(linuxEx, 'executeArgv').length, 0, 'the confined Linux path stays with the parent')
+    assert.equal(kindOf(linuxEx, 'super.execute').length, 1)
+    assert.equal(linuxHandle.via, 'super.execute')
+
+    // The parity env is still merged into the spec the spawn sees.
+    const parityEx = build(NewBase, 'win32')
+    parityEx.ctx = { get: () => ({ get: () => ({ posixPaths: true }) }) }
+    await parityEx.execute(full)
+    assert.equal(kindOf(parityEx, 'executeArgv')[0][2].dshEnv.GIT_CONFIG_VALUE_0, 'input')
+
+    // The result projection is memoized in place, like the parent's.
+    const memoEx = build(NewBase, 'win32')
+    const memoHandle = await memoEx.execute(full)
+    assert.equal(memoHandle.result(), memoHandle.result(), 'one decorated promise per handle')
+
+    // Old-era host (no `execute`): our override hands the call to `run`.
+    const oldEx = build(OldBase, 'win32')
+    const oldResult = await oldEx.execute(confined)
+    assert.equal(kindOf(oldEx, 'runArgv')[0][1][0], 'X:/git/bin/bash.exe')
+    assert.equal(oldResult.sandbox.enforcement, 'unconfined')
+  } finally {
+    console.log = origLog
+  }
+})
+
+test('live settings readers span the 0.1.7 settings-service change (issue #6 follow-up)', async () => {
+  // dsh 0.1.7 kept the `settings` service but removed the namespace API: it now
+  // exposes describe()/update() and NO get(ns) (packages/settings/settings/src/index.ts).
+  // Every reader that still called get(ns) silently degraded on the new host —
+  // the executor's Linux-parity env (GIT_CONFIG_* autocrlf=input) and the
+  // better-sidebar terminal adoption both stopped happening with no error.
+  const src = readFileSync('src/shell.js', 'utf8')
+  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
+  const build = (settings) => {
+    const ex = Object.create(scope(chain, chain, { platform: 'win32' }).GitBashSandboxExecutor.prototype)
+    ex.config = { bashPath: 'X:/git/bin/bash.exe' }
+    ex.ctx = settings === undefined ? {} : { get: (name) => (name === 'settings' ? settings : undefined) }
+    return ex
+  }
+  const spec = () => ({ command: 'echo hi' })
+  const gitConfig = (result) => result.dshEnv === undefined ? undefined : result.dshEnv.GIT_CONFIG_VALUE_0
+
+  // New era: the values live in the row Config's projected form.
+  const newEra = build({ describe: () => [{ ns: 'locale', value: {} }, { ns: 'gitbash-shell', value: { posixPaths: true, gitAutocrlf: true } }], update: async () => {} })
+  assert.equal(gitConfig(newEra.withParityEnv(spec())), 'input', 'the 0.1.7 describe() read must find the row form')
+  // Old era: the registered namespace through get(ns).
+  const oldEra = build({ get: (ns) => (ns === 'gitbash-shell' ? { posixPaths: true, gitAutocrlf: true } : undefined), update: async () => {} })
+  assert.equal(gitConfig(oldEra.withParityEnv(spec())), 'input', 'the <=0.1.6 namespace read still works')
+  // Switch off, namespace missing, service missing: the spec is returned as-is.
+  const off = build({ describe: () => [{ ns: 'gitbash-shell', value: { posixPaths: true, gitAutocrlf: false } }] })
+  assert.equal(off.withParityEnv(spec()).dshEnv, undefined, 'gitAutocrlf:false disables the parity env')
+  assert.equal(build({ describe: () => [] }).withParityEnv(spec()).dshEnv, undefined)
+  assert.equal(build(undefined).withParityEnv(spec()).dshEnv, undefined)
+  // A describe() that throws must degrade, not break the spawn.
+  assert.equal(build({ describe: () => { throw new Error('boom') } }).withParityEnv(spec()).dshEnv, undefined)
+
+  // The better-sidebar adoption read: same era split, same silent-death trap.
+  const { _internal } = await import('../src/index.js')
+  const adopt = async (settings) => {
+    const updates = []
+    const ctx = {
+      get: (name) => (name === 'settings' ? { ...settings, update: async (ns, patch) => { updates.push([ns, patch]) } } : undefined),
+      effect: (fn) => { fn(); return () => {} },
+    }
+    _internal.adoptSidebarShell(ctx, 'X:/git/bin/bash.exe', () => true)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    return updates
+  }
+  const newEraUpdates = await adopt({ describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: '' } }] })
+  assert.deepEqual(newEraUpdates, [['dsh-better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
+    '0.1.7: the adoption must still find the sidebar row through describe()')
+  const oldEraUpdates = await adopt({ get: (ns) => (ns === 'dsh-better-sidebar' ? { terminalShell: '' } : undefined) })
+  assert.deepEqual(oldEraUpdates, [['dsh-better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
+    '<=0.1.6: the namespace read still drives the adoption')
+  // Already adopted: nothing to write.
+  const settled = await adopt({ describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: 'X:/git/bin/bash.exe' } }] })
+  assert.deepEqual(settled, [], 'an already-adopted sidebar is left alone')
 })
 
 test('run_code program literals ride the same MSYS mount table (v0.20.0)', async () => {

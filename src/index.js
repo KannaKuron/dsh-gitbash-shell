@@ -1692,10 +1692,22 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
 
   const readShell = () => {
     const settings = ctx.get('settings')
-    if (!settings || typeof settings.get !== 'function' || typeof settings.update !== 'function') return null
+    if (!settings || typeof settings.update !== 'function') return null
     try {
-      const value = settings.get(SIDEBAR_NS)
-      return value && typeof value === 'object' && typeof value.terminalShell === 'string' ? value.terminalShell : ''
+      // <=0.1.6: the sidebar registers a settings namespace and `get(ns)` reads
+      // it. >=0.1.7: that API is gone (the service exposes describe/update
+      // only), so the value comes from the row Config's projected form —
+      // without this branch the adoption was silently skipped on the new host.
+      if (typeof settings.get === 'function') {
+        const value = settings.get(SIDEBAR_NS)
+        return value && typeof value === 'object' && typeof value.terminalShell === 'string' ? value.terminalShell : ''
+      }
+      if (typeof settings.describe === 'function') {
+        const entry = settings.describe().find((row) => row !== null && typeof row === 'object' && row.ns === SIDEBAR_NS)
+        const value = entry === undefined ? undefined : entry.value
+        return value && typeof value === 'object' && typeof value.terminalShell === 'string' ? value.terminalShell : ''
+      }
+      return null
     } catch {
       return null // namespace not registered yet / sidebar absent
     }
@@ -2375,4 +2387,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }

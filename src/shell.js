@@ -46,16 +46,61 @@ export const DEFAULT_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
 /** Log prefix, matching src/index.js. */
 const TAG = '[gitbash-shell]'
 
+/**
+ * The plugin row's id, which doubles as the settings namespace on <= 0.1.6 and
+ * as the row-config namespace on 0.1.7+ (same string by design).
+ */
+const SETTINGS_NAMESPACE = 'gitbash-shell'
+
+/**
+ * Mark one schema field live-editable when the HOST's schemastery supports it.
+ *
+ * dsh 0.1.7-alpha.1 (`feat(settings): project volatile Config through
+ * profile-backed forms`, #4587) made `LocalBashExecutor.Config` declare
+ * `cwd`/`timeoutMs`/`maxTimeoutMs`/`maxOutputBytes`/`maxSpillBytes`/`graceMs`
+ * with `.volatile()` and read every one of them through `.get()`
+ * (`packages/shell/bash-local/src/index.ts:100-107` and its
+ * `assertServiceableBashConfig`/`resolve`). A subclass that REDECLARES those
+ * fields as plain values therefore throws
+ * `TypeError: config.timeoutMs.get is not a function` on the first shell call
+ * and takes the whole `ctx.shell` down with it (issue #6, 0.24.2).
+ * `SandboxBashExecutor` — our parent — declares no Config of its own: it
+ * inherits `LocalBashExecutor`'s verbatim, so this redeclaration IS the
+ * executor's contract.
+ *
+ * The probe keeps one build serving both eras: hosts whose schemastery has
+ * `volatile()` (0.1.7+) get the Volatile refs their base class calls `.get()`
+ * on, while older hosts — whose base class reads plain values — keep plain
+ * ones. Published schemastery 3.18.2 has no `volatile()`, which is exactly why
+ * the probe (not an unconditional call) is required.
+ */
+function live(schema) {
+  return typeof schema.volatile === 'function' ? schema.volatile() : schema
+}
+
+/**
+ * Build the executor's Config against a given schemastery module. Exported so
+ * the smoke test can drive BOTH eras with a recording stand-in instead of
+ * depending on which schemastery happens to be installed here.
+ * @param z schemastery module (real one, or the test's recorder).
+ * @returns the object schema for the `gitbash-executor` row.
+ */
+export function gitBashShellConfig(z) {
+  return z.object({
+    cwd: live(z.string()),
+    timeoutMs: live(z.number().default(120000)),
+    maxTimeoutMs: live(z.number().default(600000)),
+    maxOutputBytes: live(z.number().default(64000)),
+    maxSpillBytes: live(z.number().default(64 * 1024 * 1024)),
+    graceMs: live(z.number().default(3000)),
+    // Our own knob: the base class neither declares nor `.get()`s it, and
+    // `get bashPath()` below reads it as a plain value, so it stays plain.
+    bashPath: z.string().default(DEFAULT_GIT_BASH),
+  })
+}
+
 /** Resolved configuration: the local executor's knobs, plus the Git Bash path. */
-export const Config = z.object({
-  cwd: z.string(),
-  timeoutMs: z.number().default(120000),
-  maxTimeoutMs: z.number().default(600000),
-  maxOutputBytes: z.number().default(64000),
-  maxSpillBytes: z.number().default(64 * 1024 * 1024),
-  graceMs: z.number().default(3000),
-  bashPath: z.string().default(DEFAULT_GIT_BASH),
-})
+export const Config = gitBashShellConfig(z)
 
 /** Git Bash executor — mirrors the shipped bash/pwsh sandbox executors. */
 export class GitBashSandboxExecutor extends SandboxBashExecutor {
@@ -119,15 +164,72 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   }
 
   /**
-   * Full-access path with Git Bash argv: the parent's full-access branch
-   * delegates to LocalBashExecutor.run, which hardcodes the bare `bash`
-   * name, so override that branch here and keep everything else inherited.
+   * Decide whether one spec takes the Git Bash argv path, and how to label it
+   * (pure). Full access always does — the shipped executor hardcodes the bare
+   * `bash` name there. A Windows confined call does too (issue #1: MSYS2 cannot
+   * start under the restricted-token runner). Everything else inherits the
+   * parent's sandbox path, which already runs Git Bash because `confine` below
+   * substitutes the argv.
+   * @param spec the shell request.
+   * @returns `{ mode, unconfined }`, or undefined to inherit the parent path.
    */
+  gitBashRoute(spec) {
+    const policy = spec.sandboxPolicy
+    const mode = policy === undefined ? undefined : policy.mode
+    if (mode === undefined) return undefined
+    if (mode === 'danger-full-access') return { mode, unconfined: false }
+    if (process.platform === 'win32') return { mode, unconfined: true }
+    return undefined
+  }
+
   /**
-   * Confined Windows calls cannot use the restricted-token runner (issue
-   * #1, see the file header): route them through the unconfined argv path
-   * and label the result honestly so callers can tell.
+   * Label one execution handle's foreground result without changing its
+   * identity (the parent's `decorateResult` is private to the shipped class, so
+   * the same memoized in-place wrapper lives here).
+   * @param ex the handle returned by `executeArgv`.
+   * @param sandbox sandbox facts to stamp onto the result.
+   * @returns the same handle, with `result()` mapped.
    */
+  static decorateExecution(ex, sandbox) {
+    const base = ex.result.bind(ex)
+    let decorated
+    ex.result = () => {
+      decorated ??= base().then((result) => ({ ...result, sandbox }))
+      return decorated
+    }
+    return ex
+  }
+
+  /**
+   * dsh 0.1.7 execution entry point (the shipped `ShellExecutor` now declares
+   * `execute(spec): Promise<ShellExecution>`; `run`/`start` were removed and
+   * background work is an `onExpiry: 'none'` execution the caller stops
+   * waiting on). Overriding it is what keeps the two Git Bash substitutions
+   * alive on the new host: without it the full-access branch spawns the bare
+   * `bash` name hardcoded in `LocalBashExecutor.execute`, and a Windows
+   * confined call goes back through the restricted-token runner MSYS2 cannot
+   * survive.
+   * On hosts without `execute` (<= 0.1.6) this method is never called by the
+   * runtime; it delegates to `run` so the class still behaves if it is.
+   * @param spec resolved execution settings and caller-owned command metadata.
+   * @returns the live execution handle.
+   */
+  execute(spec) {
+    if (typeof super.execute !== 'function') return this.run(spec)
+    const routed = this.withParityEnv(spec)
+    const route = this.gitBashRoute(routed)
+    if (route === undefined) return super.execute(routed)
+    const argv = [this.bashPath, '-c', routed.command]
+    if (route.unconfined) this.warnConfinedUnconfined(route.mode)
+    const sandbox = route.unconfined
+      ? { mode: route.mode, denied: false, enforcement: 'unconfined' }
+      : { mode: route.mode, denied: false }
+    // `executeArgv` is the shipped helper for exactly this: run an explicit
+    // argv with the executor's own lifecycle, output and deadline semantics.
+    return Promise.resolve(this.executeArgv(routed, argv))
+      .then((ex) => GitBashSandboxExecutor.decorateExecution(ex, sandbox))
+  }
+
   /**
    * Linux-parity environment for the MODEL's shell (v0.21.1). The official
    * shell-env registry accepts DSH_* facts only — registering anything else
@@ -146,10 +248,33 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * @param {object} spec the shell request
    * @returns {object} the request with the parity facts merged in
    */
-  withParityEnv(spec) {
+  /**
+   * The plugin row's live dialect settings, across eras. dsh 0.1.7 replaced the
+   * settings namespace API: the service still exists but exposes only
+   * `describe()` / `update()` — `get(ns)` is gone — so the old read silently
+   * returned undefined on the new host and the Linux-parity env below never
+   * applied. The new era reads the row Config's projected values from the form
+   * descriptors (the same read dsh-agent-lang uses for the `locale` namespace).
+   * @returns the row's settings object, or undefined when unavailable.
+   */
+  dialectSettings() {
     try {
       const settings = this.ctx && typeof this.ctx.get === 'function' ? this.ctx.get('settings') : undefined
-      const value = settings && typeof settings.get === 'function' ? settings.get('gitbash-shell') : undefined
+      if (settings === undefined || settings === null) return undefined
+      if (typeof settings.get === 'function') return settings.get(SETTINGS_NAMESPACE)
+      if (typeof settings.describe === 'function') {
+        const entry = settings.describe().find((row) => row !== null && typeof row === 'object' && row.ns === SETTINGS_NAMESPACE)
+        return entry === undefined ? undefined : entry.value
+      }
+      return undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  withParityEnv(spec) {
+    try {
+      const value = this.dialectSettings()
       if (!value || value.posixPaths !== true || value.gitAutocrlf === false) return spec
       const dshEnv = {
         ...(spec.dshEnv === undefined ? {} : spec.dshEnv),
@@ -165,6 +290,13 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     }
   }
 
+  /**
+   * 0.1.6-era full-access path with Git Bash argv: the parent's full-access
+   * branch delegates to LocalBashExecutor.run, which hardcodes the bare `bash`
+   * name, so override that branch here and keep everything else inherited.
+   * On 0.1.7+ the runtime calls `execute` above instead; this stays as the
+   * old-era entry point.
+   */
   async run(spec) {
     spec = this.withParityEnv(spec)
     const policy = spec.sandboxPolicy
