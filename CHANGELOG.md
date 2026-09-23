@@ -3,6 +3,26 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.25.1 — 2026-09-24
+
+**类型**:fix(issue #8 —— 路径方言在 dsh 0.1.7 上**整层静默失效**:工具分发面用错了设置读取器;同一次审计另修侧栏终端还原的同类漏网)
+
+> 报障:第三方用户 @youyv 的 https://github.com/KannaKuron/dsh-gitbash-shell/issues/8 —— 在 0.1.7-rc.1 上,`posixPaths` 指示词进了提示词、`DSH_PATH_DIALECT=msys` 也在环境里,但**参数翻译整层不工作**。用户侧的五条最小复现全部命中:文件工具把 `/c/...` 变成 `/c/c/...`、`~` 不展开、`glob`/`grep` 的 `path` 原样丢给原生 `rg`、`bash` 的 `workdir` 不翻译(spawn ENOENT)、工作区内的 `/c/...` 写入被沙箱拒绝(未翻译 ⇒ 落到工作区外)。方向判断也对:"插件翻坏了"与"完全没翻"两种形态混在一起,说明方言层是"半活"的。
+
+- **root cause(一行)**:v0.24.4 的 era 适配(`makeLiveReader`)只改了一部分消费点 —— `tools/execute` 这个**唯一承担入参翻译**的 wrapper 仍在调 `readDialectSettings(ctx)`,而它读的是 `settings.get(ns)`;0.1.7 上该方法**已不存在**,于是永远返回 `{ posixPaths: false, … }` 的全关 fallback ⇒ wrapper 里 `if (dialect.posixPaths)` 永不成立,**一个参数都不翻**。同一时刻指示词、shell env、prompt 组装早就在 live reader 上(所以它们看起来"正常") —— 这正是"半活"的来源,也与 issue 里"指示词在、翻译不在"的观察完全一致。
+  - 五条症状逐一对应:`read`/`write` 拿到未翻译的 `/c/...`,由 Node 解析成 `<当前盘符>:\c\...`,再经**输出侧**回显器转回 MSYS 形态 ⇒ 用户看到的 `/c/c/...`(输入没翻、输出翻了);`~`/`/tmp` 属挂载表翻译,同样被跳过;`glob`/`grep` 的 `path` 与 `bash` 的 `workdir` 字段同理原样下发。
+- **修法**:wrapper 改用 `liveSettings.dialect()`(与其余消费点同源),并把参数翻译抽成可测的 `translateDispatch(exec, dialect, env)` 导出到 `_internal` —— issue 里那句"现有冒烟只跑纯函数、没跑过一次工具分发的参数翻译"点到了要害:纯函数一直是绿的,**喂给它的接线**没人测。
+- **同一次审计查出的第二处(同类)**:`adoptSidebarShell` 的 dispose 分支用 `s.get(SIDEBAR_NS)` 读当前值再决定是否恢复接管 —— 0.1.7 上没有 `get`,异常直接被 catch 吞掉,**插件卸载时侧栏终端从不还原**。现改走已有的 era-aware `readShell()`。
+- **回归测试(75/75,新增 2 条,其中一条就是 issue 建议的那种)**:
+  - `translateDispatch covers every argument face issue #8 reported`:对 issue 的五条症状逐条断言(`/c/...` → `C:/...`;`~` → home 挂载;`/tmp` → TEMP 挂载;`glob`/`grep` 的 `path`;`bash` 的 `workdir`,且 `command` 绝不被改写),外加 glob 拆分、run_code 程序字面量、以及"已原生/相对路径保持对象身份(不触发无谓重渲染)"。
+  - `issue #8 root cause stays fixed`:锁定根因本身 —— 断言**旧读取器在 0.1.7 形状的 settings 上返回全关**(这就是它不能给分发面当输入的原因),并断言 `apply()` 的代码里不再出现 `readDialectSettings(ctx)`、侧栏还原不再出现 `s.get(SIDEBAR_NS)`。
+- **验证(真实 dsh 0.1.7-rc.1 宿主上的 A/B,本机 macOS)**:
+  - 先核对宿主契约:`packages/core/tools/src/index.ts` 的 `dispatchScheduledExecution` 仍以 `mutableExec` 走 `tools/execute` waterfall,tool 体在 waterfall **之后**读 `exec.arguments`(`tool.execute(exec.arguments, exec)`)—— 所以"就地改写 `exec.arguments`"这条机制在 rc.1 上依然成立,问题只在读取器。
+  - A/B 装置:隔离 `DSH_HOME` + 新建 profile + 两份插件 `link:` 安装 + 探针插件**自注册一个回显工具**并通过 `ctx.tools.execute()` 走一次**真实分发**(把工具体收到的参数打出来);由于方言面按 `process.platform === 'win32'` 门控,探针副本只强制打开这一处门 + 把 `gitBash` 能力置 `active: true`,其余全为真代码。
+  - **未修复副本**(把 wrapper 换回 `readDialectSettings(ctx)`):工具体收到 `{"file_path":"/c/Users/x/.dsh/f.txt","path":"/c/Users/x/dir","workdir":"/c/Users/x/.dsh"}` 与 `{"file_path":"~/.anonymous-user-id","path":"/tmp/a.txt"}` —— **issue #8 的五条症状在同一台机器上完整复现**。
+  - **修复后**:同一装置收到 `C:/Users/x/.dsh/f.txt`、`C:/Users/x/dir`、`C:/Users/x/.dsh`,以及 `~` → home、`/tmp` → TEMP 的挂载翻译。
+- 相关:issue #8 https://github.com/KannaKuron/dsh-gitbash-shell/issues/8 (报障与定位线索来自 @youyv)
+
 ## v0.25.0 — 2026-09-24
 
 **类型**:feat(与 dsh-ptc-cordis-preset 去重:issue #7)

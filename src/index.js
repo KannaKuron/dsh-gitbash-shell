@@ -1254,6 +1254,36 @@ const translateEnvCache = new Map()
  * (the default install plus every PATH entry) and accepts a root only when
  * <root>/usr/bin exists, which excludes the WSL bash shim in WindowsApps.
  */
+/**
+ * One dispatch's path-bearing arguments in the host dialect (pure). The
+ * tools/execute wrapper's decision surface, exported so a test can drive the
+ * whole argument face without a Windows host — the shape issue #8 escaped
+ * through: pure helpers were covered, the wiring that feeds them was not.
+ * @param {{ name?: string, arguments?: object }} exec - the dispatch envelope.
+ * @param {object} dialect - live dialect switches (posixPaths/globSplit/codePaths).
+ * @param {object|null} env - mount table (buildTranslateEnv), null when mounts are off.
+ * @returns {object|undefined} the translated arguments (same reference when untouched).
+ */
+export function translateDispatch(exec, dialect, env) {
+  if (!exec || !exec.arguments || typeof exec.arguments !== 'object') return exec?.arguments
+  let translated = translatePathArguments(exec.arguments, env)
+  if (exec.name === 'glob' && dialect.globSplit) {
+    const globTranslated = translateGlobArguments(translated, env)
+    if (globTranslated !== translated) translated = globTranslated
+  }
+  // v0.20.0: a run_code program is DATA for a native Node process, so a
+  // '/c/...' literal inside it never reached this layer and landed on the
+  // current drive as '<drive>:\c\...'. The same mount table covers the program
+  // path literals (see rewriteCodePaths; anything unclear leaves the code
+  // untouched).
+  if (exec.name === 'run_code' && dialect.codePaths && typeof translated.code === 'string') {
+    const rewritten = rewriteCodePaths(translated.code, env)
+    const nextCode = programPrelude(env) + rewritten
+    if (nextCode !== translated.code) translated = { ...translated, code: nextCode }
+  }
+  return translated
+}
+
 export function buildTranslateEnv(configuredBashPath) {
   const cacheKey = typeof configuredBashPath === 'string' && configuredBashPath !== '' ? configuredBashPath : ''
   const cached = translateEnvCache.get(cacheKey)
@@ -1869,13 +1899,13 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
       reverted = true
       const s = ctx.get('settings')
       if (!s || typeof s.update !== 'function') return
-      let now
-      try {
-        now = s.get(SIDEBAR_NS)
-      } catch {
-        return
-      }
-      if (String(now?.terminalShell ?? '') === bashPath) {
+      // Era-aware read (v0.25.1): `settings.get(ns)` is gone on dsh >= 0.1.7, so
+      // the old call threw straight into the catch and the takeover was NEVER
+      // reverted when this plugin unloaded — same missed-era-read class as
+      // issue #8 (readShell above carries both branches).
+      const now = readShell()
+      if (now === null) return
+      if (String(now) === bashPath) {
         s.update(SIDEBAR_NS, { terminalShell: previous }).catch(() => {})
       }
     },
@@ -2331,27 +2361,21 @@ export async function apply(ctx, config = {}) {
         let echo = false
         let echoEnv = null
         try {
-          const dialect = readDialectSettings(ctx)
+          // The LIVE, era-aware reader (v0.25.1, issue #8). The legacy
+          // `readDialectSettings(ctx)` reads `settings.get(ns)`, which does not
+          // exist on dsh >= 0.1.7 — it returned the all-off fallback, so this
+          // wrapper translated NOTHING while the directive and the shell env
+          // (both already on the live reader) kept working: `/c/...` reached the
+          // file tools untranslated, `~` was never expanded, `glob.path` and
+          // `bash.workdir` went through raw, and an in-workspace `/c/...` write
+          // fell outside the sandbox. One missed call site, five symptoms.
+          const dialect = liveSettings.dialect()
           if (dialect.posixPaths) {
             echo = true
             const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
             echoEnv = env
             if (exec && exec.arguments && typeof exec.arguments === 'object') {
-              let translated = translatePathArguments(exec.arguments, env)
-              if (exec.name === 'glob' && dialect.globSplit) {
-                const globTranslated = translateGlobArguments(translated, env)
-                if (globTranslated !== translated) translated = globTranslated
-              }
-              // v0.20.0: a run_code program is DATA for a native Node process, so
-              // a '/c/...' literal inside it never reached this layer and landed
-              // on the current drive as '<drive>:\\c\\...'. The same mount table
-              // now covers the program path literals (see rewriteCodePaths;
-              // anything unclear leaves the code untouched).
-              if (exec.name === 'run_code' && dialect.codePaths && typeof translated.code === 'string') {
-                const rewritten = rewriteCodePaths(translated.code, env)
-                const nextCode = programPrelude(env) + rewritten
-                if (nextCode !== translated.code) translated = { ...translated, code: nextCode }
-              }
+              const translated = translateDispatch(exec, dialect, env)
               if (translated !== exec.arguments) exec.arguments = translated
             }
           }
@@ -2572,4 +2596,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, effectivePresetIds, detectPeerCoverage, readSuppressPeerCordis, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, effectivePresetIds, detectPeerCoverage, readSuppressPeerCordis, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }

@@ -1727,3 +1727,57 @@ test('client card: the dedupe row is peer-gated and writes THIS row\'s field', (
     assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
   }
 })
+
+// ── issue #8: the DISPATCH face (not just the pure helpers) ──────────────────
+
+test('translateDispatch covers every argument face issue #8 reported', () => {
+  const { translateDispatch } = _internal
+  const env = { tmpDir: 'C:/Users/x/AppData/Local/Temp', home: 'C:/Users/x', gitRoot: 'C:/Program Files/Git' }
+  const dialect = { posixPaths: true, virtualMounts: true, globSplit: true, codePaths: true }
+  const t = (name, args) => translateDispatch({ name, arguments: args }, dialect, env)
+  // ① MSYS drive root: the double root `/c/c/...` came from NOT translating here
+  assert.equal(t('read', { file_path: '/c/Users/x/.dsh/.anonymous-user-id' }).file_path, 'C:/Users/x/.dsh/.anonymous-user-id')
+  assert.equal(t('write', { file_path: '/c/Users/x/.dsh/p.txt', content: 'hi' }).file_path, 'C:/Users/x/.dsh/p.txt')
+  // ② `~` expands to the home mount
+  assert.equal(t('read', { file_path: '~/.anonymous-user-id' }).file_path, 'C:/Users/x/.anonymous-user-id')
+  // ③ `/tmp` rides the TEMP mount
+  assert.equal(t('read', { file_path: '/tmp/a.txt' }).file_path, 'C:/Users/x/AppData/Local/Temp/a.txt')
+  // ④ glob/grep `path` reaches the tool translated (it went to native rg raw)
+  assert.deepEqual(t('glob', { path: '/c/Users/x/.dsh/profiles/web', pattern: '*.json' }), { path: 'C:/Users/x/.dsh/profiles/web', pattern: '*.json' })
+  assert.deepEqual(t('grep', { path: '/c/Users/x/.dsh', pattern: 'x' }), { path: 'C:/Users/x/.dsh', pattern: 'x' })
+  // ⑤ bash `workdir` translated (untranslated it became a bogus cwd → ENOENT)
+  const bash = t('bash', { command: 'pwd', workdir: '/c/Users/x/.dsh' })
+  assert.equal(bash.workdir, 'C:/Users/x/.dsh')
+  assert.equal(bash.command, 'pwd', 'the command field is the shell mother tongue — never rewritten')
+  // the other two faces still ride the same entry point
+  const split = t('glob', { pattern: '/c/Users/x/docs/*.md' })
+  assert.equal(split.path, 'C:/Users/x/docs')
+  assert.equal(split.pattern, '*.md')
+  assert.match(t('run_code', { code: "const p = '/c/Users/x/a.txt'; console.log(p)" }).code, /C:\/Users\/x\/a\.txt/)
+  // an already-native or relative argument keeps its IDENTITY (no needless re-render)
+  const native = { file_path: 'C:/Users/x/a.txt' }
+  assert.equal(translateDispatch({ name: 'read', arguments: native }, dialect, env), native)
+  const relative = { file_path: 'rel/a.txt' }
+  assert.equal(translateDispatch({ name: 'read', arguments: relative }, dialect, env), relative)
+})
+
+test('issue #8 root cause stays fixed: the dispatch face reads the LIVE dialect', () => {
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // The legacy reader cannot see a >= 0.1.7 host at all: `settings.get(ns)` is
+  // gone there, so it returns the all-off fallback. Reading the dialect through
+  // it inside apply() silently disabled the whole translation layer while the
+  // directive text and the shell env (both already on the live reader) kept
+  // working — issue #8's "half-alive dialect".
+  const rc1Shaped = { get: (name) => (name === 'settings' ? { describe: () => [], update: async () => {} } : undefined) }
+  assert.equal(_internal.readDialectSettings(rc1Shaped).posixPaths, false, 'the legacy reader is blind on 0.1.7 — that is WHY it may not gate the dispatch face')
+  const applyBody = src.slice(src.indexOf('export async function apply'))
+  // strip line comments first: this very fix documents the old call in a
+  // comment, and the assertion is about CODE, not prose
+  const codeOnly = applyBody.replace(/^\s*\/\/.*$/gm, '')
+  assert.doesNotMatch(codeOnly, /readDialectSettings\(ctx\)/, 'the dispatch face must not use the legacy reader')
+  assert.match(applyBody, /const dialect = liveSettings\.dialect\(\)/)
+  // and the sidebar revert (its own missed era read, found in the same audit)
+  // goes through the era-aware helper instead of settings.get
+  assert.match(src, /const now = readShell\(\)/)
+  assert.doesNotMatch(src, /now = s\.get\(SIDEBAR_NS\)/)
+})
