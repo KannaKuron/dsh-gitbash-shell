@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1265,12 +1266,17 @@ test('compositions: full variants mirror the official 0.1.7 row split', async ()
   }
 })
 
-test('host half: static Config with volatile probing and the era branch', async () => {
+test('host half: lazy Config with volatile probing and the era branch', async () => {
   const mod = await import('../src/index.js')
   assert.equal(typeof mod.Config, 'function')
   assert.equal(typeof mod.valueOf, 'function')
   const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(hostSource, /import Schema from '@deepseek-ai\/schemastery'/)
+  // Lazy peer import: a static one makes an unresolvable schemastery kill the
+  // whole row silently (the Loader skips a failed plugin import non-fatally),
+  // which for this plugin means no presets, no executor and no client half.
+  assert.match(hostSource, /await import\('@deepseek-ai\/schemastery'\)/)
+  assert.doesNotMatch(hostSource, /^import Schema from '@deepseek-ai\/schemastery'/m)
+  assert.match(hostSource, /export const Config = Schema === null \? undefined : Schema\.object\(/)
   assert.match(hostSource, /typeof ctx\.agentPresets\.register === 'function'/)
   assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds\)/)
 })
@@ -1296,6 +1302,67 @@ test('package meta: 0.1.7 display assets and the renamed patch row', () => {
   const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
   assert.match(patch, /id: gitbash-shell$/m)
   assert.doesNotMatch(patch, /id: gitbash-presets/)
+})
+
+test('the manifest subpath is exported, so desktop discovery can read it (v0.24.3)', () => {
+  // packages/client/modules/src/index.ts locatePkgJson(): the Electron
+  // renderer has no `ctx.loader.internal` and falls back to
+  // `createRequire(baseUrl).resolve('<pkg>/package.json')`, which honours the
+  // exports map. Without this row the lookup throws
+  // ERR_PACKAGE_PATH_NOT_EXPORTED, the surrounding catch swallows it, and the
+  // package is cached as "not a client package" FOR THE LIFETIME OF THE
+  // RENDERER: the client half never enters the desktop boot graph while every
+  // host log stays green. Same defect class as dsh-better-workspace #9.
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(pkg.exports['./package.json'], './package.json', 'the manifest subpath must be exported')
+  // The other specifiers the host resolves by name must stay exported too.
+  assert.equal(pkg.exports['.'], './src/index.js')
+  assert.equal(pkg.exports['./shell'], './src/shell.js')
+  assert.equal(pkg.exports['./client'], './src/client.js')
+  assert.equal(pkg.exports['./locale/*.json'], './locale/*.json')
+  // Runtime twin: Node's package self-reference resolves through the very same
+  // exports map, so this is the desktop lookup in miniature — it throws the
+  // real ERR_PACKAGE_PATH_NOT_EXPORTED when the row is missing. Both sides go
+  // through realpath: a checkout reached through a symlink (tmpdir, CI cache)
+  // must not turn this into a false failure.
+  const resolved = createRequire(new URL('../tests/smoke.mjs', import.meta.url)).resolve('dsh-gitbash-shell/package.json')
+  assert.equal(realpathSync(resolved), realpathSync(fileURLToPath(new URL('../package.json', import.meta.url))))
+})
+
+test('the dsh peer requirement covers every supported host (v0.24.3)', () => {
+  // dsh 0.1.7 enforces ONE thing at install and boot: peerDependencies whose
+  // name is `@deepseek-ai/dsh` or `@deepseek-ai/dsh-*`
+  // (packages/boot/app-boot/src/plugin-compatibility.ts). `engines.dsh` is
+  // declarative and never read. Without this row the plugin is never
+  // compatibility-checked at all — and a range that excludes a host it still
+  // supports would get the row disabled, so the range mirrors the declared
+  // engine floor instead of enumerating releases.
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(pkg.peerDependencies['@deepseek-ai/dsh'], pkg.engines.dsh, 'one source of truth for the dsh floor')
+  assert.match(pkg.peerDependencies['@deepseek-ai/dsh'], /^>=\d+\.\d+\.\d+$/u, 'a bare lower bound: no enumerated prerelease, no invented ceiling')
+  // OPTIONAL keeps the gate intact while removing the install hazard: the gate
+  // reads peerDependencies only, but a package manager with autoInstallPeers
+  // (pnpm's default) resolves the range against the registry — and every
+  // published @deepseek-ai/dsh version is a prerelease, which a plain range
+  // excludes (ERR_PNPM_NO_MATCHING_VERSION for the whole install).
+  assert.equal(pkg.peerDependenciesMeta?.['@deepseek-ai/dsh']?.optional, true)
+})
+
+test('minimal descriptions keep the official block-scalar shape (v0.24.3)', async () => {
+  // The official minimal preset writes both descriptions as `|-` block
+  // scalars (packages/bundle/web-app/presets/minimal.patch.yml), so the
+  // parsed value carries NO trailing newline; the committed old-era asset
+  // spells the same. v0.24.1 appended one to the pwsh row, which made the two
+  // eras of this plugin feed the model two different strings.
+  const { minimalPluginsFor } = await import('../src/compositions.js')
+  const group = minimalPluginsFor().find((row) => row.id === 'persistent-shell')
+  for (const id of ['persistent-bash', 'persistent-pwsh']) {
+    const description = group.config.find((row) => row.id === id).config.description
+    assert.equal(typeof description, 'string', id + ': description must be a string')
+    assert.notEqual(description.trim(), '', id + ': description must not be blank')
+    assert.equal(description, description.trim(), id + ': a `|-` scalar has no leading or trailing whitespace')
+    assert.ok(!description.endsWith('\n'), id + ': the official text has no trailing newline')
+  }
 })
 
 test('regression (v0.24.2): apply() mounts — adoptSidebarShell never reaches into apply() scope', () => {

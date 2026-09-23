@@ -3,6 +3,30 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.24.3 — 2026-09-23
+
+**类型**:fix(适配 dsh 0.1.7-rc.1:exports 缺 manifest 子路径导致桌面客户端 client 半永不进启动图 + 声明 dsh peer + host 半惰性 peer 导入;附一轮 rc.1 资产/契约复核)
+
+- **⓪ 加固:host 半的 schemastery 改惰性导入(与 ① 同一失败类,先堵住另一半)**。`@deepseek-ai/schemastery` 是 **peer**:普通 Node 从本包位置解析不到它(实测 `createRequire(<插件目录>).resolve('@deepseek-ai/schemastery')` → `MODULE_NOT_FOUND`),只靠宿主自己的解析(profile shared fallback)供上来。顶层静态 `import` 一旦解析失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:`logger.error` + `return`,永不建 fiber)⇒ 本插件 **preset 变体、执行器接线、client 半全部消失,而宿主日志全绿**——与 ① 的 `exports` 缺陷是同一类"全绿日志 + 永久失效"。**实证**:造两个除这一行外完全相同的夹具插件(一个静态 import 解析不到的 peer、一个 `await import` + try/catch),同一 profile 启动:静态版的 `apply()` **从不执行**,惰性版照常执行(`mod=null`)。修法:`await import('@deepseek-ai/schemastery')` + try/catch,拿不到时 `Config` 导出 `undefined`(cordis 对 `!runtime.Config` 直接放行配置),插件照常挂载;有 schemastery 时行为逐字节不变(冒烟 65/65,含"不得出现静态导入行"新断言)。
+
+- **① 真 bug:`exports` 缺 `"./package.json"`,桌面客户端上 client 半静默失效**(其余四个同族插件都有,只有本插件没有)。
+  - **机制**:官方 `packages/client/modules/src/index.ts` 的 `locatePkgJson()` 在 `ctx.loader.internal` 不可用时(桌面 Electron renderer 没有 Node internals)回退 `createRequire(baseUrl).resolve('<pkg>/package.json')`(L886)——**这条解析遵守 exports map**;缺该行抛 `ERR_PACKAGE_PATH_NOT_EXPORTED`,异常被紧邻的 `catch {}`(L889)吞掉、返回 `undefined`,上层把该包**永久缓存为「非 client 包」**(`this.pkgMeta.set(sourceKey, null)`,L831/L842)。后果:**client 半永不进桌面启动图、宿主日志全绿**——Windows 桌面客户端上设置卡与侧栏半完全不生效,且没有任何报错可查。与 dsh-better-workspace issue #9 同源(那边 v0.21.0 修的就是同一行)。
+  - **本机复现(修复前的 HEAD 产物与修复后产物各跑一次同一条 fallback 语句)**:
+    `createRequire('<profile>/node_modules/.../smoke.mjs').resolve('dsh-gitbash-shell/package.json')`
+    → 修复前 `ERR_PACKAGE_PATH_NOT_EXPORTED`,修复后返回 `<pkg>/package.json`。仓库内等价复现:`createRequire(tests/smoke.mjs).resolve('dsh-gitbash-shell/package.json')`——Node 包自引用走同一张 exports 表。
+  - **修法**:`package.json` 的 exports 表补 `"./package.json": "./package.json"`(其余四项 `.` / `./shell` / `./client` / `./locale/*.json` 原样不动;`./shell` 是宿主半执行器入口、`./locale/*.json` 是插件管理页元数据的解析路径,都不可少)。
+  - **防回归(smoke 65 项,新增 3 项,均做过反向验证)**:①字段断言 + **运行时双胞胎**(真跑 `createRequire(...).resolve('dsh-gitbash-shell/package.json')` 并比对绝对路径,缺行即抛真错误);②`@deepseek-ai/dsh` peer 断言;③minimal 描述形状断言。回植三处缺陷后三项全红、修复后全绿。
+- **② 声明 `@deepseek-ai/dsh` peer(rc.1 唯一被强制执行的兼容性机制)**:rc.1 的 `packages/boot/app-boot/src/plugin-compatibility.ts` **只**读取 `peerDependencies` 里 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 的 range(`semver.satisfies(..., { includePrerelease: true })`),`engines.dsh` 是纯声明字段、源码里**没有任何读取方**。本插件此前 peer 只有 cordis/schemastery ⇒ **永远不被兼容性检查覆盖**。现补 `"@deepseek-ai/dsh": ">=0.1.0"`,取值理由:与 `engines.dsh` 同值(单一事实来源)、覆盖 0.1.0…0.1.7-rc.1 全线(逐版本实测 satisfies:0.1.0/0.1.1/0.1.2/0.1.6/0.1.7-alpha.1/alpha.2/rc.1 全 true,0.0.9 false),**不加人为上界**——官方 0.1.6(删 workflow-worker-thread 整包)、0.1.7(删目录预设)两次破坏都发生在 0.x minor,上界拦不住、反而会误伤未来的兼容版本。旧宿主不受影响:该 range 对 0.1.x 全放行,且 profile 侧 `autoInstallPeers: false`(官方 `packages/boot/app-boot/src/profile.ts` 自己写的就是这个值),不会去 registry 拉 `@deepseek-ai/dsh`。**同时把该 peer 标进 `peerDependenciesMeta.optional`**:门禁只读 `peerDependencies`、不读 meta,但一旦有人用 `autoInstallPeers` 默认开启的 pnpm/npm 工程安装本包,包管理器会去 registry 解析这个 range——而 `@deepseek-ai/dsh` 已发布的 26 个版本**全是 prerelease**、普通 range 按 semver 排除 prerelease,会让整单安装以 `ERR_PNPM_NO_MATCHING_VERSION` 失败;optional peer 不会被自动安装,危害消失而门禁照常(冒烟断言锁死)。
+- **③ rc.1 资产复核(结论:对齐成立,并修掉一处 v0.24.1 引入的一字节偏差)**:
+  - 官方 `packages/bundle/web-app/presets/*.patch.yml` 四个预设自 alpha.1 起**零改动**(`git diff dsh-v0.1.7-alpha.1 dsh-v0.1.7-rc.1` 对该目录为空);`packages/shell/*` 唯一实质改动是 `tool-pwsh-persistent/src/index.ts` 的**提示符机制**(删 `SHELL_PROMPT`/`promptCompleted`,改看 `waitReason === 'stdin_read'`),**工具 description 文本一字节未动**。
+  - 用 rc.1 检出重跑对齐脚本:四个变体 × darwin/win32 两平台逐行走查行序列 + `id`/`name`/`group`/`isolate`/`disabled`/`config`(含 `!!js` 表达式按平台求值),结果 **ALIGNED:零未解释漂移**;16 项差异全部是设计内的 Git Bash 增量(bash 强制开、pwsh 强制关、minimal 的 `shellPath` 显式钉住、bash 描述首行环境说明、cordis skills 目录现场解析)。
+  - **修掉一处**:v0.24.1 给 minimal 的 `persistent-pwsh` 描述加了尾换行(`+ '\n'`),而官方该描述是 `|-` 块标量(**无**尾换行;同一文本在 0.1.6 目录预设与 rc.1 web 预设里都是 `|-`),本插件自己的旧 era 资产 `assets/minimal-gitbash/agent.cordis.yml` 也是 `|-` ⇒ 两个 era 会喂给模型两个不同字符串。现改为与官方/旧 era 一致(该行在 Git Bash 变体里恒 `disabled: true`,对模型零影响,属一致性修正)。
+- **④ 声明式注册与预检复核(rc.1 未变)**:`packages/preset/agent-preset-registry/src/index.ts` 的 `register(definition)` 仍是「异步注册 + 返回 disposer」,`list()` 返回 `{ id, name?, description?, order?, broken? }` 形状未变;rc.1 新增的 `@Remote('read') readDocument(id)` 只是只读组合文本查看器,不影响注册方。rc.1 新增的 profile 兼容性预检 `prepareProfileEntries`(`mount.ts`)只在**兼容性冲突**时把 row 标 `disabled`(其余失败仍交 Loader 自己报),而 `auditRows` 跳过 disabled row ⇒ **不可用 row 只会被禁用,不会把整棵 preset mount 打挂**,与插件既有设计一致。
+- **⑤ 其它契约复核**:`settings.plugin.item`(≤0.1.6-alpha.1)与 `plugins.bundle.config`(0.1.6-alpha.2+,按**包名**键)双席位注册仍然正确——rc.1 上活着的是后者(`ui-plugin-manager` 以 `entryKey: pkg.name` 渲染,本插件键就是 `dsh-gitbash-shell`);`locale/{en,zh}.json` 的 `{ meta: { title, description } }` 形状与文件名规则、`icon.svg`(相对路径、`.svg`、454 B ≤ 256 KiB、留在 manifest 目录内)全部满足 `packages/boot/app-boot/src/package-meta.ts`;`dsh.bundle.patch` 字符串形式仍被接受。rc.1 新增的 `practices.md`「不要 require 官方 client 包」一条本轮**刻意不动**:client 半仍只 require `react` + `@deepseek-ai/dsh-client-ui-primitives`(家族统一基线,冒烟白名单锁死;改它是一次重写级重构,不属于本轮适配)。
+- **验证**:`npm test` **65/65**;隔离实例(独立 `DSH_HOME` + 3113 端口、`@deepseek-ai/dsh-base` + `dsh-web-app` + 本插件的 probe profile)上确认 rc.1 **不把本插件行 disabled**(启动 stderr 无 `disabling profile plugin`)、`--dump-config` 组合正确、client 半进启动图(`window.__DSH_BOOT__` 含 `dsh-gitbash-shell` 行、页面 console 无包加载错误)。
+- **未覆盖**:本机是 macOS,插件执行器与受限分支是 Windows/Git Bash 专用,本机**无法复现 win32 真机矩阵**(`gitbash-executor` 行在非 Windows 上本就 `disabled`)。本轮所有 win32 结论均来自源码契约与两平台求值的对齐脚本,**待用户在 Windows 真机复验**:desktop 客户端上设置卡出现且开关可写、侧栏终端接管、四个 `* · Git Bash` 变体可挂载、`command -v bash` 指向 Git 安装目录。
+- 相关:dsh-better-workspace issue #9(同一 `locatePkgJson` 根因):https://github.com/KannaKuron/dsh-better-workspace/issues/9
+
 ## v0.24.2 — 2026-09-22
 
 **类型**:fix(0.24.0 埋雷事故:模块级 helper 越域引用 apply() 局部量,win32 全量挂载失败)

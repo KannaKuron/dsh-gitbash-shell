@@ -261,7 +261,7 @@ export function minimalPluginsFor() {
               "* Use native Windows paths (C:\\...) and $env:NAME variables; this is PowerShell, not bash.",
               "* Please avoid commands that may produce a very large amount of output.",
               "* Please run long lived commands in the background, e.g. 'Start-Job' or start a server with Start-Process.",
-            ].join('\n') + '\n',
+            ].join('\n'),
           },
         },
       ],

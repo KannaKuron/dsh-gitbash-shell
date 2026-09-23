@@ -52,10 +52,35 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import Schema from '@deepseek-ai/schemastery'
 import { fileURLToPath } from 'node:url'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
+
+/**
+ * The schemastery module, resolved LAZILY (v0.24.3): `@deepseek-ai/schemastery`
+ * is a PEER — plain Node cannot resolve it from this package, only the host's
+ * own resolution (the profile shared fallback) supplies it. A deployment whose
+ * fallback lacks it used to fail the *static* import at the top of this file,
+ * and the Loader treats a failed plugin import as a non-fatal skip
+ * (`vendor/loader/src/config/entry.ts` `_init()`: logger.error + return, no
+ * fiber) — the row then silently never mounted, which for THIS plugin means no
+ * preset variants, no executor wiring and no client half, while every host log
+ * stays green. Same all-green failure class as dsh-better-workspace issue #9;
+ * verified with a fixture plugin whose only difference was the static peer
+ * import. Deferring the import hides the schema where the module is absent
+ * instead of killing the row.
+ */
+let Schema = null
+try {
+  Schema = (await import('@deepseek-ai/schemastery')).default
+} catch (error) {
+  Schema = null
+  console.warn(
+    '[gitbash-shell] @deepseek-ai/schemastery is not resolvable here; the row Config surface is absent'
+    + ' (the preset registration and the client half do not depend on it): '
+    + (error && error.message || String(error)),
+  )
+}
 
 /** Plugin identity for cordis.yml rows. */
 export const name = 'dsh-gitbash-shell'
@@ -679,9 +704,11 @@ function live(schema) {
  * Row Config = the settings surface on dsh >= 0.1.7 (values persist under the
  * row id; the patch row id is 'gitbash-shell', the same string as the old
  * settings namespace, so the one-shot legacy settings.yaml import maps old
- * user values onto the new home). Inert metadata on older hosts.
+ * user values onto the new home). Inert metadata on older hosts, and absent
+ * (undefined) when schemastery is unresolvable: cordis then passes the row
+ * config through unvalidated instead of the whole row disappearing.
  */
-export const Config = Schema.object({
+export const Config = Schema === null ? undefined : Schema.object({
   // Row-level knob predating the Config surface (invariant 6): which preset
   // variants to serve. Ordinary config — an edit remounts the plugin, which
   // is the right weight for a list that changes the roster.
