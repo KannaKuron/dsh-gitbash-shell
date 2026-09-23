@@ -85,14 +85,21 @@ bundle patch(`cordis.patch.yml`)应用三个改动:
 
 ## 配置
 
-`gitbash-presets` 行支持 `presets` 数组,只物化你常用的模式(未列出的旧物化目录、
-且未被用户修改过的,会自动清理):
+`gitbash-shell` 行(行 id 自 v0.24.0 起与设置命名空间同串;≤ v0.23.0 为 `gitbash-presets`)
+支持 `presets` 数组,只物化你常用的模式(未列出的旧物化目录、且未被用户修改过的,会自动清理):
 
 ```yaml
-- id: gitbash-presets
+- id: gitbash-shell
   config:
     presets: [standard-gitbash, minimal-gitbash]   # 默认物化全部 4 个
+    suppressPeerCordis: false                       # 与 dsh-ptc-cordis-preset 去重,默认关
 ```
+
+去重开关 `suppressPeerCordis`(布尔,**默认 `false`**)只在两个事实**同时**成立时才把
+`创造模式 · Git Bash`(`cordis-gitbash`)从名录里摘掉:开关为 `true` **且**
+dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。默认关 ⇒ 名录与
+0.24.x 的四个变体逐字不变;判定细节、生效时机与两侧同步方式见下方
+[「与 dsh-ptc-cordis-preset 联动」](#与-dsh-ptc-cordis-preset-联动)。
 
 配合 `agent-presets` 的 `default`,新会话直接落在 Git Bash 模式,免去每次在
 模式选择器里翻找(原版 shipped 模式无法替换或隐藏——部署级、只读):
@@ -143,6 +150,42 @@ preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 
 > 切换生效后若 `ptc-cordis` 目录已存在且被旧版本物化,删除
 > `~/.dsh/.agent-presets/ptc-cordis` 并重启,即由新逻辑重新物化。
+
+### 去重开关:`suppressPeerCordis`(默认关,v0.25.0)
+
+联动生效后,`创造模式 · Git Bash`(本插件的 `cordis-gitbash`)与对方已经 Git Bash 化的
+`PTC 创造模式` 面向的是同一件事,而两插件同装时它们默认**并列出现**。把本插件行 Config 上的
+`suppressPeerCordis` 打开,本插件才会把自己的那个变体摘掉(需求与取舍见
+[issue #7](https://github.com/KannaKuron/dsh-gitbash-shell/issues/7))。
+
+**判定 = 两个事实同时成立,缺一不可**:
+
+- 开关为 `true`;
+- 且对方通过 host 能力服务 `ptcCordisPreset` 报告 `gitBashActive: true`(即它的
+  `PTC 创造模式` 确实按 Git Bash 版生效)。
+
+对方**没装 / 尚未挂载 / 没生效 / 版本低于 0.14.0** ⇒ 一律**不摘**:宁可名录里多一个条目,
+也绝不因为"探测不到对方"就少给用户一个模式。默认关,所以不主动打开就没有任何行为变化。
+
+**生效时机**:
+
+- **新宿主(dsh ≥ 0.1.7)是实时的**:开关走行 Config 的 volatile 通道,对方的能力则经
+  `ctx.inject(['ptcCordisPreset'])` 观察(**与插件行激活顺序无关**),两边任一变化都当场
+  reconcile——摘掉打日志 `preset 'cordis-gitbash' retired (dsh-ptc-cordis-preset covers Creation
+  mode on Git Bash)`,恢复打 `preset 'cordis-gitbash' registered declaratively`。已经挂载的会话
+  钉在自己的组合快照上,不受影响;名录变化从新会话开始可见。
+- **旧宿主(dsh ≤ 0.1.6)是启动时判定一次**:旧宿主没有可观察的注册表,能力探测是有界的
+  (默认 1s,读不到即视为"对方不覆盖"),所以打开开关后,上一轮物化出来的 `cordis-gitbash`
+  目录会被清理;把开关关掉后,该变体要到**下一次启动**才重新物化。
+
+**两侧设置卡上是同一份状态**:权威值只有本插件这一行 Config 一份;对方的设置卡通过
+`ctx.configForms.get('gitbash-shell')` **绑定同一行**、写同一个字段(DSH 官方支持编辑另一个
+插件所拥有的命名空间),所以任一侧改动另一侧立即同步——不存在两份拷贝,也没有同步逻辑。
+旧宿主上 `configForms` 不存在、镜像卡片不出现,开关只在本插件自己的设置面(`gitbash-shell`
+命名空间)可改。
+
+**依赖版本**:去重开关本体在**本插件 ≥ 0.25.0**;对方的协作能力在
+**dsh-ptc-cordis-preset ≥ 0.14.0**。
 
 ## POSIX 路径方言(v0.7.0 引入,受 `posixPaths` 开关门控)
 

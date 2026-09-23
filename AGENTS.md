@@ -168,6 +168,31 @@
      「空格后那个词自带分隔符」时跨空格,免得把英文吞进路径。
      改这一层必须跑冒烟里的「one dialect on BOTH faces」「post-execute branch」「whole-value path」
      「success echo rides tools/execute」四例。
+ 4e. **与 dsh-ptc-cordis-preset 的去重(v0.25.0,issue #7)**:联动生效后对方的 `PTC 创造模式` 已是
+     Git Bash 版,与本插件的 `创造模式 · Git Bash`(`cordis-gitbash`,`PEER_COVERED_PRESET_ID`)指向
+     同一件事;开关 `suppressPeerCordis`(本插件行 Config 的 volatile 布尔,默认 **false**;旧宿主
+     ≤0.1.6 在 settings 命名空间 `gitbash-shell` 里声明同名同默认字段)只决定要不要摘掉本插件那一条。
+     - ① **判定必须「开关 ON 且对方能力报 gitBashActive」,缺一不可**:纯函数
+       `effectivePresetIds(configured, { suppress, peerGitBash })` 是唯一判据,注册(新宿主)与物化
+       (旧宿主)两条路径共用它。对方缺失/未装/未生效/尚未挂载/版本 < 0.14.0 ⇒ **一律不摘**——
+       **绝不能因为「探测不到对方」就少注册一个变体**(宁可多一条名录,不可少一个模式);默认 false
+       保持 0.24.x 的四变体名录不变。信号只认对方 `ctx.provide('ptcCordisPreset', { id, gitBashActive })`
+       的主动上报,**不要**去 `agentPresets.list()` 按 name/description 猜(文本会随对方版本漂移、还可能
+       被用户改)。
+     - ② **两个时代的取舍**:新宿主(≥0.1.7)**实时**——`ctx.inject(['ptcCordisPreset'])`(与行激活顺序
+       无关,同 4a 的教训)+ `ctx.on('loader/volatile-update')` 监听本行开关,两者都触发**串行
+       reconcile**(`runDeclarativeEra`):不再需要的 `unregister`(先删 `live` 表再 await)、重新需要的
+       `register`,retire/register 各打一行日志;已挂载会话钉在组合快照上、不受影响。旧宿主(≤0.1.6)
+       无注册表可观察、无 volatile 通道 ⇒ **启动时判定一次**:有界探测 `detectPeerCoverage(ctx)`
+       (默认 1s 轮询,读不到即 false),结果同时喂给物化循环与 `purgeOrphans` ⇒ 打开开关会清掉上一轮
+       物化的目录,关掉要**下次启动**才回来(README 已写明这一代价)。
+     - ③ **权威状态只有一份**:就是本插件这一行 Config(旧宿主是 `gitbash-shell` 命名空间);对方的设置卡
+       经 `ctx.configForms.get('gitbash-shell')` 绑定**同一行**写**同一字段**(官方支持编辑另一插件拥有的
+       命名空间)。**不要再引入第二份镜像字段或双向同步逻辑**;旧宿主上 `configForms` 不存在,镜像卡片
+       不出现,开关只在本插件设置面可改。
+     - ④ **服务契约**:能力名 `ptcCordisPreset`、形状 `{ id, gitBashActive }` 由 dsh-ptc-cordis-preset
+       **≥0.14.0** 提供(本插件侧的去重开关自 ≥0.25.0);**该形状变更要同步对方仓库**。改这一层必须跑
+       冒烟里的去重判定矩阵、能力探测、旧时代读取与两个时代的接线断言四例。
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
    **`exports` 必须含 `"./package.json": "./package.json"`(v0.24.3 修,与 dsh-better-workspace
@@ -274,6 +299,12 @@
 5. **升级 dsh 后**(v0.14.0 起强制):按第 9 条把四个内置 preset 各核对一遍——行序列 + 提示词 +
    disabled 默认值;smoke 的 `assets keep the pre-rename engine spelling` 与 `materialize aligns
    the engine row to the host` 两项锁住对齐行为;真机确认物化日志出现四个变体且模式选择器里都能挂载。
+6. **去重改动(§4e,v0.25.0 起)**:隔离实例(`DSH_HOME` 独立 + 新建 profile + 两份插件 `link:` 安装
+   + 探针插件定时打印 `agentPresets.list()`)里**真的翻转开关**看名录:默认两侧条目并存 → 写
+   `settings.update('gitbash-shell', { suppressPeerCordis: true })` 后出现 `preset 'cordis-gitbash'
+   retired …` 且名录少一条 → 写回 `false` 后出现 `preset 'cordis-gitbash' registered declaratively`
+   且名录恢复。非 Windows 机上用探针副本把 `gitBash` 能力的 `active` 强制为 `true` 模拟 win32 语义;
+   顺带在无头浏览器确认对方设置卡上的镜像行渲染出来(同一份状态)。
 
 ## 发布 checklist(GitHub + npm)
 

@@ -1488,7 +1488,7 @@ test('host half: lazy Config with volatile probing and the era branch', async ()
   assert.doesNotMatch(hostSource, /^import Schema from '@deepseek-ai\/schemastery'/m)
   assert.match(hostSource, /export const Config = Schema === null \? undefined : Schema\.object\(/)
   assert.match(hostSource, /typeof ctx\.agentPresets\.register === 'function'/)
-  assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds\)/)
+  assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\)\)/)
 })
 
 test('client half: era-split settings acquisition, no hard settingsScope inject', () => {
@@ -1626,5 +1626,104 @@ test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async
       updates.some(([ns, patch]) => ns === 'dsh-better-sidebar' && patch && typeof patch.terminalShell === 'string'),
       'the sidebar adoption must hand Git Bash to the settings seam',
     )
+  }
+})
+
+// ── peer dedupe against dsh-ptc-cordis-preset (v0.25.0, their issue #7) ──────
+
+test('effectivePresetIds drops only the peer-covered variant, and only when both facts hold', () => {
+  const { effectivePresetIds, PRESET_IDS, PEER_COVERED_PRESET_ID } = _internal
+  assert.equal(PEER_COVERED_PRESET_ID, 'cordis-gitbash')
+  // default: nothing changes — the historical four-variant roster, byte for byte
+  assert.deepEqual(effectivePresetIds(PRESET_IDS), [...PRESET_IDS])
+  assert.deepEqual(effectivePresetIds(undefined), [...PRESET_IDS])
+  // either fact alone is not enough
+  assert.deepEqual(effectivePresetIds(PRESET_IDS, { suppress: false, peerGitBash: true }), [...PRESET_IDS])
+  assert.deepEqual(effectivePresetIds(PRESET_IDS, { suppress: true, peerGitBash: false }), [...PRESET_IDS])
+  assert.deepEqual(effectivePresetIds(PRESET_IDS, {}), [...PRESET_IDS])
+  // both facts → exactly the peer-covered variant leaves, order preserved
+  assert.deepEqual(
+    effectivePresetIds(PRESET_IDS, { suppress: true, peerGitBash: true }),
+    ['standard-gitbash', 'minimal-gitbash', 'code-gitbash'],
+  )
+  // an explicit row list is still honored, and an empty one falls back to the default
+  assert.deepEqual(effectivePresetIds(['cordis-gitbash'], { suppress: true, peerGitBash: true }), [])
+  assert.deepEqual(
+    effectivePresetIds([], { suppress: true, peerGitBash: true }),
+    ['standard-gitbash', 'minimal-gitbash', 'code-gitbash'],
+  )
+  // the caller's array is never mutated (the row config is shared state)
+  const configured = [...PRESET_IDS]
+  effectivePresetIds(configured, { suppress: true, peerGitBash: true })
+  assert.deepEqual(configured, PRESET_IDS)
+})
+
+test('detectPeerCoverage reads the peer capability; absent means no dedupe', async () => {
+  const { detectPeerCoverage, PEER_CAPABILITY } = _internal
+  assert.equal(PEER_CAPABILITY, 'ptcCordisPreset')
+  assert.equal(await detectPeerCoverage({ get: () => ({ id: 'ptc-cordis', gitBashActive: true }) }), true)
+  assert.equal(await detectPeerCoverage({ get: () => ({ id: 'ptc-cordis', gitBashActive: false }) }), false)
+  // absent peer → false after the bounded probe, never a throw
+  const started = Date.now()
+  assert.equal(await detectPeerCoverage({ get: () => undefined }), false)
+  assert.ok(Date.now() - started >= 900, 'the probe waits for a peer row that may still be mounting')
+  // a throwing service read is swallowed (it must never break the row)
+  assert.equal(await detectPeerCoverage({ get: () => { throw new Error('nope') } }), false)
+})
+
+test('readSuppressPeerCordis: old-era namespace read, default off', () => {
+  const { readSuppressPeerCordis } = _internal
+  const ctxWith = (value) => ({ get: (name) => (name === 'settings' ? { get: () => value } : undefined) })
+  assert.equal(readSuppressPeerCordis(ctxWith({ suppressPeerCordis: true })), true)
+  assert.equal(readSuppressPeerCordis(ctxWith({ suppressPeerCordis: false })), false)
+  assert.equal(readSuppressPeerCordis(ctxWith({})), false)
+  assert.equal(readSuppressPeerCordis(undefined), false)
+  assert.equal(readSuppressPeerCordis({ get: () => { throw new Error('nope') } }), false)
+})
+
+test('host half: the dedupe switch is wired on both eras and defaults OFF', () => {
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // declared on the row Config (new era) and on the legacy namespace
+  assert.match(src, /suppressPeerCordis: live\(Schema\.boolean\(\)\.default\(false\)\)/)
+  assert.match(src, /suppressPeerCordis: Schema\.boolean\(\)\.default\(false\)/)
+  // new era: reactive — peer capability arrival + the volatile switch itself
+  assert.match(src, /ctx\.inject\(\[PEER_CAPABILITY\]/)
+  assert.match(src, /ctx\.on\('loader\/volatile-update'/)
+  assert.match(src, /const unregister = await registerVariant\(ctx, presetId/)
+  assert.match(src, /live\.delete\(presetId\)/, 'a suppressed variant is retired, not merely skipped')
+  // old era: the same decision at startup, and orphan purge follows the effective list
+  assert.match(src, /const effectiveIds = effectivePresetIds\(presetIds, \{ suppress: suppressPeer, peerGitBash \}\)/)
+  assert.match(src, /purgeOrphans\(userRootPath, effectiveIds\)/)
+  // the decision is never taken without the peer's Git Bash answer
+  assert.match(src, /suppressPeer \? await detectPeerCoverage\(ctx\) : false/)
+})
+
+test('client card: the dedupe row is peer-gated and writes THIS row\'s field', () => {
+  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  // the peer row id is a named constant (no scattered literals)
+  assert.match(src, /var PEER_NS = "ptc-cordis"/)
+  // bound through configForms (the official cross-namespace face), subscribed so a
+  // change made on the peer's card repaints this one
+  assert.match(src, /props\.ctx\.get\("configForms"\)/)
+  assert.match(src, /forms\.get\(PEER_NS\)/)
+  assert.match(src, /form\.subscribe\(/)
+  // the value stays on THIS plugin's row: read from the bound snapshot, written
+  // through the card's own writeField (never a second copy of the state)
+  assert.match(src, /var dedupe = snap\.value\.suppressPeerCordis === true;/)
+  assert.match(src, /writeField\("suppressPeerCordis", true\)/)
+  assert.match(src, /writeField\("suppressPeerCordis", false\)/)
+  // drawn only while the peer's entry is served (absent peer / old host hide it)
+  assert.match(src, /var dedupeSection = peerSnap\.status === "ready" \? E\("div", \{ className: "gb-section" \}/)
+  assert.match(src, /\n\t\t\t\tdedupeSection,/)
+  // the ctx reaches the component: the inject factory carries it as a plain member
+  assert.match(src, /return \{ scope: scope, ctx: ctx \};/)
+  // hooks stay before the scope's early return (a conditional hook would throw)
+  const hookAt = src.indexOf('var peerState = useState(null);')
+  const earlyReturnAt = src.indexOf('if (snap.status !== "ready") return null;')
+  assert.ok(hookAt > 0 && earlyReturnAt > hookAt, 'the peer hooks must run before the early return')
+  // all three copy keys exist in every dictionary (the parity test also guards this)
+  for (const key of ['sec.dedupe', 'dedupe.label', 'dedupe.hint']) {
+    const occurrences = [...src.matchAll(new RegExp('"' + key.replace('.', '\\.') + '":', 'g'))].length
+    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
   }
 })

@@ -69,6 +69,26 @@ the pwsh executor did.
 
 ## Config
 
+The `gitbash-shell` row (its id has matched the settings namespace since v0.24.0; it was
+`gitbash-presets` through v0.23.0) takes the materialized `presets` list and the cooperation
+switch:
+
+```yaml
+- id: gitbash-shell
+  config:
+    presets: [standard-gitbash, minimal-gitbash]   # all four by default
+    suppressPeerCordis: false                       # dedupe against dsh-ptc-cordis-preset, off by default
+```
+
+`suppressPeerCordis` (boolean, **off by default**) drops `创造模式 · Git Bash` (`cordis-gitbash`)
+from the roster only while two facts hold **at the same time**: the switch is `true` **and**
+dsh-ptc-cordis-preset reports that its `PTC 创造模式` is the Git Bash variant. Off by default means
+the four-variant roster of 0.24.x is unchanged; see
+[Cooperation with dsh-ptc-cordis-preset](#cooperation-with-dsh-ptc-cordis-preset) for the decision
+rule, the timing, and how both sides share one state.
+
+Executor config:
+
 ```yaml
 config:
   bashPath: "D:/Tools/Git/bin/bash.exe"   # default C:/Program Files/Git/bin/bash.exe
@@ -82,6 +102,48 @@ v0.5.0+ detects it while materializing `PTC 创造模式`: with both installed,
 the PTC preset is materialized as Git Bash automatically (tool-bash on,
 tool-pwsh off) — no extra mode, no manual edits. Without this plugin the PTC
 preset stays as its own plugin manages it.
+
+### Dedupe switch: `suppressPeerCordis` (off by default, v0.25.0)
+
+Once the cooperation is active, `创造模式 · Git Bash` (this plugin's `cordis-gitbash`) and the
+peer's Git Bash-materialized `PTC 创造模式` describe the same mode, and with both plugins installed
+they are listed side by side by default. Turning on `suppressPeerCordis` in this plugin's row
+Config is what retires this plugin's variant (request and tradeoffs:
+[issue #7](https://github.com/KannaKuron/dsh-gitbash-shell/issues/7)).
+
+**Two facts must BOTH hold — neither alone is enough:**
+
+- the switch is `true`;
+- and the peer reports `gitBashActive: true` through the `ptcCordisPreset` host capability (that
+  is, its `PTC 创造模式` really is the Git Bash variant).
+
+A peer that is **absent / not mounted yet / not active / older than 0.14.0** ⇒ nothing is dropped:
+we would rather show one extra roster entry than cost the user a mode because the peer could not be
+seen. The switch is off by default, so nothing changes unless you ask for it.
+
+**When it takes effect:**
+
+- **New hosts (dsh ≥ 0.1.7) — live**: the switch rides the row Config's volatile channel and the
+  peer capability is watched through `ctx.inject(['ptcCordisPreset'])` (**independent of plugin row
+  activation order**); either change reconciles on the spot — retiring logs `preset 'cordis-gitbash'
+  retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)`, restoring logs `preset
+  'cordis-gitbash' registered declaratively`. Sessions already mounted keep their own composition
+  snapshot and are never rewritten; the roster change shows up for new sessions.
+- **Old hosts (dsh ≤ 0.1.6) — decided once at startup**: there is no registration registry to watch
+  and the capability probe is bounded (1s by default; "not seen" counts as "not covered"), so
+  turning the switch on cleans up the `cordis-gitbash` directory an earlier boot materialized,
+  while turning it back off re-materializes that variant on the **next startup** only.
+
+**Both settings cards show one and the same state**: the single authoritative value lives in this
+plugin's own row Config; the peer's card binds that same row through
+`ctx.configForms.get('gitbash-shell')` and writes the same field (DSH officially supports editing a
+namespace another plugin owns), so a change on either side shows up on the other immediately —
+there is no second copy and no sync logic. On old hosts `configForms` does not exist, the mirrored
+card never appears, and the switch is only editable on this plugin's own surface (the
+`gitbash-shell` namespace).
+
+**Versions**: the switch itself ships in **this plugin ≥ 0.25.0**; the peer's cooperation
+capability ships in **dsh-ptc-cordis-preset ≥ 0.14.0**.
 
 ## POSIX path dialect (introduced in v0.7.0, gated by the `posixPaths` switch)
 

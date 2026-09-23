@@ -3,6 +3,30 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.25.0 — 2026-09-24
+
+**类型**:feat(与 dsh-ptc-cordis-preset 去重:issue #7)
+
+- **需求(用户提的,不是 bug)**:两插件同装时模式名录 9 项,其中本插件的 `创造模式 · Git Bash`(`cordis-gitbash`)与对方的 `PTC 创造模式`(`ptc-cordis`,在 `gitBash` 能力联动下已按 Git Bash 版物化:`tool-bash` 启用、`tool-pwsh` 禁用)面向的是**同一件事**。issue 的两条硬要求:①开关**默认关**(保持现状、不改老用户行为);②开关在任一侧都能看到并修改,且必须是**同一份状态**。对方仓库的同一条需求见 dsh-ptc-cordis-preset#1(该 issue 的备注「npm 包不带 CHANGELOG、用户无法核对历史行为」在本轮一并处理,见文末附带项)。
+- **① 新开关 `suppressPeerCordis`(volatile 布尔,默认 `false`)**:dsh ≥ 0.1.7 上是本插件**行 Config** 的字段(与其余字段同款的 `live()` 探测 + volatile 投影,改动经 `loader/volatile-update` 实时生效);旧宿主(≤ 0.1.6)在 settings 命名空间 `gitbash-shell` 里声明同名字段(`readSuppressPeerCordis`),因为旧 era 既没有行 Config 表单也没有跨命名空间编辑。默认 `false` ⇒ **0.24.x 的四变体名录逐字节不变**,去重是用户主动要的增量而非新默认。
+- **② 判定是「两个事实同时成立」,缺一不可**:开关 ON **且** 对方通过 `ctx.provide('ptcCordisPreset', { id, gitBashActive: true })` 报告 Git Bash 侧真的生效。对方**缺失 / 未安装 / 装了但 `gitBashActive` 不为 true / 尚未挂载**⇒ 一律**不摘**——绝不因为「看不到对方」就少给用户一个变体。规则由纯函数 `effectivePresetIds(configured, { suppress, peerGitBash })` 承载(`configured` 为空/非数组时回落 `PRESET_IDS`,只在两个事实都为 `true` 时过滤掉 `PEER_COVERED_PRESET_ID = 'cordis-gitbash'`),注册与物化两条路径共用同一个决策,不可能各自解释。
+  - **为什么不用 `agentPresets.list()` 判断**(issue 里的建议之一):名录只能给出 `{ id, name, description, order, broken }`,读不出「对方这一条是不是 Git Bash 版」这个事实——名字与描述会随对方版本漂移,还可能被用户改;判定要求对方**主动上报**能力事实,我们只读那一个布尔值。宁可少一个信号来源,也不要按名字猜。
+- **③ 新宿主(≥ 0.1.7)是实时的**:`ctx.inject(['ptcCordisPreset'], …)`(与行激活顺序无关——同一个坑 v0.7.2 在 inspect-registry shim 上踩过)+ `ctx.on('loader/volatile-update', …)` 监听本行开关 → 两者都触发**串行 reconcile**:不再需要的变体 `unregister`(`live` 表逐条记录 disposer,先删表再 await,失败只记日志不中断其余条目),重新需要的变体 `register`。两种迁移都打日志,便于真机核对:`preset '<id>' retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)` / `preset '<id>' registered declaratively`。**已挂载会话的 preset revision 不受影响**(会话钉在组合快照上,retire 只动名录),新会话才看到变化——与 v0.24.0「声明式注册不重写在跑的会话」同一条纪律。
+- **④ 旧宿主(≤ 0.1.6)是启动时一次性判定**:旧 era 没有可观察的注册表、也没有 volatile Config 更新通道,故用**有界探测** `detectPeerCoverage(ctx)`(默认 1s 超时、25ms 轮询;服务缺失/读抛错/始终 `gitBashActive !== true` 都是 `false`),`effectivePresetIds` 的结果**同时喂给物化循环与 `purgeOrphans`**——所以打开开关后,上一轮物化出来的 `cordis-gitbash` 目录会被当作孤儿**清理掉**;关掉开关后该变体在**下一次启动**才重新物化(启动时读一次开关是这个 era 的取舍,README 已写明)。
+  - **探测有界而不是「等对方出现」**:两行是并发挂载的,无限等待会把本插件自己的启动拖死;1s 内没有能力 = 当作对方不覆盖(保守方向:保留变体),这与「绝不少给」的取舍一致。
+- **⑤ 同一份状态出现在两侧设置卡上,没有第二份拷贝**:权威值就是本插件这一行 Config;对方的设置卡通过 `ctx.configForms.get('gitbash-shell')` **绑定同一行**并写同一个字段(DSH 官方支持编辑另一个插件所拥有的命名空间),所以任一侧改动另一侧立即同步——不引入「镜像字段 + 同步逻辑」那套双份状态。旧宿主上镜像卡片不出现(`configForms` 服务不存在),开关只在本插件自己的设置面(命名空间 `gitbash-shell`)可改,且按启动时读取生效。
+- **依赖边界**:去重开关本体在**本插件 ≥ 0.25.0**;对方的协作能力(`ptcCordisPreset` 能力服务)在 **dsh-ptc-cordis-preset ≥ 0.14.0**。对方低于 0.14.0 ⇒ 能力服务不存在 ⇒ 探测恒为 `false` ⇒ 名录保持四个变体(降级安全,不会因为对方旧版本而误摘)。
+- **验证(端到端,隔离的真实 dsh 0.1.7-rc.1 实例,本机 macOS)**:`DSH_HOME` 隔离 + 新建 web profile + 两份插件用 `link:` 安装 + 一个探针插件定时打印 `agentPresets.list()` 并**中途真的写设置**:
+  - 默认(开关未开):名录 **10 项**,同时含 `cordis-gitbash|创造模式 · Git Bash` 与 `ptc-cordis|PTC 创造模式 · Git Bash`——即默认行为与 0.24.x 一致;
+  - 写入 `settings.update('gitbash-shell', { suppressPeerCordis: true })` → 宿主日志出现 `preset 'cordis-gitbash' retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)`,**名录里该条消失**;
+  - 写回 `false` → 日志出现 `preset 'cordis-gitbash' registered declaratively`,**名录恢复**;
+  - 唯一的人为点是探针副本里把 `gitBash` 能力的 `active` 强制为 `true`(macOS 上模拟 Windows 语义),其余全为真代码。
+- **设置面验证**:无头浏览器在**同一实例**上确认对方设置卡出现两行——`workflow 工具: 提供（默认） 不提供` 与 `与 dsh-gitbash-shell 去重: 去重 保留两个（默认）`——即两侧绑定同一行的写法在真实宿主上渲染成立。
+- **`npm test` 72/72**(新增 4 条:去重判定矩阵(两个事实的四种组合 + 空/缺省列表)、能力探测(真实能力/`gitBashActive: false`/服务缺失/读抛错)、旧时代读取(命名空间默认关)、两个时代的接线断言(volatile 开关 + `ctx.inject` 能力 + `live.delete` 真退注册 + `purgeOrphans` 跟随有效清单))。
+- **未覆盖**:Windows 真机复验仍待用户(本机 macOS)。判定逻辑、两时代接线与名录变化已在真实 0.1.7-rc.1 宿主上跑通,但 win32 上「真的挂载 `PTC 创造模式`(Git Bash 版)后摘掉变体」这一条尚未在 Windows 上走过一遍。
+- **附带(npm 产物补 `CHANGELOG.md`)**:`package.json` 的 `files` 数组加入 `CHANGELOG.md`。起因是对方仓库 issue #1 的备注:两边的 npm 包都不带 CHANGELOG,用户装了包也无法核对「某个行为是曾经有还是从未有过」。只影响 npm tarball 的内容,不改仓库结构、不改运行时、不影响 `dsh plugin add`。
+- 相关:issue #7 https://github.com/KannaKuron/dsh-gitbash-shell/issues/7 ;对方仓库对应条目 https://github.com/KannaKuron/dsh-ptc-cordis-preset/issues/1
+
 ## v0.24.4 — 2026-09-23
 
 **类型**:fix(dsh 0.1.7 执行器半整体失修:issue #6 的 Config 缺 `.volatile()` + 同一次审计查出的 `run`/`start`→`execute` 改名 + 两处 `settings.get(ns)` 在新宿主上静默失效)

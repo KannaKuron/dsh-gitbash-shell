@@ -95,6 +95,36 @@ const MARKER_FILE = '.plugin-managed.json'
 /** Default preset ids this plugin materializes, in roster order (configurable). */
 export const PRESET_IDS = ['standard-gitbash', 'minimal-gitbash', 'code-gitbash', 'cordis-gitbash']
 
+/**
+ * The variant dsh-ptc-cordis-preset already covers while cooperating: its
+ * `PTC 创造模式` is materialized against Git Bash too, so our own
+ * `创造模式 · Git Bash` describes the same mode (their issue #7).
+ */
+export const PEER_COVERED_PRESET_ID = 'cordis-gitbash'
+
+/** Service dsh-ptc-cordis-preset publishes: `{ id, gitBashActive }`. */
+export const PEER_CAPABILITY = 'ptcCordisPreset'
+
+/**
+ * The roster this plugin serves: the configured list, minus the variant a peer
+ * already covers. Two independent facts must BOTH hold before anything is
+ * dropped — the user's `suppressPeerCordis` switch (row Config, default OFF)
+ * and the peer actually reporting a Git Bash-materialized preset. A peer that
+ * is absent, inactive, or mounted later than this row therefore never costs
+ * the user a variant, and the default keeps the historical four-variant roster
+ * byte for byte.
+ * @param {string[]} configured - the row's `presets` list (empty/absent = default).
+ * @param {object} [options] - live decision inputs.
+ * @param {boolean} [options.suppress] - the live `suppressPeerCordis` switch.
+ * @param {boolean} [options.peerGitBash] - the peer capability's `gitBashActive`.
+ * @returns {string[]} the ids to register (or materialize), in configured order.
+ */
+export function effectivePresetIds(configured, { suppress, peerGitBash } = {}) {
+  const list = Array.isArray(configured) && configured.length > 0 ? [...configured] : [...PRESET_IDS]
+  if (suppress !== true || peerGitBash !== true) return list
+  return list.filter((id) => id !== PEER_COVERED_PRESET_ID)
+}
+
 /** Git Bash binary default — must match src/shell.js. */
 const DEFAULT_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
 
@@ -721,6 +751,16 @@ export const Config = Schema === null ? undefined : Schema.object({
   gitAutocrlf: live(Schema.boolean().default(true)),
   bashPath: live(Schema.string().default('')),
   adoptSidebar: live(Schema.boolean().default(true)),
+  /**
+   * Dedupe switch against dsh-ptc-cordis-preset (their issue #7, v0.25.0):
+   * ON while that plugin is installed AND materializing its `PTC 创造模式`
+   * against Git Bash drops OUR `创造模式 · Git Bash` from the roster, because
+   * the two describe the same mode. Default OFF — the historical four-variant
+   * roster is unchanged until asked for. The same state is rendered on their
+   * settings card too (their card binds this row through configForms), so
+   * changing it on either side changes it here.
+   */
+  suppressPeerCordis: live(Schema.boolean().default(false)),
 })
 
 /** Read one Config value across eras: Volatile ref (>= 0.1.7) or plain value. */
@@ -735,7 +775,7 @@ export function valueOf(value) {
  * reading the registered namespace through the settings service.
  * @param {object} ctx - the plugin's mounting context.
  * @param {object|undefined} config - apply()'s resolved Config.
- * @returns {{ dialect: () => object, posix: () => boolean, adoptSidebar: () => boolean }}
+ * @returns {{ dialect: () => object, posix: () => boolean, adoptSidebar: () => boolean, suppressPeerCordis: () => boolean }}
  */
 function makeLiveReader(ctx, config) {
   let legacy = false
@@ -762,6 +802,8 @@ function makeLiveReader(ctx, config) {
     dialect,
     posix: () => dialect().posixPaths === true,
     adoptSidebar: () => dialect().adoptSidebar !== false,
+    // Default OFF on both eras: only an explicit true asks for deduplication.
+    suppressPeerCordis: () => (legacy || !hasConfig ? readSuppressPeerCordis(ctx) : valueOf(config.suppressPeerCordis) === true),
   }
 }
 
@@ -856,6 +898,52 @@ export function readAdoptSidebar(ctxLike) {
     return !(value && value.adoptSidebar === false)
   } catch {
     return true
+  }
+}
+
+/**
+ * Read the peer-dedupe switch (v0.25.0, default OFF) from the OLD era's
+ * registered namespace — on dsh >= 0.1.7 the row Config is the surface and
+ * `makeLiveReader` reads it directly. Never throws.
+ */
+export function readSuppressPeerCordis(ctxLike) {
+  try {
+    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
+    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
+    return !!(value && value.suppressPeerCordis === true)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Bounded probe for dsh-ptc-cordis-preset's coverage capability. The OLD era
+ * has no registration registry to watch, and rows mount concurrently, so poll
+ * briefly when the service is not there yet; a short absence means the peer is
+ * not installed (or is older than 0.14.0) and every configured variant stays.
+ * @param {object} ctx - the plugin's mounting context.
+ * @param {number} [timeoutMs] - total wait before giving up.
+ * @param {number} [intervalMs] - poll interval.
+ * @returns {Promise<boolean>} the peer's `gitBashActive`, false when unknown.
+ */
+export async function detectPeerCoverage(ctx, timeoutMs = 1000, intervalMs = 25) {
+  try {
+    const probe = () => {
+      const capability = ctx.get(PEER_CAPABILITY)
+      return capability === null || capability === undefined ? undefined : capability
+    }
+    let capability = probe()
+    if (capability === undefined) {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+        capability = probe()
+        if (capability !== undefined) break
+      }
+    }
+    return capability?.gitBashActive === true
+  } catch {
+    return false
   }
 }
 
@@ -1920,26 +2008,107 @@ async function registerVariant(ctx, presetId, { gitBashActive, skillsDir }) {
 }
 
 /**
- * Declarative-era wiring: register every configured variant once at startup
- * and keep exactly one registration per variant for the plugin's lifetime.
- * The roster picks the entries up immediately; sessions already pinned to a
- * variant keep their revision until recomposed.
+ * Declarative-era wiring: keep exactly one registration per VARIANT THIS HOST
+ * SHOULD SERVE for the plugin's lifetime, and re-reconcile whenever that set
+ * changes. Two inputs drive it — the live `suppressPeerCordis` switch and the
+ * peer capability appearing (or leaving) via `ctx.inject`, which fires
+ * independent of row activation order — and the peer's own coverage only
+ * counts while it reports a Git Bash-materialized preset.
+ *
+ * The roster picks entries up immediately; sessions already pinned to a
+ * variant keep their revision until recomposed, so suppressing a variant never
+ * rewrites a running session.
+ * @param {object} ctx - the plugin's mounting context.
+ * @param {string[]} presetIds - the row's configured variants.
+ * @param {() => boolean} readSuppress - live dedupe switch reader.
+ * @returns {Promise<void>} resolves once the first reconcile finished.
  */
-async function runDeclarativeEra(ctx, presetIds) {
+async function runDeclarativeEra(ctx, presetIds, readSuppress) {
   cleanupLegacyTrees(presetIds)
   const gitBashActive = process.platform === 'win32'
   const skillsDir = await resolveSkillsDir()
-  const unregisters = []
-  for (const presetId of presetIds) {
-    try {
-      const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir })
-      if (unregister) unregisters.push(unregister)
-    } catch (error) {
-      console.log(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
-    }
+  /** presetId -> unregister, i.e. exactly what is live right now. */
+  const live = new Map()
+  let peerGitBash = false
+  let serial = Promise.resolve()
+
+  const desired = () => effectivePresetIds(presetIds, { suppress: readSuppress(), peerGitBash })
+
+  const reconcile = () => {
+    serial = serial.then(async () => {
+      const want = desired()
+      for (const [presetId, off] of [...live]) {
+        if (want.includes(presetId)) continue
+        live.delete(presetId)
+        try {
+          await off()
+          console.log(TAG + " preset '" + presetId + "' retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)")
+        } catch (error) {
+          console.log(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
+        }
+      }
+      for (const presetId of want) {
+        if (live.has(presetId)) continue
+        try {
+          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir })
+          if (unregister) {
+            live.set(presetId, unregister)
+            console.log(TAG + " preset '" + presetId + "' registered declaratively")
+          }
+        } catch (error) {
+          console.log(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
+        }
+      }
+    }).catch((error) => {
+      console.log(TAG + ' preset reconcile failed: ' + (error && error.message ? error.message : error))
+    })
+    return serial
   }
-  console.log(TAG + ' registered ' + unregisters.length + ' preset(s) declaratively (' + presetIds.join(', ') + ')')
-  ctx.effect(() => () => { for (const off of unregisters) void off() }, 'dsh-gitbash-shell: declarative preset registrations')
+
+  await reconcile()
+  console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')')
+
+  // The peer's capability: `ctx.inject` makes this independent of row order,
+  // and the child scope's disposer runs when the peer unmounts (or its row is
+  // disabled), which restores the variant.
+  try {
+    ctx.inject([PEER_CAPABILITY], (peerCtx) => {
+      try {
+        const coverage = peerCtx[PEER_CAPABILITY] ?? peerCtx.get(PEER_CAPABILITY)
+        const next = coverage?.gitBashActive === true
+        if (next !== peerGitBash) {
+          peerGitBash = next
+          void reconcile()
+        }
+      } catch (error) {
+        console.log(TAG + ' peer coverage read failed: ' + (error && error.message ? error.message : error))
+      }
+      peerCtx.effect(() => () => {
+        if (!peerGitBash) return
+        peerGitBash = false
+        void reconcile()
+      }, 'dsh-gitbash-shell: peer coverage release')
+    })
+  } catch (error) {
+    console.log(TAG + ' peer capability wiring failed: ' + (error && error.message ? error.message : error))
+  }
+
+  // The switch itself: a volatile Config edit on this row lands as a
+  // loader/volatile-update event on this fiber.
+  try {
+    ctx.on('loader/volatile-update', (paths) => {
+      try {
+        if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path) && path[0] === 'suppressPeerCordis')) return
+        void reconcile()
+      } catch (error) {
+        console.log(TAG + ' dedupe switch handling failed: ' + (error && error.message ? error.message : error))
+      }
+    })
+  } catch (error) {
+    console.log(TAG + ' dedupe switch wiring failed: ' + (error && error.message ? error.message : error))
+  }
+
+  ctx.effect(() => () => { for (const off of live.values()) void off() }, 'dsh-gitbash-shell: declarative preset registrations')
 }
 
 export async function apply(ctx, config = {}) {
@@ -2019,6 +2188,10 @@ export async function apply(ctx, config = {}) {
             gitAutocrlf: Schema.boolean().default(true),
             bashPath: Schema.string().default(''),
             adoptSidebar: Schema.boolean().default(true),
+            // v0.25.0: same switch as the row Config carries on dsh >= 0.1.7
+            // (the OLD era has no cross-namespace edits, so this namespace is
+            // the only side that can change it here).
+            suppressPeerCordis: Schema.boolean().default(false),
           }))
           sidebarScope = scope
           console.log(`${TAG} settings namespace registered: ${SETTINGS_NAMESPACE} (posixPaths default on, adoptSidebar default on)`)
@@ -2304,7 +2477,7 @@ export async function apply(ctx, config = {}) {
   // more), so this branch serves the variants and returns.
   if (ctx.agentPresets && typeof ctx.agentPresets.register === 'function') {
     try {
-      await runDeclarativeEra(ctx, presetIds)
+      await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis())
     } catch (error) {
       console.log(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
     }
@@ -2343,9 +2516,21 @@ export async function apply(ctx, config = {}) {
   // 0.1.6-alpha.1, so the materializer copies whatever the host itself ships.
   const rows = await detectRowForms(ctx.agentPresets)
   const userRootPath = userRoot.path
-  purgeOrphans(userRootPath, presetIds)
+  // Same dedupe decision as the declarative era, taken once at startup here:
+  // this host has no roster registry to watch and no live Config writes, so the
+  // switch is read per boot (documented in the README). `purgeOrphans` retires
+  // a copy an earlier boot materialized, and flipping the switch back
+  // re-materializes it on the next start.
+  const suppressPeer = liveSettings.suppressPeerCordis()
+  const peerGitBash = suppressPeer ? await detectPeerCoverage(ctx) : false
+  const effectiveIds = effectivePresetIds(presetIds, { suppress: suppressPeer, peerGitBash })
+  if (effectiveIds.length !== presetIds.length) {
+    const skipped = presetIds.filter((presetId) => !effectiveIds.includes(presetId))
+    console.log(`${TAG} dsh-ptc-cordis-preset covers Creation mode on Git Bash — not materializing: ${skipped.join(', ')}`)
+  }
+  purgeOrphans(userRootPath, effectiveIds)
 
-  for (const presetId of presetIds) {
+  for (const presetId of effectiveIds) {
     const target = join(userRootPath, presetId)
     const state = classify(target)
     if (state === 'foreign') {
@@ -2387,4 +2572,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, effectivePresetIds, detectPeerCoverage, readSuppressPeerCordis, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }

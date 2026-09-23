@@ -46,6 +46,11 @@ window.__ModuleLoader__.load({
 		var NS = "gitbashShell";
 		/** The settings namespace the HOST half serves. */
 		var SETTINGS_NAMESPACE = "gitbash-shell";
+		/** The PEER row this card mirrors: dsh-ptc-cordis-preset's own entry. Only
+		   its existence is read here — the switch value itself lives on THIS
+		   plugin's row (the single authoritative copy the peer card binds too) —
+		   and the section is drawn only while that entry is actually served. */
+		var PEER_NS = "ptc-cordis";
 
 		// ── dictionaries ────────────────────────────────────────────────────────
 		// zh/en stay inline; the third languages live in LOCALES below, one entry
@@ -81,6 +86,9 @@ window.__ModuleLoader__.load({
 			"bash.saved": "已保存",
 			"adopt.label": "接管侧栏终端",
 			"adopt.hint": "开启时把 dsh-better-sidebar 的终端 shell 写成 Git Bash(默认开启);关闭后恢复接管前的值,已手动改过的终端设置不会被碰。模型侧的 bash 工具不受此开关影响——那由插件本体提供。",
+			"sec.dedupe": "与 PTC 创造模式去重",
+			"dedupe.label": "「创造模式 · Git Bash」重复项",
+			"dedupe.hint": "dsh-ptc-cordis-preset 同装时,它的「PTC 创造模式」在联动下已是 Git Bash 版,与本插件的「创造模式 · Git Bash」指向同一件事。开启去重后本插件不再注册那一条(名录少一项);默认关闭,保持四个变体不变。此开关就是对方设置卡上的同一个开关——两侧共享同一份状态,任一侧改动另一侧立即同步。仅在已安装 dsh-ptc-cordis-preset 时显示。",
 		};
 
 		var en = {
@@ -111,6 +119,9 @@ window.__ModuleLoader__.load({
 			"bash.saved": "Saved",
 			"adopt.label": "Adopt sidebar terminal",
 			"adopt.hint": "On (default) writes Git Bash into dsh-better-sidebar's terminal shell; turning it off restores the pre-adoption value and never touches a manually chosen one. The model-side bash tool is unaffected — the plugin itself provides that.",
+			"sec.dedupe": "Dedupe with PTC creation mode",
+			"dedupe.label": "\"Creation mode · Git Bash\" duplicate",
+			"dedupe.hint": "With dsh-ptc-cordis-preset installed alongside, its \"PTC creation mode\" is already the Git Bash variant under the link-up, so it and this plugin's \"creation mode · Git Bash\" point at the same thing. With dedupe on, this plugin stops registering that entry (one fewer in the roster); off by default, which keeps the four variants unchanged. This switch is the very same switch on the peer's settings card — both sides share one state, so a change on either side syncs to the other immediately. Shown only while dsh-ptc-cordis-preset is installed.",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded
@@ -151,6 +162,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "تم الحفظ",
 				"adopt.label": "تبنّي طرفية الشريط الجانبي",
 				"adopt.hint": "عند التفعيل (افتراضي) تُكتب Git Bash كـ shell لطرفية dsh-better-sidebar؛ وعند التعطيل تُستعاد القيمة السابقة ولا تُلمس القيمة المختارة يدويًا أبدًا. أداة bash الخاصة بالنموذج لا تتأثر — الإضافة نفسها توفرها.",
+				"sec.dedupe": "إزالة التكرار مع وضع PTC الإبداعي",
+				"dedupe.label": "عنصر «وضع الإبداع · Git Bash» المكرر",
+				"dedupe.hint": "عند تثبيت dsh-ptc-cordis-preset معًا، يكون «وضع PTC الإبداعي» لديه بالفعل نسخة Git Bash في إطار الربط، فيشير هو و«وضع الإبداع · Git Bash» في هذه الإضافة إلى الشيء نفسه. عند تفعيل إزالة التكرار تتوقف هذه الإضافة عن تسجيل ذلك العنصر (عنصر أقل في القائمة)؛ والمعطَّل افتراضيًا يُبقي المتغيّرات الأربعة كما هي. هذا المفتاح هو نفسه المفتاح الموجود على بطاقة إعدادات الطرف الآخر — الجانبان يتشاركان الحالة نفسها، وأي تغيير في أحد الجانبين يُزامَن فورًا مع الآخر. يظهر فقط عندما يكون dsh-ptc-cordis-preset مثبَّتًا.",
 			},
 			/* locale: de */
 			"de": {
@@ -181,6 +195,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Gespeichert",
 				"adopt.label": "Sidebar-Terminal übernehmen",
 				"adopt.hint": "Ein (Standard) schreibt Git Bash als Shell des dsh-better-sidebar-Terminals; Aus stellt den vorherigen Wert wieder her und fasst nie eine manuell gewählte Einstellung an. Das bash-Werkzeug des Modells bleibt unberührt — das liefert das Plugin selbst.",
+				"sec.dedupe": "Deduplizierung mit dem PTC-Kreativmodus",
+				"dedupe.label": "Doppelter Eintrag „Kreativmodus · Git Bash“",
+				"dedupe.hint": "Ist dsh-ptc-cordis-preset mitinstalliert, ist dessen „PTC-Kreativmodus“ durch die Verknüpfung bereits die Git-Bash-Fassung und zeigt damit auf dasselbe wie der „Kreativmodus · Git Bash“ dieses Plugins. Mit aktiver Deduplizierung registriert dieses Plugin den eigenen Eintrag nicht mehr (ein Eintrag weniger im Verzeichnis); standardmäßig aus, die vier Varianten bleiben unverändert. Dieser Schalter ist derselbe Schalter auf der Einstellungskarte der Gegenseite — beide Seiten teilen einen Zustand, eine Änderung auf einer Seite erreicht die andere sofort. Nur sichtbar, solange dsh-ptc-cordis-preset installiert ist.",
 			},
 			/* locale: fr */
 			"fr": {
@@ -211,6 +228,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Enregistré",
 				"adopt.label": "Adopter le terminal latéral",
 				"adopt.hint": "Activé (par défaut) : écrit Git Bash comme shell du terminal dsh-better-sidebar ; désactivé : restaure la valeur davant et ne touche jamais un choix manuel. Loutil bash du modèle nest pas concerné — le plugin le fournit lui-même.",
+				"sec.dedupe": "Dédoublonnage avec le mode création PTC",
+				"dedupe.label": "Entrée en double « mode création · Git Bash »",
+				"dedupe.hint": "Lorsque dsh-ptc-cordis-preset est installé en même temps, son « mode création PTC » est déjà la version Git Bash grâce à l'appairage : lui et le « mode création · Git Bash » de ce plugin désignent la même chose. Une fois le dédoublonnage activé, ce plugin n'enregistre plus sa propre entrée (une entrée de moins dans le catalogue) ; désactivé par défaut, ce qui laisse les quatre variantes intactes. Cet interrupteur est exactement le même que sur la carte de réglages d'en face — les deux côtés partagent un seul état, toute modification d'un côté est synchronisée immédiatement de l'autre. Affiché uniquement lorsque dsh-ptc-cordis-preset est installé.",
 			},
 			/* locale: hi */
 			"hi": {
@@ -241,6 +261,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "सहेजा गया",
 				"adopt.label": "साइडबार टर्मिनल अपनाएँ",
 				"adopt.hint": "चालू (डिफ़ॉल्ट) होने पर dsh-better-sidebar के टर्मिनल में Git Bash लिखा जाता है; बंद करने पर पहले वाली मान बहाल होती है और मैन्युअल चुनी गई सेटिंग कभी नहीं छुई जाती। मॉडल का bash टूल अप्रभावित रहता है — वह प्लगइन स्वयं देता है।",
+				"sec.dedupe": "PTC क्रिएशन मोड के साथ डुप्लीकेट हटाना",
+				"dedupe.label": "«क्रिएशन मोड · Git Bash» की डुप्लीकेट प्रविष्टि",
+				"dedupe.hint": "जब dsh-ptc-cordis-preset साथ में इंस्टॉल होता है, तो लिंक-अप के कारण उसका «PTC क्रिएशन मोड» पहले से Git Bash रूप है, और वह इस प्लगइन के «क्रिएशन मोड · Git Bash» के साथ एक ही चीज़ दर्शाता है। डुप्लीकेट हटाना चालू करने पर यह प्लगइन अपनी वह प्रविष्टि पंजीकृत नहीं करता (सूची में एक कम); डिफ़ॉल्ट रूप से बंद, जिससे चारों वेरिएंट अपरिवर्तित रहते हैं। यह स्विच सामने वाले की सेटिंग कार्ड पर मौजूद ठीक वही स्विच है — दोनों ओर एक ही स्थिति साझा होती है, किसी एक ओर बदलाव तुरंत दूसरी ओर सिंक होता है। यह केवल तभी दिखता है जब dsh-ptc-cordis-preset इंस्टॉल हो।",
 			},
 			/* locale: id */
 			"id": {
@@ -271,6 +294,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Tersimpan",
 				"adopt.label": "Adopsi terminal sidebar",
 				"adopt.hint": "Nyala (bawaan) menulis Git Bash sebagai shell terminal dsh-better-sidebar; dimatikan memulihkan nilai sebelumnya dan tidak pernah menyentuh pilihan manual. Alat bash sisi model tak terpengaruh — plugin sendiri yang menyediakannya.",
+				"sec.dedupe": "Deduplikasi dengan mode kreatif PTC",
+				"dedupe.label": "Entri duplikat «mode kreatif · Git Bash»",
+				"dedupe.hint": "Saat dsh-ptc-cordis-preset terpasang bersama, «mode kreatif PTC» miliknya sudah menjadi versi Git Bash berkat keterkaitan, sehingga ia dan «mode kreatif · Git Bash» plugin ini menunjuk hal yang sama. Dengan deduplikasi aktif, plugin ini berhenti mendaftarkan entrinya sendiri (berkurang satu di daftar); nonaktif secara bawaan, sehingga keempat varian tetap utuh. Sakelar ini adalah sakelar yang sama di kartu setelan pihak lain — kedua sisi berbagi satu status, perubahan di salah satu sisi langsung tersinkron ke sisi lain. Hanya tampil saat dsh-ptc-cordis-preset terpasang.",
 			},
 			/* locale: it */
 			"it": {
@@ -301,6 +327,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Salvato",
 				"adopt.label": "Adotta il terminale laterale",
 				"adopt.hint": "Attivo (predefinito) imposta Git Bash come shell del terminale di dsh-better-sidebar; disattivo ripristina il valore precedente e non tocca mai una scelta manuale. Lo strumento bash del modello non è interessato — lo fornisce il plugin stesso.",
+				"sec.dedupe": "Deduplicazione con la modalità creazione PTC",
+				"dedupe.label": "Voce duplicata «modalità creazione · Git Bash»",
+				"dedupe.hint": "Quando dsh-ptc-cordis-preset è installato insieme, la sua «modalità creazione PTC» è già la versione Git Bash grazie al collegamento: essa e la «modalità creazione · Git Bash» di questo plugin indicano la stessa cosa. Attivando la deduplicazione questo plugin non registra più la propria voce (una in meno nell'elenco); disattivata per impostazione predefinita, lascia intatte le quattro varianti. Questo interruttore è lo stesso presente sulla scheda impostazioni dell'altra parte — entrambe le parti condividono un unico stato, una modifica su un lato si sincronizza subito sull'altro. Visibile solo quando dsh-ptc-cordis-preset è installato.",
 			},
 			/* locale: ja */
 			"ja": {
@@ -331,6 +360,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "保存済み",
 				"adopt.label": "サイドバーターミナルを引き継ぐ",
 				"adopt.hint": "オン(既定)では dsh-better-sidebar のターミナルシェルに Git Bash を書き込みます。オフにすると以前の値へ戻し、手動で選択した設定には決して触れません。モデル側の bash ツールには影響しません——それはプラグイン本体が提供します。",
+				"sec.dedupe": "PTC 創造モードとの重複排除",
+				"dedupe.label": "「創造モード · Git Bash」の重複項目",
+				"dedupe.hint": "dsh-ptc-cordis-preset を併用している場合、連携により相手の「PTC 創造モード」はすでに Git Bash 版であり、本プラグインの「創造モード · Git Bash」と同じものを指します。重複排除を有効にすると本プラグインは自前の項目を登録しなくなります(名簿が 1 件減ります)。既定は無効で、4 つのバリアントは変わりません。このスイッチは相手の設定カードにあるものと同一で、両側が同じ状態を共有し、どちらかで変更すればもう一方へ即座に同期されます。dsh-ptc-cordis-preset がインストールされているときだけ表示されます。",
 			},
 			/* locale: ko */
 			"ko": {
@@ -361,6 +393,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "저장됨",
 				"adopt.label": "사이드바 터미널 인수",
 				"adopt.hint": "켜짐(기본)이면 dsh-better-sidebar 터미널 셸에 Git Bash를 기록하고, 끄면 이전 값을 복원하며 수동으로 고른 설정은 절대 건드리지 않습니다. 모델 측 bash 도구에는 영향이 없습니다 — 플러그인이 직접 제공합니다.",
+				"sec.dedupe": "PTC 창조 모드와 중복 제거",
+				"dedupe.label": "«창조 모드 · Git Bash» 중복 항목",
+				"dedupe.hint": "dsh-ptc-cordis-preset을 함께 설치하면 연동으로 인해 상대의 «PTC 창조 모드»가 이미 Git Bash 버전이므로, 그것과 이 플러그인의 «창조 모드 · Git Bash»는 같은 것을 가리킵니다. 중복 제거를 켜면 이 플러그인은 자기 항목을 더 이상 등록하지 않습니다(명부에서 하나 줄어듦). 기본값은 꺼짐이며 네 가지 변형은 그대로 유지됩니다. 이 스위치는 상대 설정 카드에 있는 바로 그 스위치입니다 — 양쪽이 같은 상태를 공유하므로 어느 쪽에서 바꾸든 다른 쪽에 즉시 동기화됩니다. dsh-ptc-cordis-preset이 설치되어 있을 때만 표시됩니다.",
 			},
 			/* locale: nl */
 			"nl": {
@@ -391,6 +426,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Opgeslagen",
 				"adopt.label": "Zijbalkterminal overnemen",
 				"adopt.hint": "Aan (standaard) schrijft Git Bash als shell van de dsh-better-sidebar-terminal; uit herstelt de vorige waarde en raakt nooit een handmatige keuze aan. De bash-tool van het model blijft buiten beschouwing — die levert de plugin zelf.",
+				"sec.dedupe": "Deduplicatie met de PTC-creatiemodus",
+				"dedupe.label": "Dubbele vermelding ‘creatiemodus · Git Bash’",
+				"dedupe.hint": "Als dsh-ptc-cordis-preset meegaat, is zijn ‘PTC-creatiemodus’ door de koppeling al de Git Bash-variant, dus die en de ‘creatiemodus · Git Bash’ van deze plugin wijzen op hetzelfde. Met deduplicatie aan registreert deze plugin die eigen vermelding niet meer (één minder in de lijst); standaard uit, waardoor de vier varianten ongewijzigd blijven. Deze schakelaar is dezelfde als op de instellingenkaart van de andere kant — beide kanten delen één status, een wijziging aan één kant synct direct naar de andere. Alleen zichtbaar zolang dsh-ptc-cordis-preset is geïnstalleerd.",
 			},
 			/* locale: pl */
 			"pl": {
@@ -421,6 +459,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Zapisano",
 				"adopt.label": "Przejmij terminal boczny",
 				"adopt.hint": "Włączony (domyślnie) zapisuje Git Bash jako shell terminala dsh-better-sidebar; wyłączony przywraca poprzednią wartość i nigdy nie narusza ręcznie wybranego ustawienia. Narzędzie bash po stronie modelu jest nietknięte — zapewnia je sama wtyczka.",
+				"sec.dedupe": "Deduplikacja z trybem tworzenia PTC",
+				"dedupe.label": "Zduplikowany wpis „tryb tworzenia · Git Bash”",
+				"dedupe.hint": "Gdy dsh-ptc-cordis-preset jest zainstalowany razem, jego „tryb tworzenia PTC” jest już dzięki powiązaniu wersją Git Bash, więc on i „tryb tworzenia · Git Bash” tej wtyczki oznaczają to samo. Po włączeniu deduplikacji ta wtyczka nie rejestruje już własnego wpisu (o jeden mniej w wykazie); domyślnie wyłączona, dzięki czemu cztery warianty pozostają bez zmian. Ten przełącznik to ten sam przełącznik na karcie ustawień drugiej strony — obie strony dzielą jeden stan, zmiana po jednej stronie natychmiast synchronizuje się z drugą. Widoczny tylko, gdy dsh-ptc-cordis-preset jest zainstalowany.",
 			},
 			/* locale: pt */
 			"pt": {
@@ -451,6 +492,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Salvo",
 				"adopt.label": "Adotar o terminal lateral",
 				"adopt.hint": "Ligado (padrão) grava o Git Bash como shell do terminal do dsh-better-sidebar; desligado restaura o valor anterior e nunca altera uma escolha manual. A ferramenta bash do modelo não é afetada — o próprio plug-in a fornece.",
+				"sec.dedupe": "Desduplicação com o modo de criação PTC",
+				"dedupe.label": "Entrada duplicada «modo de criação · Git Bash»",
+				"dedupe.hint": "Quando o dsh-ptc-cordis-preset está instalado em conjunto, o «modo de criação PTC» dele já é a versão Git Bash graças à integração, então ele e o «modo de criação · Git Bash» deste plugin apontam para a mesma coisa. Com a desduplicação ligada, este plugin deixa de registar a sua própria entrada (uma a menos na lista); desligada por padrão, mantendo as quatro variantes inalteradas. Este interruptor é o mesmo do cartão de definições do outro lado — os dois lados partilham um único estado, e uma alteração de um lado sincroniza imediatamente com o outro. Só aparece quando o dsh-ptc-cordis-preset está instalado.",
 			},
 			/* locale: ru */
 			"ru": {
@@ -481,6 +525,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Сохранено",
 				"adopt.label": "Перехватывать терминал боковой панели",
 				"adopt.hint": "Включено (по умолчанию): Git Bash записывается как shell терминала dsh-better-sidebar; выключено — восстанавливается прежнее значение, вручную выбранные настройки не трогаются. Инструмент bash у модели не затронут — его предоставляет сам плагин.",
+				"sec.dedupe": "Удаление дубликата с творческим режимом PTC",
+				"dedupe.label": "Дублирующая запись «творческий режим · Git Bash»",
+				"dedupe.hint": "Если dsh-ptc-cordis-preset установлен вместе, его «творческий режим PTC» благодаря связке уже является версией Git Bash, поэтому он и «творческий режим · Git Bash» этого плагина указывают на одно и то же. При включённом удалении дубликатов плагин больше не регистрирует свою запись (в списке на одну меньше); по умолчанию выключено, четыре варианта остаются без изменений. Этот переключатель — тот же самый на карточке настроек у второй стороны: обе стороны делят одно состояние, изменение с любой стороны сразу синхронизируется с другой. Показывается только когда установлен dsh-ptc-cordis-preset.",
 			},
 			/* locale: sv */
 			"sv": {
@@ -511,6 +558,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Sparat",
 				"adopt.label": "Överta sidolistterminal",
 				"adopt.hint": "På (standard) skriver Git Bash som terminal-shell i dsh-better-sidebar; av återställer det tidigare värdet och rör aldrig ett manuellt val. Modellens bash-verktyg påverkas inte — det tillhandahålls av pluginet självt.",
+				"sec.dedupe": "Deduplicering med PTC-skaparläget",
+				"dedupe.label": "Dubblerad post ”skaparläge · Git Bash”",
+				"dedupe.hint": "När dsh-ptc-cordis-preset är installerat samtidigt är dess ”PTC-skaparläge” redan Git Bash-versionen tack vare kopplingen, så det och det här pluginets ”skaparläge · Git Bash” pekar på samma sak. Med deduplicering på registrerar pluginet inte längre sin egen post (en färre i listan); av som standard, vilket lämnar de fyra varianterna oförändrade. Den här växeln är samma växel som på motpartens inställningskort — båda sidor delar ett tillstånd, en ändring på ena sidan synkas direkt till den andra. Visas bara när dsh-ptc-cordis-preset är installerat.",
 			},
 			/* locale: th */
 			"th": {
@@ -541,6 +591,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "บันทึกแล้ว",
 				"adopt.label": "รับช่วงเทอร์มินัลแถบข้าง",
 				"adopt.hint": "เปิด (ค่าเริ่มต้น) จะเขียน Git Bash เป็น shell ของเทอร์มินัล dsh-better-sidebar; ปิดแล้วคืนค่าเดิมและไม่แตะการตั้งค่าที่เลือกเอง เครื่องมือ bash ของโมเดลไม่กระทบ — ปลั๊กอินจัดหาเอง",
+				"sec.dedupe": "ตัดรายการซ้ำกับโหมดสร้างสรรค์ PTC",
+				"dedupe.label": "รายการซ้ำ «โหมดสร้างสรรค์ · Git Bash»",
+				"dedupe.hint": "เมื่อติดตั้ง dsh-ptc-cordis-preset ควบคู่กัน «โหมดสร้างสรรค์ PTC» ของมันเป็นเวอร์ชัน Git Bash อยู่แล้วจากการเชื่อมโยง จึงชี้ไปที่สิ่งเดียวกันกับ «โหมดสร้างสรรค์ · Git Bash» ของปลั๊กอินนี้ เมื่อเปิดการตัดรายการซ้ำ ปลั๊กอินนี้จะไม่ลงทะเบียนรายการของตัวเองอีก (รายการในสารบบลดลงหนึ่งรายการ); ปิดไว้เป็นค่าเริ่มต้น จึงคงสี่รูปแบบไว้เหมือนเดิม สวิตช์นี้คือสวิตช์เดียวกันกับบนการ์ดตั้งค่าของอีกฝ่าย — ทั้งสองฝั่งใช้สถานะเดียวกัน แก้ที่ฝั่งใดอีกฝั่งจะซิงก์ทันที แสดงเฉพาะเมื่อติดตั้ง dsh-ptc-cordis-preset แล้วเท่านั้น",
 			},
 			/* locale: tr */
 			"tr": {
@@ -571,6 +624,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Kaydedildi",
 				"adopt.label": "Kenar çubuğu terminalini devral",
 				"adopt.hint": "Açık (varsayılan) Git Bashi dsh-better-sidebar terminalinin shelli olarak yazar; kapalı önceki değeri geri getirir ve elle seçilmiş bir ayara asla dokunmaz. Model tarafındaki bash aracı etkilenmez — onu eklentinin kendisi sağlar.",
+				"sec.dedupe": "PTC yaratma moduyla yinelenen kaydı kaldırma",
+				"dedupe.label": "«Yaratma modu · Git Bash» yinelenen kaydı",
+				"dedupe.hint": "dsh-ptc-cordis-preset birlikte kuruluysa, bağlantı sayesinde onun «PTC yaratma modu» zaten Git Bash sürümüdür; dolayısıyla o ve bu eklentinin «Yaratma modu · Git Bash» kaydı aynı şeyi gösterir. Yinelenen kaydı kaldırma açıkken bu eklenti kendi kaydını artık kaydetmez (listede bir eksik); varsayılan olarak kapalıdır ve dört varyant değişmeden kalır. Bu anahtar, karşı tarafın ayar kartındaki anahtarın ta kendisidir — iki taraf aynı durumu paylaşır, bir taraftaki değişiklik anında diğerine eşitlenir. Yalnızca dsh-ptc-cordis-preset kurulu olduğunda görünür.",
 			},
 			/* locale: vi */
 			"vi": {
@@ -601,6 +657,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "Đã lưu",
 				"adopt.label": "Tiếp nhận terminal thanh bên",
 				"adopt.hint": "Bật (mặc định) ghi Git Bash làm shell terminal của dsh-better-sidebar; tắt khôi phục giá trị trước đó và không bao giờ đụng tới lựa chọn thủ công. Công cụ bash phía mô hình không bị ảnh hưởng — chính plugin cung cấp nó.",
+				"sec.dedupe": "Loại bỏ trùng lặp với chế độ sáng tạo PTC",
+				"dedupe.label": "Mục trùng lặp «chế độ sáng tạo · Git Bash»",
+				"dedupe.hint": "Khi cài chung dsh-ptc-cordis-preset, nhờ liên kết mà «chế độ sáng tạo PTC» của nó đã là bản Git Bash, nên nó và «chế độ sáng tạo · Git Bash» của plugin này cùng chỉ một thứ. Khi bật loại bỏ trùng lặp, plugin này không đăng ký mục của riêng nó nữa (danh mục bớt một mục); mặc định tắt, giữ nguyên bốn biến thể. Công tắc này chính là công tắc trên thẻ cài đặt của bên kia — hai bên dùng chung một trạng thái, thay đổi ở bên nào cũng đồng bộ ngay sang bên kia. Chỉ hiện khi đã cài dsh-ptc-cordis-preset.",
 			},
 			/* locale: zh-hk */
 			"zh-hk": {
@@ -631,6 +690,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "已儲存",
 				"adopt.label": "接管側欄終端",
 				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
+				"sec.dedupe": "與 PTC 創造模式去重",
+				"dedupe.label": "「創造模式 · Git Bash」重複項",
+				"dedupe.hint": "裝埋 dsh-ptc-cordis-preset 嗰陣,佢嘅「PTC 創造模式」喺聯動下已經係 Git Bash 版,同本插件嘅「創造模式 · Git Bash」指向同一件事。開咗去重之後本插件唔再註冊嗰一條(名錄少一項);預設關閉,保持四個變體不變。呢個開關就係對方設定卡上面同一個開關——兩邊共享同一份狀態,任一邊改動另一邊即刻同步。只喺已安裝 dsh-ptc-cordis-preset 時顯示。",
 			},
 			/* locale: zh-mo */
 			"zh-mo": {
@@ -661,6 +723,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "已儲存",
 				"adopt.label": "接管側欄終端",
 				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
+				"sec.dedupe": "與 PTC 創造模式去重",
+				"dedupe.label": "「創造模式 · Git Bash」重複項",
+				"dedupe.hint": "裝埋 dsh-ptc-cordis-preset 嗰陣,佢嘅「PTC 創造模式」喺聯動下已經係 Git Bash 版,同本插件嘅「創造模式 · Git Bash」指向同一件事。開咗去重之後本插件唔再註冊嗰一條(名錄少一項);預設關閉,保持四個變體不變。呢個開關就係對方設定卡上面同一個開關——兩邊共享同一份狀態,任一邊改動另一邊即刻同步。只喺已安裝 dsh-ptc-cordis-preset 時顯示。",
 			},
 			/* locale: zh-tw */
 			"zh-tw": {
@@ -691,6 +756,9 @@ window.__ModuleLoader__.load({
 				"bash.saved": "已儲存",
 				"adopt.label": "接管側欄終端機",
 				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端機 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
+				"sec.dedupe": "與 PTC 創造模式去重",
+				"dedupe.label": "「創造模式 · Git Bash」重複項目",
+				"dedupe.hint": "同時安裝 dsh-ptc-cordis-preset 時,它的「PTC 創造模式」在聯動下已是 Git Bash 版,與本插件的「創造模式 · Git Bash」指向同一件事。開啟去重後本插件不再註冊那一條(清單少一項);預設關閉,保持四個變體不變。這個開關就是對方設定卡上的同一個開關——兩側共享同一份狀態,任一側改動另一側立即同步。僅在已安裝 dsh-ptc-cordis-preset 時顯示。",
 			},
 		};
 
@@ -887,6 +955,31 @@ window.__ModuleLoader__.load({
 			var bumpTick = tickState[1];
 			void tick;
 
+			/* The dedupe row mirrors the PEER's row: it is drawn only where
+			   dsh-ptc-cordis-preset is installed and its entry has reached the
+			   configForms mirror (dsh >= 0.1.7). Absent on old hosts (no
+			   configForms), while the peer is not installed, or before its entry
+			   appears; every step is defensive, and the form's own subscribe
+			   bumps the tick so a late-arriving peer row still shows up. */
+			var peerState = useState(null);
+			var peer = peerState[0];
+			var setPeer = peerState[1];
+
+			useEffect(function () {
+				var forms;
+				try {
+					forms = props.ctx === undefined || props.ctx === null ? undefined : props.ctx.get("configForms");
+				} catch (error_) { forms = undefined; }
+				if (forms === undefined || forms === null || typeof forms.get !== "function") return undefined;
+				var form;
+				try { form = forms.get(PEER_NS); } catch (error_) { return undefined; }
+				if (form === undefined || form === null || typeof form.getSnapshot !== "function") return undefined;
+				setPeer(form);
+				if (typeof form.subscribe !== "function") return undefined;
+				var unsubscribe = form.subscribe(function () { bumpTick(function (n) { return n + 1; }); });
+				return typeof unsubscribe === "function" ? unsubscribe : undefined;
+			}, []);
+
 		var bashState = useState("");
 		var bashDraft = bashState[0];
 		var setBashDraft = bashState[1];
@@ -935,6 +1028,7 @@ window.__ModuleLoader__.load({
 			var splits = snap.value.globSplit !== false;
 			var codes = snap.value.codePaths !== false;
 			var eolOn = snap.value.gitAutocrlf !== false;
+			var dedupe = snap.value.suppressPeerCordis === true;
 
 			var dialectSection = E("div", { className: "gb-section" },
 				E("div", { className: "gb-sectionTitle" }, t("sec.dialect")),
@@ -1019,9 +1113,34 @@ window.__ModuleLoader__.load({
 				),
 			);
 
+			/* Peer-gated section: rendered only while dsh-ptc-cordis-preset serves
+			   its own row. The value stays on THIS row — the peer card binds the
+			   same field through configForms — so the buttons write through
+			   writeField exactly like every other row on this card. */
+			var peerSnap = { status: "unavailable" };
+			try {
+				if (peer && typeof peer.getSnapshot === "function") peerSnap = peer.getSnapshot();
+			} catch (error_) { /* keep unavailable */ }
+
+			var dedupeSection = peerSnap.status === "ready" ? E("div", { className: "gb-section" },
+				E("div", { className: "gb-sectionTitle" }, t("sec.dedupe")),
+				E("div", { className: "gb-stack" },
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("dedupe.label") + ":"),
+					E("span", { className: "gb-rowValue" }, dedupe ? t("state.on") : t("state.off")),
+				),
+				E("div", { className: "gb-seg" },
+					E("button", { type: "button", className: "gb-segBtn" + (dedupe ? " gb-segActive" : ""), onClick: function () { if (!dedupe) writeField("suppressPeerCordis", true); } }, t("switch.on")),
+					E("button", { type: "button", className: "gb-segBtn" + (!dedupe ? " gb-segActive" : ""), onClick: function () { if (dedupe) writeField("suppressPeerCordis", false); } }, t("switch.off")),
+				),
+				E("p", { className: "gb-hint" }, t("dedupe.hint")),
+				),
+			) : null;
+
 			var bodyContent = E("div", { className: "gb-body" },
 				dialectSection,
 				terminalSection,
+				dedupeSection,
 				error ? E("p", { className: "gb-error" }, error) : null,
 			);
 
@@ -1132,9 +1251,10 @@ window.__ModuleLoader__.load({
 				}
 				var injected = function () {
 					// The inject factory's returned members become the component's
-					// props: the bound settings scope rides here as a PLAIN member
-					// (top-level options fields do NOT reach the component).
-					return { scope: scope };
+					// props: the bound settings scope AND the ctx (used to reach
+					// configForms for the peer-gated dedupe row) ride here as PLAIN
+					// members (top-level options fields do NOT reach the component).
+					return { scope: scope, ctx: ctx };
 				};
 				// Legacy seat (dsh <= 0.1.6-alpha.1): Settings → Plugins card.
 				slots.inject("settings.plugin.item", function () {
