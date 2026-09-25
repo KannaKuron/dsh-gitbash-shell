@@ -39,6 +39,8 @@
   - **B(探针报 `pythonRuntime: true`)**:出现上面两行日志,四个变体**全部重建**,读数变为两行 `disabled: true`。
   - **两态都做真实挂载**:`agentPresets.acquireScope('<variant>')` 四个变体各返回 `MOUNT OK`(挂载审计无 failed 行),证明显式注册的组合在 rc.2 上确实可挂载,而不只是"注册成功"。
   - **Windows 专属面**:win32 分支(卡片禁用态、宿主拒绝写入、python 后端构造抛错)在 macOS 上**无法真机验证**,按实现 + 单测/模拟记录;本插件的执行器与路径方言层按 `process.platform === 'win32'` 门控,而 python 后端仅 POSIX,两者在各自平台上互不重叠。
+- **独立验证(发布后补记,2026-09-25,task-8,由另一位成员执行)**:用 **npm 已发布的 `dsh-gitbash-shell@0.26.0`** + `dsh-ptc-cordis-preset@0.15.0` 在隔离 `DSH_HOME` 上复验 —— **ptc → gitbash 方向联动通过**:把对方的行 Config `pythonRuntime` 置 `true` 后 boot,本插件打出 `peer reports the experimental CPython run_code backend: workflow rows go off in every variant` 以及四条 `retired … (peer CPython switch changed; rows are rebuilt)`;关态 boot **没有**这些行 ⇒ 能力感知 + 变体重建按设计工作(完整报告:`_rc2-contract/PYTHON-SWITCH-VERIFY.md`)。
+  - 仍未覆盖(留给集成阶段/真机):**反方向「在 gitbash 卡上改 → ptc 跟随」与两张卡的 UI 即时同步**(headless 无法操作设置卡,需真实 web 实例人工点选;两侧写的是同一个 `configForms` 字段,机制与 v0.25.0 已验证的 dedupe 镜像同构)以及 **win32 真机**(本机无 Windows;静态核对确认 ptc 侧平台表达式与 python 后端 `ptc-runtime-python/src/index.ts:837-839` 的「win32 构造即抛」一致,本插件侧按 `python.blocked` + 不画按钮实现平台限制)。
 - 相关:issue #10 https://github.com/KannaKuron/dsh-gitbash-shell/issues/10 ;对方仓库 dsh-ptc-cordis-preset v0.15.0(能力字段与运行行)
 
 ## v0.25.1 — 2026-09-24
