@@ -212,11 +212,24 @@
        (`snapshots/session/ptc-python-turn/cordis.yml:25-36` 同款禁用两行):`pythonRuntime === true`
        时**四个变体**的 `workflow-ptc`/`tool-workflow` 一律 `disabled: true`(用户 workflow 设置值
        保留,关掉后端下次启动恢复);`kind === 'ptc'` 本来就关,不受影响。
-     - **信号来源 = 对方能力服务**:`ctx.provide('ptcCordisPreset', { id, gitBashActive, pythonRuntime })`
-       (dsh-ptc-cordis-preset ≥ 0.15.0;`pythonRuntime` 可为 boolean 或 getter,读不到一律按 false);
+     - **信号来源 = 对方能力服务**:`ctx.provide('ptcCordisPreset', { id, gitBashActive, pythonRuntime, pythonBackend? })`
+       (dsh-ptc-cordis-preset ≥ 0.15.0;`pythonRuntime` 是**用户意图**,≥ 0.15.1 追加
+       `pythonBackend: 'python' | 'node'` **生效态**;两者都支持 getter,读不到一律按保守值);
        家族纪律同 §4e①——**绝不猜**,也不去读 `agentPresets`/配置文件推断。值变化必须**重注册已经在
        live 表里的变体**(行内容变了,只增删名录不够),日志
        `peer reports the experimental CPython run_code backend: workflow rows go off in every variant`。
+     - **互斥的判据是「生效态」,不是「意图」(v0.26.1,重要)**:`pythonBackendActive(capability)`
+       = 意图为真 **且** 生效态为 `'python'`;`pluginsFor` 的形参因此叫 **`pythonActive`**(语义 =
+       run_code 实际会用的后端)。理由:对方的 preflight 失败(包被移除 / 解释器 < 3.10 / win32)时
+       `!!js` 兜底与组合仍跑 Node,若按意图关掉 `workflow-ptc`/`tool-workflow`,用户就是**白丢能力**。
+       未生效时改打 `peer has the CPython switch on but the effective backend is node|unreported …:
+       workflow rows stay on (reason in the host log)`。**旧 peer 回退**:`peerBackend()` 对缺字段/
+       类型不符/getter 抛错返回 `undefined`(绝不把"没报"读成 `'node'`),此时**用意图顶替** ——
+       对方 < 0.15.1 的行为与 v0.26.0 逐字节一致。卡片侧同理:从同一份 peer 快照读可选的
+       `pythonBackend`,意图 on + 生效 `node` 显示 `python.degraded`(21 语言);字段缺省则**不显示**
+       降级态。**注意生效态要进"客户端可读"的那一份**,卡片才能显示真实状态 —— 目前客户端只读得到
+       settings 表单快照,故需要对方把生效态也放进该快照(能力服务是宿主侧的,浏览器读不到);
+       在对方落地前,该降级分支是防御性的、不会触发(两侧仍各自显示意图态)。
      - 依赖边界:python 运行时包由对方 `optionalDependencies` 声明(**精确 `0.1.7-rc.2`**,不用
        `next`——npmmirror 会解析到 rc.1 被兼容闸拒);**本仓库不声明该依赖、不 insert 运行行**
        (两个插件各插一行会让 `ptcRuntime` 二次注册)。改这一层必须跑冒烟里的
@@ -336,13 +349,17 @@
    retired …` 且名录少一条 → 写回 `false` 后出现 `preset 'cordis-gitbash' registered declaratively`
    且名录恢复。非 Windows 机上用探针副本把 `gitBash` 能力的 `active` 强制为 `true` 模拟 win32 语义;
    顺带在无头浏览器确认对方设置卡上的镜像行渲染出来(同一份状态)。
-7. **Python 后端开关改动(§4f,v0.26.0 起)**:隔离实例 + 探针插件
-   `ctx.provide('ptcCordisPreset', { id, gitBashActive: true, pythonRuntime })` 跑 A/B:
-   `false` 时四个变体保持官方形态(standard/cordis 的 `workflow-ptc`/`tool-workflow` 为 on、
-   `code-gitbash` 为 true);`true` 时日志出现
+7. **Python 后端开关改动(§4f,v0.26.0 起;v0.26.1 起三态)**:隔离实例 + 探针插件
+   `ctx.provide('ptcCordisPreset', { id, gitBashActive: true, … })` 跑**三态**:
+   ① `{pythonRuntime:true, pythonBackend:'python'}` → 日志
    `peer reports the experimental CPython run_code backend: workflow rows go off in every variant`
-   + 四条 `retired … (peer CPython switch changed; rows are rebuilt)`,且**四个变体**的两行都变
-   `disabled: true`。再用 `agentPresets.acquireScope('<variant>')` **真挂载**四个变体,要求四条
+   + 四条 `retired … (peer CPython backend changed; rows are rebuilt)`,且四个变体的
+   `workflow-ptc`/`tool-workflow` 都 `disabled: true`;
+   ② `{pythonRuntime:true, pythonBackend:'node'}` → 日志
+   `peer has the CPython switch on but the effective backend is node: workflow rows stay on (reason in the host log)`,
+   **没有**重建日志,`readDocument()` 读数里 standard/cordis 的两行**保持启用**(`code-gitbash` 本就关);
+   ③ `{pythonRuntime:true}`(旧 peer,缺 `pythonBackend`)→ 与 ① 相同(意图顶替,行为与 v0.26.0 一致)。
+   再对其中一态用 `agentPresets.acquireScope('<variant>')` **真挂载**四个变体,要求四条
    `MOUNT OK`(挂载审计不得有 failed 行);读数用 `readDocument()` 的 dump,不要只看注册成功。
    非 Windows 机上无法验证 win32 分支(卡片禁用态 / 宿主拒绝),记为模拟验证。
 

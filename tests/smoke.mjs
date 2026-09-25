@@ -1831,15 +1831,17 @@ test('python switch: workflow rows follow the official Python composition', asyn
   const rows = (list) => new Map(list.map((row) => [row.id, row]))
   const delegationOf = (list) => new Map(rows(list).get('delegation').config.map((row) => [row.id, row]))
   for (const kind of ['standard', 'cordis']) {
-    const off = delegationOf(pluginsFor({ kind, gitBash: true, pythonRuntime: false }))
+    // `pythonActive` is the EFFECTIVE backend (v0.26.1): the peer's preflight
+    // passed and the CPython provider really is the one run_code will use.
+    const off = delegationOf(pluginsFor({ kind, gitBash: true, pythonActive: false }))
     assert.notEqual(off.get('workflow-ptc').disabled, true, kind + ': the default keeps the official row live')
     assert.notEqual(off.get('tool-workflow').disabled, true, kind + ': idem')
-    const on = delegationOf(pluginsFor({ kind, gitBash: true, pythonRuntime: true }))
+    const on = delegationOf(pluginsFor({ kind, gitBash: true, pythonActive: true }))
     assert.equal(on.get('workflow-ptc').disabled, true, kind + ': CPython is TypeScript-less, so workflow-ptc must be off')
     assert.equal(on.get('tool-workflow').disabled, true, kind + ': the official Python composition disables it too')
     // and nothing ELSE moves: the rows are byte-identical apart from those two
-    const before = pluginsFor({ kind, gitBash: true, pythonRuntime: false })
-    const after = pluginsFor({ kind, gitBash: true, pythonRuntime: true })
+    const before = pluginsFor({ kind, gitBash: true, pythonActive: false })
+    const after = pluginsFor({ kind, gitBash: true, pythonActive: true })
     assert.deepEqual(
       after.map((row) => row.id),
       before.map((row) => row.id),
@@ -1848,24 +1850,26 @@ test('python switch: workflow rows follow the official Python composition', asyn
     assert.deepEqual(rows(after).get('tool-presentation'), rows(before).get('tool-presentation'), kind)
   }
   // the ptc variant is already workflow-free: the switch changes nothing there
-  const ptcOff = pluginsFor({ kind: 'ptc', gitBash: true, pythonRuntime: false })
-  const ptcOn = pluginsFor({ kind: 'ptc', gitBash: true, pythonRuntime: true })
+  const ptcOff = pluginsFor({ kind: 'ptc', gitBash: true, pythonActive: false })
+  const ptcOn = pluginsFor({ kind: 'ptc', gitBash: true, pythonActive: true })
   assert.deepEqual(ptcOn, ptcOff, 'kind=ptc already disables both workflow rows')
   // minimal has no workflow rows at all
   const { minimalPluginsFor } = await import('../src/compositions.js')
   assert.deepEqual(minimalPluginsFor(), minimalPluginsFor())
 })
 
-test('python switch: the host rebuilds variants on the peer fact and inserts NO runtime row', () => {
+test('python switch: the host rebuilds variants on the EFFECTIVE backend and inserts NO runtime row', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // read from the peer's published capability (family rule: never guess a peer fact)
-  assert.match(src, /const nextPython = peerFact\(coverage, PEER_PYTHON_FIELD\)/)
+  // read from the peer's published capability (family rule: never guess a peer fact),
+  // and act on the EFFECTIVE backend rather than the bare intent (v0.26.1)
+  assert.match(src, /const nextPython = pythonBackendActive\(coverage\)/)
+  assert.match(src, /const intentPython = peerFact\(coverage, PEER_PYTHON_FIELD\)/)
   // the ROWS change, so live variants are re-registered rather than skipped
   assert.match(src, /registeredPython !== peerPython/)
-  assert.match(src, /pythonRuntime: peerPython \}\)/)
+  assert.match(src, /pythonActive: peerPython \}\)/)
   const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
-  assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonRuntime = false \}\)/, 'the composition entry point takes the fact')
-  assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonRuntime !== true/)
+  assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonActive = false \}\)/, 'the composition entry point takes the effective fact')
+  assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonActive !== true/)
   // the runtime row belongs to dsh-ptc-cordis-preset alone: our bundle patch
   // must never target it (two providers would collide)
   const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
@@ -1918,4 +1922,69 @@ test("client card: the python row mirrors the PEER's field and is Windows-gated"
   assert.ok(hints[0].includes('重启') && hints[0].includes('宿主启动日志'), 'the zh hint states the restart and points at the host log')
   assert.ok(hints[1].includes('restarting dsh') && hints[1].includes('startup log'), 'the en hint states the restart and points at the host log')
   for (const hint of hints) assert.ok(hint.length > 120, 'a hint looks truncated: ' + hint.slice(0, 60))
+})
+
+test('python switch: the mutex keys on the EFFECTIVE backend, and an old peer falls back to the intent', () => {
+  const { pythonBackendActive, peerBackend, PEER_PYTHON_BACKEND_FIELD } = _internal
+  assert.equal(PEER_PYTHON_BACKEND_FIELD, 'pythonBackend')
+  // intent on AND the peer reports the CPython backend really active → mutex on
+  assert.equal(pythonBackendActive({ pythonRuntime: true, pythonBackend: 'python' }), true)
+  // intent on but the preflight failed → the composition still runs Node, so the
+  // workflow rows must STAY LIVE (v0.26.1: the whole point of the effective fact)
+  assert.equal(pythonBackendActive({ pythonRuntime: true, pythonBackend: 'node' }), false)
+  // intent off wins regardless of what the backend field claims
+  assert.equal(pythonBackendActive({ pythonRuntime: false, pythonBackend: 'python' }), false)
+  assert.equal(pythonBackendActive({ pythonRuntime: false, pythonBackend: 'node' }), false)
+  // OLD PEER (no effective field) → the intent stands in: pre-0.26.1 behavior
+  assert.equal(pythonBackendActive({ pythonRuntime: true }), true)
+  assert.equal(pythonBackendActive({ pythonRuntime: false }), false)
+  assert.equal(peerBackend({ pythonRuntime: true }), undefined, 'an unreported backend is undefined, never "node"')
+  // getters are honoured on both facts, and nothing throws
+  assert.equal(pythonBackendActive({ pythonRuntime: () => true, pythonBackend: () => 'python' }), true)
+  assert.equal(pythonBackendActive({ pythonRuntime: () => true, pythonBackend: () => 'node' }), false)
+  // anything outside the closed vocabulary falls back to the intent
+  for (const bogus of ['Python', 'cpython', '', 1, null, undefined, {}]) {
+    assert.equal(peerBackend({ pythonRuntime: true, pythonBackend: bogus }), undefined, 'bogus backend: ' + String(bogus))
+    assert.equal(pythonBackendActive({ pythonRuntime: true, pythonBackend: bogus }), true, 'bogus backend falls back: ' + String(bogus))
+  }
+  assert.equal(pythonBackendActive({ get pythonRuntime() { throw new Error('nope') }, pythonBackend: 'python' }), false)
+  assert.equal(pythonBackendActive(undefined), false)
+  assert.equal(peerBackend(null), undefined)
+})
+
+test('python switch: the degraded intent is reported, never acted on', () => {
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // the log distinguishes "really switched" from "asked for but not effective",
+  // so an operator can see WHY the workflow rows stayed on
+  assert.ok(src.includes('peer reports the experimental CPython run_code backend: workflow rows go off in every variant'))
+  assert.ok(src.includes('peer has the CPython switch on but the effective backend is '))
+  assert.ok(src.includes(': workflow rows stay on (reason in the host log)'))
+  // an unreported backend says so instead of naming a backend that never ran
+  assert.ok(src.includes("reportedBackend === undefined ? 'unreported (older peer: the intent stands in)' : reportedBackend"))
+  // the decision is one conjunctive helper, so no call site can act on the intent alone
+  assert.ok(src.includes('export function pythonBackendActive(capability) {'))
+  assert.ok(src.includes('if (reported === undefined) return intent'))
+  assert.ok(src.includes("return intent && reported === 'python'"))
+})
+
+test('client card: the python row shows the degraded state when the backend did not take effect', () => {
+  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(src, /var PEER_PYTHON_BACKEND_FIELD = "pythonBackend"/)
+  // the effective value rides the SAME peer snapshot the intent does
+  assert.match(src, /peerSnap\.value\[PEER_PYTHON_BACKEND_FIELD\]/)
+  assert.match(src, /var pythonDegraded = pythonOn && peerPythonBackend === "node";/)
+  // shown on the state line AND as the reason paragraph
+  assert.match(src, /pythonDegraded \? t\("python\.on"\) \+ " · " \+ t\("python\.degraded"\) : t\("python\.on"\)/)
+  assert.ok(src.includes('pythonDegraded ? E("p", { className: "gb-error" }, t("python.degraded")) : null'), 'the reason paragraph rides the degraded state')
+  // an absent field (older peer) leaves the card exactly as before: no banner
+  assert.ok(src.includes('typeof peerSnap.value[PEER_PYTHON_BACKEND_FIELD] === "string"'), 'a non-string backend field is ignored')
+  for (const key of ['sec.python', 'python.label', 'python.on', 'python.off', 'python.hint', 'python.blocked', 'python.degraded']) {
+    const occurrences = [...src.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
+    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
+  }
+  const degraded = [...src.matchAll(/"python\.degraded": ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]))
+  assert.equal(degraded.length, 21, 'one degraded copy per shipped dictionary')
+  assert.ok(degraded[0].includes('后端不可用') && degraded[0].includes('宿主启动日志'), 'zh states the degradation and the log: ' + degraded[0])
+  assert.ok(degraded[1].includes('backend unavailable') && degraded[1].includes('startup log'), 'en states the degradation and the log: ' + degraded[1])
+  for (const copy of degraded) assert.ok(copy.length > 10, 'a degraded copy looks truncated: ' + copy)
 })

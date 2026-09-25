@@ -55,6 +55,11 @@ window.__ModuleLoader__.load({
 		   both cards read and write this one form field, so either side changes
 		   both. Absent on a peer that predates the switch ⇒ no row is drawn. */
 		var PEER_PYTHON_FIELD = "pythonRuntime";
+		/** The peer's EFFECTIVE backend on the same snapshot ('python' | 'node'),
+		   when its version reports one: 'node' while the intent is on means the
+		   preflight failed (package missing / interpreter too old / Windows), so
+		   the card shows the degraded state instead of claiming Python. */
+		var PEER_PYTHON_BACKEND_FIELD = "pythonBackend";
 
 		// ── dictionaries ────────────────────────────────────────────────────────
 		// zh/en stay inline; the third languages live in LOCALES below, one entry
@@ -98,6 +103,7 @@ window.__ModuleLoader__.load({
 			"python.on": "Python(实验性)",
 			"python.off": "Node / TypeScript(默认)",
 			"python.hint": "默认关闭时 run_code 用官方 Node/TypeScript 后端,与官方 ptc 组合逐字节一致;开启后改用 dsh 实验性 CPython 后端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 的语言、生成的 SDK 提示词与工具呈现随之切到 Python。要求 POSIX 平台与 CPython ≥ 3.10(Windows 不可用);与 workflow 工具互斥——官方 Python 组合同样禁用 workflow,因此开启期间本插件四个变体的 workflow 侧强制关闭(你的工作流设置值保留,关掉后恢复)。改动需重启 dsh 后生效;此开关就是 dsh-ptc-cordis-preset 设置卡上的同一个开关——两侧共享同一份状态,任一侧改动两侧同步。仅在已安装 dsh-ptc-cordis-preset 时显示。若置为开启后未生效,原因见宿主启动日志。",
+			"python.degraded": "后端不可用,当前仍为 Node(原因见宿主启动日志)",
 			"python.blocked": "本机是 Windows:实验性 Python 后端仅支持 POSIX,此开关不可用。",
 		};
 
@@ -137,6 +143,7 @@ window.__ModuleLoader__.load({
 			"python.on": "Python (experimental)",
 			"python.off": "Node / TypeScript (default)",
 			"python.hint": "While off (default) run_code uses the official Node/TypeScript backend, byte-identical to the shipped ptc composition; turning it on switches to dsh's experimental CPython backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), which also switches run_code's language, generated SDK prompt and tool presentation to Python. Requires a POSIX platform and CPython ≥ 3.10 (unavailable on Windows) and is mutually exclusive with the workflow tool — the official Python composition disables workflow too, so the workflow side of all four variants is forced off while this is on (your workflow setting is kept and restored when you turn it back off). Takes effect after restarting dsh; this is the very same switch on dsh-ptc-cordis-preset's card — both sides share one state, so either side updates both. Shown only while dsh-ptc-cordis-preset is installed. If turning it on does not take effect, the dsh startup log states why.",
+			"python.degraded": "backend unavailable, still Node (reason in the dsh startup log)",
 			"python.blocked": "This host is Windows: the experimental Python backend supports POSIX only, so this switch is unavailable.",
 		};
 
@@ -186,6 +193,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (تجريبي)",
 				"python.off": "Node / TypeScript (افتراضي)",
 				"python.hint": "عند الإيقاف (افتراضيًا) يستخدم run_code الخلفية الرسمية Node/TypeScript، مطابقة تمامًا لتركيبة ptc الرسمية؛ وعند التشغيل يتحول إلى خلفية CPython التجريبية في dsh (@deepseek-ai/dsh-experimental-ptc-runtime-python)، فتتحول لغة run_code ومطالبة SDK المولَّدة وعرض الأداة إلى Python. يتطلب نظام POSIX و CPython ≥ 3.10 (غير متاح على Windows)، وهو متعارض مع أداة workflow — فالتركيبة الرسمية لـ Python تعطّل workflow أيضًا، لذا يبقى جانب workflow مُعطَّلًا في المتغيّرات الأربعة أثناء التشغيل (قيمتك محفوظة وتعود عند الإيقاف). يسري التغيير بعد إعادة تشغيل dsh؛ هذا هو المفتاح نفسه على بطاقة dsh-ptc-cordis-preset — الجانبان يتشاركان حالة واحدة. يظهر فقط عند تثبيت dsh-ptc-cordis-preset. إذا لم يسري التشغيل، فسبب ذلك مذكور في سجل تشغيل dsh.",
+				"python.degraded": "الخلفية غير متاحة، لا يزال Node (السبب في سجل بدء التشغيل)",
 				"python.blocked": "هذا المضيف يعمل بـ Windows: الخلفية التجريبية Python تدعم POSIX فقط، لذا لا يتوفر هذا المفتاح.",
 			},
 			/* locale: de */
@@ -225,6 +233,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (experimentell)",
 				"python.off": "Node / TypeScript (Standard)",
 				"python.hint": "Aus (Standard): run_code nutzt das offizielle Node/TypeScript-Backend, byte-identisch zur ausgelieferten ptc-Komposition; an: dsh wechselt auf das experimentelle CPython-Backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), womit Sprache, generierter SDK-Prompt und Darstellung von run_code auf Python umstellen. Erfordert POSIX und CPython ≥ 3.10 (unter Windows nicht verfügbar) und ist mit dem workflow-Tool unvereinbar — die offizielle Python-Komposition deaktiviert workflow ebenfalls, deshalb bleibt die workflow-Seite aller vier Varianten so lange aus (dein Workflow-Wert bleibt erhalten und kehrt nach dem Ausschalten zurück). Wirkt nach einem Neustart von dsh; dies ist derselbe Schalter auf der Karte von dsh-ptc-cordis-preset — beide Seiten teilen einen Zustand. Nur sichtbar, solange dsh-ptc-cordis-preset installiert ist. Bleibt das Einschalten ohne Wirkung, nennt das dsh-Startprotokoll den Grund.",
+				"python.degraded": "Backend nicht verfügbar, weiterhin Node (Grund im dsh-Startprotokoll)",
 				"python.blocked": "Dieser Host ist Windows: Das experimentelle Python-Backend unterstützt nur POSIX, der Schalter ist nicht verfügbar.",
 			},
 			/* locale: fr */
@@ -264,6 +273,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (expérimental)",
 				"python.off": "Node / TypeScript (par défaut)",
 				"python.hint": "Désactivé (par défaut), run_code utilise le backend officiel Node/TypeScript, identique octet pour octet à la composition ptc livrée ; activé, dsh bascule sur le backend CPython expérimental (@deepseek-ai/dsh-experimental-ptc-runtime-python) : la langue, l'invite SDK générée et la présentation de run_code passent en Python. Exige POSIX et CPython ≥ 3.10 (indisponible sous Windows) et est incompatible avec l'outil workflow — la composition Python officielle désactive aussi workflow, donc le côté workflow des quatre variantes reste désactivé tant que l'option est active (ta valeur est conservée et revient à la désactivation). Prend effet après un redémarrage de dsh ; c'est le même interrupteur que sur la carte de dsh-ptc-cordis-preset — les deux côtés partagent un seul état. Affiché uniquement si dsh-ptc-cordis-preset est installé. Si l'activation reste sans effet, le journal de démarrage de dsh en indique la raison.",
+				"python.degraded": "backend indisponible, toujours Node (raison dans le journal de démarrage de dsh)",
 				"python.blocked": "Cet hôte est sous Windows : le backend Python expérimental n'est disponible que sur POSIX, l'interrupteur est indisponible.",
 			},
 			/* locale: hi */
@@ -303,6 +313,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (प्रयोगात्मक)",
 				"python.off": "Node / TypeScript (डिफ़ॉल्ट)",
 				"python.hint": "बंद (डिफ़ॉल्ट) रहने पर run_code आधिकारिक Node/TypeScript बैकएंड इस्तेमाल करता है, जो भेजे गए ptc संयोजन से पूरी तरह मेल खाता है; चालू करने पर dsh का प्रयोगात्मक CPython बैकएंड (@deepseek-ai/dsh-experimental-ptc-runtime-python) चलता है और run_code की भाषा, बना SDK प्रॉम्प्ट तथा प्रस्तुति Python में बदल जाती है। इसके लिए POSIX और CPython ≥ 3.10 चाहिए (Windows पर उपलब्ध नहीं), और यह workflow टूल से परस्पर अनन्य है — आधिकारिक Python संयोजन भी workflow बंद करता है, इसलिए चालू रहने तक चारों वेरिएंट का workflow पक्ष बंद रहता है (आपकी workflow सेटिंग सुरक्षित रहती है और बंद करने पर लौट आती है)। बदलाव dsh को फिर से शुरू करने के बाद लागू होता है; यह dsh-ptc-cordis-preset के कार्ड पर मौजूद वही स्विच है — दोनों ओर एक ही स्थिति साझा होती है। यह केवल तभी दिखता है जब dsh-ptc-cordis-preset इंस्टॉल हो। चालू करने पर असर न हो तो कारण dsh के स्टार्टअप लॉग में मिलेगा।",
+				"python.degraded": "बैकएंड उपलब्ध नहीं, अब भी Node (कारण dsh स्टार्टअप लॉग में)",
 				"python.blocked": "यह होस्ट Windows है: प्रयोगात्मक Python बैकएंड केवल POSIX पर चलता है, इसलिए यह स्विच उपलब्ध नहीं है।",
 			},
 			/* locale: id */
@@ -342,6 +353,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (eksperimental)",
 				"python.off": "Node / TypeScript (bawaan)",
 				"python.hint": "Saat nonaktif (bawaan), run_code memakai backend resmi Node/TypeScript, identik byte demi byte dengan komposisi ptc resmi; saat aktif, dsh memakai backend CPython eksperimental (@deepseek-ai/dsh-experimental-ptc-runtime-python) sehingga bahasa run_code, prompt SDK yang dihasilkan, dan penyajiannya beralih ke Python. Memerlukan POSIX dan CPython ≥ 3.10 (tidak tersedia di Windows) serta saling eksklusif dengan alat workflow — komposisi Python resmi juga menonaktifkan workflow, jadi sisi workflow keempat varian tetap mati selama ini aktif (nilai workflow-mu dipertahankan dan kembali saat dimatikan). Berlaku setelah dsh dimulai ulang; ini sakelar yang sama di kartu dsh-ptc-cordis-preset — kedua sisi berbagi satu status. Hanya tampil saat dsh-ptc-cordis-preset terpasang. Jika diaktifkan tetapi tidak berpengaruh, alasannya ada di log mulai dsh.",
+				"python.degraded": "backend tidak tersedia, masih Node (alasan di log mulai dsh)",
 				"python.blocked": "Host ini Windows: backend Python eksperimental hanya mendukung POSIX, sakelar ini tidak tersedia.",
 			},
 			/* locale: it */
@@ -381,6 +393,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (sperimentale)",
 				"python.off": "Node / TypeScript (predefinito)",
 				"python.hint": "Disattivato (predefinito) run_code usa il backend ufficiale Node/TypeScript, identico byte per byte alla composizione ptc distribuita; attivandolo dsh passa al backend CPython sperimentale (@deepseek-ai/dsh-experimental-ptc-runtime-python): lingua, prompt SDK generato e presentazione di run_code passano a Python. Richiede POSIX e CPython ≥ 3.10 (non disponibile su Windows) ed è incompatibile con lo strumento workflow — anche la composizione Python ufficiale disattiva workflow, quindi il lato workflow di tutte e quattro le varianti resta spento finché è attivo (il tuo valore viene conservato e torna alla disattivazione). Ha effetto dopo il riavvio di dsh; è lo stesso interruttore sulla scheda di dsh-ptc-cordis-preset — entrambi i lati condividono un unico stato. Visibile solo quando dsh-ptc-cordis-preset è installato. Se l'attivazione non ha effetto, il motivo è nel log di avvio di dsh.",
+				"python.degraded": "backend non disponibile, resta Node (motivo nel log di avvio di dsh)",
 				"python.blocked": "Questo host è Windows: il backend Python sperimentale supporta solo POSIX, l'interruttore non è disponibile.",
 			},
 			/* locale: ja */
@@ -420,6 +433,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python(実験的)",
 				"python.off": "Node / TypeScript(既定)",
 				"python.hint": "オフ(既定)では run_code は公式の Node/TypeScript バックエンドを使い、公式 ptc 構成とバイト単位で一致します。オンにすると dsh の実験的 CPython バックエンド(@deepseek-ai/dsh-experimental-ptc-runtime-python)に切り替わり、run_code の言語・生成される SDK プロンプト・提示が Python に変わります。POSIX と CPython ≥ 3.10 が必要(Windows では利用不可)で、workflow ツールとは排他です —— 公式 Python 構成も workflow を無効化するため、オン期間中は 4 変体すべてで workflow 側が強制的にオフになります(ワークフロー設定値は保持され、オフに戻すと復帰)。変更は dsh の再起動後に有効です。これは dsh-ptc-cordis-preset のカードにある同じスイッチで、両側が同一状態を共有します。dsh-ptc-cordis-preset がインストールされているときだけ表示されます。 オンにしても効かない場合の理由は dsh の起動ログにあります。",
+				"python.degraded": "バックエンド利用不可・現在も Node(理由は dsh の起動ログ)",
 				"python.blocked": "このホストは Windows です。実験的 Python バックエンドは POSIX 専用のため、このスイッチは利用できません。",
 			},
 			/* locale: ko */
@@ -459,6 +473,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python(실험적)",
 				"python.off": "Node / TypeScript(기본)",
 				"python.hint": "끄면(기본) run_code는 공식 Node/TypeScript 백엔드를 사용해 공식 ptc 구성과 바이트 단위로 일치합니다. 켜면 dsh의 실험적 CPython 백엔드(@deepseek-ai/dsh-experimental-ptc-runtime-python)로 바뀌어 run_code의 언어, 생성되는 SDK 프롬프트, 도구 표시가 Python으로 전환됩니다. POSIX와 CPython ≥ 3.10이 필요하며(Windows에서는 사용 불가) workflow 도구와 상호 배타적입니다 — 공식 Python 구성도 workflow를 끄므로 켜져 있는 동안 네 변형 모두 workflow 쪽이 강제로 꺼집니다(워크플로 설정값은 유지되고 끄면 복구됩니다). 변경은 dsh 재시작 후 적용됩니다. 이 스위치는 dsh-ptc-cordis-preset 카드에 있는 바로 그 스위치이며 양쪽이 같은 상태를 공유합니다. dsh-ptc-cordis-preset이 설치되어 있을 때만 표시됩니다. 켠 뒤에도 적용되지 않으면 그 이유는 dsh 시작 로그에 있습니다.",
+				"python.degraded": "백엔드 사용 불가, 여전히 Node(이유는 dsh 시작 로그)",
 				"python.blocked": "이 호스트는 Windows입니다. 실험적 Python 백엔드는 POSIX만 지원하므로 이 스위치를 쓸 수 없습니다.",
 			},
 			/* locale: nl */
@@ -498,6 +513,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (experimenteel)",
 				"python.off": "Node / TypeScript (standaard)",
 				"python.hint": "Uit (standaard) gebruikt run_code de officiële Node/TypeScript-backend, byte voor byte gelijk aan de meegeleverde ptc-compositie; aan schakelt dsh over op de experimentele CPython-backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), waardoor taal, gegenereerde SDK-prompt en weergave van run_code naar Python gaan. Vereist POSIX en CPython ≥ 3.10 (niet beschikbaar op Windows) en is onverenigbaar met de workflow-tool — de officiële Python-compositie schakelt workflow ook uit, dus de workflow-kant van alle vier varianten blijft uit zolang dit aan staat (je workflow-waarde blijft bewaard en keert terug als je het uitzet). Werkt na een herstart van dsh; dit is dezelfde schakelaar op de kaart van dsh-ptc-cordis-preset — beide kanten delen één status. Alleen zichtbaar zolang dsh-ptc-cordis-preset is geïnstalleerd. Werkt het aanzetten niet, dan staat de reden in het opstartlogboek van dsh.",
+				"python.degraded": "backend niet beschikbaar, nog steeds Node (reden in het dsh-opstartlogboek)",
 				"python.blocked": "Deze host is Windows: de experimentele Python-backend ondersteunt alleen POSIX, deze schakelaar is niet beschikbaar.",
 			},
 			/* locale: pl */
@@ -537,6 +553,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (eksperymentalny)",
 				"python.off": "Node / TypeScript (domyślnie)",
 				"python.hint": "Wyłączony (domyślnie) run_code używa oficjalnego backendu Node/TypeScript, identycznego co do bajtu z dostarczaną kompozycją ptc; włączenie przełącza dsh na eksperymentalny backend CPython (@deepseek-ai/dsh-experimental-ptc-runtime-python), więc język, generowany prompt SDK i prezentacja run_code przechodzą na Python. Wymaga POSIX i CPython ≥ 3.10 (niedostępny w Windows) i jest wykluczający z narzędziem workflow — oficjalna kompozycja Python również wyłącza workflow, więc strona workflow wszystkich czterech wariantów pozostaje wyłączona, dopóki to jest włączone (twoje ustawienie workflow jest zachowane i wraca po wyłączeniu). Zmiana działa po restarcie dsh; to ten sam przełącznik na karcie dsh-ptc-cordis-preset — obie strony dzielą jeden stan. Widoczny tylko, gdy dsh-ptc-cordis-preset jest zainstalowany. Jeśli włączenie nie przyniesie skutku, powód znajdziesz w logu startowym dsh.",
+				"python.degraded": "backend niedostępny, nadal Node (powód w logu startowym dsh)",
 				"python.blocked": "Ten host to Windows: eksperymentalny backend Python obsługuje tylko POSIX, przełącznik jest niedostępny.",
 			},
 			/* locale: pt */
@@ -576,6 +593,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (experimental)",
 				"python.off": "Node / TypeScript (padrão)",
 				"python.hint": "Desligado (padrão), o run_code usa o backend oficial Node/TypeScript, idêntico byte a byte à composição ptc distribuída; ligado, o dsh passa para o backend CPython experimental (@deepseek-ai/dsh-experimental-ptc-runtime-python), e a linguagem, o prompt SDK gerado e a apresentação do run_code passam para Python. Exige POSIX e CPython ≥ 3.10 (indisponível no Windows) e é incompatível com a ferramenta workflow — a composição Python oficial também desativa workflow, pelo que o lado workflow das quatro variantes fica desligado enquanto isto estiver ligado (o teu valor é mantido e regressa ao desligar). Produz efeito após reiniciar o dsh; é o mesmo interruptor no cartão do dsh-ptc-cordis-preset — os dois lados partilham um único estado. Só aparece quando o dsh-ptc-cordis-preset está instalado. Se ligar não tiver efeito, o motivo está no registo de arranque do dsh.",
+				"python.degraded": "backend indisponível, continua Node (motivo no registo de arranque do dsh)",
 				"python.blocked": "Este anfitrião é Windows: o backend Python experimental só suporta POSIX, pelo que este interruptor não está disponível.",
 			},
 			/* locale: ru */
@@ -615,6 +633,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (экспериментальный)",
 				"python.off": "Node / TypeScript (по умолчанию)",
 				"python.hint": "Выключено (по умолчанию) — run_code использует официальный бэкенд Node/TypeScript, побайтово совпадающий с поставляемой композицией ptc; при включении dsh переходит на экспериментальный бэкенд CPython (@deepseek-ai/dsh-experimental-ptc-runtime-python), и язык, сгенерированная подсказка SDK и представление run_code переключаются на Python. Требуются POSIX и CPython ≥ 3.10 (в Windows недоступно), и это несовместимо с инструментом workflow — официальная композиция Python тоже отключает workflow, поэтому сторона workflow всех четырёх вариантов остаётся выключенной, пока это включено (ваша настройка workflow сохраняется и возвращается после выключения). Изменение действует после перезапуска dsh; это тот же переключатель на карточке dsh-ptc-cordis-preset — обе стороны делят одно состояние. Показывается только когда установлен dsh-ptc-cordis-preset. Если включение не подействовало, причина указана в журнале запуска dsh.",
+				"python.degraded": "бэкенд недоступен, по-прежнему Node (причина в журнале запуска dsh)",
 				"python.blocked": "Этот хост — Windows: экспериментальный бэкенд Python поддерживает только POSIX, переключатель недоступен.",
 			},
 			/* locale: sv */
@@ -654,6 +673,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (experimentell)",
 				"python.off": "Node / TypeScript (standard)",
 				"python.hint": "Av (standard) använder run_code den officiella Node/TypeScript-backenden, byte för byte identisk med den medföljande ptc-kompositionen; på växlar dsh till den experimentella CPython-backenden (@deepseek-ai/dsh-experimental-ptc-runtime-python), vilket även byter run_codes språk, genererade SDK-prompt och presentation till Python. Kräver POSIX och CPython ≥ 3.10 (ej tillgängligt i Windows) och utesluter workflow-verktyget — den officiella Python-kompositionen stänger också av workflow, så workflow-sidan i alla fyra varianter hålls avstängd medan detta är på (ditt workflow-värde behålls och återställs när du stänger av). Gäller efter omstart av dsh; detta är samma växel på dsh-ptc-cordis-presets kort — båda sidor delar ett tillstånd. Visas bara när dsh-ptc-cordis-preset är installerat. Om påslaget inte får effekt står orsaken i dsh:s startlogg.",
+				"python.degraded": "backend otillgänglig, fortfarande Node (orsak i dsh-startloggen)",
 				"python.blocked": "Den här värden är Windows: den experimentella Python-backenden stöder bara POSIX, så växeln är otillgänglig.",
 			},
 			/* locale: th */
@@ -693,6 +713,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (ทดลอง)",
 				"python.off": "Node / TypeScript (ค่าเริ่มต้น)",
 				"python.hint": "เมื่อปิด (ค่าเริ่มต้น) run_code จะใช้แบ็กเอนด์ Node/TypeScript อย่างเป็นทางการ ซึ่งเหมือนกับคอมโพซิชัน ptc ที่จัดส่งทุกไบต์; เมื่อเปิด dsh จะเปลี่ยนไปใช้แบ็กเอนด์ CPython ทดลอง (@deepseek-ai/dsh-experimental-ptc-runtime-python) ภาษา พรอมป์ต์ SDK ที่สร้างขึ้น และการนำเสนอของ run_code จะเปลี่ยนเป็น Python ต้องใช้ POSIX และ CPython ≥ 3.10 (ใช้ไม่ได้บน Windows) และใช้ร่วมกับเครื่องมือ workflow ไม่ได้ — คอมโพซิชัน Python อย่างเป็นทางการก็ปิด workflow เช่นกัน ฝั่ง workflow ของทั้งสี่รูปแบบจึงถูกปิดขณะเปิดอยู่ (ค่าที่คุณตั้งไว้จะถูกเก็บและกลับมาเมื่อปิด) การเปลี่ยนแปลงมีผลหลังรีสตาร์ต dsh; นี่คือสวิตช์เดียวกันบนการ์ดของ dsh-ptc-cordis-preset — ทั้งสองฝั่งใช้สถานะเดียวกัน แสดงเฉพาะเมื่อติดตั้ง dsh-ptc-cordis-preset แล้วเท่านั้น หากเปิดแล้วไม่เกิดผล เหตุผลอยู่ในบันทึกการเริ่มต้นของ dsh",
+				"python.degraded": "แบ็กเอนด์ใช้ไม่ได้ ยังเป็น Node (เหตุผลในบันทึกเริ่มต้นของ dsh)",
 				"python.blocked": "โฮสต์นี้เป็น Windows: แบ็กเอนด์ Python ทดลองรองรับเฉพาะ POSIX สวิตช์นี้จึงใช้ไม่ได้",
 			},
 			/* locale: tr */
@@ -732,6 +753,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (deneysel)",
 				"python.off": "Node / TypeScript (varsayılan)",
 				"python.hint": "Kapalıyken (varsayılan) run_code resmî Node/TypeScript arka ucunu kullanır ve gönderilen ptc bileşimiyle bayt bayt aynıdır; açıldığında dsh deneysel CPython arka ucuna (@deepseek-ai/dsh-experimental-ptc-runtime-python) geçer; run_code dil, üretilen SDK istemi ve sunum Python'a döner. POSIX ve CPython ≥ 3.10 gerektirir (Windows'ta kullanılamaz) ve workflow aracıyla birbirini dışlar — resmî Python bileşimi de workflow'u kapatır, bu yüzden bu açıkken dört varyantın workflow tarafı kapalı kalır (workflow ayarın korunur ve kapatınca geri gelir). Değişiklik dsh yeniden başlatıldıktan sonra geçerli olur; bu, dsh-ptc-cordis-preset kartındaki aynı anahtardır — iki taraf tek durumu paylaşır. Yalnızca dsh-ptc-cordis-preset kurulu olduğunda görünür. Açmak etkili olmazsa nedeni dsh başlangıç günlüğünde yazar.",
+				"python.degraded": "arka uç kullanılamıyor, hâlâ Node (neden dsh başlangıç günlüğünde)",
 				"python.blocked": "Bu ana makine Windows: deneysel Python arka ucu yalnızca POSIX destekler, bu anahtar kullanılamaz.",
 			},
 			/* locale: vi */
@@ -771,6 +793,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python (thử nghiệm)",
 				"python.off": "Node / TypeScript (mặc định)",
 				"python.hint": "Khi tắt (mặc định), run_code dùng backend Node/TypeScript chính thức, giống từng byte với tổ hợp ptc được phát hành; khi bật, dsh chuyển sang backend CPython thử nghiệm (@deepseek-ai/dsh-experimental-ptc-runtime-python), kéo theo ngôn ngữ, prompt SDK được sinh và cách trình bày của run_code chuyển sang Python. Yêu cầu POSIX và CPython ≥ 3.10 (không dùng được trên Windows) và loại trừ lẫn nhau với công cụ workflow — tổ hợp Python chính thức cũng tắt workflow, nên phía workflow của cả bốn biến thể bị tắt trong lúc bật (giá trị workflow của bạn được giữ và trở lại khi tắt). Thay đổi có hiệu lực sau khi khởi động lại dsh; đây chính là công tắc trên thẻ của dsh-ptc-cordis-preset — hai bên dùng chung một trạng thái. Chỉ hiện khi đã cài dsh-ptc-cordis-preset. Nếu bật mà không có hiệu lực, lý do nằm trong nhật ký khởi động dsh.",
+				"python.degraded": "backend không khả dụng, vẫn là Node (lý do trong nhật ký khởi động dsh)",
 				"python.blocked": "Máy chủ này là Windows: backend Python thử nghiệm chỉ hỗ trợ POSIX, nên công tắc này không dùng được.",
 			},
 			/* locale: zh-hk */
@@ -810,6 +833,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python(實驗性)",
 				"python.off": "Node / TypeScript(預設)",
 				"python.hint": "閂咗(預設)嗰陣 run_code 用官方 Node/TypeScript 後端,同官方 ptc 組合逐位元組一致;開咗就轉用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 嘅語言、生成嘅 SDK 提示詞同工具呈現都會轉去 Python。需要 POSIX 平台同 CPython ≥ 3.10(Windows 用唔到),而且同 workflow 工具互斥——官方 Python 組合同樣停用 workflow,所以開住嗰陣本插件四個變體嘅 workflow 側會強制關閉(你嘅工作流設定值會保留,閂咗之後恢復)。改動要重啟 dsh 先生效;呢個開關就係 dsh-ptc-cordis-preset 設定卡上面同一個開關——兩邊共享同一份狀態。只喺已安裝 dsh-ptc-cordis-preset 時顯示。開咗之後唔生效,原因喺 dsh 啟動日誌度。",
+				"python.degraded": "後端用唔到,暫時仍然係 Node(原因喺 dsh 啟動日誌)",
 				"python.blocked": "呢部主機係 Windows:實驗性 Python 後端淨係支援 POSIX,所以呢個開關用唔到。",
 			},
 			/* locale: zh-mo */
@@ -849,6 +873,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python(實驗性)",
 				"python.off": "Node / TypeScript(預設)",
 				"python.hint": "閂咗(預設)嗰陣 run_code 用官方 Node/TypeScript 後端,同官方 ptc 組合逐位元組一致;開咗就轉用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 嘅語言、生成嘅 SDK 提示詞同工具呈現都會轉去 Python。需要 POSIX 平台同 CPython ≥ 3.10(Windows 用唔到),而且同 workflow 工具互斥——官方 Python 組合同樣停用 workflow,所以開住嗰陣本插件四個變體嘅 workflow 側會強制關閉(你嘅工作流設定值會保留,閂咗之後恢復)。改動要重啟 dsh 先生效;呢個開關就係 dsh-ptc-cordis-preset 設定卡上面同一個開關——兩邊共享同一份狀態。只喺已安裝 dsh-ptc-cordis-preset 時顯示。開咗之後唔生效,原因喺 dsh 啟動日誌度。",
+				"python.degraded": "後端用唔到,暫時仍然係 Node(原因喺 dsh 啟動日誌)",
 				"python.blocked": "呢部主機係 Windows:實驗性 Python 後端淨係支援 POSIX,所以呢個開關用唔到。",
 			},
 			/* locale: zh-tw */
@@ -888,6 +913,7 @@ window.__ModuleLoader__.load({
 				"python.on": "Python(實驗性)",
 				"python.off": "Node / TypeScript(預設)",
 				"python.hint": "關閉(預設)時 run_code 使用官方 Node/TypeScript 後端,與官方 ptc 組合逐位元組一致;開啟後改用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 的語言、產生的 SDK 提示詞與工具呈現都會切換到 Python。需要 POSIX 平台與 CPython ≥ 3.10(Windows 無法使用),且與 workflow 工具互斥——官方 Python 組合同樣會停用 workflow,因此開啟期間本外掛四個變體的 workflow 側強制關閉(你的工作流設定值會保留,關閉後恢復)。變更需重新啟動 dsh 後生效;這個開關就是 dsh-ptc-cordis-preset 設定卡上的同一個開關——兩側共用同一份狀態。僅在已安裝 dsh-ptc-cordis-preset 時顯示。若設為開啟後未生效,原因見 dsh 啟動日誌。",
+				"python.degraded": "後端無法使用,目前仍為 Node(原因見 dsh 啟動日誌)",
 				"python.blocked": "此主機是 Windows:實驗性 Python 後端僅支援 POSIX,因此這個開關無法使用。",
 			},
 		};
@@ -1300,6 +1326,13 @@ window.__ModuleLoader__.load({
 				&& typeof peerSnap.value === "object"
 				&& Object.prototype.hasOwnProperty.call(peerSnap.value, PEER_PYTHON_FIELD);
 			var pythonOn = pythonOffered && peerSnap.value[PEER_PYTHON_FIELD] === true;
+			var peerPythonBackend = "";
+			if (pythonOffered && typeof peerSnap.value[PEER_PYTHON_BACKEND_FIELD] === "string") {
+				peerPythonBackend = peerSnap.value[PEER_PYTHON_BACKEND_FIELD];
+			}
+			/* Intent on + effective node = the user asked for Python and the host
+			   is still running Node behind the official rows. */
+			var pythonDegraded = pythonOn && peerPythonBackend === "node";
 			function writePython(next) {
 				setError("");
 				if (peer === null || typeof peer.set !== "function") return;
@@ -1322,7 +1355,9 @@ window.__ModuleLoader__.load({
 				E("div", { className: "gb-stack" },
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("python.label") + ":"),
-					E("span", { className: "gb-rowValue" }, pythonOn ? t("python.on") : t("python.off")),
+					E("span", { className: "gb-rowValue" }, pythonOn
+						? (pythonDegraded ? t("python.on") + " · " + t("python.degraded") : t("python.on"))
+						: t("python.off")),
 				),
 				winHost ? null : E("div", { className: "gb-seg" },
 					E("button", { type: "button", className: "gb-segBtn" + (pythonOn ? " gb-segActive" : ""), onClick: function () { if (!pythonOn) writePython(true); } }, t("switch.on")),
@@ -1330,6 +1365,7 @@ window.__ModuleLoader__.load({
 				),
 				E("p", { className: "gb-hint" }, t("python.hint")),
 				winHost ? E("p", { className: "gb-error" }, t("python.blocked")) : null,
+				pythonDegraded ? E("p", { className: "gb-error" }, t("python.degraded")) : null,
 				),
 			) : null;
 

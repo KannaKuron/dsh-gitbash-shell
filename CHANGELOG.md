@@ -3,6 +3,27 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.26.1 — 2026-09-25
+
+**类型**:fix(v0.26.0 的 workflow 互斥按「意图」而非「生效态」收敛:后端不可用时用户会白丢 workflow 能力)
+
+> v0.26.0 把互斥条件写成「对方能力报 `pythonRuntime: true`」——那是**用户意图**。当对方的 preflight 失败(包被移除、解释器不合格、Windows),`!!js` 兜底与组合实际仍跑 Node,而本插件却已经把四个变体的 `workflow-ptc`/`tool-workflow` 关掉了:用户白丢一项能力,且卡片显示"已开启"与实际不符。dsh-ptc-cordis-preset **v0.15.1** 在能力服务上加了**加法字段** `pythonBackend: 'python' | 'node'`(用与 `!!js` 完全相同的合取计算),本版据此收敛。
+
+- **① 互斥只在真正生效时发生**:新增纯函数 `pythonBackendActive(capability)` = 「意图 `pythonRuntime` 为真 **且** 生效态为 `'python'`」;`pluginsFor({ …, pythonActive })` 的形参由 `pythonRuntime` 改名 **`pythonActive`**,语义写明「run_code 实际会用的后端」——`workflowOn = kind !== 'ptc' && pythonActive !== true`。
+- **② 旧 peer 回退(兼容硬要求)**:`peerBackend()` 对缺字段 / 类型不符 / getter 抛错一律返回 `undefined`(绝不把"没报"读成 `'node'`),`pythonBackendActive` 此时**用意图顶替** ⇒ 对方 < 0.15.1 的行为与 v0.26.0 **完全一致**,不会因缺字段崩溃或改变既有联动。
+- **③ 日志把"真换了"与"想换但没生效"分开**:生效 → `peer reports the experimental CPython run_code backend: workflow rows go off in every variant`;意图 on 但未生效 → `peer has the CPython switch on but the effective backend is node|unreported (older peer: the intent stands in): workflow rows stay on (reason in the host log)`。
+- **④ 卡片显示真实状态**:从**同一份 peer 快照**读可选的 `pythonBackend`;意图 on + 生效 `node` ⇒ 状态值显示「Python(实验性) · **后端不可用,当前仍为 Node(原因见宿主启动日志)**」并另起一行红字;新增第 7 个词典键 `python.degraded`(**21 门语言**同齐)。字段缺省(旧 peer)⇒ 卡片与 v0.26.0 **逐字节一致**(不显示降级态)。
+- **测试**:冒烟 **83/83 绿**(改写 2 条到 `pythonActive` 语义 + 新增 3 条:①生效态矩阵含旧 peer 回退与闭集校验 ②降级意图只上报不驱动 ③卡片降级态与 21 语言文案);`tests/align-official.mjs` 四个变体仍全绿(本版不动组合的官方行形态)。
+- **真机 A/B/C(隔离 `DSH_HOME` + 新建 profile + `link:` 安装 + 探针能力,dsh 0.1.7-rc.2,本机 macOS,端口 3262-3264,收尾已清理)**:探针分别报三种能力形态,读数(`readDocument()` 的 `disabled`)与日志三例全部符合预期:
+
+  | 探针能力 | 日志 | 四变体的 `workflow-ptc`/`tool-workflow` |
+  | --- | --- | --- |
+  | `{pythonRuntime:true, pythonBackend:'python'}` | `peer reports the experimental CPython run_code backend: workflow rows go off in every variant` + 四条 `retired … (peer CPython backend changed; rows are rebuilt)` | **`disabled: true`**(互斥生效) |
+  | `{pythonRuntime:true, pythonBackend:'node'}` | `peer has the CPython switch on but the effective backend is node: workflow rows stay on (reason in the host log)`(**无**重建日志,行未变) | **保持启用**(`standard/cordis-gitbash` 不丢 workflow;`code-gitbash` 本就关) |
+  | `{pythonRuntime:true}`(旧 peer,缺生效字段) | 与第一行相同(意图顶替) | `disabled: true` —— 与 v0.26.0 行为**逐字节一致** |
+
+- 协作边界:v0.15.1 的 `pythonBackend` 是**加法字段**,本插件零形状破坏;`pythonRuntime` 仍是两侧卡片读写的权威**意图**字段。发布后由 contract-rc2 在 task-10 复验两条通道一致性。
+
 ## v0.26.0 — 2026-09-25
 
 **类型**:feat(run_code 的实验性 Python 后端开关,与 dsh-ptc-cordis-preset 双向联动)+ fix(issue #10:JSON 转义的 Windows 路径多出前导斜杠)+ chore(dsh 0.1.7-rc.2 增量对齐复核)
