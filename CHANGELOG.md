@@ -20,6 +20,7 @@
 ### 二、fail-loud 与可点击引导
 - **启动日志**:完整报告 —— 当前 `bashPath` 取到什么 / 按顺序探测过哪些位置(逐条 code+detail)/ 去哪里改 / 下载链接 / "本插件不会回退到 PowerShell"。
 - **客户端弹窗**(`shell.overlay`,仅 win32 且 `ok:false`;同 boot 一次、`sessionStorage` 记关闭;21 语言新增 6 个 `bashmiss.*` 键):探测清单 + **内联 bashPath 编辑框(写 `configForms` 的同一字段,保存落盘到 profile 的 `cordis.patch.yml`)** + **「去下载 Git for Windows」**(`window.open`,Electron 下走外部浏览器)+ 关闭。
+- **写入判定按宿主的布尔返回值(验收反馈修复,commit 见下)**:`ConfigForm.set()` 的契约是 `Promise<boolean>` = **Host 是否接受这次写入**。原先弹窗与设置卡的 bashPath 保存都**丢掉该返回值**、无条件显示「已保存」⇒ Host 拒绝时会**假成功**(与 §4h「绝不静默假成功」同一条纪律)。现在两处都按 `accepted === true` 决定成败,拒绝时显示 `bash.saveFailed`(21 语言,含"确认路径存在且是 Git for Windows 的 bash / 查看宿主日志"的下一步),并处理"没有 form 座位"这一同类情形(同样是拒绝而不是成功)。
 - **数据通道**:host 半注册 `GET /dsh-gitbash-shell/api/status`(`ctx.inject(['webServer'])` 可选服务,家族既有范式同 dsh-ide-git),客户端**在 effect 里 fetch**(不在 apply 取服务,避开客户端半的取服务竞态);`gitBash` capability 同时**加法**扩展为 `{ active, bashPath, ok, source, configured, tried, downloadUrl }`。
 - **深链实测结论**:官方设置页**没有**公开 API 能跳到指定插件的设置卡 —— `openSettings`/`openSection` 只发给 `settings.launcher`/`settings.onboarding` 占用者,面板开关状态是 `ui-settings-general` 私有的 store,`ctx.shortcuts` 也没有"按 id 执行命令"的入口。因此弹窗**自带编辑器**(用户不必去找设置页),文字指路作为兜底;上游若开放深链 API,这里可以直接换成按钮跳转。
 
@@ -33,6 +34,9 @@
   - **内联编辑**:填入 `Q:/Git/bin/bash.exe` → 保存 → 卡片显示「已保存」,**宿主侧落盘** `profiles/verif/cordis.patch.yml` 的 `bashPath: Q:/Git/bin/bash.exe`;
   - **一次性**:关闭后刷新页面不再出现(会话内已记)。
   - 过程中自查修掉一个真缺陷:一次性判定原先写在 render 里(设标志的那次渲染之后的**任何 re-render 都会让弹窗消失**),改为在 effect 中决定 + 本地 state 呈现。
+- **拒绝态实测(隔离实例 + 副本把 host 写入强制为 `false` + 无头 Chrome/CDP)**:`showsSaved=false`、`showsFailure=true`,界面显示
+  「写入失败: 保存未生效:宿主拒绝了这次写入 —— 确认路径存在且是 Git for Windows 的 bash,或查看宿主日志」,零 pageerror;
+  弹窗此时仍有「去下载 Git for Windows」与探测清单作为下一步。`npm test` **94/94**(新增第 8 条守卫:两处写入都必须看布尔返回值、不得出现无条件 `setBashSaved(true)`、21 语言失败文案齐)。
 - **未验证(如实标注,需 issue 作者在 Windows 真机复验)**:注册表 `Path` 兜底、真实 Git 安装布局、WSL/WindowsApps/MSYS2 实机路径的拒绝行为(均为 fake io 单测 + 静态核对);深链不可用是上游能力缺口。
 - 相关:issue #11 https://github.com/KannaKuron/dsh-gitbash-shell/issues/11
 

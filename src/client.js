@@ -99,6 +99,7 @@ window.__ModuleLoader__.load({
 			"eol.hint": "模型跑的 git 命令按 Linux 行为:core.autocrlf=input、core.eol=lf。你自己终端的 git 与仓库里的 .gitattributes 都不受影响。",
 			"bash.label": "Git Bash 路径",
 			"bash.hint": "自定义 bash.exe 完整路径,用于 /usr 等挂载的 Git 根解析;留空自动探测默认安装与 PATH。",
+			"bash.saveFailed": "保存未生效:宿主拒绝了这次写入 —— 确认路径存在且是 Git for Windows 的 bash,或查看宿主日志",
 			"bash.save": "保存",
 			"bash.saved": "已保存",
 			"adopt.label": "接管侧栏终端",
@@ -147,6 +148,7 @@ window.__ModuleLoader__.load({
 			"eol.hint": "Git commands the model runs behave like Linux: core.autocrlf=input, core.eol=lf. Your own terminal's git and a repository's .gitattributes are unaffected.",
 			"bash.label": "Git Bash path",
 			"bash.hint": "Full path of a custom bash.exe for resolving /usr mounts; empty = auto-detect the default install and PATH.",
+			"bash.saveFailed": "The save did not take effect: the host refused the write — check that the path exists and points at Git for Windows’ bash, or read the host log",
 			"bash.save": "Save",
 			"bash.saved": "Saved",
 			"adopt.label": "Adopt sidebar terminal",
@@ -205,6 +207,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "أوامر git التي يشغّلها النموذج تتبع سلوك لينكس: core.autocrlf=input و core.eol=lf؛ لا يتأثر طرفيتك ولا ملف .gitattributes للمستودع.",
 				"bash.label": "مسار Git Bash",
 				"bash.hint": "المسار الكامل لنسخة bash.exe مخصصة؛ فارغ = اكتشاف تلقائي.",
+				"bash.saveFailed": "لم يُطبَّق الحفظ: رفض المضيف هذه الكتابة — تحقق من وجود المسار وأنه bash الخاص بـ Git for Windows، أو راجع سجل المضيف",
 				"bash.save": "حفظ",
 				"bash.saved": "تم الحفظ",
 				"adopt.label": "تبنّي طرفية الشريط الجانبي",
@@ -253,6 +256,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Vom Modell ausgeführte git-Befehle verhalten sich wie unter Linux: core.autocrlf=input, core.eol=lf. Dein eigenes Terminal und die .gitattributes eines Repos bleiben unberührt.",
 				"bash.label": "Git-Bash-Pfad",
 				"bash.hint": "Vollständiger Pfad einer benutzerdefinierten bash.exe; leer = automatische Erkennung.",
+				"bash.saveFailed": "Speichern ohne Wirkung: Der Host hat den Schreibvorgang abgelehnt — prüfe, ob der Pfad existiert und zu Git for Windows gehört, oder lies das Host-Protokoll",
 				"bash.save": "Speichern",
 				"bash.saved": "Gespeichert",
 				"adopt.label": "Sidebar-Terminal übernehmen",
@@ -301,6 +305,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Les commandes git lancées par le modèle suivent le comportement Linux : core.autocrlf=input, core.eol=lf. Votre terminal et les .gitattributes du dépôt ne sont pas touchés.",
 				"bash.label": "Chemin Git Bash",
 				"bash.hint": "Chemin complet d'un bash.exe personnalisé ; vide = détection automatique.",
+				"bash.saveFailed": "L’enregistrement n’a pas pris effet : l’hôte a refusé l’écriture — vérifiez que le chemin existe et correspond au bash de Git for Windows, ou consultez le journal de l’hôte",
 				"bash.save": "Enregistrer",
 				"bash.saved": "Enregistré",
 				"adopt.label": "Adopter le terminal latéral",
@@ -349,6 +354,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "मॉडल द्वारा चलाए git कमांड Linux व्यवहार अपनाते हैं: core.autocrlf=input, core.eol=lf। आपका टर्मिनल और रेपो का .gitattributes अछूते रहते हैं।",
 				"bash.label": "Git Bash पथ",
 				"bash.hint": "कस्टम bash.exe का पूर्ण पथ; खाली = ऑटो-डिटेक्ट।",
+				"bash.saveFailed": "सहेजना लागू नहीं हुआ: होस्ट ने यह लेखन अस्वीकार किया — जाँचें कि पाथ मौजूद है और Git for Windows का bash है, या होस्ट लॉग देखें",
 				"bash.save": "सहेजें",
 				"bash.saved": "सहेजा गया",
 				"adopt.label": "साइडबार टर्मिनल अपनाएँ",
@@ -397,6 +403,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Perintah git yang dijalankan model mengikuti perilaku Linux: core.autocrlf=input, core.eol=lf. Terminal Anda dan .gitattributes repo tidak terpengaruh.",
 				"bash.label": "Path Git Bash",
 				"bash.hint": "Path lengkap bash.exe kustom; kosong = deteksi otomatis.",
+				"bash.saveFailed": "Penyimpanan tidak berlaku: host menolak penulisan ini — pastikan path ada dan menunjuk ke bash Git for Windows, atau baca log host",
 				"bash.save": "Simpan",
 				"bash.saved": "Tersimpan",
 				"adopt.label": "Adopsi terminal sidebar",
@@ -445,6 +452,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "I comandi git eseguiti dal modello seguono il comportamento Linux: core.autocrlf=input, core.eol=lf. Il tuo terminale e i .gitattributes del repo non vengono toccati.",
 				"bash.label": "Percorso Git Bash",
 				"bash.hint": "Percorso completo di un bash.exe personalizzato; vuoto = rilevamento automatico.",
+				"bash.saveFailed": "Salvataggio non applicato: l’host ha rifiutato la scrittura — verifica che il percorso esista e sia la bash di Git for Windows, oppure leggi il log dell’host",
 				"bash.save": "Salva",
 				"bash.saved": "Salvato",
 				"adopt.label": "Adotta il terminale laterale",
@@ -493,6 +501,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "モデルが実行する git コマンドは Linux と同じ挙動になります: core.autocrlf=input、core.eol=lf。あなたのターミナルやリポジトリの .gitattributes は影響を受けません。",
 				"bash.label": "Git Bash パス",
 				"bash.hint": "カスタム bash.exe の完全パス;空欄なら自動検出。",
+				"bash.saveFailed": "保存が反映されません:ホストがこの書き込みを拒否しました —— パスが存在し Git for Windows の bash か確認するか、ホストログを見てください",
 				"bash.save": "保存",
 				"bash.saved": "保存済み",
 				"adopt.label": "サイドバーターミナルを引き継ぐ",
@@ -541,6 +550,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "모델이 실행하는 git 명령은 Linux 동작을 따릅니다: core.autocrlf=input, core.eol=lf. 사용자의 터미널과 저장소의 .gitattributes는 영향을 받지 않습니다.",
 				"bash.label": "Git Bash 경로",
 				"bash.hint": "사용자 bash.exe 전체 경로; 비우면 자동 감지.",
+				"bash.saveFailed": "저장이 반영되지 않았습니다: 호스트가 이 쓰기를 거부했습니다 — 경로가 존재하고 Git for Windows의 bash인지 확인하거나 호스트 로그를 보세요",
 				"bash.save": "저장",
 				"bash.saved": "저장됨",
 				"adopt.label": "사이드바 터미널 인수",
@@ -589,6 +599,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Git-opdrachten die het model uitvoert volgen Linux-gedrag: core.autocrlf=input, core.eol=lf. Je eigen terminal en de .gitattributes van een repo blijven onaangetast.",
 				"bash.label": "Git Bash-pad",
 				"bash.hint": "Volledig pad van een aangepaste bash.exe; leeg = automatisch detecteren.",
+				"bash.saveFailed": "Opslaan had geen effect: de host weigerde deze schrijfactie — controleer of het pad bestaat en naar Git for Windows’ bash wijst, of lees het hostlogboek",
 				"bash.save": "Opslaan",
 				"bash.saved": "Opgeslagen",
 				"adopt.label": "Zijbalkterminal overnemen",
@@ -637,6 +648,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Polecenia git uruchamiane przez model działają jak w Linuksie: core.autocrlf=input, core.eol=lf. Twój terminal i .gitattributes repozytorium pozostają nietknięte.",
 				"bash.label": "Ścieżka Git Bash",
 				"bash.hint": "Pełna ścieżka własnego bash.exe; puste = autodetekcja.",
+				"bash.saveFailed": "Zapis nie został zastosowany: host odrzucił ten zapis — sprawdź, czy ścieżka istnieje i wskazuje bash Git for Windows, albo przeczytaj log hosta",
 				"bash.save": "Zapisz",
 				"bash.saved": "Zapisano",
 				"adopt.label": "Przejmij terminal boczny",
@@ -685,6 +697,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Os comandos git executados pelo modelo seguem o comportamento do Linux: core.autocrlf=input, core.eol=lf. O seu terminal e os .gitattributes do repositório não são afetados.",
 				"bash.label": "Caminho do Git Bash",
 				"bash.hint": "Caminho completo de um bash.exe personalizado; vazio = detecção automática.",
+				"bash.saveFailed": "A gravação não teve efeito: o anfitrião recusou esta escrita — confirme que o caminho existe e é o bash do Git for Windows, ou veja o registo do anfitrião",
 				"bash.save": "Salvar",
 				"bash.saved": "Salvo",
 				"adopt.label": "Adotar o terminal lateral",
@@ -733,6 +746,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Команды git, запускаемые моделью, ведут себя как в Linux: core.autocrlf=input, core.eol=lf. Ваш терминал и .gitattributes репозитория не затрагиваются.",
 				"bash.label": "Путь Git Bash",
 				"bash.hint": "Полный путь кастомного bash.exe; пусто = автоопределение.",
+				"bash.saveFailed": "Сохранение не применилось: хост отклонил эту запись — проверьте, что путь существует и указывает на bash из Git for Windows, или посмотрите журнал хоста",
 				"bash.save": "Сохранить",
 				"bash.saved": "Сохранено",
 				"adopt.label": "Перехватывать терминал боковой панели",
@@ -781,6 +795,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Git-kommandon som modellen kör följer Linux-beteende: core.autocrlf=input, core.eol=lf. Din egen terminal och repots .gitattributes påverkas inte.",
 				"bash.label": "Git Bash-sökväg",
 				"bash.hint": "Fullständig sökväg till egen bash.exe; tom = automatisk detektering.",
+				"bash.saveFailed": "Sparandet slog inte igenom: värden avvisade skrivningen — kontrollera att sökvägen finns och är Git for Windows bash, eller läs värdens logg",
 				"bash.save": "Spara",
 				"bash.saved": "Sparat",
 				"adopt.label": "Överta sidolistterminal",
@@ -829,6 +844,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "คำสั่ง git ที่โมเดลรันจะใช้พฤติกรรมแบบ Linux: core.autocrlf=input, core.eol=lf เทอร์มินัลของคุณและ .gitattributes ของ repo ไม่ได้รับผลกระทบ",
 				"bash.label": "เส้นทาง Git Bash",
 				"bash.hint": "เส้นทางเต็มของ bash.exe แบบกำหนดเอง; ว่าง = ตรวจจับอัตโนมัติ",
+				"bash.saveFailed": "การบันทึกไม่เกิดผล: โฮสต์ปฏิเสธการเขียนนี้ — ตรวจสอบว่าพาธมีอยู่และเป็น bash ของ Git for Windows หรือดูบันทึกของโฮสต์",
 				"bash.save": "บันทึก",
 				"bash.saved": "บันทึกแล้ว",
 				"adopt.label": "รับช่วงเทอร์มินัลแถบข้าง",
@@ -877,6 +893,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Modelin çalıştırdığı git komutları Linux davranışını izler: core.autocrlf=input, core.eol=lf. Kendi terminaliniz ve deponun .gitattributes dosyası etkilenmez.",
 				"bash.label": "Git Bash yolu",
 				"bash.hint": "Özel bash.exe tam yolu; boş = otomatik algılama.",
+				"bash.saveFailed": "Kaydetme etkili olmadı: ana makine bu yazmayı reddetti — yolun var olduğunu ve Git for Windows bash’i olduğunu doğrulayın ya da host günlüğüne bakın",
 				"bash.save": "Kaydet",
 				"bash.saved": "Kaydedildi",
 				"adopt.label": "Kenar çubuğu terminalini devral",
@@ -925,6 +942,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "Các lệnh git do mô hình chạy theo hành vi Linux: core.autocrlf=input, core.eol=lf. Terminal của bạn và .gitattributes của repo không bị ảnh hưởng.",
 				"bash.label": "Đường dẫn Git Bash",
 				"bash.hint": "Đường dẫn đầy đủ của bash.exe tùy chỉnh; để trống = tự dò tìm.",
+				"bash.saveFailed": "Lưu không có hiệu lực: máy chủ đã từ chối lần ghi này — kiểm tra đường dẫn tồn tại và là bash của Git for Windows, hoặc xem nhật ký máy chủ",
 				"bash.save": "Lưu",
 				"bash.saved": "Đã lưu",
 				"adopt.label": "Tiếp nhận terminal thanh bên",
@@ -973,6 +991,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "模型執行的 git 指令採 Linux 行為:core.autocrlf=input、core.eol=lf。你自己終端的 git 與倉庫的 .gitattributes 都不受影響。",
 				"bash.label": "Git Bash 路徑",
 				"bash.hint": "自訂 bash.exe 完整路徑;留空自動探測。",
+				"bash.saveFailed": "保存未生效:宿主拒絕咗今次寫入 —— 確認路徑存在而且係 Git for Windows 嘅 bash,或者睇宿主日誌",
 				"bash.save": "儲存",
 				"bash.saved": "已儲存",
 				"adopt.label": "接管側欄終端",
@@ -1021,6 +1040,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "模型執行的 git 指令採 Linux 行為:core.autocrlf=input、core.eol=lf。你自己終端的 git 與倉庫的 .gitattributes 都不受影響。",
 				"bash.label": "Git Bash 路徑",
 				"bash.hint": "自訂 bash.exe 完整路徑;留空自動探測。",
+				"bash.saveFailed": "保存未生效:宿主拒絕咗今次寫入 —— 確認路徑存在而且係 Git for Windows 嘅 bash,或者睇宿主日誌",
 				"bash.save": "儲存",
 				"bash.saved": "已儲存",
 				"adopt.label": "接管側欄終端",
@@ -1069,6 +1089,7 @@ window.__ModuleLoader__.load({
 				"eol.hint": "模型執行的 git 指令採 Linux 行為:core.autocrlf=input、core.eol=lf。你自己終端的 git 與倉庫的 .gitattributes 都不受影響。",
 				"bash.label": "Git Bash 路徑",
 				"bash.hint": "自訂 bash.exe 完整路徑;留空自動探測。",
+				"bash.saveFailed": "儲存未生效:宿主拒絕了這次寫入 —— 確認路徑存在且為 Git for Windows 的 bash,或查看宿主日誌",
 				"bash.save": "儲存",
 				"bash.saved": "已儲存",
 				"adopt.label": "接管側欄終端機",
@@ -1359,14 +1380,38 @@ window.__ModuleLoader__.load({
 			var enabled = value.posixPaths === true;
 			var adopt = value.adoptSidebar !== false;
 
+			/* `ConfigForm.set` resolves with WHETHER THE HOST ACCEPTED the write
+			   (dsh ui-settings config-form.ts), so a `false` is a refusal, not a
+			   success: claiming "saved" on it would be exactly the silent
+			   false-success this plugin forbids (AGENTS §4h). Returns the verdict
+			   so each caller can render its own success/failure state. */
 			function writeField(key, next) {
 				setError("");
-				scope.set(key, next)
-					.then(function () { bumpTick(function (n) { return n + 1; }); })
-					.catch(function (err) {
-						bumpTick(function (n) { return n + 1; });
-						setError(t("error") + ": " + (err && err.message ? err.message : String(err)));
-					});
+				if (!scope || typeof scope.set !== "function") {
+					setError(t("error") + ": " + t("bash.saveFailed"));
+					return Promise.resolve(false);
+				}
+				try {
+					return Promise.resolve(scope.set(key, next)).then(
+						function (accepted) {
+							bumpTick(function (n) { return n + 1; });
+							if (accepted !== true) {
+								setError(t("error") + ": " + t("bash.saveFailed"));
+								return false;
+							}
+							return true;
+						},
+						function (err) {
+							bumpTick(function (n) { return n + 1; });
+							setError(t("error") + ": " + (err && err.message ? err.message : String(err)));
+							return false;
+						},
+					);
+				} catch (err) {
+					bumpTick(function (n) { return n + 1; });
+					setError(t("error") + ": " + (err && err.message ? err.message : String(err)));
+					return Promise.resolve(false);
+				}
 			}
 
 			var Chevron = icon("IconChevronDownOutline14");
@@ -1457,7 +1502,14 @@ window.__ModuleLoader__.load({
 					),
 					E("div", { className: "gb-seg" },
 						E("input", { className: "gb-input", type: "text", spellCheck: false, placeholder: "C:/Program Files/Git/bin/bash.exe", value: bashDraft, onChange: function (e) { setBashDraft(e.target.value); setBashSaved(false); } }),
-						E("button", { type: "button", className: "gb-saveBtn" + (bashSaved ? " gb-saved" : ""), onClick: function () { writeField("bashPath", bashDraft.trim()); setBashSaved(true); } }, bashSaved ? t("bash.saved") : t("bash.save")),
+						E("button", {
+							type: "button",
+							className: "gb-saveBtn" + (bashSaved ? " gb-saved" : ""),
+							onClick: function () {
+								setBashSaved(false);
+								writeField("bashPath", bashDraft.trim()).then(function (accepted) { setBashSaved(accepted === true); });
+							},
+						}, bashSaved ? t("bash.saved") : t("bash.save")),
 					),
 				E("p", { className: "gb-hint" }, t("bash.hint")),
 				),
@@ -1629,6 +1681,9 @@ window.__ModuleLoader__.load({
 			var savedState = useState(false);
 			var saved = savedState[0];
 			var setSaved = savedState[1];
+			var saveErrorState = useState("");
+			var saveError = saveErrorState[0];
+			var setSaveError = saveErrorState[1];
 			var hiddenState = useState(readDismissed());
 			var hidden = hiddenState[0];
 			var setHidden = hiddenState[1];
@@ -1668,6 +1723,7 @@ window.__ModuleLoader__.load({
 			var close = function () { rememberDismissed(); setHidden(true); };
 			var save = function () {
 				setSaved(false);
+				setSaveError("");
 				var forms;
 				try {
 					var c = props.ctx;
@@ -1675,13 +1731,29 @@ window.__ModuleLoader__.load({
 				} catch (error_) { forms = undefined; }
 				var form;
 				try { form = forms && typeof forms.get === "function" ? forms.get(SETTINGS_NAMESPACE) : undefined; } catch (error_) { form = undefined; }
-				if (!form || typeof form.set !== "function") return;
+				if (!form || typeof form.set !== "function") {
+					/* No form seat: say so instead of pretending the save landed. */
+					setSaveError(t("error") + ": " + t("bash.saveFailed"));
+					return;
+				}
 				try {
+					/* The verdict is the HOST's: `accepted === false` is a refusal and
+					   must NOT read as "saved" (AGENTS §4h, silent false success). */
 					Promise.resolve(form.set("bashPath", draft.trim())).then(
-						function () { setSaved(true); },
-						function () { /* the host reports its own failure */ },
+						function (accepted) {
+							if (accepted === true) { setSaved(true); return; }
+							setSaved(false);
+							setSaveError(t("error") + ": " + t("bash.saveFailed"));
+						},
+						function (err) {
+							setSaved(false);
+							setSaveError(t("error") + ": " + (err && err.message ? err.message : String(err)));
+						},
 					);
-				} catch (error_) { /* keep the draft */ }
+				} catch (err) {
+					setSaved(false);
+					setSaveError(t("error") + ": " + (err && err.message ? err.message : String(err)));
+				}
 			};
 
 			return E("div", { className: "gb-modalBackdrop", role: "dialog", "aria-modal": "true" },
@@ -1708,6 +1780,7 @@ window.__ModuleLoader__.load({
 						E("button", { type: "button", className: "gb-segBtn", onClick: save }, t("bash.save")),
 						saved ? E("span", { className: "gb-rowValue" }, t("bash.saved")) : null,
 					),
+					saveError !== "" ? E("p", { className: "gb-error" }, saveError) : null,
 					E("p", { className: "gb-hint" }, t("bashmiss.where")),
 					E("div", { className: "gb-seg" },
 						E("button", {

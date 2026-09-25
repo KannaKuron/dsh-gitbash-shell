@@ -2256,3 +2256,25 @@ test('bash status route + capability expose the verdict to the client and to pee
   const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
   assert.match(shell, /resolveGitBashCached\(\{ configured \}\)/, 'the executor resolves through the same shared memo')
 })
+
+test('write verdicts: a host REFUSAL never reads as "saved" (no silent false success)', () => {
+  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  // the popup: the boolean IS the verdict
+  assert.match(src, /if \(accepted === true\) \{ setSaved\(true\); return; \}/, 'the popup honours the accepted boolean')
+  assert.match(src, /setSaved\(false\);\s*\n\s*setSaveError\(t\("error"\) \+ ": " \+ t\("bash\.saveFailed"\)\);/,
+    'a refusal renders an explicit failure line')
+  assert.match(src, /saveError !== "" \? E\("p", \{ className: "gb-error" \}, saveError\) : null/)
+  // the card: same verdict, and the save button no longer claims success unconditionally
+  assert.match(src, /writeField\(key, next\)[\s\S]{0,400}if \(accepted !== true\) \{/, 'writeField checks the verdict')
+  assert.match(src, /if \(accepted !== true\) \{[\s\S]{0,120}setError\(t\("error"\) \+ ": " \+ t\("bash\.saveFailed"\)\);/)
+  assert.match(src, /writeField\("bashPath", bashDraft\.trim\(\)\)\.then\(function \(accepted\) \{ setBashSaved\(accepted === true\); \}\)/)
+  assert.doesNotMatch(src, /writeField\("bashPath", bashDraft\.trim\(\)\); setBashSaved\(true\);/, 'the old unconditional success is gone')
+  // a missing seat is a refusal too — never a pretend success
+  assert.match(src, /if \(!scope \|\| typeof scope\.set !== "function"\) \{/)
+  assert.match(src, /if \(!form \|\| typeof form\.set !== "function"\) \{/)
+  // and the failure copy exists in every shipped dictionary
+  const copies = [...src.matchAll(/"bash\.saveFailed": ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]))
+  assert.equal(copies.length, 21, 'one failure copy per shipped dictionary')
+  assert.ok(copies[0].includes('宿主拒绝'), 'zh says the host refused: ' + copies[0])
+  assert.ok(copies[1].includes('host refused'), 'en says the host refused: ' + copies[1])
+})
