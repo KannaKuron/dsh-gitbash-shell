@@ -2046,6 +2046,10 @@ test('subagent switch: OFF keeps the dialect to the main agent', () => {
   assert.match(src, /dialectApplies\(dialect, exec && exec\.agent\)/, 'dispatch + failure faces')
   assert.match(src, /dialectApplies\(dialect, execution && execution\.agent\)/, 'the shell-env fact')
   assert.match(src, /const applies = dialectApplies\(dialect, assembleContext && assembleContext\.agent\)/)
+  // the post-execute early exit RETURNS the downstream promise: swallowing it
+  // would hand the caller `undefined` instead of the decision
+  assert.match(src, /if \(!dialectApplies\(dialect, exec && exec\.agent\)\) return next\(\)/)
+  assert.doesNotMatch(src, /\{ next\(\); return \}/, 'a waterfall listener never drops its chain')
 })
 
 test('subagent switch: an old host without the key defaults to ON', () => {

@@ -2621,7 +2621,9 @@ export async function apply(ctx, config = {}) {
         try {
           const dialect = liveSettings.dialect()
           // Same agent gate as the dispatch wrapper: one call, one dialect.
-          if (!dialectApplies(dialect, exec && exec.agent)) { next(); return }
+          // RETURN the downstream promise: a waterfall listener that swallows
+          // it would hand the caller `undefined` instead of the decision.
+          if (!dialectApplies(dialect, exec && exec.agent)) return next()
           if (dialect.posixPaths && dialect.errorDialect && exec && result && typeof result === 'object'
             && result.isError === true && Array.isArray(result.content)) {
             const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
