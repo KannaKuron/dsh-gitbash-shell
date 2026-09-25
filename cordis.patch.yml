@@ -32,7 +32,11 @@
       disabled: !!js process.platform !== 'win32'
       config:
         timeoutMs: 60000
-        bashPath: "C:/Program Files/Git/bin/bash.exe"
+        # EMPTY = AUTO (v0.28.0, issue #11): the shared resolver walks
+        # setting > default install paths > PATH > registry PATH, and accepts
+        # ONLY Git for Windows' bash. A hard-coded C: path here made a Git
+        # installed elsewhere (e.g. Q:/Git) look like "dsh is broken".
+        bashPath: ""
 
     # Row id 'gitbash-shell' (was 'gitbash-presets' through v0.23.0): dsh >= 0.1.7
     # keys a plugin's live Config form and the one-shot legacy settings.yaml

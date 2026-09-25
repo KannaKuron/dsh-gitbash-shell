@@ -7,6 +7,17 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _internal } from '../src/index.js'
 
+/* Bindings for the shell.js eval harnesses below: those strip every `import`
+   line, so the shared bash resolver arrives as explicit stubs. The stub keeps
+   the real contract that matters to the executor — a CONFIGURED path resolves
+   to itself (never to some other shell), an empty one does not resolve. */
+const resolveBashStub = ({ configured }) => configured === ''
+  ? { ok: false, path: '', root: '', gitExe: '', source: '', tried: [], rejected: [], configured: '' }
+  : { ok: true, path: configured, root: configured.replace(/\/bin\/bash\.exe$/, ''), gitExe: '', source: 'configured', tried: [], rejected: [], configured }
+const effectiveBashStub = (own, settings) => (typeof own === 'string' && own.trim() !== '' ? own.trim() : (typeof settings === 'string' ? settings.trim() : ''))
+const settingsBashStub = () => ''
+const bashReportStub = (resolution) => (resolution.ok ? 'resolved: ' + resolution.path : 'unresolved (stub)')
+
 test('hashTree/classify roundtrip with marker', () => {
   const dir = mkdtempSync(join(tmpdir(), 'gitbash-shell-'))
   try {
@@ -827,7 +838,7 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
 
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
-  const scope = new Function('SandboxBashExecutor', 'z', 'process',
+  const scope = new Function('DEFAULT_GIT_BASH', 'SandboxBashExecutor', 'z', 'process',
     stripped + '\nreturn { gitBashShellConfig, Config, GitBashSandboxExecutor }')
   class FakeBase {}
 
@@ -850,7 +861,7 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
   //    stays plain (the base neither declares nor `.get()`s it, and
   //    `get bashPath()` reads it directly).
   const withVolatile = recorder(true)
-  const liveFields = scope(FakeBase, withVolatile.z, process).gitBashShellConfig(withVolatile.z)
+  const liveFields = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withVolatile.z, process).gitBashShellConfig(withVolatile.z)
   assert.deepEqual(Object.keys(liveFields).sort(), [...baseLiveFields, 'bashPath'].sort(),
     'the executor Config must declare exactly the inherited fields plus bashPath')
   for (const key of baseLiveFields) {
@@ -862,7 +873,7 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
   //    values): the probe must NOT invent markers, or the old base class would
   //    receive objects it never calls `.get()` on.
   const withoutVolatile = recorder(false)
-  const plainFields = scope(FakeBase, withoutVolatile.z, process).gitBashShellConfig(withoutVolatile.z)
+  const plainFields = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withoutVolatile.z, process).gitBashShellConfig(withoutVolatile.z)
   for (const key of [...baseLiveFields, 'bashPath']) {
     assert.equal(plainFields[key].marked, 0, key + ' must stay plain where volatile() does not exist')
   }
@@ -875,7 +886,7 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
 test('executor: Windows confined calls run unconfined and say so (issue #1)', async () => {
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
-  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   class FakeBase {
     constructor() { this.calls = [] }
     async run(spec) { this.calls.push(['super.run', spec]); return { via: 'super.run' } }
@@ -885,7 +896,7 @@ test('executor: Windows confined calls run unconfined and say so (issue #1)', as
   }
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
   const make = (platform) => {
-    const mod = scope(FakeBase, chain, { platform })
+    const mod = scope('C:/Program Files/Git/bin/bash.exe', resolveBashStub, effectiveBashStub, settingsBashStub, bashReportStub, FakeBase, chain, { platform })
     const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
     ex.config = { bashPath: 'X:/git/bin/bash.exe' }
     ex.calls = []
@@ -1039,11 +1050,11 @@ test('assets keep the pre-rename engine spelling; alignment is a materialization
 test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)', async () => {
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
-  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
   const build = (Base, platform) => {
-    const mod = scope(Base, chain, { platform })
+    const mod = scope('C:/Program Files/Git/bin/bash.exe', resolveBashStub, effectiveBashStub, settingsBashStub, bashReportStub, Base, chain, { platform })
     const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
     ex.config = { bashPath: 'X:/git/bin/bash.exe' }
     ex.calls = []
@@ -1114,7 +1125,7 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
   // after the Config fix.
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
-  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
 
@@ -1134,7 +1145,7 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
     async runArgv(spec, argv) { this.calls.push(['runArgv', argv]); return RESULT }
   }
   const build = (Base, platform) => {
-    const mod = scope(Base, chain, { platform })
+    const mod = scope('C:/Program Files/Git/bin/bash.exe', resolveBashStub, effectiveBashStub, settingsBashStub, bashReportStub, Base, chain, { platform })
     const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
     ex.config = { bashPath: 'X:/git/bin/bash.exe' }
     ex.calls = []
@@ -1206,10 +1217,10 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
   // better-sidebar terminal adoption both stopped happening with no error.
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
-  const scope = new Function('SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
   const build = (settings) => {
-    const ex = Object.create(scope(chain, chain, { platform: 'win32' }).GitBashSandboxExecutor.prototype)
+    const ex = Object.create(scope('C:/Program Files/Git/bin/bash.exe', resolveBashStub, effectiveBashStub, settingsBashStub, bashReportStub, chain, chain, { platform: 'win32' }).GitBashSandboxExecutor.prototype)
     ex.config = { bashPath: 'X:/git/bin/bash.exe' }
     ex.ctx = settings === undefined ? {} : { get: (name) => (name === 'settings' ? settings : undefined) }
     return ex
@@ -1623,8 +1634,8 @@ test('regression (v0.24.2): apply() mounts — adoptSidebarShell never reaches i
   assert.doesNotMatch(body, /\bliveSettings\b/, 'the module-level helper must receive the gate, not reach into apply() scope')
   assert.match(
     source,
-    /adoptSidebarShell\(ctx, gitBashCapability\.bashPath, \(\) => liveSettings\.adoptSidebar\(\)\)/,
-    'apply() must hand its era-aware gate getter to the helper',
+    /if \(bashResolution\.ok\) adoptSidebarShell\(ctx, bashResolution\.path, \(\) => liveSettings\.adoptSidebar\(\)\)/,
+    'apply() must hand its era-aware gate getter to the helper, and only adopt with a RESOLVED bash',
   )
 })
 
@@ -2068,4 +2079,180 @@ test('subagent switch: an old host without the key defaults to ON', () => {
   assert.match(src, /subagentDialect: Schema\.boolean\(\)\.default\(true\)/)
   assert.match(src, /subagentDialect: valueOf\(config\.subagentDialect\) !== false/)
   assert.match(src, /subagentDialect: v\.subagentDialect !== false/)
+})
+
+// ── issue #11: the ONE bash resolution chain, and the two hard rules ─────────
+
+/** A case-insensitive fake filesystem for the resolver tests. */
+function fakeIo(files, options = {}) {
+  const norm = (value) => String(value).replace(/\\/g, '/').toLowerCase()
+  const set = new Set(files.map(norm))
+  return {
+    exists: (path) => set.has(norm(path)),
+    defaults: () => options.defaults ?? [],
+    pathBashCandidates: () => options.path ?? [],
+    gitReverseCandidates: () => options.reverse ?? [],
+    registryBashCandidates: () => options.registry ?? [],
+    gitVersion: options.version ?? (() => 'git version 2.54.0.windows.1'),
+    uname: options.uname ?? (() => 'MINGW64_NT-10.0-22631'),
+  }
+}
+/** A complete, valid Git for Windows tree at `root`. */
+const gitTree = (root) => [
+  root + '/bin/bash.exe', root + '/cmd/git.exe', root + '/usr/bin/bash.exe', root + '/mingw64',
+]
+
+test('bash resolution: explicit setting wins, and a rejected explicit value is never substituted', async () => {
+  const { resolveGitBash } = await import('../src/bash-path.js')
+  // explicit + valid → used, whatever the defaults say
+  const good = resolveGitBash({ configured: 'Q:/Git/bin/bash.exe', io: fakeIo(gitTree('Q:/Git'), { defaults: ['C:/Program Files/Git/bin/bash.exe'] }) })
+  assert.equal(good.ok, true)
+  assert.equal(good.path, 'Q:/Git/bin/bash.exe')
+  assert.equal(good.source, 'configured')
+  // explicit + invalid → FAIL, and the chain does NOT continue into a default:
+  // the user's answer is the answer (and no other shell is substituted).
+  const bad = resolveGitBash({ configured: 'Q:/Git/bin/bash.exe', io: fakeIo(gitTree('C:/Program Files/Git'), { defaults: ['C:/Program Files/Git/bin/bash.exe'] }) })
+  assert.equal(bad.ok, false, 'an explicit-but-broken path must fail, not silently resolve elsewhere')
+  assert.equal(bad.path, '', 'the failure carries NO substitute interpreter')
+  assert.equal(bad.tried.length, 1)
+  assert.equal(bad.tried[0].code, 'missing')
+})
+
+test('bash resolution: defaults, then PATH — with the WSL traps rejected on the way', async () => {
+  const { resolveGitBash } = await import('../src/bash-path.js')
+  // empty setting → the historical default still resolves first
+  const byDefault = resolveGitBash({ configured: '', io: fakeIo(gitTree('C:/Program Files/Git'), { defaults: ['C:/Program Files/Git/bin/bash.exe'] }) })
+  assert.equal(byDefault.ok, true)
+  assert.equal(byDefault.source, 'default')
+  // default missing → PATH, after refusing System32's WSL starter and the
+  // WindowsApps alias (System32 is always on PATH and sorts first)
+  const byPath = resolveGitBash({
+    configured: '',
+    io: fakeIo(gitTree('Q:/Git'), {
+      defaults: ['C:/Program Files/Git/bin/bash.exe'],
+      path: ['C:/Windows/System32/bash.exe', 'C:/Users/x/AppData/Local/Microsoft/WindowsApps/bash.exe', 'C:/tools/msys64/usr/bin/bash.exe', 'C:/tools/cygwin/bin/bash.exe', 'Q:/Git/bin/bash.exe'],
+    }),
+  })
+  assert.equal(byPath.ok, true)
+  assert.equal(byPath.path, 'Q:/Git/bin/bash.exe')
+  assert.equal(byPath.source, 'path')
+  assert.deepEqual(byPath.tried.map((row) => row.code), ['missing', 'rejected-shell', 'rejected-shell', 'rejected-shell', 'rejected-shell'])
+  // the git.exe reverse lookup and the registry PATH are the last two steps
+  const byReverse = resolveGitBash({ configured: '', io: fakeIo(gitTree('D:/Tools/Git'), { reverse: ['D:/Tools/Git/bin/bash.exe'] }) })
+  assert.equal(byReverse.ok, true)
+  assert.equal(byReverse.source, 'path-git')
+  const byRegistry = resolveGitBash({ configured: '', io: fakeIo(gitTree('E:/Git'), { registry: ['E:/Git/bin/bash.exe'] }) })
+  assert.equal(byRegistry.ok, true)
+  assert.equal(byRegistry.source, 'registry')
+})
+
+test('bash resolution: ONLY Git for Windows counts — WSL, MSYS2, Cygwin and non-Windows git are refused', async () => {
+  const { resolveGitBash, rejectedBashMarker } = await import('../src/bash-path.js')
+  // the blacklist is a location rule, applied before any filesystem probe
+  assert.equal(rejectedBashMarker('C:/Windows/System32/bash.exe'), 'system32')
+  assert.equal(rejectedBashMarker('C:/Users/x/AppData/Local/Microsoft/WindowsApps/bash.exe'), 'windowsapps')
+  assert.equal(rejectedBashMarker('C:/tools/msys64/usr/bin/bash.exe'), 'msys')
+  assert.equal(rejectedBashMarker('C:/tools/cygwin64/bin/bash.exe'), 'cygwin')
+  assert.equal(rejectedBashMarker('C:/Users/x/AppData/Local/wsl/bash.exe'), 'wsl')
+  assert.equal(rejectedBashMarker('Q:/Git/bin/bash.exe'), undefined)
+  // a WSL bash dressed in a Git-like tree still fails the `uname -s` veto
+  const wslUname = resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], uname: () => 'Linux' }) })
+  assert.equal(wslUname.ok, false)
+  assert.equal(wslUname.path, '', 'a WSL bash must never be returned')
+  assert.equal(wslUname.tried[0].code, 'not-git-bash')
+  for (const uname of ['MSYS_NT-10.0-22631', 'CYGWIN_NT-10.0', 'Darwin']) {
+    const verdict = resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], uname: () => uname }) })
+    assert.equal(verdict.ok, false, uname + ' is not Git Bash')
+  }
+  assert.equal(resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], uname: () => 'MINGW64_NT-10.0-22631' }) }).ok, true)
+  assert.equal(resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], uname: () => 'MINGW32_NT-10.0' }) }).ok, true)
+  // the git version fingerprint must say `.windows.`
+  const notWindowsGit = resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], version: () => 'git version 2.43.0' }) })
+  assert.equal(notWindowsGit.ok, false)
+  assert.equal(notWindowsGit.tried[0].code, 'not-windows-git')
+  // …and the Git layout itself must be complete
+  for (const missing of ['Q:/Git/usr/bin/bash.exe', 'Q:/Git/cmd/git.exe']) {
+    const io = fakeIo(gitTree('Q:/Git').filter((path) => path !== missing), { defaults: ['Q:/Git/bin/bash.exe'] })
+    assert.equal(resolveGitBash({ configured: '', io }).ok, false, 'incomplete Git tree: missing ' + missing)
+  }
+})
+
+test('bash resolution: everything fails -> a report with the chain, the fix and NO fallback', async () => {
+  const { resolveGitBash, bashResolutionReport, GIT_BASH_DOWNLOAD_URL } = await import('../src/bash-path.js')
+  const verdict = resolveGitBash({
+    configured: '',
+    io: fakeIo([], { defaults: ['C:/Program Files/Git/bin/bash.exe'], path: ['C:/Windows/System32/bash.exe'] }),
+  })
+  assert.equal(verdict.ok, false)
+  assert.equal(verdict.path, '')
+  const report = bashResolutionReport(verdict)
+  assert.ok(report.includes('never falls back to PowerShell'), 'the report states the design: ' + report)
+  assert.ok(report.includes('C:/Program Files/Git/bin/bash.exe'), 'the report lists every probed location')
+  assert.ok(report.includes('Settings') || report.includes('settings'), 'the report says where to fix it')
+  assert.ok(report.includes(GIT_BASH_DOWNLOAD_URL), 'the report links the download')
+  assert.ok(report.includes('only Git for Windows'), 'the report says what IS accepted')
+  // an explicit failure names the configured value instead of a default
+  const explicit = resolveGitBash({ configured: 'Q:/nope/bin/bash.exe', io: fakeIo([]) })
+  assert.ok(bashResolutionReport(explicit).includes('Q:/nope/bin/bash.exe'))
+})
+
+test('no-fallback guards: the plugin never swaps in another shell (patch + executor source)', () => {
+  const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  // pwsh-sandbox stays UNCONDITIONALLY withdrawn — never gated on bash health
+  const block = patch.slice(patch.indexOf('- id: pwsh-sandbox'), patch.indexOf('- insert:'))
+  assert.match(block, /disabled: true/)
+  assert.doesNotMatch(block, /!!js/, 'the pwsh withdrawal must not become conditional')
+  assert.doesNotMatch(patch, /bashPath: "C:\/Program Files\/Git\/bin\/bash\.exe"/, 'no hard-coded C: default survives in the patch')
+  const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
+  // Only the PROGRAM itself is inspected: comments explain the surrounding
+  // history (and legitimately mention the shipped pwsh executor it replaces).
+  const shellCode = shell.replace(/^\s*\*.*$/gm, '').replace(/^\s*\/\/.*$/gm, '')
+  for (const needle of ['pwsh.exe', 'powershell.exe', 'cmd.exe', 'wsl.exe', "'bash'", '"bash"']) {
+    assert.ok(!shellCode.includes(needle), 'src/shell.js must not spawn a substitute shell: ' + needle)
+  }
+  assert.ok(!/\/bin\/bash(?!\.exe)/.test(shellCode.replace(/DEFAULT_GIT_BASH = '[^']*'/g, '')), 'no bare POSIX bash path survives')
+  assert.match(shell, /requireBashPath\(\)/, 'every argv goes through the resolved-path guard')
+  // the guard THROWS on an unresolved bash instead of returning something runnable
+  assert.match(shell, /if \(!resolution\.ok\) \{\s*throw new Error\('dsh-gitbash-shell: no Git for Windows bash found/)
+  // the composition still pins pwsh rows off in every Git Bash variant
+  const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
+  assert.match(compositions, /const pwshDisabled = gitBash \? true : !win/)
+})
+
+test('missing-bash popup: registered globally, win32-only, once per boot, with both actions', () => {
+  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(src, /slots\.inject\("shell\.overlay", function \(\) \{/)
+  assert.match(src, /id: "gitbash-shell:bash-missing"/)
+  assert.match(src, /var API_PATH = "dsh-gitbash-shell\/api\/status";/, 'mount-relative route (dsh serves the shell with <base href="./">)')
+  assert.match(src, /data\.platform !== "win32" \|\| data\.ok !== false/, 'win32-only, and only when resolution failed')
+  assert.match(src, /window\.sessionStorage\.getItem\(DISMISS_KEY\)/, 'per-boot dismissal')
+  assert.match(src, /window\.open\(status\.downloadUrl/, 'the download action')
+  assert.match(src, /form\.set\("bashPath", draft\.trim\(\)\)/, 'the inline editor writes the settings field')
+  // the fetch happens in an effect, never cached at apply time (apply cannot
+  // see the services yet on some boots — family lesson)
+  assert.match(src, /useEffect\(function \(\) \{\s*var alive = true;/, 'the probe runs per mount, not at apply')
+  for (const key of ['bashmiss.title', 'bashmiss.body', 'bashmiss.tried', 'bashmiss.download', 'bashmiss.where', 'bashmiss.close']) {
+    const occurrences = [...src.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
+    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
+  }
+  const zh = [...src.matchAll(/"bashmiss\.body": ("(?:[^"\\]|\\.)*")/g)].map((m) => JSON.parse(m[1]))
+  assert.ok(zh[0].includes('不会回退到 PowerShell'), 'the zh copy fixes the design, not just the symptom')
+  assert.ok(zh[1].includes('never falls back to PowerShell'), 'the en copy says the same')
+})
+
+test('bash status route + capability expose the verdict to the client and to peers', () => {
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(src, /ctx\.inject\(\['webServer'\]/, 'the route is an optional service, never a hard inject')
+  assert.match(src, /const route = '\/dsh-gitbash-shell\/api\/status'/)
+  assert.match(src, /wctx\.webServer\.register\(\{ kind: 'prefix', path: route, handler \}\)/)
+  // the capability keeps `bashPath` for existing peers and adds the verdict
+  assert.match(src, /const gitBashCapability = \{/)
+  assert.match(src, /ok: bashResolution\.ok,/)
+  assert.match(src, /tried: bashResolution\.tried,/)
+  assert.match(src, /downloadUrl: GIT_BASH_DOWNLOAD_URL,/)
+  // ONE resolver for the executor and the translation layer (issue #11's split)
+  assert.match(src, /const resolution = resolveGitBashCached\(\{ configured: cacheKey \}\)/)
+  assert.match(src, /buildTranslateEnv\(configuredBashPath\)/)
+  const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
+  assert.match(shell, /resolveGitBashCached\(\{ configured \}\)/, 'the executor resolves through the same shared memo')
 })

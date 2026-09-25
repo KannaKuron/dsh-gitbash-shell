@@ -256,6 +256,41 @@
        声明同名字段,**缺键 = true**(`v.subagentDialect !== false`)⇒ 旧宿主/老配置行为不变。21 语言文案 `sub.label`/`sub.hint`。
      - 改动必须跑冒烟里的「subagent switch」三例 + 真机两态(见 CHANGELOG v0.27.0 的装置:真 root/child/nested agent + 真 assemble 调用)。
 
+4h. **bashPath 解析链与两条硬边界(v0.28.0,issue #11)**:用户机器上 Git 装在 `Q:\Git` 而 patch 写死
+     `C:/Program Files/Git/bin/bash.exe` ⇒ **每条命令 spawn ENOENT**;又因本插件撤掉 `pwsh-sandbox` 而 dsh
+     每进程只允许一个 `ctx.shell`,**整个会话的命令能力归零且无提示**。本版把解析统一、并把"没有 Git Bash"
+     变成可引导的显式失败。
+     - **两条硬边界(用户明确表态,高于任何"为了不报错"的降级提议;动这层前先问用户)**:
+       ① **永不回退**:找不到 Git Bash 就**只报错 + 引导**,绝不换 pwsh / cmd / WSL bash / MSYS2 bash 顶上,
+          也不做"暂时留个能跑的"。理由(用户原话):"人家大可自己卸载插件,既然人家下载了我们插件就是要用。"
+       ② **只认 Git for Windows 的 bash**:WSL(`C:\Windows\System32\bash.exe`、WindowsApps 别名)、
+          MSYS2、Cygwin 的 bash **一律不算命中**,宁可报错("绝对不能用 wsl")。
+     - **解析链(`src/bash-path.js`,唯一实现;执行器与翻译层共用同一 memo)**,顺序即契约:
+       1. **设置里填的**:`gitbash-executor` 行 config(用 `ctx.loader.resolve('gitbash-executor')` 让翻译层也看到)
+          > `gitbash-shell` 行/设置 `bashPath` > 空(=自动链)。**显式值即答案,失败也不换别的**。
+       2. **默认安装位置**:`C:/Program Files/Git/bin/bash.exe`(主)、`%ProgramFiles(x86)%`、`%ProgramW6432%`、
+          `%LOCALAPPDATA%/Programs/Git/bin/bash.exe`。
+       3. **PATH**(用户+系统,进程级已合并)逐目录 `bash.exe`;**黑名单在这些候选之前生效**。
+       4. **PATH 上的 `git.exe` 反推**(`<gitdir>/../bin/bash.exe`、`<gitdir>/../../bin/bash.exe`)。
+       5. **注册表 Path**(`HKCU\Environment`、`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`,
+          覆盖"GUI 启动时 PATH 快照过期");`reg query` 走 **argv 数组**,不拼字符串。
+       6. 全落空 ⇒ `{ ok:false, path:'', tried:[…] }` + `bashResolutionReport()` 的 fail-loud 文案。
+     - **判据(缺一不可)**:黑名单(`system32`/`windowsapps`/`msys`/`cygwin`/`wsl`,归一化后逐段匹配,先于探测)
+       → 形状 `<root>/bin/bash.exe` → `<root>/cmd/git.exe|bin/git.exe` → `<root>/usr/bin/bash.exe` →
+       (`<root>/mingw64` 或 `<root>/usr/bin/msys-2.0.dll`) → `<git> --version` 含 **`.windows.`** →
+       **一票否决**:实跑候选 `bash -c "uname -s"` 必须是 `MINGW32_NT-*`/`MINGW64_NT-*`。
+     - **失败的用户可见面**:① 启动日志打印完整报告(当前值/逐条探测/去哪改/下载链接/"不回退"声明);
+       ② win32 注册 `GET /dsh-gitbash-shell/api/status`(可选服务 `ctx.inject(['webServer'])`,绝不硬 inject);
+       ③ 客户端半在 `shell.overlay` 上弹一次(仅 win32 且 `ok:false`,同 boot 一次、`sessionStorage` 记关闭),
+       内含**探测清单 + 内联 bashPath 编辑(写 `configForms` 的 `bashPath`)+「去下载 Git for Windows」**。
+       **`pwsh-sandbox` 的 `disabled: true` 永远与 bash 健康无关**(冒烟守卫断言它没有 `!!js`);
+       `cordis.patch.yml` 的 `gitbash-executor.config.bashPath` 默认是**空串**(=自动链)。
+     - **深链结论(实测)**:官方设置页**没有**公开 API 能跳到指定插件的设置卡
+       (`openSettings`/`openSection` 只发给 `settings.launcher`/`settings.onboarding` 占用者,面板状态是
+       `ui-settings-general` 私有 store;`ctx.shortcuts` 也没有按 id 执行命令的入口)⇒ 因此弹窗**自带编辑器**,
+       用户不必去找设置页;文字指路作为兜底。上游若开放深链 API,这里可以直接换成按钮跳转。
+     - 改这一层必须跑冒烟里的「bash resolution」四例 + 「no-fallback guards」+「missing-bash popup」+ 真机弹窗读数。
+
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
    **`exports` 必须含 `"./package.json": "./package.json"`(v0.24.3 修,与 dsh-better-workspace
@@ -385,6 +420,13 @@
    再对每个 agent 调**真的** `systemPrompt.assemble({ agent, scope: agent })`,断言:开关 ON 时三态都拿到方言指令;OFF 时**只有 root** 拿到,
    child/nested 均无(`directive=no`)。macOS 上需把插件副本的两处 `process.platform === 'win32'` 组装门强制打开(执行器/请求面同理),
    并在报告里标注"平台门被强制";win32 真机仍未覆盖。
+
+9. **bashPath/解析链改动(§4h,v0.28.0 起)**:`npm test` 里的解析链矩阵(fake fs + fake exec)必须全绿;
+   真机验证用**隔离 DSH_HOME + 插件副本**:把副本里 6 处 `process.platform === 'win32'` 强制打开、
+   把 `/dsh-gitbash-shell/api/status` 的 `platform` 伪装成 `win32`,然后无头浏览器(CDP)断言:
+   弹窗渲染(标题/按钮/探测清单条数)、「去下载」点击后 `window.open` 收到 `https://git-scm.com/download/win`、
+   内联编辑 + 保存后**宿主侧落盘**(`profiles/<p>/cordis.patch.yml` 的 `bashPath`)、关闭后刷新不再出现。
+   **副本改动绝不能落在本仓**(用 `[ "$(pwd)" = "/tmp/..." ]` 之类守卫);Windows 真机部分如实标注未验证。
 
 ## 发布 checklist(GitHub + npm)
 

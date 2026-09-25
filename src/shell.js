@@ -38,10 +38,13 @@
  */
 
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'
+
+import { DEFAULT_GIT_BASH, bashResolutionReport, effectiveConfiguredBashPath, resolveGitBashCached, settingsBashPath } from './bash-path.js'
+
+/** Re-exported for callers that historically read it here (the value now lives in bash-path.js). */
+export { DEFAULT_GIT_BASH }
 import z from '@deepseek-ai/schemastery'
 
-/** Default Git for Windows bash (forward slashes work on Windows too). */
-export const DEFAULT_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
 
 /** Log prefix, matching src/index.js. */
 const TAG = '[gitbash-shell]'
@@ -95,7 +98,12 @@ export function gitBashShellConfig(z) {
     graceMs: live(z.number().default(3000)),
     // Our own knob: the base class neither declares nor `.get()`s it, and
     // `get bashPath()` below reads it as a plain value, so it stays plain.
-    bashPath: z.string().default(DEFAULT_GIT_BASH),
+    //
+    // EMPTY means AUTO (v0.28.0, issue #11): the shared resolver walks
+    // setting > default install paths > PATH > registry PATH and refuses WSL /
+    // MSYS2 / Cygwin. A hard-coded default here is what made a Git installed
+    // outside C:/Program Files look like "dsh is broken".
+    bashPath: z.string().default(''),
   })
 }
 
@@ -107,9 +115,49 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   static inject = ['subprocess', 'sandbox', 'sandboxPolicy']
   static Config = Config
 
-  /** Effective Git Bash path: composition/config value with the default fallback. */
+  /**
+   * Effective Git Bash path. The configured value wins when it is non-empty
+   * (the user's explicit answer is never substituted); otherwise the SHARED
+   * resolver decides — the very same result the path-dialect translation layer
+   * uses, so "dialect works, executor cannot find bash" (issue #11) is
+   * structurally impossible.
+   *
+   * A failed resolution returns '' — deliberately NOT a substitute shell. Every
+   * argv built from it then fails loudly on spawn; `apply()` has already
+   * printed the full report, and the client half shows the guided popup.
+   */
   get bashPath() {
-    return this.config.bashPath ?? DEFAULT_GIT_BASH
+    return this.bashResolution().path
+  }
+
+  /**
+   * Resolve the interpreter with the SAME merged explicit tier the main plugin
+   * uses (executor row config > `gitbash-shell` settings row > empty = auto),
+   * so both halves of the plugin always agree on which bash this process runs.
+   * @returns {object} the memoized resolution verdict.
+   */
+  bashResolution() {
+    const configured = effectiveConfiguredBashPath(this.config.bashPath, settingsBashPath(this.ctx))
+    return resolveGitBashCached({ configured })
+  }
+
+  /**
+   * The resolved Git Bash path, or a THROW that says exactly what is wrong.
+   *
+   * The throw is the design (AGENTS.md §4h): with no Git Bash there is no
+   * command execution at all — we do not substitute pwsh, cmd, WSL or MSYS2,
+   * and we do not let a bare `spawn ENOENT` be the only thing the user sees.
+   * The boot log carries the same report (src/index.js) and the client half
+   * shows the guided popup with the probed list.
+   * @returns {string} the resolved interpreter path.
+   */
+  requireBashPath() {
+    const resolution = this.bashResolution()
+    if (!resolution.ok) {
+      throw new Error('dsh-gitbash-shell: no Git for Windows bash found, so this command cannot run. '
+        + bashResolutionReport(resolution).split('\n').slice(1).join(' | '))
+    }
+    return resolution.path
   }
 
   /**
@@ -129,7 +177,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * @returns the provider's exact argv and settlement-classification facts (a promise on dsh >= 0.1.6).
    */
   confine(command, policy, signal) {
-    return this.ctx.sandbox.confine([this.bashPath, '-c', command], policy, signal)
+    return this.ctx.sandbox.confine([this.requireBashPath(), '-c', command], policy, signal)
   }
 
   /**
@@ -219,7 +267,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     const routed = this.withParityEnv(spec)
     const route = this.gitBashRoute(routed)
     if (route === undefined) return super.execute(routed)
-    const argv = [this.bashPath, '-c', routed.command]
+    const argv = [this.requireBashPath(), '-c', routed.command]
     if (route.unconfined) this.warnConfinedUnconfined(route.mode)
     const sandbox = route.unconfined
       ? { mode: route.mode, denied: false, enforcement: 'unconfined' }
@@ -304,13 +352,13 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     const { mode } = policy
     if (mode === 'danger-full-access') {
       const { result } = GitBashSandboxExecutor.unwrapRunArgv(
-        await this.runArgv(spec, [this.bashPath, '-c', spec.command]))
+        await this.runArgv(spec, [this.requireBashPath(), '-c', spec.command]))
       return { ...result, sandbox: { mode, denied: false } }
     }
     if (process.platform === 'win32') {
       this.warnConfinedUnconfined(mode)
       const { result, spawnRequested } = GitBashSandboxExecutor.unwrapRunArgv(
-        await this.runArgv(spec, [this.bashPath, '-c', spec.command]))
+        await this.runArgv(spec, [this.requireBashPath(), '-c', spec.command]))
       // No spawn means no argv ran, so there is nothing to label as
       // unconfined; the parent reports the same bare sandbox facts there.
       return { ...result, sandbox: spawnRequested ? { mode, denied: false, enforcement: 'unconfined' } : { mode, denied: false } }
@@ -326,7 +374,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     const fullAccess = mode === 'danger-full-access'
     if (fullAccess || process.platform === 'win32') {
       if (!fullAccess) this.warnConfinedUnconfined(mode)
-      const proc = this.startArgv(spec, [this.bashPath, '-c', spec.command])
+      const proc = this.startArgv(spec, [this.requireBashPath(), '-c', spec.command])
       proc.sandbox = fullAccess ? { mode, denied: false } : { mode, denied: false, enforcement: 'unconfined' }
       // Match the loaded base contract: the async one (dsh >= 0.1.6) is
       // awaited by its callers, the synchronous one is consumed directly.

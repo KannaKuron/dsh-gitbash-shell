@@ -126,6 +126,27 @@ dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。�
     default: ptc-cordis   # 或 standard-gitbash / minimal-gitbash
 ```
 
+## bash 从哪里来:解析链与失败引导(v0.28.0,issue #11)
+
+`bashPath` **默认留空 = 自动探测**;解析顺序就是契约:
+
+1. **设置里填的**(显式值优先,失败也不会被别的路径顶替):
+   `gitbash-executor` 行 config 的 `bashPath` > `gitbash-shell` 行 / 设置卡的「Git Bash 路径」;
+2. **默认安装位置**:`C:/Program Files/Git/bin/bash.exe`、`%ProgramFiles(x86)%\Git`、`%ProgramW6432%\Git`、
+   `%LOCALAPPDATA%\Programs\Git\bin\bash.exe`;
+3. **PATH**(用户 PATH + 系统 PATH,进程内已合并)逐目录找 `bash.exe`;
+4. **PATH 上的 `git.exe` 反推** `<gitdir>/../bin/bash.exe`;
+5. **注册表 `Path`**(`HKCU\Environment`、`HKLM\...\Session Manager\Environment`)——覆盖"GUI 启动时 PATH 快照过期";
+6. **全落空 ⇒ 报错 + 引导**(启动日志一份完整报告,客户端弹一次引导框)。
+
+> **只认 Git for Windows 的 bash。** WSL(`C:\Windows\System32\bash.exe`,永远在 PATH 且排序靠前)、
+> WindowsApps 别名、MSYS2、Cygwin 的 bash **一律拒绝**;候选还要通过 Git 布局(`usr/bin` + `cmd\git.exe` +
+> `mingw64`)、`git --version` 的 `.windows.` 指纹,以及**实跑 `bash -c "uname -s"` 必须是 `MINGW*_NT-*`**。
+>
+> **本插件不会回退到 PowerShell / cmd / 任何其它 shell。** 找不到 Git Bash 就是找不到:设计如此 ——
+> 装了本插件就是要用 Git Bash,偷偷换一个能跑的顶上是错的。失败时弹窗给两件事:在弹窗里**直接填 bashPath**
+> (写入设置卡同一字段)或**去下载 Git for Windows**;同一 boot 只弹一次,可关闭。
+
 ## 配置(执行器)
 
 `gitbash-executor` 行支持:

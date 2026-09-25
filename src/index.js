@@ -245,8 +245,15 @@ export function effectivePresetIds(configured, { suppress, peerGitBash } = {}) {
   return list.filter((id) => id !== PEER_COVERED_PRESET_ID)
 }
 
-/** Git Bash binary default — must match src/shell.js. */
-const DEFAULT_GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
+/**
+ * The ONE bash resolver (v0.28.0, issue #11): the executor (src/shell.js) and
+ * this translation layer read the same memoized result, so "dialect translated
+ * to Q:/Git but the executor still spawns C:/Program Files/Git" cannot happen.
+ */
+import {
+  DEFAULT_GIT_BASH, GIT_BASH_DOWNLOAD_URL, bashResolutionReport,
+  effectiveConfiguredBashPath, executorConfiguredBashPath, resolveGitBashCached, settingsBashPath,
+} from './bash-path.js'
 
 /** The shipped preset whose skills/ dir seeds cordis-gitbash. */
 const SKILLS_SOURCE_PRESET = 'cordis'
@@ -1448,23 +1455,12 @@ export function buildTranslateEnv(configuredBashPath) {
     if (h && existsSync(h)) env.home = h.replace(/\\/g, '/')
   } catch { /* keep undefined */ }
   try {
-    const candidates = []
-    if (cacheKey !== '') candidates.push(cacheKey.replace(/\\/g, '/'))
-    candidates.push(DEFAULT_GIT_BASH)
-    for (const dir of String(process.env.PATH ?? '').split(';')) {
-      const clean = dir && dir.trim()
-      if (clean) candidates.push(clean.replace(/\\/g, '/') + '/bash.exe')
-    }
-    for (const candidate of candidates) {
-      try {
-        if (!existsSync(candidate)) continue
-        const root = dirname(dirname(candidate))
-        if (existsSync(join(root, 'usr', 'bin'))) {
-          env.gitRoot = root.replace(/\\/g, '/')
-          break
-        }
-      } catch { /* try the next candidate */ }
-    }
+    // v0.28.0 (issue #11): ONE resolver for the executor and this layer. Its
+    // chain is setting > default install paths > PATH > registry PATH and it
+    // refuses WSL/MSYS2/Cygwin outright; `cacheKey` is the settings bashPath,
+    // i.e. the same explicit tier the executor reads.
+    const resolution = resolveGitBashCached({ configured: cacheKey })
+    if (resolution.ok) env.gitRoot = resolution.root.replace(/\\/g, '/')
   } catch { /* keep undefined */ }
   translateEnvCache.set(cacheKey, env)
   return env
@@ -2351,7 +2347,28 @@ export async function apply(ctx, config = {}) {
   // plugins (e.g. dsh-ptc-cordis-preset) can adopt it in the presets they
   // materialize: service present, 'active: true' on Windows, 'active: false'
   // where the bundle is installed but the platform stack stayed native.
-  const gitBashCapability = { active: process.platform === 'win32', bashPath: DEFAULT_GIT_BASH }
+  /* The explicit tier of the resolution chain, in its documented priority:
+     the `gitbash-executor` row's own config > the `gitbash-shell` row/settings
+     field > empty (= run the automatic chain). Both this layer and the
+     executor resolve from this same value, so an explicit answer is never
+     substituted and never silently ignored.
+     (issue #11: the row config is where the reporter's workaround landed.) */
+  const configuredBashPath = effectiveConfiguredBashPath(executorConfiguredBashPath(ctx), settingsBashPath(ctx))
+  const bashResolution = resolveGitBashCached({ configured: configuredBashPath })
+  const gitBashCapability = {
+    active: process.platform === 'win32',
+    // Kept for existing consumers (peer plugins read `bashPath`): the resolved
+    // interpreter. When resolution failed we report the explicit value (or the
+    // historical default) so the ENOENT a consumer may hit names a real path —
+    // never a substitute shell.
+    bashPath: bashResolution.ok ? bashResolution.path : (configuredBashPath || DEFAULT_GIT_BASH),
+    // Additive (v0.28.0): the full verdict, for the guided popup and peers.
+    ok: bashResolution.ok,
+    source: bashResolution.source,
+    configured: configuredBashPath,
+    tried: bashResolution.tried,
+    downloadUrl: GIT_BASH_DOWNLOAD_URL,
+  }
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
@@ -2571,7 +2588,7 @@ export async function apply(ctx, config = {}) {
           // untouched and the result metadata is not echoed back in MSYS form.
           if (dialect.posixPaths && dialectApplies(dialect, exec && exec.agent)) {
             echo = true
-            const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
+            const env = dialect.virtualMounts ? buildTranslateEnv(configuredBashPath) : null
             echoEnv = env
             if (exec && exec.arguments && typeof exec.arguments === 'object') {
               const translated = translateDispatch(exec, dialect, env)
@@ -2626,7 +2643,7 @@ export async function apply(ctx, config = {}) {
           if (!dialectApplies(dialect, exec && exec.agent)) return next()
           if (dialect.posixPaths && dialect.errorDialect && exec && result && typeof result === 'object'
             && result.isError === true && Array.isArray(result.content)) {
-            const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
+            const env = dialect.virtualMounts ? buildTranslateEnv(configuredBashPath) : null
             if (exec.name === 'run_code') {
               // paths only — the /dev/null hint is for file tools
               const content = rewriteErrorContent(result.content, { nulHint: false, env })
@@ -2694,12 +2711,56 @@ export async function apply(ctx, config = {}) {
     }
   }
 
+  // ── fail-loud bash report + the client-visible status route (v0.28.0) ──
+  // issue #11: the old failure mode was "every command dies with
+  // `spawn C:/Program Files/Git/bin/bash.exe ENOENT` and nothing explains it".
+  // Now the boot log names the value, the whole probe chain and where to fix
+  // it, and the client half reads the same verdict over HTTP to raise the
+  // guided popup. Nothing here substitutes another shell — by design.
+  console.log(TAG + ' bash resolution: ' + bashResolutionReport(bashResolution).split('\n').join('\n' + TAG + ' '))
+  if (process.platform === 'win32') {
+    try {
+      ctx.inject(['webServer'], (wctx) => {
+        try {
+          const route = '/dsh-gitbash-shell/api/status'
+          const read = () => {
+            const resolution = resolveGitBashCached({ configured: configuredBashPath, fresh: true })
+            return {
+              ok: resolution.ok,
+              platform: process.platform,
+              resolved: resolution.path,
+              root: resolution.root,
+              source: resolution.source,
+              configured: resolution.configured,
+              tried: resolution.tried,
+              downloadUrl: GIT_BASH_DOWNLOAD_URL,
+              settingsHint: 'Settings -> Plugins -> dsh-gitbash-shell -> "Git Bash path"',
+            }
+          }
+          const handler = (req, res) => {
+            const text = JSON.stringify(read())
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(text) })
+            res.end(text)
+          }
+          const dispose = wctx.webServer.register({ kind: 'prefix', path: route, handler })
+          wctx.effect(() => dispose, 'dsh-gitbash-shell: bash status route')
+          console.log(TAG + ' bash status route active at ' + route + ' (read by the guided popup)')
+        } catch (error) {
+          console.log(TAG + ' bash status route failed: ' + (error?.message ?? error))
+        }
+      })
+    } catch (error) {
+      console.log(TAG + ' bash status route wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
   // ── dsh-better-sidebar terminal adoption (Windows only) ────────────────
   // The sidebar resolves its terminal shell through the settings seam per
   // open; adopt it through that seam (see adoptSidebarShell for rationale).
   // Disable with `betterSidebarShell: false` in the plugin row config.
   if (config.betterSidebarShell !== false && process.platform === 'win32') {
-    adoptSidebarShell(ctx, gitBashCapability.bashPath, () => liveSettings.adoptSidebar())
+    if (bashResolution.ok) adoptSidebarShell(ctx, bashResolution.path, () => liveSettings.adoptSidebar())
+    else console.log(TAG + ' sidebar terminal adoption skipped: no Git Bash resolved (nothing is substituted)')
   }
 
   // ── era split: declarative registration on dsh >= 0.1.7 ──────────────────

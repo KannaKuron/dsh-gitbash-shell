@@ -87,6 +87,12 @@ window.__ModuleLoader__.load({
 			"split.hint": "glob 的绝对 pattern(/c/.../*.md)自动拆为 path + 相对 pattern;关闭则原样传递。",
 			"code.label": "run_code 程序内路径",
 			"code.hint": "run_code 程序里写的 /c/... 等路径字面量在执行前按同一张挂载表翻译;注释、插值模板、$VAR 与非路径字符串不动,扫描有任何不确定就整份不改。 并给程序补 TEMP/TMP:空 env 下 Windows 的 os.tmpdir() 会得到 undefined\\temp,程序会静默写错地方。",
+			"bashmiss.title": "找不到 Git Bash —— 命令无法执行",
+			"bashmiss.body": "本插件只用 Git for Windows 自带的 bash(不接受 WSL、MSYS2、Cygwin 的 bash),也不会回退到 PowerShell/cmd —— 所以这里只报错,不偷偷换一个能跑的顶上。请在下面填写 bash.exe 的完整路径,或先安装 Git for Windows。",
+			"bashmiss.tried": "按顺序探测过这些位置(都被拒绝):",
+			"bashmiss.download": "去下载 Git for Windows",
+			"bashmiss.where": "也可以稍后到「设置 → 插件 → dsh-gitbash-shell」的「Git Bash 路径」里填写;host 启动日志里有同一份探测清单。",
+			"bashmiss.close": "关闭",
 			"sub.label": "子代理/队员使用 Git Bash",
 			"sub.hint": "默认开启:子代理与团队队员(含嵌套子代理)的提示词方言、路径参数翻译、结果回显与 DSH_PATH_DIALECT 环境事实与主代理一致。关闭后这些只对主代理生效,子代理按官方 shell 语义运行(提示词不改写、路径参数不翻译);注意 dsh 每个进程只有一个 shell 执行器,所以 Git Bash 二进制本身仍是全局的,此开关管的是方言/翻译层。",
 			"eol.label": "Git 行尾(与 Linux 一致)",
@@ -129,6 +135,12 @@ window.__ModuleLoader__.load({
 			"split.hint": "An absolute glob pattern (/c/.../*.md) splits into path + relative pattern; off passes it through verbatim.",
 			"code.label": "run_code program paths",
 			"code.hint": "Path literals inside a run_code program are translated through the same mount table before it runs; comments, interpolated templates, $VARs and non-path strings stay untouched, and any uncertainty leaves the whole program as written. It also seeds TEMP/TMP for the program: with an empty env Windows' os.tmpdir() returns undefined\\temp and writes land in a bogus folder.",
+			"bashmiss.title": "Git Bash not found — commands cannot run",
+			"bashmiss.body": "This plugin only accepts the bash shipped with Git for Windows (WSL, MSYS2 and Cygwin bash are refused) and never falls back to PowerShell/cmd — so it reports the failure instead of quietly swapping in something runnable. Enter the full path to bash.exe below, or install Git for Windows first.",
+			"bashmiss.tried": "Probed these locations in order (all rejected):",
+			"bashmiss.download": "Download Git for Windows",
+			"bashmiss.where": "You can also fill this in later under Settings → Plugins → dsh-gitbash-shell → “Git Bash path”; the host startup log carries the same probe list.",
+			"bashmiss.close": "Close",
 			"sub.label": "Subagents/teammates use Git Bash",
 			"sub.hint": "On (default): subagents and team members — nested ones included — get the same prompt dialect, path-argument translation, result echo and DSH_PATH_DIALECT fact as the main agent. Off: those apply to the main agent only, and delegated agents run with the official shell semantics (no prompt rewrite, no path translation). Note that dsh has exactly one shell executor per process, so the Git Bash binary stays global; this switch governs the dialect/translation layers.",
 			"eol.label": "Git line endings (Linux match)",
@@ -181,6 +193,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "نمط glob المطلق يُقسم إلى path + نمط نسبي؛ الإيقاف يمرره كما هو.",
 				"code.label": "مسارات برامج run_code",
 				"code.hint": "تُترجم السلاسل النصية للمسارات المكتوبة داخل برنامج run_code عبر جدول التحميل نفسه قبل التشغيل؛ وتبقى التعليقات والقوالب ذات الإدراج و$VAR والسلاسل غير المسارية كما هي، وأي التباس يُبقي البرنامج كاملًا دون تغيير. وتُهيَّأ أيضًا TEMP/TMP للبرنامج: مع بيئة فارغة يعيد os.tmpdir() على ويندوز القيمة undefined\\temp فيُكتب في مكان خاطئ.",
+				"bashmiss.title": "لم يُعثر على Git Bash — لا يمكن تنفيذ الأوامر",
+				"bashmiss.body": "هذه الإضافة تقبل فقط bash المرفق مع Git for Windows (ولا تقبل bash الخاص بـ WSL أو MSYS2 أو Cygwin)، ولا ترجع أبدًا إلى PowerShell/cmd — لذلك تُبلغ عن الفشل بدل استبداله بصمت. أدخل المسار الكامل لـ bash.exe أدناه أو ثبّت Git for Windows أولًا.",
+				"bashmiss.tried": "تم فحص هذه المواقع بالترتيب (ورُفضت جميعها):",
+				"bashmiss.download": "تنزيل Git for Windows",
+				"bashmiss.where": "يمكنك أيضًا تعبئة هذا لاحقًا من «الإعدادات → الإضافات → dsh-gitbash-shell → مسار Git Bash»؛ وسجل تشغيل المضيف يحمل نفس قائمة الفحص.",
+				"bashmiss.close": "إغلاق",
 				"sub.label": "استخدام الوكلاء الفرعيين لـ Git Bash",
 				"sub.hint": "مُفعَّل (افتراضيًا): يحصل الوكلاء الفرعيون وأعضاء الفريق — بما في ذلك المتداخلون — على لهجة المطالبة وترجمة مسارات الوسائط وصدى النتائج وحقيقة DSH_PATH_DIALECT نفسها التي يحصل عليها الوكيل الرئيسي. عند الإيقاف تُطبَّق هذه على الوكيل الرئيسي فقط ويعمل الوكلاء المفوَّضون بدلالات الصدفة الرسمية (دون إعادة كتابة المطالبة أو ترجمة المسارات). لاحظ أن dsh يملك مُنفِّذ صدفة واحدًا لكل عملية، لذا يبقى ثنائي Git Bash عامًّا؛ هذا المفتاح يحكم طبقتي اللهجة والترجمة.",
 				"eol.label": "نهايات أسطر Git (مطابقة لينكس)",
@@ -223,6 +241,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Ein absolutes Glob-Muster zerfällt in Pfad + relatives Muster; aus übergibt es unverändert.",
 				"code.label": "Pfade in run_code-Programmen",
 				"code.hint": "Pfadliterale in einem run_code-Programm werden vor dem Start über dieselbe Mount-Tabelle übersetzt; Kommentare, interpolierte Templates, $VARs und Nicht-Pfad-Strings bleiben unangetastet, und bei Unklarheit bleibt das ganze Programm unverändert. Zusätzlich werden TEMP/TMP für das Programm gesetzt: bei leerer Umgebung liefert os.tmpdir() unter Windows undefined\\temp und schreibt an einen falschen Ort.",
+				"bashmiss.title": "Git Bash nicht gefunden — Befehle können nicht laufen",
+				"bashmiss.body": "Dieses Plugin akzeptiert nur die mit Git for Windows gelieferte bash (WSL-, MSYS2- und Cygwin-bash werden abgelehnt) und fällt nie auf PowerShell/cmd zurück — es meldet den Fehler, statt still etwas Lauffähiges einzusetzen. Trage unten den vollständigen Pfad zu bash.exe ein oder installiere zuerst Git for Windows.",
+				"bashmiss.tried": "Der Reihe nach geprüft (alle abgelehnt):",
+				"bashmiss.download": "Git for Windows herunterladen",
+				"bashmiss.where": "Du kannst das später auch unter „Einstellungen → Plugins → dsh-gitbash-shell → Git-Bash-Pfad“ eintragen; das Startprotokoll des Hosts enthält dieselbe Liste.",
+				"bashmiss.close": "Schließen",
 				"sub.label": "Subagenten/Teammitglieder nutzen Git Bash",
 				"sub.hint": "An (Standard): Subagenten und Teammitglieder — auch verschachtelte — erhalten denselben Prompt-Dialekt, dieselbe Pfadargument-Übersetzung, dieselbe Ergebnisanzeige und dieselbe DSH_PATH_DIALECT-Tatsache wie der Hauptagent. Aus: Das gilt nur für den Hauptagenten, delegierte Agenten laufen mit den offiziellen Shell-Semantiken (keine Prompt-Umschreibung, keine Pfadübersetzung). Beachte: dsh hat genau einen Shell-Executor pro Prozess, das Git-Bash-Binary bleibt also global; dieser Schalter steuert die Dialekt-/Übersetzungsschichten.",
 				"eol.label": "Git-Zeilenenden (Linux-gleich)",
@@ -265,6 +289,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Un motif glob absolu se scinde en chemin + motif relatif ; désactivé le passe tel quel.",
 				"code.label": "chemins dans les programmes run_code",
 				"code.hint": "Les littéraux de chemin écrits dans un programme run_code sont traduits via la même table de montage avant exécution; commentaires, gabarits interpolés, $VAR et chaînes non-chemin restent intacts, et la moindre incertitude laisse le programme tel quel. TEMP/TMP sont aussi fournis au programme : avec un env vide, os.tmpdir() sous Windows renvoie undefined\\temp et écrit au mauvais endroit.",
+				"bashmiss.title": "Git Bash introuvable — les commandes ne peuvent pas s'exécuter",
+				"bashmiss.body": "Ce plugin n'accepte que le bash fourni avec Git for Windows (les bash WSL, MSYS2 et Cygwin sont refusés) et ne retombe jamais sur PowerShell/cmd : il signale la panne au lieu de substituer discrètement un shell utilisable. Saisissez ci-dessous le chemin complet de bash.exe, ou installez d'abord Git for Windows.",
+				"bashmiss.tried": "Emplacements testés dans l'ordre (tous refusés) :",
+				"bashmiss.download": "Télécharger Git for Windows",
+				"bashmiss.where": "Vous pourrez aussi le renseigner plus tard dans « Paramètres → Plugins → dsh-gitbash-shell → Chemin Git Bash » ; le journal de démarrage de l'hôte contient la même liste.",
+				"bashmiss.close": "Fermer",
 				"sub.label": "Les sous-agents utilisent Git Bash",
 				"sub.hint": "Activé (par défaut) : les sous-agents et membres d'équipe — y compris imbriqués — reçoivent le même dialecte de prompt, la même traduction des chemins d'arguments, le même écho de résultat et le même fait DSH_PATH_DIALECT que l'agent principal. Désactivé : ces éléments ne s'appliquent qu'à l'agent principal et les agents délégués suivent les sémantiques de shell officielles (pas de réécriture du prompt, pas de traduction des chemins). À noter : dsh n'a qu'un seul exécuteur de shell par processus, le binaire Git Bash reste donc global ; cet interrupteur régit les couches de dialecte et de traduction.",
 				"eol.label": "fins de ligne Git (comme Linux)",
@@ -307,6 +337,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "एब्सोल्यूट glob पैटर्न path + रिलेटिव पैटर्न में विभाजित होता है; बंद इसे वैसे ही पास करता है।",
 				"code.label": "run_code प्रोग्राम पथ",
 				"code.hint": "run_code प्रोग्राम में लिखे पथ लिटरल चलने से पहले उसी माउंट तालिका से अनूदित होते हैं; टिप्पणियाँ, इंटरपोलेटेड टेम्पलेट, $VAR और गैर-पथ स्ट्रिंग अछूते रहते हैं, और किसी भी अनिश्चितता पर पूरा प्रोग्राम अपरिवर्तित रहता है। साथ ही प्रोग्राम के लिए TEMP/TMP भर दिए जाते हैं: खाली env में Windows पर os.tmpdir() undefined\\temp देता है और गलत जगह लिखता है।",
+				"bashmiss.title": "Git Bash नहीं मिला — कमांड नहीं चल सकतीं",
+				"bashmiss.body": "यह प्लगइन केवल Git for Windows के साथ आने वाले bash को स्वीकार करता है (WSL, MSYS2 और Cygwin का bash अस्वीकार है) और कभी PowerShell/cmd पर नहीं लौटता — इसलिए यह विफलता बताता है, चुपचाप कोई चलने वाला शेल नहीं लगाता। नीचे bash.exe का पूरा पाथ भरें, या पहले Git for Windows इंस्टॉल करें।",
+				"bashmiss.tried": "इन स्थानों को क्रम से जाँचा गया (सभी अस्वीकृत):",
+				"bashmiss.download": "Git for Windows डाउनलोड करें",
+				"bashmiss.where": "बाद में «सेटिंग्स → प्लगइन → dsh-gitbash-shell → Git Bash पाथ» में भी भर सकते हैं; होस्ट स्टार्टअप लॉग में वही सूची है।",
+				"bashmiss.close": "बंद करें",
 				"sub.label": "सबएजेंट/टीम सदस्य Git Bash इस्तेमाल करें",
 				"sub.hint": "चालू (डिफ़ॉल्ट): सबएजेंट और टीम सदस्य — नेस्टेड सहित — मुख्य एजेंट जैसा ही प्रॉम्प्ट डायलेक्ट, पाथ आर्ग्युमेंट अनुवाद, परिणाम इको और DSH_PATH_DIALECT तथ्य पाते हैं। बंद: ये केवल मुख्य एजेंट पर लागू होते हैं और प्रतिनिधित एजेंट आधिकारिक शेल अर्थ में चलते हैं (प्रॉम्प्ट नहीं बदलता, पाथ अनुवाद नहीं होता)। ध्यान दें: dsh में प्रति प्रोसेस एक ही शेल एक्ज़ीक्यूटर होता है, इसलिए Git Bash बाइनरी वैश्विक रहती है; यह स्विच डायलेक्ट/अनुवाद परतों को नियंत्रित करता है।",
 				"eol.label": "Git पंक्ति-अंत (Linux जैसा)",
@@ -349,6 +385,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Pattern glob absolut dipecah menjadi path + pattern relatif; nonaktif meneruskannya apa adanya.",
 				"code.label": "jalur dalam program run_code",
 				"code.hint": "Literal jalur yang ditulis di program run_code diterjemahkan lewat tabel mount yang sama sebelum dijalankan; komentar, template berinterpolasi, $VAR, dan string non-jalur dibiarkan, dan bila ada keraguan seluruh program tidak diubah. TEMP/TMP juga diisi untuk program: dengan env kosong, os.tmpdir() di Windows mengembalikan undefined\\temp dan menulis ke lokasi salah.",
+				"bashmiss.title": "Git Bash tidak ditemukan — perintah tidak bisa jalan",
+				"bashmiss.body": "Plugin ini hanya menerima bash bawaan Git for Windows (bash WSL, MSYS2 dan Cygwin ditolak) dan tidak pernah mundur ke PowerShell/cmd — jadi ia melaporkan kegagalan alih-alih diam-diam memasang shell lain. Isi path lengkap bash.exe di bawah, atau pasang Git for Windows dulu.",
+				"bashmiss.tried": "Diperiksa berurutan (semua ditolak):",
+				"bashmiss.download": "Unduh Git for Windows",
+				"bashmiss.where": "Bisa juga diisi nanti di «Setelan → Plugin → dsh-gitbash-shell → Path Git Bash»; log mulai host memuat daftar yang sama.",
+				"bashmiss.close": "Tutup",
 				"sub.label": "Subagen/teman tim memakai Git Bash",
 				"sub.hint": "Aktif (bawaan): subagen dan anggota tim — termasuk yang bersarang — mendapat dialek prompt, terjemahan argumen path, gema hasil, dan fakta DSH_PATH_DIALECT yang sama seperti agen utama. Nonaktif: semuanya hanya berlaku untuk agen utama dan agen yang didelegasikan berjalan dengan semantik shell resmi (prompt tidak ditulis ulang, path tidak diterjemahkan). Catatan: dsh hanya punya satu eksekutor shell per proses, jadi biner Git Bash tetap global; sakelar ini mengatur lapisan dialek/terjemahan.",
 				"eol.label": "akhir baris Git (sama seperti Linux)",
@@ -391,6 +433,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Un pattern glob assoluto si divide in percorso + pattern relativo; off lo passa invariato.",
 				"code.label": "percorsi nei programmi run_code",
 				"code.hint": "I letterali di percorso scritti in un programma run_code vengono tradotti con la stessa tabella di mount prima dell'esecuzione; commenti, template interpolati, $VAR e stringhe non di percorso restano intatti e qualsiasi incertezza lascia il programma invariato. Inoltre TEMP/TMP vengono forniti al programma: con env vuoto, os.tmpdir() su Windows restituisce undefined\\temp e scrive nel posto sbagliato.",
+				"bashmiss.title": "Git Bash non trovato — i comandi non possono partire",
+				"bashmiss.body": "Questo plugin accetta solo la bash fornita con Git for Windows (le bash WSL, MSYS2 e Cygwin sono rifiutate) e non ripiega mai su PowerShell/cmd: segnala il guasto invece di sostituire in silenzio una shell utilizzabile. Inserisci sotto il percorso completo di bash.exe, oppure installa prima Git for Windows.",
+				"bashmiss.tried": "Posizioni provate in ordine (tutte rifiutate):",
+				"bashmiss.download": "Scarica Git for Windows",
+				"bashmiss.where": "Puoi anche compilarlo più tardi in «Impostazioni → Plugin → dsh-gitbash-shell → Percorso Git Bash»; il log di avvio dell'host contiene lo stesso elenco.",
+				"bashmiss.close": "Chiudi",
 				"sub.label": "Subagenti/compagni usano Git Bash",
 				"sub.hint": "Attivo (predefinito): subagenti e membri del team — anche annidati — ricevono lo stesso dialetto del prompt, la stessa traduzione dei percorsi negli argomenti, lo stesso eco dei risultati e lo stesso fatto DSH_PATH_DIALECT dell'agente principale. Disattivo: valgono solo per l'agente principale e gli agenti delegati usano le semantiche di shell ufficiali (nessuna riscrittura del prompt, nessuna traduzione dei percorsi). Nota: dsh ha un solo esecutore di shell per processo, quindi il binario Git Bash resta globale; questo interruttore governa gli strati di dialetto e traduzione.",
 				"eol.label": "fine riga Git (come Linux)",
@@ -433,6 +481,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "絶対 glob パターンを path + 相対パターンに分割;オフならそのまま渡します。",
 				"code.label": "run_code プログラム内のパス",
 				"code.hint": "run_code プログラム内に書いた /c/... などのパスリテラルは実行前に同じマウント表で変換されます。コメント・補間テンプレート・$VAR・パス以外の文字列は変更せず、解析に不確かさがあればプログラム全体をそのまま実行します。 さらにプログラムに TEMP/TMP を渡します: 空の env では Windows の os.tmpdir() が undefined\\temp を返し、誤った場所に書き込みます。",
+				"bashmiss.title": "Git Bash が見つかりません — コマンドを実行できません",
+				"bashmiss.body": "本プラグインは Git for Windows 付属の bash のみを受け付け(WSL・MSYS2・Cygwin の bash は拒否)、PowerShell/cmd へフォールバックしません —— 動くシェルを黙って差し替えるのではなく、失敗として報告します。下に bash.exe のフルパスを入力するか、先に Git for Windows をインストールしてください。",
+				"bashmiss.tried": "順に確認した場所(すべて拒否):",
+				"bashmiss.download": "Git for Windows をダウンロード",
+				"bashmiss.where": "後から「設定 → プラグイン → dsh-gitbash-shell → Git Bash パス」でも入力できます。host の起動ログにも同じ一覧があります。",
+				"bashmiss.close": "閉じる",
 				"sub.label": "サブエージェント/チームメンバーも Git Bash を使う",
 				"sub.hint": "オン(既定):サブエージェントとチームメンバー(ネスト含む)は、メインエージェントと同じプロンプト方言・パス引数の翻訳・結果エコー・DSH_PATH_DIALECT の事実を受け取ります。オフ:これらはメインエージェントのみに適用され、委譲されたエージェントは公式の shell セマンティクスで動作します(プロンプト改写なし、パス翻訳なし)。なお dsh はプロセスごとに shell 実行器を 1 つだけ持つため、Git Bash バイナリ自体は常に全体共通です。このスイッチが制御するのは方言/翻訳の層です。",
 				"eol.label": "Git の行末(Linux と同じ)",
@@ -475,6 +529,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "절대 glob 패턴을 path + 상대 패턴으로 분할; 끄면 그대로 전달.",
 				"code.label": "run_code 프로그램 경로",
 				"code.hint": "run_code 프로그램에 쓴 /c/... 경로 리터럴은 실행 전에 같은 마운트 표로 변환됩니다. 주석, 보간 템플릿, $VAR, 경로가 아닌 문자열은 그대로 두고, 스캔이 불확실하면 프로그램 전체를 그대로 둡니다. 또한 프로그램에 TEMP/TMP를 채워 줍니다: 빈 env에서 Windows의 os.tmpdir()는 undefined\\temp를 반환해 엉뚱한 곳에 씁니다.",
+				"bashmiss.title": "Git Bash를 찾을 수 없음 — 명령을 실행할 수 없습니다",
+				"bashmiss.body": "이 플러그인은 Git for Windows에 포함된 bash만 허용하며(WSL·MSYS2·Cygwin bash는 거부), PowerShell/cmd로 되돌아가지 않습니다 — 실행 가능한 셸을 조용히 바꿔치기하지 않고 실패를 그대로 알립니다. 아래에 bash.exe 전체 경로를 입력하거나 먼저 Git for Windows를 설치하세요.",
+				"bashmiss.tried": "순서대로 확인한 위치(모두 거부):",
+				"bashmiss.download": "Git for Windows 다운로드",
+				"bashmiss.where": "나중에 «설정 → 플러그인 → dsh-gitbash-shell → Git Bash 경로»에서도 입력할 수 있습니다. host 시작 로그에도 같은 목록이 있습니다.",
+				"bashmiss.close": "닫기",
 				"sub.label": "서브에이전트/팀원도 Git Bash 사용",
 				"sub.hint": "켬(기본): 서브에이전트와 팀원(중첩 포함)은 메인 에이전트와 동일한 프롬프트 방언, 경로 인자 번역, 결과 에코, DSH_PATH_DIALECT 사실을 받습니다. 끔: 이것들은 메인 에이전트에만 적용되고 위임된 에이전트는 공식 shell 의미로 동작합니다(프롬프트 재작성 없음, 경로 번역 없음). 참고로 dsh는 프로세스당 shell 실행기가 하나뿐이라 Git Bash 바이너리 자체는 항상 전역입니다. 이 스위치는 방언/번역 계층을 제어합니다.",
 				"eol.label": "Git 줄바꿈(Linux와 동일)",
@@ -517,6 +577,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Een absoluut glob-patroon splitst in pad + relatief patroon; uit geeft het ongewijzigd door.",
 				"code.label": "paden in run_code-programma's",
 				"code.hint": "Pad-literalen in een run_code-programma worden vóór uitvoering via dezelfde mounttabel vertaald; opmerkingen, geïnterpoleerde templates, $VAR's en niet-pad-strings blijven ongemoeid, en bij twijfel blijft het hele programma ongewijzigd. Ook worden TEMP/TMP voor het programma gezet: met een lege env geeft os.tmpdir() op Windows undefined\\temp en schrijft het op de verkeerde plek.",
+				"bashmiss.title": "Git Bash niet gevonden — opdrachten kunnen niet lopen",
+				"bashmiss.body": "Deze plugin accepteert alleen de bash van Git for Windows (bash van WSL, MSYS2 en Cygwin wordt geweigerd) en valt nooit terug op PowerShell/cmd — hij meldt de storing in plaats van stil iets werkends in te zetten. Vul hieronder het volledige pad naar bash.exe in, of installeer eerst Git for Windows.",
+				"bashmiss.tried": "In volgorde geprobeerd (alle geweigerd):",
+				"bashmiss.download": "Git for Windows downloaden",
+				"bashmiss.where": "Je kunt dit later ook invullen onder ‘Instellingen → Plugins → dsh-gitbash-shell → Git Bash-pad’; het opstartlogboek van de host bevat dezelfde lijst.",
+				"bashmiss.close": "Sluiten",
 				"sub.label": "Subagenten/teammaten gebruiken Git Bash",
 				"sub.hint": "Aan (standaard): subagenten en teamleden — ook geneste — krijgen hetzelfde promptdialect, dezelfde padargument-vertaling, dezelfde resultaat-echo en hetzelfde DSH_PATH_DIALECT-feit als de hoofdagent. Uit: die gelden alleen voor de hoofdagent en gedelegeerde agenten draaien met de officiële shell-semantiek (geen promptherschrijving, geen padvertaling). Let op: dsh heeft één shell-uitvoerder per proces, dus het Git Bash-binary blijft globaal; deze schakelaar beheert de dialect-/vertaallagen.",
 				"eol.label": "Git regeleinden (zoals Linux)",
@@ -559,6 +625,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Absolutny wzorzec glob dzieli się na ścieżkę + wzorzec względny; wył. przekazuje bez zmian.",
 				"code.label": "ścieżki w programach run_code",
 				"code.hint": "Literały ścieżek w programie run_code są tłumaczone przez tę samą tabelę montowania przed uruchomieniem; komentarze, szablony z interpolacją, $VAR i ciągi niebędące ścieżkami pozostają nietknięte, a każda niepewność pozostawia program bez zmian. Dodatkowo ustawiane są TEMP/TMP dla programu: przy pustym env Windows zwraca z os.tmpdir() undefined\\temp i zapisuje w złym miejscu.",
+				"bashmiss.title": "Nie znaleziono Git Bash — polecenia nie mogą działać",
+				"bashmiss.body": "Ta wtyczka akceptuje wyłącznie bash dołączony do Git for Windows (bash z WSL, MSYS2 i Cygwin jest odrzucany) i nigdy nie cofa się do PowerShell/cmd — zgłasza awarię zamiast po cichu podstawić działającą powłokę. Wpisz poniżej pełną ścieżkę do bash.exe albo najpierw zainstaluj Git for Windows.",
+				"bashmiss.tried": "Sprawdzone po kolei (wszystkie odrzucone):",
+				"bashmiss.download": "Pobierz Git for Windows",
+				"bashmiss.where": "Możesz to też wpisać później w „Ustawienia → Wtyczki → dsh-gitbash-shell → Ścieżka Git Bash”; log startowy hosta zawiera tę samą listę.",
+				"bashmiss.close": "Zamknij",
 				"sub.label": "Subagenci/członkowie zespołu używają Git Bash",
 				"sub.hint": "Wł. (domyślnie): subagenci i członkowie zespołu — także zagnieżdżeni — otrzymują ten sam dialekt podpowiedzi, tłumaczenie argumentów ścieżek, echo wyników i fakt DSH_PATH_DIALECT co agent główny. Wył.: dotyczy to tylko agenta głównego, a agenci delegowani działają według oficjalnej semantyki powłoki (bez przepisywania podpowiedzi i tłumaczenia ścieżek). Uwaga: dsh ma jeden executor powłoki na proces, więc binarka Git Bash pozostaje globalna; ten przełącznik steruje warstwami dialektu i tłumaczenia.",
 				"eol.label": "końce linii Git (jak w Linuksie)",
@@ -601,6 +673,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Um padrão glob absoluto divide em caminho + padrão relativo; desligado passa-o inalterado.",
 				"code.label": "caminhos em programas run_code",
 				"code.hint": "Literais de caminho escritos num programa run_code são traduzidos pela mesma tabela de montagem antes da execução; comentários, modelos interpolados, $VAR e strings que não são caminhos ficam intactos, e qualquer incerteza deixa o programa como está. Também são definidos TEMP/TMP para o programa: com env vazio, os.tmpdir() no Windows devolve undefined\\temp e grava no lugar errado.",
+				"bashmiss.title": "Git Bash não encontrado — os comandos não podem correr",
+				"bashmiss.body": "Este plugin só aceita o bash incluído no Git for Windows (bash do WSL, MSYS2 e Cygwin são recusados) e nunca recorre ao PowerShell/cmd — reporta a falha em vez de substituir silenciosamente por algo executável. Introduza abaixo o caminho completo do bash.exe, ou instale primeiro o Git for Windows.",
+				"bashmiss.tried": "Locais testados por ordem (todos recusados):",
+				"bashmiss.download": "Transferir o Git for Windows",
+				"bashmiss.where": "Também pode preencher mais tarde em «Definições → Plugins → dsh-gitbash-shell → Caminho do Git Bash»; o registo de arranque do host tem a mesma lista.",
+				"bashmiss.close": "Fechar",
 				"sub.label": "Subagentes/membros da equipa usam Git Bash",
 				"sub.hint": "Ligado (padrão): subagentes e membros da equipa — incluindo aninhados — recebem o mesmo dialeto de prompt, tradução de caminhos nos argumentos, eco de resultados e o mesmo facto DSH_PATH_DIALECT que o agente principal. Desligado: isso aplica-se apenas ao agente principal e os agentes delegados correm com a semântica oficial da shell (sem reescrita do prompt nem tradução de caminhos). Nota: o dsh tem um único executor de shell por processo, pelo que o binário Git Bash continua global; este interruptor governa as camadas de dialeto e tradução.",
 				"eol.label": "fins de linha do Git (como no Linux)",
@@ -643,6 +721,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Абсолютный glob-шаблон разбивается на path + относительный шаблон; выкл передаёт как есть.",
 				"code.label": "пути в программах run_code",
 				"code.hint": "Строковые литералы путей в программе run_code переводятся по той же таблице монтирования до запуска; комментарии, шаблоны с интерполяцией, $VAR и строки-не-пути не трогаются, а при любой неопределённости программа остаётся без изменений. Также программе задаются TEMP/TMP: при пустом env в Windows os.tmpdir() возвращает undefined\\temp и запись идёт не туда.",
+				"bashmiss.title": "Git Bash не найден — команды не выполняются",
+				"bashmiss.body": "Плагин принимает только bash из состава Git for Windows (bash из WSL, MSYS2 и Cygwin отклоняется) и никогда не откатывается к PowerShell/cmd — он сообщает об ошибке, а не подменяет оболочку молча. Укажите ниже полный путь к bash.exe или сначала установите Git for Windows.",
+				"bashmiss.tried": "Проверены по порядку (все отклонены):",
+				"bashmiss.download": "Скачать Git for Windows",
+				"bashmiss.where": "Это же можно заполнить позже в «Настройки → Плагины → dsh-gitbash-shell → Путь Git Bash»; тот же список есть в журнале запуска хоста.",
+				"bashmiss.close": "Закрыть",
 				"sub.label": "Субагенты и участники команды используют Git Bash",
 				"sub.hint": "Вкл. (по умолчанию): субагенты и участники команды — включая вложенных — получают тот же диалект подсказки, перевод путей в аргументах, эхо результатов и факт DSH_PATH_DIALECT, что и главный агент. Выкл.: это применяется только к главному агенту, а делегированные агенты работают с официальной семантикой оболочки (без перезаписи подсказки и перевода путей). Учтите: в dsh один исполнитель оболочки на процесс, поэтому сам бинарник Git Bash остаётся общим; этот переключатель управляет слоями диалекта и перевода.",
 				"eol.label": "переводы строк Git (как в Linux)",
@@ -685,6 +769,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Ett absolut glob-mönster delas i sökväg + relativt mönster; av skickar det oförändrat.",
 				"code.label": "sökvägar i run_code-program",
 				"code.hint": "Sökvägslitteraler i ett run_code-program översätts via samma monteringstabell före körning; kommentarer, interpolerade mallar, $VAR och strängar som inte är sökvägar lämnas orörda, och vid minsta osäkerhet lämnas hela programmet oförändrat. Dessutom sätts TEMP/TMP för programmet: med tom env ger os.tmpdir() i Windows undefined\\temp och skriver på fel ställe.",
+				"bashmiss.title": "Git Bash hittades inte — kommandon kan inte köras",
+				"bashmiss.body": "Insticksmodulen accepterar bara bash som följer med Git for Windows (bash från WSL, MSYS2 och Cygwin avvisas) och faller aldrig tillbaka på PowerShell/cmd — den rapporterar felet i stället för att tyst byta in något körbart. Ange hela sökvägen till bash.exe nedan, eller installera Git for Windows först.",
+				"bashmiss.tried": "Provat i ordning (alla avvisade):",
+				"bashmiss.download": "Hämta Git for Windows",
+				"bashmiss.where": "Du kan också fylla i detta senare under ”Inställningar → Insticksmoduler → dsh-gitbash-shell → Git Bash-sökväg”; världens startlogg har samma lista.",
+				"bashmiss.close": "Stäng",
 				"sub.label": "Subagenter/teammedlemmar använder Git Bash",
 				"sub.hint": "På (standard): subagenter och teammedlemmar — även nästlade — får samma promptdialekt, samma sökvägsöversättning i argument, samma resultat-eko och samma DSH_PATH_DIALECT-faktum som huvudagenten. Av: detta gäller bara huvudagenten och delegerade agenter kör med officiell shell-semantik (ingen promptomskrivning, ingen sökvägsöversättning). Obs: dsh har en enda shell-exekutor per process, så Git Bash-binären är fortfarande global; den här växeln styr dialekt-/översättningslagren.",
 				"eol.label": "Git radslut (som Linux)",
@@ -727,6 +817,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "pattern glob สัมบูรณ์แยกเป็น path + pattern สัมพัทธ์; ปิดส่งต่อตามเดิม",
 				"code.label": "พาธในโปรแกรม run_code",
 				"code.hint": "สตริงพาธที่เขียนในโปรแกรม run_code จะถูกแปลผ่านตาราง mount เดียวกันก่อนรัน ความคิดเห็น เทมเพลตที่มีการแทรก $VAR และสตริงที่ไม่ใช่พาธจะไม่ถูกแตะ และหากไม่แน่ใจทั้งโปรแกรมจะไม่ถูกแก้ไข และเติม TEMP/TMP ให้โปรแกรมด้วย: เมื่อ env ว่าง os.tmpdir() บน Windows จะคืน undefined\\temp แล้วเขียนผิดที่",
+				"bashmiss.title": "ไม่พบ Git Bash — คำสั่งรันไม่ได้",
+				"bashmiss.body": "ปลั๊กอินนี้รับเฉพาะ bash ที่มากับ Git for Windows (ไม่รับ bash ของ WSL, MSYS2 และ Cygwin) และไม่ถอยไปใช้ PowerShell/cmd — จึงรายงานความล้มเหลวแทนการสลับเชลล์ที่รันได้อย่างเงียบ ๆ กรอกพาธเต็มของ bash.exe ด้านล่าง หรือติดตั้ง Git for Windows ก่อน",
+				"bashmiss.tried": "ตรวจตามลำดับแล้ว (ถูกปฏิเสธทั้งหมด):",
+				"bashmiss.download": "ดาวน์โหลด Git for Windows",
+				"bashmiss.where": "กรอกภายหลังได้ที่ «การตั้งค่า → ปลั๊กอิน → dsh-gitbash-shell → พาธ Git Bash» และบันทึกเริ่มต้นของโฮสต์มีรายการเดียวกัน",
+				"bashmiss.close": "ปิด",
 				"sub.label": "ซับเอเจนต์/สมาชิกทีมใช้ Git Bash",
 				"sub.hint": "เปิด (ค่าเริ่มต้น): ซับเอเจนต์และสมาชิกทีม — รวมถึงแบบซ้อน — ได้รับไดอาเลกต์พรอมป์ต์ การแปลพาธในอาร์กิวเมนต์ การสะท้อนผลลัพธ์ และข้อเท็จจริง DSH_PATH_DIALECT เหมือนเอเจนต์หลัก ปิด: สิ่งเหล่านี้มีผลกับเอเจนต์หลักเท่านั้น และเอเจนต์ที่ถูกมอบหมายทำงานด้วยความหมาย shell อย่างเป็นทางการ (ไม่เขียนพรอมป์ต์ใหม่ ไม่แปลพาธ) หมายเหตุ dsh มีตัวรัน shell เดียวต่อโปรเซส ไบนารี Git Bash จึงยังเป็นส่วนกลาง สวิตช์นี้ควบคุมชั้นไดอาเลกต์/การแปล",
 				"eol.label": "อักขระขึ้นบรรทัด Git (เหมือน Linux)",
@@ -769,6 +865,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Mutlak glob örüntüsü path + göreli örüntüye ayrılır; kapalı olduğu gibi geçirir.",
 				"code.label": "run_code program yolları",
 				"code.hint": "Bir run_code programında yazılan yol dizeleri çalıştırılmadan önce aynı bağlama tablosuyla çevrilir; yorumlar, enterpolasyonlu şablonlar, $VAR ve yol olmayan dizeler olduğu gibi kalır, herhangi bir belirsizlikte programın tamamı değişmeden bırakılır. Ayrıca programa TEMP/TMP verilir: boş env ile Windows'ta os.tmpdir() undefined\\temp döner ve yanlış yere yazar.",
+				"bashmiss.title": "Git Bash bulunamadı — komutlar çalışamaz",
+				"bashmiss.body": "Bu eklenti yalnızca Git for Windows ile gelen bash'i kabul eder (WSL, MSYS2 ve Cygwin bash'i reddedilir) ve asla PowerShell/cmd'ye dönmez — çalışan bir kabuğu sessizce koymak yerine hatayı bildirir. Aşağıya bash.exe'nin tam yolunu yazın veya önce Git for Windows'u kurun.",
+				"bashmiss.tried": "Sırayla denenen konumlar (hepsi reddedildi):",
+				"bashmiss.download": "Git for Windows indir",
+				"bashmiss.where": "Bunu daha sonra «Ayarlar → Eklentiler → dsh-gitbash-shell → Git Bash yolu» altında da girebilirsiniz; host başlangıç günlüğünde aynı liste var.",
+				"bashmiss.close": "Kapat",
 				"sub.label": "Alt ajanlar/ekip üyeleri Git Bash kullansın",
 				"sub.hint": "Açık (varsayılan): alt ajanlar ve ekip üyeleri — iç içe olanlar dahil — ana ajanla aynı istem lehçesini, yol argümanı çevirisini, sonuç yankısını ve DSH_PATH_DIALECT gerçeğini alır. Kapalı: bunlar yalnızca ana ajan için geçerlidir ve devredilen ajanlar resmî shell semantiğiyle çalışır (istem yeniden yazılmaz, yollar çevrilmez). Not: dsh'de süreç başına tek bir shell yürütücüsü vardır, bu yüzden Git Bash ikilisi genele aittir; bu anahtar lehçe/çeviri katmanlarını yönetir.",
 				"eol.label": "Git satır sonları (Linux gibi)",
@@ -811,6 +913,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "Pattern glob tuyệt đối tách thành path + pattern tương đối; tắt truyền nguyên văn.",
 				"code.label": "đường dẫn trong chương trình run_code",
 				"code.hint": "Chuỗi đường dẫn viết trong chương trình run_code được dịch qua cùng bảng mount trước khi chạy; chú thích, template nội suy, $VAR và chuỗi không phải đường dẫn được giữ nguyên, và mọi điểm không chắc chắn sẽ khiến cả chương trình không bị sửa. Đồng thời nạp TEMP/TMP cho chương trình: với env rỗng, os.tmpdir() trên Windows trả về undefined\\temp và ghi sai chỗ.",
+				"bashmiss.title": "Không tìm thấy Git Bash — không thể chạy lệnh",
+				"bashmiss.body": "Plugin này chỉ chấp nhận bash đi kèm Git for Windows (bash của WSL, MSYS2 và Cygwin bị từ chối) và không bao giờ lùi về PowerShell/cmd — nó báo lỗi thay vì âm thầm thay bằng shell chạy được. Hãy nhập đường dẫn đầy đủ tới bash.exe bên dưới, hoặc cài Git for Windows trước.",
+				"bashmiss.tried": "Đã dò theo thứ tự (tất cả bị từ chối):",
+				"bashmiss.download": "Tải Git for Windows",
+				"bashmiss.where": "Cũng có thể điền sau tại «Cài đặt → Plugin → dsh-gitbash-shell → Đường dẫn Git Bash»; nhật ký khởi động host có cùng danh sách.",
+				"bashmiss.close": "Đóng",
 				"sub.label": "Subagent/thành viên nhóm dùng Git Bash",
 				"sub.hint": "Bật (mặc định): subagent và thành viên nhóm — kể cả lồng nhau — nhận cùng phương ngữ prompt, cách dịch đường dẫn trong tham số, tiếng vọng kết quả và sự thật DSH_PATH_DIALECT như agent chính. Tắt: những thứ này chỉ áp dụng cho agent chính, còn agent được ủy quyền chạy theo ngữ nghĩa shell chính thức (không viết lại prompt, không dịch đường dẫn). Lưu ý dsh chỉ có một bộ thực thi shell mỗi tiến trình, nên tệp nhị phân Git Bash vẫn là toàn cục; công tắc này điều khiển tầng phương ngữ/dịch.",
 				"eol.label": "kết thúc dòng Git (giống Linux)",
@@ -853,6 +961,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "glob 嘅絕對 pattern 自動拆做 path + 相對 pattern;關閉就原樣傳遞。",
 				"code.label": "run_code 程式內路徑",
 				"code.hint": "run_code 程式內寫的 /c/... 路徑字面量會在執行前按同一張掛載表翻譯;註解、插值模板、$VAR 與非路徑字串不動,掃描有任何不確定就整份不改。 並為程式補上 TEMP/TMP:空 env 下 Windows 的 os.tmpdir() 會得到 undefined\\temp,程式會靜默寫錯位置。",
+				"bashmiss.title": "搵唔到 Git Bash —— 命令行唔到",
+				"bashmiss.body": "本插件淨係用 Git for Windows 跟機嘅 bash(WSL、MSYS2、Cygwin 嘅 bash 一律唔收),亦都唔會退返去 PowerShell/cmd —— 所以呢度只會報錯,唔會偷偷換個行得嘅頂上。喺下面填 bash.exe 嘅完整路徑,或者先裝 Git for Windows。",
+				"bashmiss.tried": "按次序探過呢啲位置(全部拒絕):",
+				"bashmiss.download": "去下載 Git for Windows",
+				"bashmiss.where": "之後都可以喺「設定 → 插件 → dsh-gitbash-shell」嘅「Git Bash 路徑」填;host 啟動日誌有同一份清單。",
+				"bashmiss.close": "閂咗佢",
 				"sub.label": "子代理/隊員用 Git Bash",
 				"sub.hint": "預設開啟:子代理同團隊隊員(連嵌套)嘅提示詞方言、路徑參數翻譯、結果回顯同 DSH_PATH_DIALECT 環境事實都同主代理一致。閂咗就淨係主代理有,子代理跟官方 shell 語義行(提示詞唔改寫、路徑參數唔翻譯);留意 dsh 每個進程只有一個 shell 執行器,所以 Git Bash 本身仍然係全局嘅,呢個開關管嘅係方言/翻譯層。",
 				"eol.label": "Git 行尾(與 Linux 一致)",
@@ -895,6 +1009,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "glob 嘅絕對 pattern 自動拆做 path + 相對 pattern;關閉就原樣傳遞。",
 				"code.label": "run_code 程式內路徑",
 				"code.hint": "run_code 程式內寫的 /c/... 路徑字面量會在執行前按同一張掛載表翻譯;註解、插值模板、$VAR 與非路徑字串不動,掃描有任何不確定就整份不改。 並為程式補上 TEMP/TMP:空 env 下 Windows 的 os.tmpdir() 會得到 undefined\\temp,程式會靜默寫錯位置。",
+				"bashmiss.title": "搵唔到 Git Bash —— 命令行唔到",
+				"bashmiss.body": "本插件淨係用 Git for Windows 跟機嘅 bash(WSL、MSYS2、Cygwin 嘅 bash 一律唔收),亦都唔會退返去 PowerShell/cmd —— 所以呢度只會報錯,唔會偷偷換個行得嘅頂上。喺下面填 bash.exe 嘅完整路徑,或者先裝 Git for Windows。",
+				"bashmiss.tried": "按次序探過呢啲位置(全部拒絕):",
+				"bashmiss.download": "去下載 Git for Windows",
+				"bashmiss.where": "之後都可以喺「設定 → 插件 → dsh-gitbash-shell」嘅「Git Bash 路徑」填;host 啟動日誌有同一份清單。",
+				"bashmiss.close": "閂咗佢",
 				"sub.label": "子代理/隊員用 Git Bash",
 				"sub.hint": "預設開啟:子代理同團隊隊員(連嵌套)嘅提示詞方言、路徑參數翻譯、結果回顯同 DSH_PATH_DIALECT 環境事實都同主代理一致。閂咗就淨係主代理有,子代理跟官方 shell 語義行(提示詞唔改寫、路徑參數唔翻譯);留意 dsh 每個進程只有一個 shell 執行器,所以 Git Bash 本身仍然係全局嘅,呢個開關管嘅係方言/翻譯層。",
 				"eol.label": "Git 行尾(與 Linux 一致)",
@@ -937,6 +1057,12 @@ window.__ModuleLoader__.load({
 				"split.hint": "glob 的絕對 pattern 自動拆為 path + 相對 pattern;關閉則原樣傳遞。",
 				"code.label": "run_code 程式內路徑",
 				"code.hint": "run_code 程式內寫的 /c/... 路徑字面量會在執行前按同一張掛載表翻譯;註解、插值模板、$VAR 與非路徑字串不動,掃描有任何不確定就整份不改。 並為程式補上 TEMP/TMP:空 env 下 Windows 的 os.tmpdir() 會得到 undefined\\temp,程式會靜默寫錯位置。",
+				"bashmiss.title": "找不到 Git Bash —— 命令無法執行",
+				"bashmiss.body": "本外掛只採用 Git for Windows 隨附的 bash(不接受 WSL、MSYS2、Cygwin 的 bash),也不會退回 PowerShell/cmd —— 因此這裡只回報錯誤,不會偷偷換一個能跑的頂上。請在下方填寫 bash.exe 的完整路徑,或先安裝 Git for Windows。",
+				"bashmiss.tried": "已依序探測這些位置(全部拒絕):",
+				"bashmiss.download": "下載 Git for Windows",
+				"bashmiss.where": "也可以稍後到「設定 → 外掛 → dsh-gitbash-shell」的「Git Bash 路徑」填寫;host 啟動日誌有同一份清單。",
+				"bashmiss.close": "關閉",
 				"sub.label": "子代理/隊員使用 Git Bash",
 				"sub.hint": "預設開啟:子代理與團隊隊員(含巢狀)的提示詞方言、路徑參數翻譯、結果回顯與 DSH_PATH_DIALECT 環境事實都與主代理一致。關閉後僅對主代理生效,子代理依官方 shell 語意執行(提示詞不改寫、路徑參數不翻譯);請注意 dsh 每個行程只有一個 shell 執行器,因此 Git Bash 本身仍是全域的,這個開關管的是方言/翻譯層。",
 				"eol.label": "Git 行尾(與 Linux 一致)",
@@ -1048,6 +1174,13 @@ window.__ModuleLoader__.load({
 			".gb-error{margin:0;font-size:12px;color:var(--dsw-alias-status-danger, #e5484d)}",
 			".gb-card{-webkit-backdrop-filter:var(--dsh-any-blur-card-panels,blur(12px) saturate(1.15));backdrop-filter:var(--dsh-any-blur-card-panels,blur(12px) saturate(1.15))}",
 			".gb-section+.gb-section{border-top:1px solid var(--dsw-alias-border-l2)}",
+			/* Missing-Git-Bash popup (v0.28.0): a root-level modal, because the
+			   user may never be on the settings page when their shell dies. */
+			".gb-modalBackdrop{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)}",
+			".gb-modal{width:min(560px,92vw);max-height:80vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:18px;border-radius:12px;background:var(--dsw-alias-bg-base,#fff);border:1px solid var(--dsw-alias-border-l2);box-shadow:0 18px 48px rgba(0,0,0,.28)}",
+			".gb-modalTitle{font-size:15px;font-weight:600;color:var(--dsw-alias-label-primary)}",
+			".gb-modalList{margin:0;padding-left:18px;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-tertiary);word-break:break-all}",
+			".gb-input{flex:1;min-width:0;padding:6px 8px;font-size:12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1,transparent);color:var(--dsw-alias-label-primary)}",
 			".gb-sectionTitle{font-size:12.5px;font-weight:600;letter-spacing:.02em;color:var(--dsw-alias-label-secondary)}",
 			".gb-input{flex:1;min-width:0;appearance:none;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:6px 10px;outline:none}",
 			".gb-input:focus{border-color:var(--dsw-alias-brand-primary)}",
@@ -1125,6 +1258,9 @@ window.__ModuleLoader__.load({
 				return typeof unsubscribe === "function" ? unsubscribe : undefined;
 			}, []);
 
+			if (props.popup === true) {
+				return E(QuietBoundary, null, E(MissingBashPopup, Object.assign({}, props.cardProps, { t: props.t })));
+			}
 			return E(QuietBoundary, null, E(GitBashCard, Object.assign({}, props.cardProps, { t: props.t })));
 		}
 
@@ -1460,6 +1596,131 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		// ── missing-Git-Bash popup (v0.28.0, issue #11) ────────────────────────
+		//
+		// When no Git for Windows bash resolves, the host cannot run ANY command
+		// (this plugin withdraws pwsh-sandbox and dsh allows one shell per
+		// process) — so the user must not be left staring at `spawn ... ENOENT`.
+		// The host prints the full report to its log and serves the same verdict
+		// at /dsh-gitbash-shell/api/status; this overlay turns it into the two
+		// actions the user asked for: edit the path right here, or go download
+		// Git for Windows. Deliberately NO "keep something runnable" fallback:
+		// an unresolved bash stays unresolved, visibly.
+		var API_PATH = "dsh-gitbash-shell/api/status";
+		var DISMISS_KEY = "dsh-gitbash-shell:bash-missing-dismissed";
+		/** Once per client boot; sessionStorage survives a re-render, not a restart. */
+		var bashPopupShown = false;
+
+		function readDismissed() {
+			try { return window.sessionStorage.getItem(DISMISS_KEY) === "1" } catch (error_) { return false }
+		}
+		function rememberDismissed() {
+			try { window.sessionStorage.setItem(DISMISS_KEY, "1") } catch (error_) { /* private mode */ }
+		}
+
+		function MissingBashPopup(props) {
+			var t = typeof props.t === "function" ? props.t : function (key) { return key; };
+			var dialectState = useState(null);
+			var status = dialectState[0];
+			var setStatus = dialectState[1];
+			var draftState = useState("");
+			var draft = draftState[0];
+			var setDraft = draftState[1];
+			var savedState = useState(false);
+			var saved = savedState[0];
+			var setSaved = savedState[1];
+			var hiddenState = useState(readDismissed());
+			var hidden = hiddenState[0];
+			var setHidden = hiddenState[1];
+			/* "Once per boot" is DECIDED in an effect, never during render: a
+			   render-time flag check would make the modal vanish on the very next
+			   re-render (the flag it just set). Local state owns this mount's
+			   decision; the module flag stops a second mount from repeating it. */
+			var decidedState = useState(false);
+			var decided = decidedState[0];
+			var setDecided = decidedState[1];
+
+			useEffect(function () {
+				var alive = true;
+				/* Mount-relative on purpose (same discipline as dsh-ide-git): the
+				   host serves the shell with <base href="./">, so a path without a
+				   leading slash lands on the plugin route at the origin root AND
+				   behind a prefix-stripping proxy. */
+				try {
+					Promise.resolve(fetch(API_PATH, { headers: { accept: "application/json" } }))
+						.then(function (response) { return response.ok ? response.json() : null })
+						.then(function (data) {
+							if (!alive || !data || data.platform !== "win32" || data.ok !== false) return;
+							if (bashPopupShown || readDismissed()) return;
+							bashPopupShown = true;
+							setStatus(data);
+							setDecided(true);
+							if (typeof data.configured === "string" && data.configured !== "") setDraft(data.configured);
+						})
+						.catch(function () { /* the host may be older; no popup then */ });
+				} catch (error_) { /* keep silent */ }
+				return function () { alive = false; };
+			}, []);
+
+			if (hidden || !decided || status === null) return null;
+
+			var rows = Array.isArray(status.tried) ? status.tried : [];
+			var close = function () { rememberDismissed(); setHidden(true); };
+			var save = function () {
+				setSaved(false);
+				var forms;
+				try {
+					var c = props.ctx;
+					forms = c === undefined || c === null ? undefined : c.get("configForms");
+				} catch (error_) { forms = undefined; }
+				var form;
+				try { form = forms && typeof forms.get === "function" ? forms.get(SETTINGS_NAMESPACE) : undefined; } catch (error_) { form = undefined; }
+				if (!form || typeof form.set !== "function") return;
+				try {
+					Promise.resolve(form.set("bashPath", draft.trim())).then(
+						function () { setSaved(true); },
+						function () { /* the host reports its own failure */ },
+					);
+				} catch (error_) { /* keep the draft */ }
+			};
+
+			return E("div", { className: "gb-modalBackdrop", role: "dialog", "aria-modal": "true" },
+				E("div", { className: "gb-modal" },
+					E("div", { className: "gb-modalTitle" }, t("bashmiss.title")),
+					E("p", { className: "gb-hint" }, t("bashmiss.body")),
+					rows.length > 0 ? E("div", null,
+						E("div", { className: "gb-rowLabel" }, t("bashmiss.tried")),
+						E("ul", { className: "gb-modalList" }, rows.slice(0, 12).map(function (row, index) {
+							return E("li", { key: String(index) }, (row && row.path ? row.path : "?") + " — " + (row && row.detail ? row.detail : row && row.code ? row.code : ""));
+						})),
+					) : null,
+					E("div", { className: "gb-row" },
+						E("span", { className: "gb-rowLabel" }, t("bash.label") + ":"),
+						E("input", {
+							className: "gb-input",
+							type: "text",
+							value: draft,
+							placeholder: "Q:/Git/bin/bash.exe",
+							onChange: function (event) { setDraft(event.target.value); setSaved(false); },
+						}),
+					),
+					E("div", { className: "gb-seg" },
+						E("button", { type: "button", className: "gb-segBtn", onClick: save }, t("bash.save")),
+						saved ? E("span", { className: "gb-rowValue" }, t("bash.saved")) : null,
+					),
+					E("p", { className: "gb-hint" }, t("bashmiss.where")),
+					E("div", { className: "gb-seg" },
+						E("button", {
+							type: "button",
+							className: "gb-segBtn gb-segActive",
+							onClick: function () { try { window.open(status.downloadUrl || "https://git-scm.com/download/win", "_blank", "noopener") } catch (error_) { /* blocked */ } },
+						}, t("bashmiss.download")),
+						E("button", { type: "button", className: "gb-segBtn", onClick: close }, t("bashmiss.close")),
+					),
+				),
+			);
+		}
+
 		// ── plugin ────────────────────────────────────────────────────────────
 
 		exports.name = "dsh-gitbash-shell/client";
@@ -1560,6 +1821,18 @@ window.__ModuleLoader__.load({
 				// dsh 0.1.6-alpha.2+: the Plugins page's bundle configuration seat,
 				// keyed by the PACKAGE name. Each inject waits for its own slot
 				// declaration, so exactly one seat is live on any host version.
+				/* Root-level popup seat: rendered regardless of which page is open,
+				   which is the point — the user may never open settings. */
+				slots.inject("shell.overlay", function () {
+					return slots.register({
+						name: "shell.overlay",
+						id: "gitbash-shell:bash-missing",
+						locale: NS,
+						inject: injected,
+					}, function MissingBashPopupWithLocale(props) {
+						return E(LocaleLive, { ctx: ctx, t: t, cardProps: props, popup: true });
+					});
+				});
 				slots.inject("plugins.bundle.config", function () {
 					return slots.register({
 						name: "plugins.bundle.config",

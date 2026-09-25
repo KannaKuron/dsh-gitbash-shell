@@ -3,6 +3,39 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.28.0 — 2026-09-26
+
+**类型**:fix(issue #11 —— Git 没装在 `C:\Program Files\Git` 时,写死的默认 `bashPath` 让每条命令 `spawn … ENOENT`,而整个会话的命令能力归零且无提示)+ feat(fail-loud 引导:弹窗可填写路径 / 可跳转下载)
+
+> 报障:https://github.com/KannaKuron/dsh-gitbash-shell/issues/11(Windows 11,Git 装在 `Q:\Git`;作者是另一台 DSH agent「蓝鲸」,诊断准确、自带 workaround)。两条用户口径逐字确立:**"默认用设置里填的 空的就去默认路径 没有就去用户环境path 和 系统path找 还没有就报错,弹窗让他去下载或者去设置里填写路径,而且要支持点击转跳过去"**;**"绝对不能因为找不到就用pwsh … 绝对不能用wsl"**。
+
+### 一、默认值假设被推翻:解析链接管
+- **起因**:`cordis.patch.yml` 把 `gitbash-executor.config.bashPath` 写成 `C:/Program Files/Git/bin/bash.exe`;Git 装在别处 ⇒ 每条命令 ENOENT。更糟的是本插件撤掉 `pwsh-sandbox` 而 dsh 每进程只允许一个 `ctx.shell`,于是**连原本可用的 pwsh 也一并没了**,且没有任何提示。
+- **新解析链(`src/bash-path.js`,唯一实现;执行器 `src/shell.js` 与翻译层 `src/index.js` 共用同一 memo)**:
+  **设置里填的**(`gitbash-executor` 行 config > `gitbash-shell` 行/设置卡;用 `ctx.loader.resolve('gitbash-executor')` 让翻译层看到同一个显式值,显式值失败也不换别的) → **默认安装位置**(Program Files / Program Files (x86) / ProgramW6432 / LOCALAPPDATA) → **PATH 逐目录 `bash.exe`** → **PATH 上 `git.exe` 反推** → **注册表 `Path`**(HKCU + HKLM,`reg query` 走 argv 数组) → **失败**。
+  `cordis.patch.yml` 的 `bashPath` 默认改为**空串(=自动)**。
+- **只认 Git for Windows(用户第二条口径)**:黑名单先于探测(`system32`/`windowsapps`/`msys`/`cygwin`/`wsl`,归一化后逐段匹配 —— System32 是头号陷阱,它永远在 PATH 上);正向判据 = `<root>/cmd|bin/git.exe` + `<root>/usr/bin/bash.exe` + (`<root>/mingw64` 或 `usr/bin/msys-2.0.dll`);指纹 = `git --version` 含 `.windows.`;**一票否决** = 实跑候选 `bash -c "uname -s"` 必须是 `MINGW32_NT-*`/`MINGW64_NT-*`(`Linux`/`MSYS_NT-*`/`CYGWIN_NT-*` 一律不合格)。全部候选失败 ⇒ `{ ok:false, path:'' }`,**绝不返回替补 shell**。
+- **永不回退(用户第一条口径,写进 AGENTS §4h)**:`pwsh-sandbox` 仍是无条件 `disabled: true`(与 bash 健康无关);`src/shell.js` 每次 argv 都过 `requireBashPath()`,解析失败**直接 throw 带引导的错误**(不再让用户只看到裸 ENOENT);冒烟守卫断言 patch 里没有 `!!js` 条件、执行器源码不出现 `pwsh.exe`/`powershell.exe`/`cmd.exe`/`wsl.exe`/裸 `bash`。
+
+### 二、fail-loud 与可点击引导
+- **启动日志**:完整报告 —— 当前 `bashPath` 取到什么 / 按顺序探测过哪些位置(逐条 code+detail)/ 去哪里改 / 下载链接 / "本插件不会回退到 PowerShell"。
+- **客户端弹窗**(`shell.overlay`,仅 win32 且 `ok:false`;同 boot 一次、`sessionStorage` 记关闭;21 语言新增 6 个 `bashmiss.*` 键):探测清单 + **内联 bashPath 编辑框(写 `configForms` 的同一字段,保存落盘到 profile 的 `cordis.patch.yml`)** + **「去下载 Git for Windows」**(`window.open`,Electron 下走外部浏览器)+ 关闭。
+- **数据通道**:host 半注册 `GET /dsh-gitbash-shell/api/status`(`ctx.inject(['webServer'])` 可选服务,家族既有范式同 dsh-ide-git),客户端**在 effect 里 fetch**(不在 apply 取服务,避开客户端半的取服务竞态);`gitBash` capability 同时**加法**扩展为 `{ active, bashPath, ok, source, configured, tried, downloadUrl }`。
+- **深链实测结论**:官方设置页**没有**公开 API 能跳到指定插件的设置卡 —— `openSettings`/`openSection` 只发给 `settings.launcher`/`settings.onboarding` 占用者,面板开关状态是 `ui-settings-general` 私有的 store,`ctx.shortcuts` 也没有"按 id 执行命令"的入口。因此弹窗**自带编辑器**(用户不必去找设置页),文字指路作为兜底;上游若开放深链 API,这里可以直接换成按钮跳转。
+
+### 三、验证
+- `npm test` **93/93 绿**(新增 7 条:解析链显式优先且**失败不替换** / 默认→PATH 含陷阱拒绝 / 只认 Git(WSL+MSYS2+Cygwin+`.windows.`+`uname` 矩阵)/ 全落空报告含引导与下载链接 / **无回退守卫** / 弹窗形状与 21 语言 / 路由与 capability 形状);`tests/align-official.mjs` 四变体仍逐字节对齐。
+- **真机(隔离 `DSH_HOME` + 插件副本强制 win32 门 + 无头 Chrome/CDP,macOS)**:
+  - 启动日志打出完整报告(15 条探测记录,含 `missing`/`bad-shape` 分类);
+  - `curl /dsh-gitbash-shell/api/status` → `{"ok":false,"platform":"win32",…}`;
+  - **弹窗渲染**:标题「找不到 Git Bash —— 命令无法执行」+ 按钮 `[保存, 去下载 Git for Windows, 关闭]` + **12 条探测清单** + 输入框;
+  - **下载动作**:「去下载」点击后 `window.open` 收到 `https://git-scm.com/download/win`;
+  - **内联编辑**:填入 `Q:/Git/bin/bash.exe` → 保存 → 卡片显示「已保存」,**宿主侧落盘** `profiles/verif/cordis.patch.yml` 的 `bashPath: Q:/Git/bin/bash.exe`;
+  - **一次性**:关闭后刷新页面不再出现(会话内已记)。
+  - 过程中自查修掉一个真缺陷:一次性判定原先写在 render 里(设标志的那次渲染之后的**任何 re-render 都会让弹窗消失**),改为在 effect 中决定 + 本地 state 呈现。
+- **未验证(如实标注,需 issue 作者在 Windows 真机复验)**:注册表 `Path` 兜底、真实 Git 安装布局、WSL/WindowsApps/MSYS2 实机路径的拒绝行为(均为 fake io 单测 + 静态核对);深链不可用是上游能力缺口。
+- 相关:issue #11 https://github.com/KannaKuron/dsh-gitbash-shell/issues/11
+
 ## v0.27.0 — 2026-09-25
 
 **类型**:feat(新设置「子代理/队员是否也使用 Git Bash」,默认开启 —— 用户 2026-09-25 追加需求)
