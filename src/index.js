@@ -181,6 +181,51 @@ export function pythonBackendActive(capability) {
 }
 
 /**
+ * Is this agent a DELEGATED one — a subagent, a team member, or a nested child
+ * of either? The canonical in-tree signal is the session header pair dsh's own
+ * workspace-changes plugin uses
+ * (`packages/deliverables/workspace-changes/src/index.ts:59-60`), stamped when
+ * the subagent driver creates a child
+ * (`packages/subagent/subagent/src/child-agent.ts:139-155`):
+ * `origin === 'subagent'` or a non-zero `delegationDepth`.
+ *
+ * Unknown shapes read as NOT delegated: applying the dialect is the helpful
+ * direction, and a diagnostic assembly without an agent must keep it.
+ * @param {object|undefined} agent - the assembling/executing agent, when known.
+ * @returns {boolean} true only when the agent is provably delegated.
+ */
+export function isDelegatedAgent(agent) {
+  try {
+    const header = agent && agent.session ? agent.session.header : undefined
+    if (header === null || typeof header !== 'object') return false
+    if (header.origin === 'subagent') return true
+    return typeof header.delegationDepth === 'number' && header.delegationDepth > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Does the Git Bash dialect apply to THIS agent (v0.27.0)? The row switch
+ * `subagentDialect` (default ON) decides whether delegated agents — subagents,
+ * team members, nested children — participate in the dialect at all; the main
+ * agent always does. A closed function so every consumer (prompt assembly,
+ * dispatch translation, result echo, failure text, the shell-env fact) answers
+ * the same way.
+ *
+ * Note the honest bound: dsh has exactly ONE shell provider per process, so
+ * the executor binary stays Git Bash for every agent; this gate governs the
+ * dialect/translation layers that this plugin owns.
+ * @param {object} dialect - the live dialect switches.
+ * @param {object|undefined} agent - the agent that owns this assembly/execution.
+ * @returns {boolean} true when the dialect applies to this agent.
+ */
+export function dialectApplies(dialect, agent) {
+  if (!dialect || dialect.subagentDialect !== false) return true
+  return !isDelegatedAgent(agent)
+}
+
+/**
  * The roster this plugin serves: the configured list, minus the variant a peer
  * already covers. Two independent facts must BOTH hold before anything is
  * dropped — the user's `suppressPeerCordis` switch (row Config, default OFF)
@@ -823,6 +868,15 @@ export const Config = Schema === null ? undefined : Schema.object({
   globSplit: live(Schema.boolean().default(true)),
   errorDialect: live(Schema.boolean().default(true)),
   codePaths: live(Schema.boolean().default(true)),
+  /**
+   * Whether DELEGATED agents (subagents, team members, nested children) also
+   * use the Git Bash dialect (v0.27.0). Default ON — the historical behavior;
+   * OFF keeps the dialect to the main agent, so a delegated request carries the
+   * official shell semantics (no prompt rewrite, no path-argument translation,
+   * no echo rewrite, no DSH_PATH_DIALECT fact). The executor itself is one
+   * per-process provider, so Git Bash stays the binary either way.
+   */
+  subagentDialect: live(Schema.boolean().default(true)),
   gitAutocrlf: live(Schema.boolean().default(true)),
   bashPath: live(Schema.string().default('')),
   adoptSidebar: live(Schema.boolean().default(true)),
@@ -869,6 +923,8 @@ function makeLiveReader(ctx, config) {
       errorDialect: valueOf(config.errorDialect) === true,
       codePaths: valueOf(config.codePaths) === true,
       gitAutocrlf: valueOf(config.gitAutocrlf) === true,
+      // Default ON: delegated agents keep the dialect unless the user opts out.
+      subagentDialect: valueOf(config.subagentDialect) !== false,
       bashPath: typeof bash === 'string' ? bash : '',
       adoptSidebar: valueOf(config.adoptSidebar) !== false,
     }
@@ -943,7 +999,7 @@ export function readPosixPaths(ctxLike) {
  * first. All default ON (schema defaults); never throws.
  */
 export function readDialectSettings(ctxLike) {
-  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, gitAutocrlf: false, bashPath: '' }
+  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, gitAutocrlf: false, bashPath: '', subagentDialect: true }
   try {
     const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
     const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
@@ -954,6 +1010,8 @@ export function readDialectSettings(ctxLike) {
       globSplit: v.globSplit === true,
       errorDialect: v.errorDialect === true,
       codePaths: v.codePaths === true,
+      // An old host without the key keeps the default (delegated agents covered).
+      subagentDialect: v.subagentDialect !== false,
       gitAutocrlf: v.gitAutocrlf === true,
       bashPath: typeof v.bashPath === 'string' ? v.bashPath : '',
     }
@@ -2336,6 +2394,7 @@ export async function apply(ctx, config = {}) {
             globSplit: Schema.boolean().default(true),
             errorDialect: Schema.boolean().default(true),
             codePaths: Schema.boolean().default(true),
+            subagentDialect: Schema.boolean().default(true),
             gitAutocrlf: Schema.boolean().default(true),
             bashPath: Schema.string().default(''),
             adoptSidebar: Schema.boolean().default(true),
@@ -2391,8 +2450,17 @@ export async function apply(ctx, config = {}) {
             // git line endings and anything else non-DSH_* ride the executor's
             // own env layer (src/shell.js), not this registry.
             variables: { [PATH_DIALECT_KEY]: { description: PATH_DIALECT_DESCRIPTION } },
-            resolve() {
-              return liveSettings.posix() ? { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE } : {}
+            resolve(execution) {
+              try {
+                const dialect = liveSettings.dialect()
+                if (dialect.posixPaths !== true) return {}
+                // The environment fact is per execution, so a delegated agent
+                // the user excluded sees no DSH_PATH_DIALECT at all.
+                if (!dialectApplies(dialect, execution && execution.agent)) return {}
+                return { [PATH_DIALECT_KEY]: PATH_DIALECT_VALUE }
+              } catch {
+                return {}
+              }
             },
           })
           envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
@@ -2418,9 +2486,16 @@ export async function apply(ctx, config = {}) {
   // could corrupt pattern/default fields).
   if (process.platform === 'win32') {
     try {
-      ctx.on('system-prompt/assemble', (assembly, _assembleContext, next) => {
+      ctx.on('system-prompt/assemble', (assembly, assembleContext, next) => {
         try {
-          if (liveSettings.posix() && assembly && typeof assembly === 'object') {
+          /* v0.27.0: the main agent always participates; a DELEGATED agent
+             (subagent / team member / nested child) only while the
+             `subagentDialect` switch is on. Turning it off leaves the official
+             prompt text untouched for those agents — no source replacement and
+             no run_code hint — so they meet the shell they were composed for. */
+          const dialect = liveSettings.dialect()
+          const applies = dialectApplies(dialect, assembleContext && assembleContext.agent)
+          if (applies && dialect.posixPaths === true && assembly && typeof assembly === 'object') {
             for (const section of Array.isArray(assembly.sections) ? assembly.sections : []) {
               if (section && typeof section.text === 'string') section.text = windowsToMsys(section.text)
             }
@@ -2491,7 +2566,10 @@ export async function apply(ctx, config = {}) {
           // `bash.workdir` went through raw, and an in-workspace `/c/...` write
           // fell outside the sandbox. One missed call site, five symptoms.
           const dialect = liveSettings.dialect()
-          if (dialect.posixPaths) {
+          // v0.27.0: a delegated agent the user excluded keeps the official
+          // semantics for BOTH faces of its calls — arguments go through
+          // untouched and the result metadata is not echoed back in MSYS form.
+          if (dialect.posixPaths && dialectApplies(dialect, exec && exec.agent)) {
             echo = true
             const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
             echoEnv = env
@@ -2542,6 +2620,8 @@ export async function apply(ctx, config = {}) {
         let contentPatch
         try {
           const dialect = liveSettings.dialect()
+          // Same agent gate as the dispatch wrapper: one call, one dialect.
+          if (!dialectApplies(dialect, exec && exec.agent)) { next(); return }
           if (dialect.posixPaths && dialect.errorDialect && exec && result && typeof result === 'object'
             && result.isError === true && Array.isArray(result.content)) {
             const env = dialect.virtualMounts ? buildTranslateEnv(dialect.bashPath) : null
@@ -2588,10 +2668,14 @@ export async function apply(ctx, config = {}) {
           pctx.effect(() => pctx.systemPrompt.context({
             name: 'gitbash-shell:posix-paths',
             order: 126,
-            text: () => {
+            text: (assembleContext) => {
               try {
                 const dialect = liveSettings.dialect()
                 if (dialect.posixPaths !== true) return ''
+                // A delegated agent whose dialect the user turned off meets the
+                // official shell semantics: no directive, the same way no
+                // translation happens for its calls.
+                if (!dialectApplies(dialect, assembleContext && assembleContext.agent)) return ''
                 return dialect.virtualMounts === false ? POSIX_DIRECTIVE_TEXT_STRICT : POSIX_DIRECTIVE_TEXT
               } catch {
                 return ''
@@ -2717,4 +2801,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, detectPeerCoverage, readSuppressPeerCordis, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, detectPeerCoverage, readSuppressPeerCordis, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }

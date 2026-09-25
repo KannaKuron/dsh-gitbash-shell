@@ -594,8 +594,11 @@ test('host gates the path dialect behind the posixPaths setting', async () => {
   // dsh 0.1.7: the wrapper and the directive closure read the era-aware
   // live reader (Config refs on new hosts — re-read per dispatch/assembly;
   // the registered namespace through the OLD helpers on old hosts).
-  assert.match(text, /liveSettings\.posix\(\)/, 'wrapper must read the gate per dispatch')
+  assert.match(text, /const dialect = liveSettings\.dialect\(\)/, 'wrapper must read the gate per dispatch')
   assert.match(text, /liveSettings\.dialect\(\)/, 'directive closure must read the live dialect')
+  // v0.27.0: the same live dialect object also carries the delegated-agent gate
+  assert.match(text, /dialect\.posixPaths && dialectApplies\(dialect, exec && exec\.agent\)/,
+    'the dispatch face asks the per-agent gate with THIS execution\'s agent')
   const { _internal } = await import('../src/index.js')
   assert.equal(_internal.readPosixPaths({ get: () => undefined }), false)
   assert.equal(_internal.readPosixPaths(undefined), false)
@@ -615,7 +618,9 @@ test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', (
   // empties the variable with no re-registration
   // dsh 0.1.7: the resolver reads the era-aware live reader (Config refs on
   // new hosts, the registered namespace on old ones) — still per execution.
-  assert.match(text, /resolve\(\) \{\s*return liveSettings\.posix\(\) \? \{ \[PATH_DIALECT_KEY\]: PATH_DIALECT_VALUE \} : \{\}/)
+  assert.match(text, /resolve\(execution\) \{/, 'the resolver receives the execution')
+  assert.match(text, /dialectApplies\(dialect, execution && execution\.agent\)/,
+    'the DSH_PATH_DIALECT fact is withheld from a delegated agent the user excluded')
   // REGRESSION GUARD (v0.21.0 → v0.21.1): the registry accepts DSH_* facts
   // ONLY. A contributor declaring any other key throws, and the whole
   // contribution — DSH_PATH_DIALECT included — is lost. Non-DSH parity facts
@@ -1987,4 +1992,76 @@ test('client card: the python row shows the degraded state when the backend did 
   assert.ok(degraded[0].includes('后端不可用') && degraded[0].includes('宿主启动日志'), 'zh states the degradation and the log: ' + degraded[0])
   assert.ok(degraded[1].includes('backend unavailable') && degraded[1].includes('startup log'), 'en states the degradation and the log: ' + degraded[1])
   for (const copy of degraded) assert.ok(copy.length > 10, 'a degraded copy looks truncated: ' + copy)
+})
+
+// ── delegated agents (subagents / team members) and the dialect (v0.27.0) ────
+
+test('subagent switch: a delegated agent is recognised by its session header', () => {
+  const { isDelegatedAgent, dialectApplies } = _internal
+  const agent = (header) => ({ session: { header } })
+  // dsh stamps BOTH when the subagent driver creates a child
+  // (packages/subagent/subagent/src/child-agent.ts:139-155); either is enough.
+  assert.equal(isDelegatedAgent(agent({ origin: 'subagent' })), true)
+  assert.equal(isDelegatedAgent(agent({ origin: 'subagent', delegationDepth: 1 })), true)
+  assert.equal(isDelegatedAgent(agent({ delegationDepth: 1 })), true, 'a nested child without the origin flag still counts')
+  assert.equal(isDelegatedAgent(agent({ delegationDepth: 2 })), true)
+  // a root session carries neither
+  assert.equal(isDelegatedAgent(agent({})), false)
+  assert.equal(isDelegatedAgent(agent({ delegationDepth: 0 })), false)
+  assert.equal(isDelegatedAgent(agent({ origin: 'user' })), false)
+  // unknown shapes are NEVER delegated: keeping the dialect is the helpful side
+  assert.equal(isDelegatedAgent(undefined), false)
+  assert.equal(isDelegatedAgent(null), false)
+  assert.equal(isDelegatedAgent({}), false)
+  assert.equal(isDelegatedAgent({ session: {} }), false)
+  assert.equal(isDelegatedAgent({ session: { header: null } }), false)
+  assert.equal(isDelegatedAgent({ get session() { throw new Error('nope') } }), false)
+  // default ON: both a root agent and a delegated one participate
+  assert.equal(dialectApplies({ subagentDialect: true }, agent({ origin: 'subagent' })), true)
+  assert.equal(dialectApplies({ subagentDialect: true }, agent({})), true)
+  assert.equal(dialectApplies(undefined, agent({ origin: 'subagent' })), true, 'an absent dialect object must never suppress')
+})
+
+test('subagent switch: OFF keeps the dialect to the main agent', () => {
+  const { dialectApplies } = _internal
+  const main = { session: { header: {} } }
+  const sub = { session: { header: { origin: 'subagent' } } }
+  const nested = { session: { header: { delegationDepth: 2 } } }
+  assert.equal(dialectApplies({ subagentDialect: false }, main), true, 'the main agent always keeps it')
+  assert.equal(dialectApplies({ subagentDialect: false }, sub), false)
+  assert.equal(dialectApplies({ subagentDialect: false }, nested), false)
+  assert.equal(dialectApplies({ subagentDialect: false }, undefined), true, 'unknown agent = main agent = dialect on')
+  // the card exposes the switch on the SAME row (writeField -> this row's Config)
+  const client = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(client, /var subagents = snap\.value\.subagentDialect !== false;/)
+  assert.match(client, /writeField\("subagentDialect", false\)/)
+  assert.match(client, /writeField\("subagentDialect", true\)/)
+  for (const key of ['sub.label', 'sub.hint']) {
+    const occurrences = [...client.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
+    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
+  }
+  // every dialect consumer asks the SAME gate, with its own agent
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(src, /dialectApplies\(dialect, assembleContext && assembleContext\.agent\)/, 'prompt assembly')
+  assert.match(src, /dialectApplies\(dialect, exec && exec\.agent\)/, 'dispatch + failure faces')
+  assert.match(src, /dialectApplies\(dialect, execution && execution\.agent\)/, 'the shell-env fact')
+  assert.match(src, /const applies = dialectApplies\(dialect, assembleContext && assembleContext\.agent\)/)
+})
+
+test('subagent switch: an old host without the key defaults to ON', () => {
+  const { readDialectSettings } = _internal
+  const ctxWith = (value) => ({ get: (name) => (name === 'settings' ? { get: () => value } : undefined) })
+  assert.equal(readDialectSettings(ctxWith({})).subagentDialect, true, 'missing key = default on')
+  assert.equal(readDialectSettings(ctxWith({ posixPaths: true })).subagentDialect, true)
+  assert.equal(readDialectSettings(ctxWith({ subagentDialect: false })).subagentDialect, false)
+  assert.equal(readDialectSettings(ctxWith({ subagentDialect: true })).subagentDialect, true)
+  // a throwing read falls back to the all-off dialect BUT keeps the new default
+  assert.equal(readDialectSettings({ get: () => { throw new Error('nope') } }).subagentDialect, true)
+  assert.equal(readDialectSettings(undefined).subagentDialect, true)
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // declared on both eras, default true on both
+  assert.match(src, /subagentDialect: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(src, /subagentDialect: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(src, /subagentDialect: valueOf\(config\.subagentDialect\) !== false/)
+  assert.match(src, /subagentDialect: v\.subagentDialect !== false/)
 })

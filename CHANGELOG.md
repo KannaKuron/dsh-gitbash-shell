@@ -3,6 +3,43 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.27.0 — 2026-09-25
+
+**类型**:feat(新设置「子代理/队员是否也使用 Git Bash」,默认开启 —— 用户 2026-09-25 追加需求)
+
+### 需求与语义
+用户原话:「gitbash 插件也是专门给个设置是否让子代理或者子队员使用 gitbash,默认启动。」
+
+- **开关 `subagentDialect`(本插件行 Config 的 volatile 布尔,**默认 `true`**;旧宿主 ≤0.1.6 在 settings 命名空间 `gitbash-shell` 声明同名字段,**缺键 = true**)。
+- **开(默认)**:委托代理 —— 子代理(`subagent`/`subagent_fork`)、团队队员(`spawn_teammate` 走 continuable-subagent 的 `spawn`/`fork`)、**嵌套子代理** —— 与主代理享受同一条方言链路。
+- **关**:方言只对主代理生效,委托出去的请求回退官方 shell 语义(提示词不改写、路径参数不翻译、结果/报错不回显为 MSYS、`run_code` 程序字面量不翻译、不下发 `DSH_PATH_DIALECT`)。
+
+### 委托身份的判据(先查清链路,再动代码)
+- 用**会话头**判定:`origin === 'subagent' || delegationDepth > 0` —— 与 dsh 自己的 `packages/deliverables/workspace-changes/src/index.ts:59-60` 同一对字段;由子代理驱动在 `packages/subagent/subagent/src/child-agent.ts:139-155` (`childSessionMeta`) 打上,`spawn`/`fork` 两种 provider 与嵌套深度都走它。
+- 纯函数 `isDelegatedAgent(agent)` + 唯一判定点 `dialectApplies(dialect, agent)`;条件挂在 `assembleContext.agent`(`packages/core/agent/src/dispatch.ts:174` 的 `assembleContextFor` 传 `{ agent, scope }`)与 `exec.agent` / `execution.agent` 上。
+- **未知形状一律视为"非委托"**(保留方言):判定不出来时按主代理处理。
+
+### 覆盖到的五个消费点(全部接同一个 gate,避免"半方言")
+① `system-prompt/assemble` 的源头改写与 run_code 句;② 指令 context 的 `text(context)` provider;③ `tools/execute` 的入参翻译 + 成功面回显;④ `tools/post-execute` 的失败面 `content`/`error.message`;⑤ `shellEnv.resolve(execution)` 的 `DSH_PATH_DIALECT` 事实。
+
+### 能力边界(如实写明,写进 README/AGENTS)
+dsh **每个进程只有一个 shell 执行器**(`ctx.shell` 是单例服务),所以 **Git Bash 二进制本身仍是全局的**,本开关管的是**方言/翻译层**;关闭后委托代理见到与写出的是 Windows 形式路径,而 Git Bash 同样接受 `C:/...`,行为自洽。
+
+### 测试与证据
+- 冒烟 **86/86 绿**:新增 3 条(① `isDelegatedAgent`/`dialectApplies` 矩阵:origin、depth 1/2、root、未知/抛错/`agent` 缺失,以及卡片写入断言;② OFF 时主代理保留、委托代理被挡 + 五个消费点都接 gate 的源码断言;③ 旧宿主/老配置**缺键 = true** 的回退);`tests/align-official.mjs` 四变体仍全绿(本版不动组合)。
+- **真机两态(隔离 `DSH_HOME` + 新建 profile + 插件副本 `link:` 安装,真实 dsh 0.1.7-rc.2,本机 macOS)**:探针用 `ctx.agents.create()` 造**真**的 root / child(`origin:'subagent', delegationDepth:1`)/ nested(depth 2)三个 agent(实测会话头 `undefined` / `"subagent":1` / `"subagent":2`),再对每个 agent 调**真的** `ctx.systemPrompt.assemble({ agent, scope: agent })`:
+
+  | 开关 | main(root) | subagent | nested |
+  | --- | --- | --- | --- |
+  | **默认 ON** | 方言指令 = yes | **yes** | **yes** |
+  | **OFF**(行 Config `subagentDialect: false`) | yes | **no** | **no** |
+
+  ⇒ 两态下委托代理的方言确实不同(指令 context 出现/消失即 gate 的可观测面),主代理两态都保留。
+  **平台说明**:macOS 上方言/执行器面本来被 `process.platform === 'win32'` 门控,本次把**插件副本**的两处组装门(`system-prompt/assemble` 与指令 context)强制打开以取得请求级证据(报告中如实标注);**win32 真机仍未覆盖**(执行器是单例,与方言开关无关,不受本版影响)。
+- 设置卡:方言区新增一行(21 语言 `sub.label`/`sub.hint`),写入本行 `subagentDialect`;文案明确"二进制仍全局、此开关管方言/翻译层"。
+
+- 相关:用户需求(2026-09-25 追加);实现不变量见 AGENTS.md §4g,验证装置见「验证清单」第 8 条。
+
 ## v0.26.1 — 2026-09-25
 
 **类型**:fix(v0.26.0 的 workflow 互斥按「意图」而非「生效态」收敛:后端不可用时用户会白丢 workflow 能力)

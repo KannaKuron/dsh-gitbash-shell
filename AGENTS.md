@@ -242,6 +242,20 @@
      - 另注意:python 后端**仅 POSIX**;本插件的路径方言/执行器面按 `process.platform === 'win32'`
        门控,因此在它唯一能跑的平台上这些层本来就不生效 —— 两侧无交互,但升级时仍要复核这条前提。
 
+4g. **子代理/队员的方言开关(v0.27.0,`subagentDialect` 默认 ON)**:用户要求「专门给个设置是否让子代理/队员也使用 Git Bash」。
+     - **语义**:默认 ON = 委托代理(子代理、团队队员、嵌套子代理)与主代理享受**同一条方言链路**;OFF = 方言只对主代理生效,委托请求回退官方 shell 语义。
+     - **委托身份的判据(纯函数 `isDelegatedAgent`)**:会话头 `origin === 'subagent' || delegationDepth > 0` —— 与 dsh 自己的
+       `packages/deliverables/workspace-changes/src/index.ts:59-60` 同一对字段,由子代理驱动在 `packages/subagent/subagent/src/child-agent.ts:139-155` 打上。
+       **未知形状一律 false(不视为委托)**:保留方言是有利方向,`agent` 缺失的诊断组装必须照旧。
+     - **唯一判定点 `dialectApplies(dialect, agent)`**,五个消费点共用它:① `system-prompt/assemble` 的源头改写与 run_code 句;
+       ② 指令 context 的 `text(context)` provider;③ `tools/execute` 的入参翻译 + 成功面回显;④ `tools/post-execute` 的失败面 content/message;
+       ⑤ `shellEnv.resolve(execution)` 的 `DSH_PATH_DIALECT` 事实。**任何新方言消费点都必须接同一个 gate**,否则会出现"半方言"。
+     - **能力边界(必须如实写进文档)**:dsh **每进程只有一个 shell 执行器**(`ctx.shell` 是单例服务),所以 Git Bash **二进制本身仍是全局的**;
+       这个开关管的是方言/翻译层。关闭后委托代理看到与写出的是 Windows 形式路径,而 Git Bash 同样接受 `C:/...`,行为自洽。
+     - **两个时代的读取**:新宿主是本行 Config 的 volatile 布尔 `subagentDialect`(默认 true);旧宿主在 settings 命名空间 `gitbash-shell`
+       声明同名字段,**缺键 = true**(`v.subagentDialect !== false`)⇒ 旧宿主/老配置行为不变。21 语言文案 `sub.label`/`sub.hint`。
+     - 改动必须跑冒烟里的「subagent switch」三例 + 真机两态(见 CHANGELOG v0.27.0 的装置:真 root/child/nested agent + 真 assemble 调用)。
+
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
    **`exports` 必须含 `"./package.json": "./package.json"`(v0.24.3 修,与 dsh-better-workspace
@@ -367,6 +381,10 @@
    再对其中一态用 `agentPresets.acquireScope('<variant>')` **真挂载**四个变体,要求四条
    `MOUNT OK`(挂载审计不得有 failed 行);读数用 `readDocument()` 的 dump,不要只看注册成功。
    非 Windows 机上无法验证 win32 分支(卡片禁用态 / 宿主拒绝),记为模拟验证。
+8. **子代理开关改动(§4g,v0.27.0 起)**:隔离实例 + **真** root/child/nested agent(`ctx.agents.create({ parentAgent, meta: { origin: 'subagent', delegationDepth } })`),
+   再对每个 agent 调**真的** `systemPrompt.assemble({ agent, scope: agent })`,断言:开关 ON 时三态都拿到方言指令;OFF 时**只有 root** 拿到,
+   child/nested 均无(`directive=no`)。macOS 上需把插件副本的两处 `process.platform === 'win32'` 组装门强制打开(执行器/请求面同理),
+   并在报告里标注"平台门被强制";win32 真机仍未覆盖。
 
 ## 发布 checklist(GitHub + npm)
 

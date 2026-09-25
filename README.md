@@ -101,6 +101,22 @@ dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。�
 0.24.x 的四个变体逐字不变;判定细节、生效时机与两侧同步方式见下方
 [「与 dsh-ptc-cordis-preset 联动」](#与-dsh-ptc-cordis-preset-联动)。
 
+### 子代理/队员是否也用 Git Bash:`subagentDialect`(默认开,v0.27.0)
+
+```yaml
+- id: gitbash-shell
+  config:
+    subagentDialect: true   # 默认;false = 方言只对主代理生效
+```
+
+默认开启时,子代理、团队队员(含嵌套子代理)与主代理走**同一条**方言链路:提示词里的路径同样是 `/c/...` 形式、
+路径参数同样被翻译、结果与报错同样回显为 MSYS 形式、`run_code` 程序里的路径字面量同样被翻译,`DSH_PATH_DIALECT` 环境事实也照常下发。
+关闭后这些**只对主代理生效**:委托出去的请求保持官方 shell 语义(提示词不改写、路径参数原样传递),适合"子代理要跑原生 Windows 工具链"的场景。
+
+> 能力边界(如实说明):dsh **每个进程只有一个 shell 执行器**(`ctx.shell` 是单例服务),所以 Git Bash **二进制本身仍是全局的**,
+> 这个开关管的是**方言/翻译层**,不是"换一个 shell"。关闭后委托代理见到与写出的是 Windows 形式路径(`C:/...`),Git Bash 同样接受,行为自洽。
+> 委托身份的判据用会话头的 `origin === 'subagent'` / `delegationDepth > 0`(与 dsh 自身一致),判定不出来时按主代理处理(保留方言)。
+
 配合 `agent-presets` 的 `default`,新会话直接落在 Git Bash 模式,免去每次在
 模式选择器里翻找(原版 shipped 模式无法替换或隐藏——部署级、只读):
 
