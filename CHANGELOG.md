@@ -3,6 +3,44 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.26.0 — 2026-09-25
+
+**类型**:feat(run_code 的实验性 Python 后端开关,与 dsh-ptc-cordis-preset 双向联动)+ fix(issue #10:JSON 转义的 Windows 路径多出前导斜杠)+ chore(dsh 0.1.7-rc.2 增量对齐复核)
+
+### 一、issue #10:JSON 转义的 Windows 路径多出前导斜杠(报障 @youyv)
+
+> https://github.com/KannaKuron/dsh-gitbash-shell/issues/10 —— `windowsToMsys('"D:\\\\dsh\\\\工作"')` 得到 `"/d//dsh/工作"`,期望 `"/d/dsh/工作"`。
+
+- **根因**(与报障者的定位一致,独立复核后确认):两个正则的**盘符后分隔符原子都只吃一个**(`(?:\\|\/)`),而生产输入是**JSON 转义**形态 —— 宿主 `packages/sandbox/sandbox-policy/src/index.ts:47` 用 `${JSON.stringify(policy.workspaceRoot)}` 渲染 `sandbox:policy` 上下文行,于是进入提示词的字面文本带**双反斜杠**。第一个反斜杠被原子吃掉,第二个留在 `rest` 头部,`rest.replace(/[\\/]+/g,'/')` 把它归一成**前导斜杠** ⇒ `/d/` + `/dsh/工作` = `/d//dsh/工作`。缺陷点:`src/index.js:960`(`BARE_WIN_PATH`)、`src/index.js:961`(`QUOTED_WIN_PATH`)、合成点 `src/index.js:967-970`;对照组整值字段走 `driveToMsys()`(带 `^\/*` 剥离)一直正确 —— **只有散文改写器在 JSON 转义输入下坏掉**。
+- **修法(用户批准的方案 A)**:两处原子改为 `[\\/]+`(一次吃光盘符后的全部连续分隔符)。单分隔符输入逐字节不变;`D://dsh//工作` 也一并收敛。**没有**对整段文本 collapse `//`(本文件其它地方把 UNC 拼成 `//server/share`,全局收敛会破坏该形态)。
+- **回归测试**:冒烟新增 `windowsToMsys keeps JSON-escaped Windows paths canonical (v0.26.0, issue #10)` —— 引号分支 + 裸分支、`JSON.stringify('D:\\dsh\\工作')`、`D://dsh//工作`、带空格目录,外加 UNC / URL / `file://` / 已 MSYS 形态的负例。
+- **影响面**:仅"盘符后紧跟 ≥2 个连续分隔符"的文本;三面(`system-prompt/assemble` 的 sections/contexts/variables 与失败 content / error.message)共用该纯函数,同时受益、不会产生方言分歧。语义上是**规范性**修复(Windows 与 MSYS 本来都会收敛中间的 `//`),不是权限或功能故障。
+
+### 二、dsh 0.1.7-rc.1 → rc.2 增量对齐复核(AGENTS.md §9)
+
+- **官方预设文本逐字节未变**:`packages/bundle/web-app/presets/{standard,cordis,ptc,minimal}.patch.yml` 在 rc.1→rc.2 的 sha256 **完全一致**(`git diff dsh-v0.1.7-rc.1 dsh-v0.1.7-rc.2 -- packages/bundle/web-app/presets/` 为空),所以 `src/compositions.js` 的行数据与 `PLAN_SECTION` 本版无需重新对齐。
+- **新增可复跑的核对工具 `tests/align-official.mjs`**:按 §9① 抽官方 patch 的 `- id:` / `name:` / `disabled:` 行序列(含嵌套组层级),与本插件四个变体逐条对比,并**钉住 rc.2 的四个 sha256**;官方文本将来变化时会以 `DRIFT` 明确报警而不是静默漂移。当前结果:**四个变体 × unix/win32 两个分支全绿**,唯一的差异是文档化的 Git Bash 增量(bash 行常开、pwsh 行常关)。
+- **执行器 / 路径方言 / 沙箱面**:rc.1→rc.2 的 `packages/shell/bash-local`、`bash-sandbox` **只有版本号 bump**,`ShellExecutor`/`Config`/`confine` 契约无变化 ⇒ 本插件执行器半无需改动。rc.2 的真实改动集中在 `@deepseek-ai/dsh-tool-bash`/`tool-pwsh` 的**描述文本搬迁**(description → 参数描述、新增 `sandboxPermissionsDescription`)、`tool-*-persistent` 的代理对截断修复、`sandbox` 的 escalation `displayReason`、boot/plugin-manager 的 profile 并发保护、client UI。本插件不消费这些描述文本,启动的翻译层/执行器面不受影响(rc.2 新增的 `PreToolDecision.ask.displayReason` 是可选字段,本插件不产 `ask` 决策)。
+- **exports / manifest / peer 复核**:rc.2 新增 `packages/boot/app-boot/src/package-meta.ts`(插件图标与 locale 显示元数据走 exports map,**不执行插件代码**)。本插件已具备 `./package.json`、`./locale/*.json`、`./client`、`./shell`、`.` 五条导出 + `icon.svg` + `dsh.client.platform: 'web'` + `dsh.bundle.patch`,与 rc.2 的解析规则一致(`packages/client/modules/src/index.ts` 的 `locatePkgJson()` 在 rc.2 未变),无需改动。
+- **工具面覆盖复核(§9⑥)**:rc.2 未新增/改动带路径参数的工具 schema(`read/write/edit/read_image/glob/grep/present/bash` 的字段名与嵌套形状不变),`TRANSLATABLE_PATH_FIELDS` + present 嵌套覆盖仍然完整。
+
+### 三、run_code 后端开关:实验性 Python(与 dsh-ptc-cordis-preset 双向联动,默认关)
+
+- **需求**:有时想用 Python 跑 `run_code`(少踩转义/编码坑),但默认必须与官方逐字节一致;两插件同装时**只在一处改**、两侧即时同步。
+- **归属(Lead 裁决 + ptc 定案)**:换掉的是 **profile 级** `ptc-runtime` 行(`packages/bundle/base/cordis.patch.yml:389`),不是 preset 内的行;isolate realm 方案实测无效(provider 落在私有 realm,root 的 `tools` 服务看不到)。所以**运行行只由 dsh-ptc-cordis-preset insert**(它的 `./src/runtime.js` + 条件 disable base 行),**本插件不 insert 任何运行行、不声明该依赖**(两插件各插一行会让 `ptcRuntime` 二次注册)。权威状态 = 对方行 Config 布尔 `pythonRuntime`(默认 false)。
+- **本插件侧只做两件事**:
+  - ① **镜像设置卡**(`src/client.js`):`configForms.get('ptc-cordis')` 读写**同一个字段** + `subscribe`,任一侧改动两侧立即同步;对方未装或版本无该字段(对方 < 0.15.0)⇒ 整段不画;win32 显示禁用态 + POSIX-only 原因(实验性 CPython 后端在 win32 构造即抛错),按钮不出现。文案 21 语言(`sec.python` / `python.label/on/off/hint/blocked`),写明**重启 dsh 后生效**与**原因见宿主启动日志**(对方不提供 `pythonRuntimeIssue` 这类字段:客户端读不到宿主探测结果,加了就是第二份会漂移的状态)。
+  - ② **组合的工作流互斥**(`src/compositions.js` + `src/index.js`):`workflow-ptc` 构造器硬要求 `ctx.ptcRuntime.language === 'typescript'`(`packages/workflow/workflow-ptc/src/index.ts:117`),而 preset 行在**独立 PresetTree** 里挂载、**base 行 disable 管不到它** ⇒ python 后端期间选 standard/cordis 会让该行抛错,`agent-preset-registry` 的 `audit.failed` 直接**拒绝整棵 preset 挂载**。修法与官方 Python 参考组合一致(`snapshots/session/ptc-python-turn/cordis.yml:25-36` 同款禁用两行):对方能力报 `pythonRuntime: true` 时,**四个变体**的 `workflow-ptc`/`tool-workflow` 一律 `disabled: true`(用户 workflow 设置值保留,关掉后端后下次启动恢复);`code-gitbash` 本来就关。
+  - **信号来源**:对方能力服务 `ptcCordisPreset` 新增 `pythonRuntime`(boolean 或 getter,读不到一律 false);值变化必须**重注册已在 `live` 表里的变体**(行内容变了,只增删名录不够),日志 `peer reports the experimental CPython run_code backend: workflow rows go off in every variant` + 每条 `retired … (peer CPython switch changed; rows are rebuilt)`。
+  - **提示词自动跟随**:后端实例自己提供 `language`(`'typescript'` / `'python'`)与 `executionInstructions`,`packages/core/tools/src/ptc.ts:752` 与 `agent-tool-presentation`(`ctx.inject(['ptcRuntime'])`)据此渲染 run_code 的 SDK 提示词与工具呈现 ⇒ 组合文本两种状态都不变,无需本插件硬编码 Python 文案。
+- **测试**:冒烟 +4(`peerFact` 保守读取矩阵、组合的 workflow 互斥矩阵、宿主重注册与"不 insert 运行行"断言、镜像卡的门控/写穿/win32 断言),共 **80/80 绿**。
+- **真机验证(隔离 `DSH_HOME` + 新建 web profile + 插件 `link:` 安装 + 探针插件,真实 dsh 0.1.7-rc.2,本机 macOS,端口 3251-3256,未触碰 `~/.dsh` 下任何在用 profile)**:
+  - **A(默认关)**:四个变体注册成功,名录 8 项;`readDocument()` 读数 = 官方形态(`standard/cordis-gitbash`:`workflow-ptc`/`tool-workflow` 启用;`code-gitbash`:两者 `disabled: true`;`tool-bash` 启用 / `tool-pwsh` 禁用;`tool-ralph` 全禁用)。
+  - **B(探针报 `pythonRuntime: true`)**:出现上面两行日志,四个变体**全部重建**,读数变为两行 `disabled: true`。
+  - **两态都做真实挂载**:`agentPresets.acquireScope('<variant>')` 四个变体各返回 `MOUNT OK`(挂载审计无 failed 行),证明显式注册的组合在 rc.2 上确实可挂载,而不只是"注册成功"。
+  - **Windows 专属面**:win32 分支(卡片禁用态、宿主拒绝写入、python 后端构造抛错)在 macOS 上**无法真机验证**,按实现 + 单测/模拟记录;本插件的执行器与路径方言层按 `process.platform === 'win32'` 门控,而 python 后端仅 POSIX,两者在各自平台上互不重叠。
+- 相关:issue #10 https://github.com/KannaKuron/dsh-gitbash-shell/issues/10 ;对方仓库 dsh-ptc-cordis-preset v0.15.0(能力字段与运行行)
+
 ## v0.25.1 — 2026-09-24
 
 **类型**:fix(issue #8 —— 路径方言在 dsh 0.1.7 上**整层静默失效**:工具分发面用错了设置读取器;同一次审计另修侧栏终端还原的同类漏网)

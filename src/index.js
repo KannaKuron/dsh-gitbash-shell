@@ -102,8 +102,36 @@ export const PRESET_IDS = ['standard-gitbash', 'minimal-gitbash', 'code-gitbash'
  */
 export const PEER_COVERED_PRESET_ID = 'cordis-gitbash'
 
-/** Service dsh-ptc-cordis-preset publishes: `{ id, gitBashActive }`. */
+/**
+ * Service dsh-ptc-cordis-preset publishes:
+ * `{ id, gitBashActive, pythonRuntime }`. `pythonRuntime` (boolean, default
+ * false when absent, read from a getter too) is the peer's experimental
+ * CPython switch for run_code.
+ */
 export const PEER_CAPABILITY = 'ptcCordisPreset'
+
+/** The peer's CPython-switch field, on its capability and on its row Config. */
+export const PEER_PYTHON_FIELD = 'pythonRuntime'
+
+/**
+ * Read one boolean fact off the peer's capability object. A getter is honoured
+ * so a live peer can report its current switch rather than a boot-time copy;
+ * anything absent, of the wrong type, or throwing reads as false — the
+ * conservative direction is always "the official Node backend is in use".
+ * @param {object|undefined} capability - the peer's published capability.
+ * @param {string} field - the field name to read.
+ * @returns {boolean} the fact, false when it cannot be established.
+ */
+export function peerFact(capability, field) {
+  if (capability === null || capability === undefined) return false
+  try {
+    const raw = capability[field]
+    const value = typeof raw === 'function' ? raw.call(capability) : raw
+    return value === true
+  } catch {
+    return false
+  }
+}
 
 /**
  * The roster this plugin serves: the configured list, minus the variant a peer
@@ -956,9 +984,16 @@ export async function detectPeerCoverage(ctx, timeoutMs = 1000, intervalMs = 25)
 // a path as a whole-value FIELD, which never goes through here (driveToMsys).
 // The lookbehind set rejects URL schemes (https:), file:// forms, and anything
 // already mid-word, so only real drive-letter paths are translated. Separators
-// normalize to single slashes.
-const BARE_WIN_PATH = /(?<![A-Za-z0-9:\\/"'`])([A-Za-z]):(?:\\|\/)([^\s"'`<>|),;:!?]+(?: [^\s"'`<>|),;:!?]*[\\/][^\s"'`<>|),;:!?]*)*)/g
-const QUOTED_WIN_PATH = /(["'`])([A-Za-z]):(?:\\|\/)([^`]*?)\1/g
+// normalize to single slashes. The separator group after the colon consumes
+// EVERY consecutive separator (`[\\/]+`), not just one (v0.26.0, issue #10):
+// JSON-escaped Windows paths ("D:\\dsh\\工作" as the host renders
+// `${JSON.stringify(workspaceRoot)}` in sandbox:policy) carry a DOUBLED
+// backslash, and a single-separator atom left the second one at the head of
+// `rest`, where the separator normalization turned it into a leading slash —
+// "/d/" + "/dsh/工作" = "/d//dsh/工作", a non-canonical workspace root the
+// model then copied. Single-separator inputs are byte-for-byte unchanged.
+const BARE_WIN_PATH = /(?<![A-Za-z0-9:\\/"'`])([A-Za-z]):[\\/]+([^\s"'`<>|),;:!?]+(?: [^\s"'`<>|),;:!?]*[\\/][^\s"'`<>|),;:!?]*)*)/g
+const QUOTED_WIN_PATH = /(["'`])([A-Za-z]):[\\/]+([^`]*?)\1/g
 
 /** Rewrite every Windows absolute path in a text to the MSYS form; pure. */
 export function windowsToMsys(text) {
@@ -2022,12 +2057,12 @@ function cleanupLegacyTrees(presetIds) {
  * failures stay visible through the roster's broken diagnostic instead of
  * failing the boot.
  */
-async function registerVariant(ctx, presetId, { gitBashActive, skillsDir }) {
+async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonRuntime }) {
   const meta = PRESET_META[presetId]
   if (!meta) return undefined
   const plugins = meta.kind === 'minimal'
     ? minimalPluginsFor()
-    : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir })
+    : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir, pythonRuntime })
   return ctx.agentPresets.register({
     id: presetId,
     name: meta.name,
@@ -2040,10 +2075,12 @@ async function registerVariant(ctx, presetId, { gitBashActive, skillsDir }) {
 /**
  * Declarative-era wiring: keep exactly one registration per VARIANT THIS HOST
  * SHOULD SERVE for the plugin's lifetime, and re-reconcile whenever that set
- * changes. Two inputs drive it — the live `suppressPeerCordis` switch and the
+ * changes. Three inputs drive it — the live `suppressPeerCordis` switch, the
  * peer capability appearing (or leaving) via `ctx.inject`, which fires
- * independent of row activation order — and the peer's own coverage only
- * counts while it reports a Git Bash-materialized preset.
+ * independent of row activation order, and the peer's experimental-CPython
+ * fact (`pythonRuntime`), which changes the ROWS of every variant — and the
+ * peer's own coverage only counts while it reports a Git Bash-materialized
+ * preset.
  *
  * The roster picks entries up immediately; sessions already pinned to a
  * variant keep their revision until recomposed, so suppressing a variant never
@@ -2060,6 +2097,9 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
   /** presetId -> unregister, i.e. exactly what is live right now. */
   const live = new Map()
   let peerGitBash = false
+  let peerPython = false
+  /** The CPython fact the LIVE registrations were built with. */
+  let registeredPython = false
   let serial = Promise.resolve()
 
   const desired = () => effectivePresetIds(presetIds, { suppress: readSuppress(), peerGitBash })
@@ -2067,6 +2107,22 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
   const reconcile = () => {
     serial = serial.then(async () => {
       const want = desired()
+      // The peer's CPython switch rewrites the workflow rows of EVERY variant
+      // (the official Python composition disables them, and workflow-ptc
+      // refuses a non-TypeScript backend), so a flip re-registers the live
+      // variants instead of leaving stale rows mounted. Same cadence as the
+      // backend swap itself: the peer's patch is evaluated at boot.
+      if (live.size > 0 && registeredPython !== peerPython) {
+        for (const [presetId, off] of [...live]) {
+          live.delete(presetId)
+          try {
+            await off()
+            console.log(TAG + " preset '" + presetId + "' retired (peer CPython switch changed; rows are rebuilt)")
+          } catch (error) {
+            console.log(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
+          }
+        }
+      }
       for (const [presetId, off] of [...live]) {
         if (want.includes(presetId)) continue
         live.delete(presetId)
@@ -2080,7 +2136,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
       for (const presetId of want) {
         if (live.has(presetId)) continue
         try {
-          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir })
+          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonRuntime: peerPython })
           if (unregister) {
             live.set(presetId, unregister)
             console.log(TAG + " preset '" + presetId + "' registered declaratively")
@@ -2089,6 +2145,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
           console.log(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
         }
       }
+      registeredPython = peerPython
     }).catch((error) => {
       console.log(TAG + ' preset reconcile failed: ' + (error && error.message ? error.message : error))
     })
@@ -2105,17 +2162,21 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
     ctx.inject([PEER_CAPABILITY], (peerCtx) => {
       try {
         const coverage = peerCtx[PEER_CAPABILITY] ?? peerCtx.get(PEER_CAPABILITY)
-        const next = coverage?.gitBashActive === true
-        if (next !== peerGitBash) {
-          peerGitBash = next
+        const nextGitBash = peerFact(coverage, 'gitBashActive')
+        const nextPython = peerFact(coverage, PEER_PYTHON_FIELD)
+        if (nextGitBash !== peerGitBash || nextPython !== peerPython) {
+          peerGitBash = nextGitBash
+          peerPython = nextPython
+          if (nextPython) console.log(TAG + ' peer reports the experimental CPython run_code backend: workflow rows go off in every variant')
           void reconcile()
         }
       } catch (error) {
         console.log(TAG + ' peer coverage read failed: ' + (error && error.message ? error.message : error))
       }
       peerCtx.effect(() => () => {
-        if (!peerGitBash) return
+        if (!peerGitBash && !peerPython) return
         peerGitBash = false
+        peerPython = false
         void reconcile()
       }, 'dsh-gitbash-shell: peer coverage release')
     })
@@ -2596,4 +2657,4 @@ export async function apply(ctx, config = {}) {
 }
 
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, effectivePresetIds, detectPeerCoverage, readSuppressPeerCordis, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }
+export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, PEER_PYTHON_FIELD, peerFact, effectivePresetIds, detectPeerCoverage, readSuppressPeerCordis, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, materialize, cleanupOnDispose, firstUserRoot, hashTree, skillsHashes, syncDecision, installRegisterShim, baseForRoster, detectBase, pickComposition, personaEraForText, detectPersonaEra, injectPresentRow, hostHasToolPresent, detectPresentSupport, injectPluginManagerRow, hostHasPluginManagerTools, rowFormOf, rowFormsOf, alignEngineRow, alignRalphRow, ROW_SOURCE }

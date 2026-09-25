@@ -187,6 +187,33 @@ preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 **依赖版本**:去重开关本体在**本插件 ≥ 0.25.0**;对方的协作能力在
 **dsh-ptc-cordis-preset ≥ 0.14.0**。
 
+### run_code 后端开关:`pythonRuntime`(默认关,v0.26.0)
+
+dsh 有一个**实验性 CPython 后端**用于 PTC 的 `run_code`
+(`@deepseek-ai/dsh-experimental-ptc-runtime-python`)。它换掉的是 **profile 级**的
+`ptc-runtime` 行(不是 preset 里的行),所以**权威开关属于 dsh-ptc-cordis-preset**:它那一行
+Config 的布尔字段 `pythonRuntime`(默认 `false`),由它在 profile 组合期决定挂哪个后端。
+
+本插件做的是**第二张设置卡**——同装 dsh-ptc-cordis-preset 时,本插件的设置页也会出现这一行,
+通过 `ctx.configForms.get('ptc-cordis')` 读写**同一个字段**,任一侧改动两侧立即同步
+(与 `suppressPeerCordis` 同构,方向相反)。对方没装、或版本低于 0.15.0(没有该字段)时,
+这一行**不显示**。
+
+- **开关关闭(默认)**:`run_code` 用官方 Node/TypeScript 后端,组合与官方逐字节一致。
+- **开关开启**:`run_code` 的语言、生成的 SDK 提示词与工具呈现整体切到 Python(由后端实例的
+  `language`/`executionInstructions` 决定,组合文本不变)。
+- **生效时机**:**重启 dsh 之后生效**(后端行的替换在 profile 组合期求值);设置卡上的状态
+  两侧即时同步,只有后端切换需要重启。若开启后没有生效,原因见 dsh 启动日志。
+- **平台**:该后端**仅支持 POSIX**——它在 Windows 上构造即抛错,所以 Windows 上开关显示为
+  禁用并注明原因,宿主侧也会拒绝写入。
+- **与 workflow 互斥**:`workflow-ptc` 硬要求 TypeScript 后端(`ctx.ptcRuntime.language ===
+  'typescript'`),官方 Python 组合同样把 `workflow-ptc` / `tool-workflow` 一起禁用。因此**开启
+  期间本插件四个变体的这两行一律禁用**(用户自己的 workflow 设置值保留,关掉后端后下次启动
+  恢复)——不这样做,选标准/创造模式会因一行构造失败而拒绝**整棵 preset 挂载**。
+- **依赖**:python 运行时包由 dsh-ptc-cordis-preset 声明(`optionalDependencies`,
+  `0.1.7-rc.2`);本插件不声明该依赖、也不 insert 任何运行行(两个插件各插一行会造成
+  `ptcRuntime` 二次注册)。
+
 ## POSIX 路径方言(v0.7.0 引入,受 `posixPaths` 开关门控)
 
 Windows 上本插件把宿主 shell 换成 Git Bash 的同时,让**模型看到的路径**统一成 MSYS 盘根

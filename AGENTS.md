@@ -193,6 +193,37 @@
      - ④ **服务契约**:能力名 `ptcCordisPreset`、形状 `{ id, gitBashActive }` 由 dsh-ptc-cordis-preset
        **≥0.14.0** 提供(本插件侧的去重开关自 ≥0.25.0);**该形状变更要同步对方仓库**。改这一层必须跑
        冒烟里的去重判定矩阵、能力探测、旧时代读取与两个时代的接线断言四例。
+4f. **run_code 的实验性 Python 后端开关(v0.26.0)**:dsh 的实验性 CPython PTC 后端
+     (`@deepseek-ai/dsh-experimental-ptc-runtime-python`)替换的是 **profile 级** `ptc-runtime` 行,
+     不是 preset 内的行,所以**开关与运行行都归 dsh-ptc-cordis-preset**:权威状态是它那一行
+     (`ptc-cordis`)Config 的布尔 `pythonRuntime`(默认 false),它的 bundle patch 在 boot 时按
+     快照条件 disable base 行 + insert 自己的 runtime 行。**本仓库只做两件事**:
+     - ① **镜像设置卡**(`src/client.js`):`ctx.configForms.get('ptc-cordis')` 读写 **同一个字段** +
+       `subscribe`,默认关;`hasOwnProperty('pythonRuntime')` 为假(对方 < 0.15.0)⇒ 整段不画;
+       对方未装 ⇒ 不画。**绝不引入第二份镜像字段**。win32 上后端构造即抛错(仅 POSIX),卡片因此
+       显示禁用态 + `python.blocked`(POSIX-only),按钮不出现;宿主侧同样拒绝写入。文案 21 语言,
+       必须写明「重启 dsh 后生效」与「原因见宿主启动日志」——后者是因为 `pythonRuntimeIssue`
+       这类"宿主探测原因"**没有**客户端可读通道,契约里明确不提供(加了就是第二份会漂移的状态)。
+     - ② **组合的工作流互斥**(`src/compositions.js` + `src/index.js`):`workflow-ptc` 构造器硬要求
+       `ctx.ptcRuntime.language === 'typescript'`(`packages/workflow/workflow-ptc/src/index.ts:117`),
+       而 preset 行在**独立 PresetTree** 里挂载、**base 行 disable 管不到它** ⇒ python 后端期间选
+       standard/cordis 会让该行抛错,`agent-preset-registry/mount.ts` 的 `audit.failed` 直接拒绝
+       **整棵 preset 挂载**。修法与官方 python 参考组合一致
+       (`snapshots/session/ptc-python-turn/cordis.yml:25-36` 同款禁用两行):`pythonRuntime === true`
+       时**四个变体**的 `workflow-ptc`/`tool-workflow` 一律 `disabled: true`(用户 workflow 设置值
+       保留,关掉后端下次启动恢复);`kind === 'ptc'` 本来就关,不受影响。
+     - **信号来源 = 对方能力服务**:`ctx.provide('ptcCordisPreset', { id, gitBashActive, pythonRuntime })`
+       (dsh-ptc-cordis-preset ≥ 0.15.0;`pythonRuntime` 可为 boolean 或 getter,读不到一律按 false);
+       家族纪律同 §4e①——**绝不猜**,也不去读 `agentPresets`/配置文件推断。值变化必须**重注册已经在
+       live 表里的变体**(行内容变了,只增删名录不够),日志
+       `peer reports the experimental CPython run_code backend: workflow rows go off in every variant`。
+     - 依赖边界:python 运行时包由对方 `optionalDependencies` 声明(**精确 `0.1.7-rc.2`**,不用
+       `next`——npmmirror 会解析到 rc.1 被兼容闸拒);**本仓库不声明该依赖、不 insert 运行行**
+       (两个插件各插一行会让 `ptcRuntime` 二次注册)。改这一层必须跑冒烟里的
+       「python switch」四例 + 真机读数(见 CHANGELOG v0.26.0 的 A/B 装置)。
+     - 另注意:python 后端**仅 POSIX**;本插件的路径方言/执行器面按 `process.platform === 'win32'`
+       门控,因此在它唯一能跑的平台上这些层本来就不生效 —— 两侧无交互,但升级时仍要复核这条前提。
+
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
    **`exports` 必须含 `"./package.json": "./package.json"`(v0.24.3 修,与 dsh-better-workspace
@@ -305,6 +336,15 @@
    retired …` 且名录少一条 → 写回 `false` 后出现 `preset 'cordis-gitbash' registered declaratively`
    且名录恢复。非 Windows 机上用探针副本把 `gitBash` 能力的 `active` 强制为 `true` 模拟 win32 语义;
    顺带在无头浏览器确认对方设置卡上的镜像行渲染出来(同一份状态)。
+7. **Python 后端开关改动(§4f,v0.26.0 起)**:隔离实例 + 探针插件
+   `ctx.provide('ptcCordisPreset', { id, gitBashActive: true, pythonRuntime })` 跑 A/B:
+   `false` 时四个变体保持官方形态(standard/cordis 的 `workflow-ptc`/`tool-workflow` 为 on、
+   `code-gitbash` 为 true);`true` 时日志出现
+   `peer reports the experimental CPython run_code backend: workflow rows go off in every variant`
+   + 四条 `retired … (peer CPython switch changed; rows are rebuilt)`,且**四个变体**的两行都变
+   `disabled: true`。再用 `agentPresets.acquireScope('<variant>')` **真挂载**四个变体,要求四条
+   `MOUNT OK`(挂载审计不得有 failed 行);读数用 `readDocument()` 的 dump,不要只看注册成功。
+   非 Windows 机上无法验证 win32 分支(卡片禁用态 / 宿主拒绝),记为模拟验证。
 
 ## 发布 checklist(GitHub + npm)
 

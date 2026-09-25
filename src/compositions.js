@@ -12,7 +12,11 @@
  * one Git Bash delta: the bash rows are always on and the pwsh rows are
  * always off (the host executor is this plugin's shell.js — on non-Windows
  * hosts that is the native stack anyway, which is exactly what the old
- * materialized variants encoded).
+ * materialized variants encoded). A second, conditional delta exists while
+ * dsh-ptc-cordis-preset reports its experimental-CPython switch on: the two
+ * workflow rows follow the official Python composition and go off (see
+ * `pythonRuntime` below). With that switch off — the default — the rows are
+ * the official ones unchanged.
  */
 
 /** Default Git Bash binary — must match src/shell.js and the patch config. */
@@ -44,13 +48,22 @@ When ready, call exit_plan_mode with the complete plan markdown, starting with a
  * @param {boolean} input.gitBash - bash rows always on, pwsh rows always off.
  * @param {string|undefined} input.skillsDir - Creation authoring skills
  *   directory (cordis variant only; resolved beside the agent-preset package).
+ * @param {boolean} [input.pythonRuntime] - the peer's experimental-CPython
+ *   switch. `workflow-ptc` hard-requires `ctx.ptcRuntime.language ===
+ *   'typescript'` (packages/workflow/workflow-ptc/src/index.ts:117) while the
+ *   CPython backend reports 'python', and a throwing preset row rejects the
+ *   WHOLE mount (agent-preset-registry mount.ts). The official Python
+ *   composition disables both workflow rows for exactly this reason
+ *   (snapshots/session/ptc-python-turn/cordis.yml), so with the switch on
+ *   every variant mirrors that: the two rows go off, the user's own workflow
+ *   setting is untouched and returns when the switch goes back off.
  * @returns {object[]} the declarative plugins list.
  */
-export function pluginsFor({ kind, gitBash, skillsDir }) {
+export function pluginsFor({ kind, gitBash, skillsDir, pythonRuntime = false }) {
   const win = typeof process !== 'undefined' && process.platform === 'win32'
   const bashDisabled = gitBash ? false : win
   const pwshDisabled = gitBash ? true : !win
-  const workflowOn = kind !== 'ptc'
+  const workflowOn = kind !== 'ptc' && pythonRuntime !== true
   const rows = [
     {
       id: 'persona',

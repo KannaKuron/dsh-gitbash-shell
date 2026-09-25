@@ -51,6 +51,10 @@ window.__ModuleLoader__.load({
 		   plugin's row (the single authoritative copy the peer card binds too) —
 		   and the section is drawn only while that entry is actually served. */
 		var PEER_NS = "ptc-cordis";
+		/** The peer's authoritative experimental-CPython field on that SAME row:
+		   both cards read and write this one form field, so either side changes
+		   both. Absent on a peer that predates the switch ⇒ no row is drawn. */
+		var PEER_PYTHON_FIELD = "pythonRuntime";
 
 		// ── dictionaries ────────────────────────────────────────────────────────
 		// zh/en stay inline; the third languages live in LOCALES below, one entry
@@ -89,6 +93,12 @@ window.__ModuleLoader__.load({
 			"sec.dedupe": "与 PTC 创造模式去重",
 			"dedupe.label": "「创造模式 · Git Bash」重复项",
 			"dedupe.hint": "dsh-ptc-cordis-preset 同装时,它的「PTC 创造模式」在联动下已是 Git Bash 版,与本插件的「创造模式 · Git Bash」指向同一件事。开启去重后本插件不再注册那一条(名录少一项);默认关闭,保持四个变体不变。此开关就是对方设置卡上的同一个开关——两侧共享同一份状态,任一侧改动另一侧立即同步。仅在已安装 dsh-ptc-cordis-preset 时显示。",
+			"sec.python": "run_code 后端(实验性 Python)",
+			"python.label": "run_code 后端",
+			"python.on": "Python(实验性)",
+			"python.off": "Node / TypeScript(默认)",
+			"python.hint": "默认关闭时 run_code 用官方 Node/TypeScript 后端,与官方 ptc 组合逐字节一致;开启后改用 dsh 实验性 CPython 后端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 的语言、生成的 SDK 提示词与工具呈现随之切到 Python。要求 POSIX 平台与 CPython ≥ 3.10(Windows 不可用);与 workflow 工具互斥——官方 Python 组合同样禁用 workflow,因此开启期间本插件四个变体的 workflow 侧强制关闭(你的工作流设置值保留,关掉后恢复)。改动需重启 dsh 后生效;此开关就是 dsh-ptc-cordis-preset 设置卡上的同一个开关——两侧共享同一份状态,任一侧改动两侧同步。仅在已安装 dsh-ptc-cordis-preset 时显示。若置为开启后未生效,原因见宿主启动日志。",
+			"python.blocked": "本机是 Windows:实验性 Python 后端仅支持 POSIX,此开关不可用。",
 		};
 
 		var en = {
@@ -122,6 +132,12 @@ window.__ModuleLoader__.load({
 			"sec.dedupe": "Dedupe with PTC creation mode",
 			"dedupe.label": "\"Creation mode · Git Bash\" duplicate",
 			"dedupe.hint": "With dsh-ptc-cordis-preset installed alongside, its \"PTC creation mode\" is already the Git Bash variant under the link-up, so it and this plugin's \"creation mode · Git Bash\" point at the same thing. With dedupe on, this plugin stops registering that entry (one fewer in the roster); off by default, which keeps the four variants unchanged. This switch is the very same switch on the peer's settings card — both sides share one state, so a change on either side syncs to the other immediately. Shown only while dsh-ptc-cordis-preset is installed.",
+			"sec.python": "run_code backend (experimental Python)",
+			"python.label": "run_code backend",
+			"python.on": "Python (experimental)",
+			"python.off": "Node / TypeScript (default)",
+			"python.hint": "While off (default) run_code uses the official Node/TypeScript backend, byte-identical to the shipped ptc composition; turning it on switches to dsh's experimental CPython backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), which also switches run_code's language, generated SDK prompt and tool presentation to Python. Requires a POSIX platform and CPython ≥ 3.10 (unavailable on Windows) and is mutually exclusive with the workflow tool — the official Python composition disables workflow too, so the workflow side of all four variants is forced off while this is on (your workflow setting is kept and restored when you turn it back off). Takes effect after restarting dsh; this is the very same switch on dsh-ptc-cordis-preset's card — both sides share one state, so either side updates both. Shown only while dsh-ptc-cordis-preset is installed. If turning it on does not take effect, the dsh startup log states why.",
+			"python.blocked": "This host is Windows: the experimental Python backend supports POSIX only, so this switch is unavailable.",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded
@@ -165,6 +181,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "إزالة التكرار مع وضع PTC الإبداعي",
 				"dedupe.label": "عنصر «وضع الإبداع · Git Bash» المكرر",
 				"dedupe.hint": "عند تثبيت dsh-ptc-cordis-preset معًا، يكون «وضع PTC الإبداعي» لديه بالفعل نسخة Git Bash في إطار الربط، فيشير هو و«وضع الإبداع · Git Bash» في هذه الإضافة إلى الشيء نفسه. عند تفعيل إزالة التكرار تتوقف هذه الإضافة عن تسجيل ذلك العنصر (عنصر أقل في القائمة)؛ والمعطَّل افتراضيًا يُبقي المتغيّرات الأربعة كما هي. هذا المفتاح هو نفسه المفتاح الموجود على بطاقة إعدادات الطرف الآخر — الجانبان يتشاركان الحالة نفسها، وأي تغيير في أحد الجانبين يُزامَن فورًا مع الآخر. يظهر فقط عندما يكون dsh-ptc-cordis-preset مثبَّتًا.",
+				"sec.python": "خلفية run_code (Python تجريبي)",
+				"python.label": "خلفية run_code",
+				"python.on": "Python (تجريبي)",
+				"python.off": "Node / TypeScript (افتراضي)",
+				"python.hint": "عند الإيقاف (افتراضيًا) يستخدم run_code الخلفية الرسمية Node/TypeScript، مطابقة تمامًا لتركيبة ptc الرسمية؛ وعند التشغيل يتحول إلى خلفية CPython التجريبية في dsh (@deepseek-ai/dsh-experimental-ptc-runtime-python)، فتتحول لغة run_code ومطالبة SDK المولَّدة وعرض الأداة إلى Python. يتطلب نظام POSIX و CPython ≥ 3.10 (غير متاح على Windows)، وهو متعارض مع أداة workflow — فالتركيبة الرسمية لـ Python تعطّل workflow أيضًا، لذا يبقى جانب workflow مُعطَّلًا في المتغيّرات الأربعة أثناء التشغيل (قيمتك محفوظة وتعود عند الإيقاف). يسري التغيير بعد إعادة تشغيل dsh؛ هذا هو المفتاح نفسه على بطاقة dsh-ptc-cordis-preset — الجانبان يتشاركان حالة واحدة. يظهر فقط عند تثبيت dsh-ptc-cordis-preset. إذا لم يسري التشغيل، فسبب ذلك مذكور في سجل تشغيل dsh.",
+				"python.blocked": "هذا المضيف يعمل بـ Windows: الخلفية التجريبية Python تدعم POSIX فقط، لذا لا يتوفر هذا المفتاح.",
 			},
 			/* locale: de */
 			"de": {
@@ -198,6 +220,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Deduplizierung mit dem PTC-Kreativmodus",
 				"dedupe.label": "Doppelter Eintrag „Kreativmodus · Git Bash“",
 				"dedupe.hint": "Ist dsh-ptc-cordis-preset mitinstalliert, ist dessen „PTC-Kreativmodus“ durch die Verknüpfung bereits die Git-Bash-Fassung und zeigt damit auf dasselbe wie der „Kreativmodus · Git Bash“ dieses Plugins. Mit aktiver Deduplizierung registriert dieses Plugin den eigenen Eintrag nicht mehr (ein Eintrag weniger im Verzeichnis); standardmäßig aus, die vier Varianten bleiben unverändert. Dieser Schalter ist derselbe Schalter auf der Einstellungskarte der Gegenseite — beide Seiten teilen einen Zustand, eine Änderung auf einer Seite erreicht die andere sofort. Nur sichtbar, solange dsh-ptc-cordis-preset installiert ist.",
+				"sec.python": "run_code-Backend (experimentelles Python)",
+				"python.label": "run_code-Backend",
+				"python.on": "Python (experimentell)",
+				"python.off": "Node / TypeScript (Standard)",
+				"python.hint": "Aus (Standard): run_code nutzt das offizielle Node/TypeScript-Backend, byte-identisch zur ausgelieferten ptc-Komposition; an: dsh wechselt auf das experimentelle CPython-Backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), womit Sprache, generierter SDK-Prompt und Darstellung von run_code auf Python umstellen. Erfordert POSIX und CPython ≥ 3.10 (unter Windows nicht verfügbar) und ist mit dem workflow-Tool unvereinbar — die offizielle Python-Komposition deaktiviert workflow ebenfalls, deshalb bleibt die workflow-Seite aller vier Varianten so lange aus (dein Workflow-Wert bleibt erhalten und kehrt nach dem Ausschalten zurück). Wirkt nach einem Neustart von dsh; dies ist derselbe Schalter auf der Karte von dsh-ptc-cordis-preset — beide Seiten teilen einen Zustand. Nur sichtbar, solange dsh-ptc-cordis-preset installiert ist. Bleibt das Einschalten ohne Wirkung, nennt das dsh-Startprotokoll den Grund.",
+				"python.blocked": "Dieser Host ist Windows: Das experimentelle Python-Backend unterstützt nur POSIX, der Schalter ist nicht verfügbar.",
 			},
 			/* locale: fr */
 			"fr": {
@@ -231,6 +259,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Dédoublonnage avec le mode création PTC",
 				"dedupe.label": "Entrée en double « mode création · Git Bash »",
 				"dedupe.hint": "Lorsque dsh-ptc-cordis-preset est installé en même temps, son « mode création PTC » est déjà la version Git Bash grâce à l'appairage : lui et le « mode création · Git Bash » de ce plugin désignent la même chose. Une fois le dédoublonnage activé, ce plugin n'enregistre plus sa propre entrée (une entrée de moins dans le catalogue) ; désactivé par défaut, ce qui laisse les quatre variantes intactes. Cet interrupteur est exactement le même que sur la carte de réglages d'en face — les deux côtés partagent un seul état, toute modification d'un côté est synchronisée immédiatement de l'autre. Affiché uniquement lorsque dsh-ptc-cordis-preset est installé.",
+				"sec.python": "Backend run_code (Python expérimental)",
+				"python.label": "Backend run_code",
+				"python.on": "Python (expérimental)",
+				"python.off": "Node / TypeScript (par défaut)",
+				"python.hint": "Désactivé (par défaut), run_code utilise le backend officiel Node/TypeScript, identique octet pour octet à la composition ptc livrée ; activé, dsh bascule sur le backend CPython expérimental (@deepseek-ai/dsh-experimental-ptc-runtime-python) : la langue, l'invite SDK générée et la présentation de run_code passent en Python. Exige POSIX et CPython ≥ 3.10 (indisponible sous Windows) et est incompatible avec l'outil workflow — la composition Python officielle désactive aussi workflow, donc le côté workflow des quatre variantes reste désactivé tant que l'option est active (ta valeur est conservée et revient à la désactivation). Prend effet après un redémarrage de dsh ; c'est le même interrupteur que sur la carte de dsh-ptc-cordis-preset — les deux côtés partagent un seul état. Affiché uniquement si dsh-ptc-cordis-preset est installé. Si l'activation reste sans effet, le journal de démarrage de dsh en indique la raison.",
+				"python.blocked": "Cet hôte est sous Windows : le backend Python expérimental n'est disponible que sur POSIX, l'interrupteur est indisponible.",
 			},
 			/* locale: hi */
 			"hi": {
@@ -264,6 +298,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "PTC क्रिएशन मोड के साथ डुप्लीकेट हटाना",
 				"dedupe.label": "«क्रिएशन मोड · Git Bash» की डुप्लीकेट प्रविष्टि",
 				"dedupe.hint": "जब dsh-ptc-cordis-preset साथ में इंस्टॉल होता है, तो लिंक-अप के कारण उसका «PTC क्रिएशन मोड» पहले से Git Bash रूप है, और वह इस प्लगइन के «क्रिएशन मोड · Git Bash» के साथ एक ही चीज़ दर्शाता है। डुप्लीकेट हटाना चालू करने पर यह प्लगइन अपनी वह प्रविष्टि पंजीकृत नहीं करता (सूची में एक कम); डिफ़ॉल्ट रूप से बंद, जिससे चारों वेरिएंट अपरिवर्तित रहते हैं। यह स्विच सामने वाले की सेटिंग कार्ड पर मौजूद ठीक वही स्विच है — दोनों ओर एक ही स्थिति साझा होती है, किसी एक ओर बदलाव तुरंत दूसरी ओर सिंक होता है। यह केवल तभी दिखता है जब dsh-ptc-cordis-preset इंस्टॉल हो।",
+				"sec.python": "run_code बैकएंड (प्रयोगात्मक Python)",
+				"python.label": "run_code बैकएंड",
+				"python.on": "Python (प्रयोगात्मक)",
+				"python.off": "Node / TypeScript (डिफ़ॉल्ट)",
+				"python.hint": "बंद (डिफ़ॉल्ट) रहने पर run_code आधिकारिक Node/TypeScript बैकएंड इस्तेमाल करता है, जो भेजे गए ptc संयोजन से पूरी तरह मेल खाता है; चालू करने पर dsh का प्रयोगात्मक CPython बैकएंड (@deepseek-ai/dsh-experimental-ptc-runtime-python) चलता है और run_code की भाषा, बना SDK प्रॉम्प्ट तथा प्रस्तुति Python में बदल जाती है। इसके लिए POSIX और CPython ≥ 3.10 चाहिए (Windows पर उपलब्ध नहीं), और यह workflow टूल से परस्पर अनन्य है — आधिकारिक Python संयोजन भी workflow बंद करता है, इसलिए चालू रहने तक चारों वेरिएंट का workflow पक्ष बंद रहता है (आपकी workflow सेटिंग सुरक्षित रहती है और बंद करने पर लौट आती है)। बदलाव dsh को फिर से शुरू करने के बाद लागू होता है; यह dsh-ptc-cordis-preset के कार्ड पर मौजूद वही स्विच है — दोनों ओर एक ही स्थिति साझा होती है। यह केवल तभी दिखता है जब dsh-ptc-cordis-preset इंस्टॉल हो। चालू करने पर असर न हो तो कारण dsh के स्टार्टअप लॉग में मिलेगा।",
+				"python.blocked": "यह होस्ट Windows है: प्रयोगात्मक Python बैकएंड केवल POSIX पर चलता है, इसलिए यह स्विच उपलब्ध नहीं है।",
 			},
 			/* locale: id */
 			"id": {
@@ -297,6 +337,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Deduplikasi dengan mode kreatif PTC",
 				"dedupe.label": "Entri duplikat «mode kreatif · Git Bash»",
 				"dedupe.hint": "Saat dsh-ptc-cordis-preset terpasang bersama, «mode kreatif PTC» miliknya sudah menjadi versi Git Bash berkat keterkaitan, sehingga ia dan «mode kreatif · Git Bash» plugin ini menunjuk hal yang sama. Dengan deduplikasi aktif, plugin ini berhenti mendaftarkan entrinya sendiri (berkurang satu di daftar); nonaktif secara bawaan, sehingga keempat varian tetap utuh. Sakelar ini adalah sakelar yang sama di kartu setelan pihak lain — kedua sisi berbagi satu status, perubahan di salah satu sisi langsung tersinkron ke sisi lain. Hanya tampil saat dsh-ptc-cordis-preset terpasang.",
+				"sec.python": "Backend run_code (Python eksperimental)",
+				"python.label": "Backend run_code",
+				"python.on": "Python (eksperimental)",
+				"python.off": "Node / TypeScript (bawaan)",
+				"python.hint": "Saat nonaktif (bawaan), run_code memakai backend resmi Node/TypeScript, identik byte demi byte dengan komposisi ptc resmi; saat aktif, dsh memakai backend CPython eksperimental (@deepseek-ai/dsh-experimental-ptc-runtime-python) sehingga bahasa run_code, prompt SDK yang dihasilkan, dan penyajiannya beralih ke Python. Memerlukan POSIX dan CPython ≥ 3.10 (tidak tersedia di Windows) serta saling eksklusif dengan alat workflow — komposisi Python resmi juga menonaktifkan workflow, jadi sisi workflow keempat varian tetap mati selama ini aktif (nilai workflow-mu dipertahankan dan kembali saat dimatikan). Berlaku setelah dsh dimulai ulang; ini sakelar yang sama di kartu dsh-ptc-cordis-preset — kedua sisi berbagi satu status. Hanya tampil saat dsh-ptc-cordis-preset terpasang. Jika diaktifkan tetapi tidak berpengaruh, alasannya ada di log mulai dsh.",
+				"python.blocked": "Host ini Windows: backend Python eksperimental hanya mendukung POSIX, sakelar ini tidak tersedia.",
 			},
 			/* locale: it */
 			"it": {
@@ -330,6 +376,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Deduplicazione con la modalità creazione PTC",
 				"dedupe.label": "Voce duplicata «modalità creazione · Git Bash»",
 				"dedupe.hint": "Quando dsh-ptc-cordis-preset è installato insieme, la sua «modalità creazione PTC» è già la versione Git Bash grazie al collegamento: essa e la «modalità creazione · Git Bash» di questo plugin indicano la stessa cosa. Attivando la deduplicazione questo plugin non registra più la propria voce (una in meno nell'elenco); disattivata per impostazione predefinita, lascia intatte le quattro varianti. Questo interruttore è lo stesso presente sulla scheda impostazioni dell'altra parte — entrambe le parti condividono un unico stato, una modifica su un lato si sincronizza subito sull'altro. Visibile solo quando dsh-ptc-cordis-preset è installato.",
+				"sec.python": "Backend run_code (Python sperimentale)",
+				"python.label": "Backend run_code",
+				"python.on": "Python (sperimentale)",
+				"python.off": "Node / TypeScript (predefinito)",
+				"python.hint": "Disattivato (predefinito) run_code usa il backend ufficiale Node/TypeScript, identico byte per byte alla composizione ptc distribuita; attivandolo dsh passa al backend CPython sperimentale (@deepseek-ai/dsh-experimental-ptc-runtime-python): lingua, prompt SDK generato e presentazione di run_code passano a Python. Richiede POSIX e CPython ≥ 3.10 (non disponibile su Windows) ed è incompatibile con lo strumento workflow — anche la composizione Python ufficiale disattiva workflow, quindi il lato workflow di tutte e quattro le varianti resta spento finché è attivo (il tuo valore viene conservato e torna alla disattivazione). Ha effetto dopo il riavvio di dsh; è lo stesso interruttore sulla scheda di dsh-ptc-cordis-preset — entrambi i lati condividono un unico stato. Visibile solo quando dsh-ptc-cordis-preset è installato. Se l'attivazione non ha effetto, il motivo è nel log di avvio di dsh.",
+				"python.blocked": "Questo host è Windows: il backend Python sperimentale supporta solo POSIX, l'interruttore non è disponibile.",
 			},
 			/* locale: ja */
 			"ja": {
@@ -363,6 +415,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "PTC 創造モードとの重複排除",
 				"dedupe.label": "「創造モード · Git Bash」の重複項目",
 				"dedupe.hint": "dsh-ptc-cordis-preset を併用している場合、連携により相手の「PTC 創造モード」はすでに Git Bash 版であり、本プラグインの「創造モード · Git Bash」と同じものを指します。重複排除を有効にすると本プラグインは自前の項目を登録しなくなります(名簿が 1 件減ります)。既定は無効で、4 つのバリアントは変わりません。このスイッチは相手の設定カードにあるものと同一で、両側が同じ状態を共有し、どちらかで変更すればもう一方へ即座に同期されます。dsh-ptc-cordis-preset がインストールされているときだけ表示されます。",
+				"sec.python": "run_code バックエンド(実験的 Python)",
+				"python.label": "run_code バックエンド",
+				"python.on": "Python(実験的)",
+				"python.off": "Node / TypeScript(既定)",
+				"python.hint": "オフ(既定)では run_code は公式の Node/TypeScript バックエンドを使い、公式 ptc 構成とバイト単位で一致します。オンにすると dsh の実験的 CPython バックエンド(@deepseek-ai/dsh-experimental-ptc-runtime-python)に切り替わり、run_code の言語・生成される SDK プロンプト・提示が Python に変わります。POSIX と CPython ≥ 3.10 が必要(Windows では利用不可)で、workflow ツールとは排他です —— 公式 Python 構成も workflow を無効化するため、オン期間中は 4 変体すべてで workflow 側が強制的にオフになります(ワークフロー設定値は保持され、オフに戻すと復帰)。変更は dsh の再起動後に有効です。これは dsh-ptc-cordis-preset のカードにある同じスイッチで、両側が同一状態を共有します。dsh-ptc-cordis-preset がインストールされているときだけ表示されます。 オンにしても効かない場合の理由は dsh の起動ログにあります。",
+				"python.blocked": "このホストは Windows です。実験的 Python バックエンドは POSIX 専用のため、このスイッチは利用できません。",
 			},
 			/* locale: ko */
 			"ko": {
@@ -396,6 +454,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "PTC 창조 모드와 중복 제거",
 				"dedupe.label": "«창조 모드 · Git Bash» 중복 항목",
 				"dedupe.hint": "dsh-ptc-cordis-preset을 함께 설치하면 연동으로 인해 상대의 «PTC 창조 모드»가 이미 Git Bash 버전이므로, 그것과 이 플러그인의 «창조 모드 · Git Bash»는 같은 것을 가리킵니다. 중복 제거를 켜면 이 플러그인은 자기 항목을 더 이상 등록하지 않습니다(명부에서 하나 줄어듦). 기본값은 꺼짐이며 네 가지 변형은 그대로 유지됩니다. 이 스위치는 상대 설정 카드에 있는 바로 그 스위치입니다 — 양쪽이 같은 상태를 공유하므로 어느 쪽에서 바꾸든 다른 쪽에 즉시 동기화됩니다. dsh-ptc-cordis-preset이 설치되어 있을 때만 표시됩니다.",
+				"sec.python": "run_code 백엔드(실험적 Python)",
+				"python.label": "run_code 백엔드",
+				"python.on": "Python(실험적)",
+				"python.off": "Node / TypeScript(기본)",
+				"python.hint": "끄면(기본) run_code는 공식 Node/TypeScript 백엔드를 사용해 공식 ptc 구성과 바이트 단위로 일치합니다. 켜면 dsh의 실험적 CPython 백엔드(@deepseek-ai/dsh-experimental-ptc-runtime-python)로 바뀌어 run_code의 언어, 생성되는 SDK 프롬프트, 도구 표시가 Python으로 전환됩니다. POSIX와 CPython ≥ 3.10이 필요하며(Windows에서는 사용 불가) workflow 도구와 상호 배타적입니다 — 공식 Python 구성도 workflow를 끄므로 켜져 있는 동안 네 변형 모두 workflow 쪽이 강제로 꺼집니다(워크플로 설정값은 유지되고 끄면 복구됩니다). 변경은 dsh 재시작 후 적용됩니다. 이 스위치는 dsh-ptc-cordis-preset 카드에 있는 바로 그 스위치이며 양쪽이 같은 상태를 공유합니다. dsh-ptc-cordis-preset이 설치되어 있을 때만 표시됩니다. 켠 뒤에도 적용되지 않으면 그 이유는 dsh 시작 로그에 있습니다.",
+				"python.blocked": "이 호스트는 Windows입니다. 실험적 Python 백엔드는 POSIX만 지원하므로 이 스위치를 쓸 수 없습니다.",
 			},
 			/* locale: nl */
 			"nl": {
@@ -429,6 +493,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Deduplicatie met de PTC-creatiemodus",
 				"dedupe.label": "Dubbele vermelding ‘creatiemodus · Git Bash’",
 				"dedupe.hint": "Als dsh-ptc-cordis-preset meegaat, is zijn ‘PTC-creatiemodus’ door de koppeling al de Git Bash-variant, dus die en de ‘creatiemodus · Git Bash’ van deze plugin wijzen op hetzelfde. Met deduplicatie aan registreert deze plugin die eigen vermelding niet meer (één minder in de lijst); standaard uit, waardoor de vier varianten ongewijzigd blijven. Deze schakelaar is dezelfde als op de instellingenkaart van de andere kant — beide kanten delen één status, een wijziging aan één kant synct direct naar de andere. Alleen zichtbaar zolang dsh-ptc-cordis-preset is geïnstalleerd.",
+				"sec.python": "run_code-backend (experimenteel Python)",
+				"python.label": "run_code-backend",
+				"python.on": "Python (experimenteel)",
+				"python.off": "Node / TypeScript (standaard)",
+				"python.hint": "Uit (standaard) gebruikt run_code de officiële Node/TypeScript-backend, byte voor byte gelijk aan de meegeleverde ptc-compositie; aan schakelt dsh over op de experimentele CPython-backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), waardoor taal, gegenereerde SDK-prompt en weergave van run_code naar Python gaan. Vereist POSIX en CPython ≥ 3.10 (niet beschikbaar op Windows) en is onverenigbaar met de workflow-tool — de officiële Python-compositie schakelt workflow ook uit, dus de workflow-kant van alle vier varianten blijft uit zolang dit aan staat (je workflow-waarde blijft bewaard en keert terug als je het uitzet). Werkt na een herstart van dsh; dit is dezelfde schakelaar op de kaart van dsh-ptc-cordis-preset — beide kanten delen één status. Alleen zichtbaar zolang dsh-ptc-cordis-preset is geïnstalleerd. Werkt het aanzetten niet, dan staat de reden in het opstartlogboek van dsh.",
+				"python.blocked": "Deze host is Windows: de experimentele Python-backend ondersteunt alleen POSIX, deze schakelaar is niet beschikbaar.",
 			},
 			/* locale: pl */
 			"pl": {
@@ -462,6 +532,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Deduplikacja z trybem tworzenia PTC",
 				"dedupe.label": "Zduplikowany wpis „tryb tworzenia · Git Bash”",
 				"dedupe.hint": "Gdy dsh-ptc-cordis-preset jest zainstalowany razem, jego „tryb tworzenia PTC” jest już dzięki powiązaniu wersją Git Bash, więc on i „tryb tworzenia · Git Bash” tej wtyczki oznaczają to samo. Po włączeniu deduplikacji ta wtyczka nie rejestruje już własnego wpisu (o jeden mniej w wykazie); domyślnie wyłączona, dzięki czemu cztery warianty pozostają bez zmian. Ten przełącznik to ten sam przełącznik na karcie ustawień drugiej strony — obie strony dzielą jeden stan, zmiana po jednej stronie natychmiast synchronizuje się z drugą. Widoczny tylko, gdy dsh-ptc-cordis-preset jest zainstalowany.",
+				"sec.python": "Backend run_code (eksperymentalny Python)",
+				"python.label": "Backend run_code",
+				"python.on": "Python (eksperymentalny)",
+				"python.off": "Node / TypeScript (domyślnie)",
+				"python.hint": "Wyłączony (domyślnie) run_code używa oficjalnego backendu Node/TypeScript, identycznego co do bajtu z dostarczaną kompozycją ptc; włączenie przełącza dsh na eksperymentalny backend CPython (@deepseek-ai/dsh-experimental-ptc-runtime-python), więc język, generowany prompt SDK i prezentacja run_code przechodzą na Python. Wymaga POSIX i CPython ≥ 3.10 (niedostępny w Windows) i jest wykluczający z narzędziem workflow — oficjalna kompozycja Python również wyłącza workflow, więc strona workflow wszystkich czterech wariantów pozostaje wyłączona, dopóki to jest włączone (twoje ustawienie workflow jest zachowane i wraca po wyłączeniu). Zmiana działa po restarcie dsh; to ten sam przełącznik na karcie dsh-ptc-cordis-preset — obie strony dzielą jeden stan. Widoczny tylko, gdy dsh-ptc-cordis-preset jest zainstalowany. Jeśli włączenie nie przyniesie skutku, powód znajdziesz w logu startowym dsh.",
+				"python.blocked": "Ten host to Windows: eksperymentalny backend Python obsługuje tylko POSIX, przełącznik jest niedostępny.",
 			},
 			/* locale: pt */
 			"pt": {
@@ -495,6 +571,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Desduplicação com o modo de criação PTC",
 				"dedupe.label": "Entrada duplicada «modo de criação · Git Bash»",
 				"dedupe.hint": "Quando o dsh-ptc-cordis-preset está instalado em conjunto, o «modo de criação PTC» dele já é a versão Git Bash graças à integração, então ele e o «modo de criação · Git Bash» deste plugin apontam para a mesma coisa. Com a desduplicação ligada, este plugin deixa de registar a sua própria entrada (uma a menos na lista); desligada por padrão, mantendo as quatro variantes inalteradas. Este interruptor é o mesmo do cartão de definições do outro lado — os dois lados partilham um único estado, e uma alteração de um lado sincroniza imediatamente com o outro. Só aparece quando o dsh-ptc-cordis-preset está instalado.",
+				"sec.python": "Backend run_code (Python experimental)",
+				"python.label": "Backend run_code",
+				"python.on": "Python (experimental)",
+				"python.off": "Node / TypeScript (padrão)",
+				"python.hint": "Desligado (padrão), o run_code usa o backend oficial Node/TypeScript, idêntico byte a byte à composição ptc distribuída; ligado, o dsh passa para o backend CPython experimental (@deepseek-ai/dsh-experimental-ptc-runtime-python), e a linguagem, o prompt SDK gerado e a apresentação do run_code passam para Python. Exige POSIX e CPython ≥ 3.10 (indisponível no Windows) e é incompatível com a ferramenta workflow — a composição Python oficial também desativa workflow, pelo que o lado workflow das quatro variantes fica desligado enquanto isto estiver ligado (o teu valor é mantido e regressa ao desligar). Produz efeito após reiniciar o dsh; é o mesmo interruptor no cartão do dsh-ptc-cordis-preset — os dois lados partilham um único estado. Só aparece quando o dsh-ptc-cordis-preset está instalado. Se ligar não tiver efeito, o motivo está no registo de arranque do dsh.",
+				"python.blocked": "Este anfitrião é Windows: o backend Python experimental só suporta POSIX, pelo que este interruptor não está disponível.",
 			},
 			/* locale: ru */
 			"ru": {
@@ -528,6 +610,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Удаление дубликата с творческим режимом PTC",
 				"dedupe.label": "Дублирующая запись «творческий режим · Git Bash»",
 				"dedupe.hint": "Если dsh-ptc-cordis-preset установлен вместе, его «творческий режим PTC» благодаря связке уже является версией Git Bash, поэтому он и «творческий режим · Git Bash» этого плагина указывают на одно и то же. При включённом удалении дубликатов плагин больше не регистрирует свою запись (в списке на одну меньше); по умолчанию выключено, четыре варианта остаются без изменений. Этот переключатель — тот же самый на карточке настроек у второй стороны: обе стороны делят одно состояние, изменение с любой стороны сразу синхронизируется с другой. Показывается только когда установлен dsh-ptc-cordis-preset.",
+				"sec.python": "Бэкенд run_code (экспериментальный Python)",
+				"python.label": "Бэкенд run_code",
+				"python.on": "Python (экспериментальный)",
+				"python.off": "Node / TypeScript (по умолчанию)",
+				"python.hint": "Выключено (по умолчанию) — run_code использует официальный бэкенд Node/TypeScript, побайтово совпадающий с поставляемой композицией ptc; при включении dsh переходит на экспериментальный бэкенд CPython (@deepseek-ai/dsh-experimental-ptc-runtime-python), и язык, сгенерированная подсказка SDK и представление run_code переключаются на Python. Требуются POSIX и CPython ≥ 3.10 (в Windows недоступно), и это несовместимо с инструментом workflow — официальная композиция Python тоже отключает workflow, поэтому сторона workflow всех четырёх вариантов остаётся выключенной, пока это включено (ваша настройка workflow сохраняется и возвращается после выключения). Изменение действует после перезапуска dsh; это тот же переключатель на карточке dsh-ptc-cordis-preset — обе стороны делят одно состояние. Показывается только когда установлен dsh-ptc-cordis-preset. Если включение не подействовало, причина указана в журнале запуска dsh.",
+				"python.blocked": "Этот хост — Windows: экспериментальный бэкенд Python поддерживает только POSIX, переключатель недоступен.",
 			},
 			/* locale: sv */
 			"sv": {
@@ -561,6 +649,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Deduplicering med PTC-skaparläget",
 				"dedupe.label": "Dubblerad post ”skaparläge · Git Bash”",
 				"dedupe.hint": "När dsh-ptc-cordis-preset är installerat samtidigt är dess ”PTC-skaparläge” redan Git Bash-versionen tack vare kopplingen, så det och det här pluginets ”skaparläge · Git Bash” pekar på samma sak. Med deduplicering på registrerar pluginet inte längre sin egen post (en färre i listan); av som standard, vilket lämnar de fyra varianterna oförändrade. Den här växeln är samma växel som på motpartens inställningskort — båda sidor delar ett tillstånd, en ändring på ena sidan synkas direkt till den andra. Visas bara när dsh-ptc-cordis-preset är installerat.",
+				"sec.python": "run_code-backend (experimentell Python)",
+				"python.label": "run_code-backend",
+				"python.on": "Python (experimentell)",
+				"python.off": "Node / TypeScript (standard)",
+				"python.hint": "Av (standard) använder run_code den officiella Node/TypeScript-backenden, byte för byte identisk med den medföljande ptc-kompositionen; på växlar dsh till den experimentella CPython-backenden (@deepseek-ai/dsh-experimental-ptc-runtime-python), vilket även byter run_codes språk, genererade SDK-prompt och presentation till Python. Kräver POSIX och CPython ≥ 3.10 (ej tillgängligt i Windows) och utesluter workflow-verktyget — den officiella Python-kompositionen stänger också av workflow, så workflow-sidan i alla fyra varianter hålls avstängd medan detta är på (ditt workflow-värde behålls och återställs när du stänger av). Gäller efter omstart av dsh; detta är samma växel på dsh-ptc-cordis-presets kort — båda sidor delar ett tillstånd. Visas bara när dsh-ptc-cordis-preset är installerat. Om påslaget inte får effekt står orsaken i dsh:s startlogg.",
+				"python.blocked": "Den här värden är Windows: den experimentella Python-backenden stöder bara POSIX, så växeln är otillgänglig.",
 			},
 			/* locale: th */
 			"th": {
@@ -594,6 +688,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "ตัดรายการซ้ำกับโหมดสร้างสรรค์ PTC",
 				"dedupe.label": "รายการซ้ำ «โหมดสร้างสรรค์ · Git Bash»",
 				"dedupe.hint": "เมื่อติดตั้ง dsh-ptc-cordis-preset ควบคู่กัน «โหมดสร้างสรรค์ PTC» ของมันเป็นเวอร์ชัน Git Bash อยู่แล้วจากการเชื่อมโยง จึงชี้ไปที่สิ่งเดียวกันกับ «โหมดสร้างสรรค์ · Git Bash» ของปลั๊กอินนี้ เมื่อเปิดการตัดรายการซ้ำ ปลั๊กอินนี้จะไม่ลงทะเบียนรายการของตัวเองอีก (รายการในสารบบลดลงหนึ่งรายการ); ปิดไว้เป็นค่าเริ่มต้น จึงคงสี่รูปแบบไว้เหมือนเดิม สวิตช์นี้คือสวิตช์เดียวกันกับบนการ์ดตั้งค่าของอีกฝ่าย — ทั้งสองฝั่งใช้สถานะเดียวกัน แก้ที่ฝั่งใดอีกฝั่งจะซิงก์ทันที แสดงเฉพาะเมื่อติดตั้ง dsh-ptc-cordis-preset แล้วเท่านั้น",
+				"sec.python": "แบ็กเอนด์ run_code (Python ทดลอง)",
+				"python.label": "แบ็กเอนด์ run_code",
+				"python.on": "Python (ทดลอง)",
+				"python.off": "Node / TypeScript (ค่าเริ่มต้น)",
+				"python.hint": "เมื่อปิด (ค่าเริ่มต้น) run_code จะใช้แบ็กเอนด์ Node/TypeScript อย่างเป็นทางการ ซึ่งเหมือนกับคอมโพซิชัน ptc ที่จัดส่งทุกไบต์; เมื่อเปิด dsh จะเปลี่ยนไปใช้แบ็กเอนด์ CPython ทดลอง (@deepseek-ai/dsh-experimental-ptc-runtime-python) ภาษา พรอมป์ต์ SDK ที่สร้างขึ้น และการนำเสนอของ run_code จะเปลี่ยนเป็น Python ต้องใช้ POSIX และ CPython ≥ 3.10 (ใช้ไม่ได้บน Windows) และใช้ร่วมกับเครื่องมือ workflow ไม่ได้ — คอมโพซิชัน Python อย่างเป็นทางการก็ปิด workflow เช่นกัน ฝั่ง workflow ของทั้งสี่รูปแบบจึงถูกปิดขณะเปิดอยู่ (ค่าที่คุณตั้งไว้จะถูกเก็บและกลับมาเมื่อปิด) การเปลี่ยนแปลงมีผลหลังรีสตาร์ต dsh; นี่คือสวิตช์เดียวกันบนการ์ดของ dsh-ptc-cordis-preset — ทั้งสองฝั่งใช้สถานะเดียวกัน แสดงเฉพาะเมื่อติดตั้ง dsh-ptc-cordis-preset แล้วเท่านั้น หากเปิดแล้วไม่เกิดผล เหตุผลอยู่ในบันทึกการเริ่มต้นของ dsh",
+				"python.blocked": "โฮสต์นี้เป็น Windows: แบ็กเอนด์ Python ทดลองรองรับเฉพาะ POSIX สวิตช์นี้จึงใช้ไม่ได้",
 			},
 			/* locale: tr */
 			"tr": {
@@ -627,6 +727,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "PTC yaratma moduyla yinelenen kaydı kaldırma",
 				"dedupe.label": "«Yaratma modu · Git Bash» yinelenen kaydı",
 				"dedupe.hint": "dsh-ptc-cordis-preset birlikte kuruluysa, bağlantı sayesinde onun «PTC yaratma modu» zaten Git Bash sürümüdür; dolayısıyla o ve bu eklentinin «Yaratma modu · Git Bash» kaydı aynı şeyi gösterir. Yinelenen kaydı kaldırma açıkken bu eklenti kendi kaydını artık kaydetmez (listede bir eksik); varsayılan olarak kapalıdır ve dört varyant değişmeden kalır. Bu anahtar, karşı tarafın ayar kartındaki anahtarın ta kendisidir — iki taraf aynı durumu paylaşır, bir taraftaki değişiklik anında diğerine eşitlenir. Yalnızca dsh-ptc-cordis-preset kurulu olduğunda görünür.",
+				"sec.python": "run_code arka ucu (deneysel Python)",
+				"python.label": "run_code arka ucu",
+				"python.on": "Python (deneysel)",
+				"python.off": "Node / TypeScript (varsayılan)",
+				"python.hint": "Kapalıyken (varsayılan) run_code resmî Node/TypeScript arka ucunu kullanır ve gönderilen ptc bileşimiyle bayt bayt aynıdır; açıldığında dsh deneysel CPython arka ucuna (@deepseek-ai/dsh-experimental-ptc-runtime-python) geçer; run_code dil, üretilen SDK istemi ve sunum Python'a döner. POSIX ve CPython ≥ 3.10 gerektirir (Windows'ta kullanılamaz) ve workflow aracıyla birbirini dışlar — resmî Python bileşimi de workflow'u kapatır, bu yüzden bu açıkken dört varyantın workflow tarafı kapalı kalır (workflow ayarın korunur ve kapatınca geri gelir). Değişiklik dsh yeniden başlatıldıktan sonra geçerli olur; bu, dsh-ptc-cordis-preset kartındaki aynı anahtardır — iki taraf tek durumu paylaşır. Yalnızca dsh-ptc-cordis-preset kurulu olduğunda görünür. Açmak etkili olmazsa nedeni dsh başlangıç günlüğünde yazar.",
+				"python.blocked": "Bu ana makine Windows: deneysel Python arka ucu yalnızca POSIX destekler, bu anahtar kullanılamaz.",
 			},
 			/* locale: vi */
 			"vi": {
@@ -660,6 +766,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "Loại bỏ trùng lặp với chế độ sáng tạo PTC",
 				"dedupe.label": "Mục trùng lặp «chế độ sáng tạo · Git Bash»",
 				"dedupe.hint": "Khi cài chung dsh-ptc-cordis-preset, nhờ liên kết mà «chế độ sáng tạo PTC» của nó đã là bản Git Bash, nên nó và «chế độ sáng tạo · Git Bash» của plugin này cùng chỉ một thứ. Khi bật loại bỏ trùng lặp, plugin này không đăng ký mục của riêng nó nữa (danh mục bớt một mục); mặc định tắt, giữ nguyên bốn biến thể. Công tắc này chính là công tắc trên thẻ cài đặt của bên kia — hai bên dùng chung một trạng thái, thay đổi ở bên nào cũng đồng bộ ngay sang bên kia. Chỉ hiện khi đã cài dsh-ptc-cordis-preset.",
+				"sec.python": "Backend run_code (Python thử nghiệm)",
+				"python.label": "Backend run_code",
+				"python.on": "Python (thử nghiệm)",
+				"python.off": "Node / TypeScript (mặc định)",
+				"python.hint": "Khi tắt (mặc định), run_code dùng backend Node/TypeScript chính thức, giống từng byte với tổ hợp ptc được phát hành; khi bật, dsh chuyển sang backend CPython thử nghiệm (@deepseek-ai/dsh-experimental-ptc-runtime-python), kéo theo ngôn ngữ, prompt SDK được sinh và cách trình bày của run_code chuyển sang Python. Yêu cầu POSIX và CPython ≥ 3.10 (không dùng được trên Windows) và loại trừ lẫn nhau với công cụ workflow — tổ hợp Python chính thức cũng tắt workflow, nên phía workflow của cả bốn biến thể bị tắt trong lúc bật (giá trị workflow của bạn được giữ và trở lại khi tắt). Thay đổi có hiệu lực sau khi khởi động lại dsh; đây chính là công tắc trên thẻ của dsh-ptc-cordis-preset — hai bên dùng chung một trạng thái. Chỉ hiện khi đã cài dsh-ptc-cordis-preset. Nếu bật mà không có hiệu lực, lý do nằm trong nhật ký khởi động dsh.",
+				"python.blocked": "Máy chủ này là Windows: backend Python thử nghiệm chỉ hỗ trợ POSIX, nên công tắc này không dùng được.",
 			},
 			/* locale: zh-hk */
 			"zh-hk": {
@@ -693,6 +805,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "與 PTC 創造模式去重",
 				"dedupe.label": "「創造模式 · Git Bash」重複項",
 				"dedupe.hint": "裝埋 dsh-ptc-cordis-preset 嗰陣,佢嘅「PTC 創造模式」喺聯動下已經係 Git Bash 版,同本插件嘅「創造模式 · Git Bash」指向同一件事。開咗去重之後本插件唔再註冊嗰一條(名錄少一項);預設關閉,保持四個變體不變。呢個開關就係對方設定卡上面同一個開關——兩邊共享同一份狀態,任一邊改動另一邊即刻同步。只喺已安裝 dsh-ptc-cordis-preset 時顯示。",
+				"sec.python": "run_code 後端(實驗性 Python)",
+				"python.label": "run_code 後端",
+				"python.on": "Python(實驗性)",
+				"python.off": "Node / TypeScript(預設)",
+				"python.hint": "閂咗(預設)嗰陣 run_code 用官方 Node/TypeScript 後端,同官方 ptc 組合逐位元組一致;開咗就轉用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 嘅語言、生成嘅 SDK 提示詞同工具呈現都會轉去 Python。需要 POSIX 平台同 CPython ≥ 3.10(Windows 用唔到),而且同 workflow 工具互斥——官方 Python 組合同樣停用 workflow,所以開住嗰陣本插件四個變體嘅 workflow 側會強制關閉(你嘅工作流設定值會保留,閂咗之後恢復)。改動要重啟 dsh 先生效;呢個開關就係 dsh-ptc-cordis-preset 設定卡上面同一個開關——兩邊共享同一份狀態。只喺已安裝 dsh-ptc-cordis-preset 時顯示。開咗之後唔生效,原因喺 dsh 啟動日誌度。",
+				"python.blocked": "呢部主機係 Windows:實驗性 Python 後端淨係支援 POSIX,所以呢個開關用唔到。",
 			},
 			/* locale: zh-mo */
 			"zh-mo": {
@@ -726,6 +844,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "與 PTC 創造模式去重",
 				"dedupe.label": "「創造模式 · Git Bash」重複項",
 				"dedupe.hint": "裝埋 dsh-ptc-cordis-preset 嗰陣,佢嘅「PTC 創造模式」喺聯動下已經係 Git Bash 版,同本插件嘅「創造模式 · Git Bash」指向同一件事。開咗去重之後本插件唔再註冊嗰一條(名錄少一項);預設關閉,保持四個變體不變。呢個開關就係對方設定卡上面同一個開關——兩邊共享同一份狀態,任一邊改動另一邊即刻同步。只喺已安裝 dsh-ptc-cordis-preset 時顯示。",
+				"sec.python": "run_code 後端(實驗性 Python)",
+				"python.label": "run_code 後端",
+				"python.on": "Python(實驗性)",
+				"python.off": "Node / TypeScript(預設)",
+				"python.hint": "閂咗(預設)嗰陣 run_code 用官方 Node/TypeScript 後端,同官方 ptc 組合逐位元組一致;開咗就轉用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 嘅語言、生成嘅 SDK 提示詞同工具呈現都會轉去 Python。需要 POSIX 平台同 CPython ≥ 3.10(Windows 用唔到),而且同 workflow 工具互斥——官方 Python 組合同樣停用 workflow,所以開住嗰陣本插件四個變體嘅 workflow 側會強制關閉(你嘅工作流設定值會保留,閂咗之後恢復)。改動要重啟 dsh 先生效;呢個開關就係 dsh-ptc-cordis-preset 設定卡上面同一個開關——兩邊共享同一份狀態。只喺已安裝 dsh-ptc-cordis-preset 時顯示。開咗之後唔生效,原因喺 dsh 啟動日誌度。",
+				"python.blocked": "呢部主機係 Windows:實驗性 Python 後端淨係支援 POSIX,所以呢個開關用唔到。",
 			},
 			/* locale: zh-tw */
 			"zh-tw": {
@@ -759,6 +883,12 @@ window.__ModuleLoader__.load({
 				"sec.dedupe": "與 PTC 創造模式去重",
 				"dedupe.label": "「創造模式 · Git Bash」重複項目",
 				"dedupe.hint": "同時安裝 dsh-ptc-cordis-preset 時,它的「PTC 創造模式」在聯動下已是 Git Bash 版,與本插件的「創造模式 · Git Bash」指向同一件事。開啟去重後本插件不再註冊那一條(清單少一項);預設關閉,保持四個變體不變。這個開關就是對方設定卡上的同一個開關——兩側共享同一份狀態,任一側改動另一側立即同步。僅在已安裝 dsh-ptc-cordis-preset 時顯示。",
+				"sec.python": "run_code 後端(實驗性 Python)",
+				"python.label": "run_code 後端",
+				"python.on": "Python(實驗性)",
+				"python.off": "Node / TypeScript(預設)",
+				"python.hint": "關閉(預設)時 run_code 使用官方 Node/TypeScript 後端,與官方 ptc 組合逐位元組一致;開啟後改用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 的語言、產生的 SDK 提示詞與工具呈現都會切換到 Python。需要 POSIX 平台與 CPython ≥ 3.10(Windows 無法使用),且與 workflow 工具互斥——官方 Python 組合同樣會停用 workflow,因此開啟期間本外掛四個變體的 workflow 側強制關閉(你的工作流設定值會保留,關閉後恢復)。變更需重新啟動 dsh 後生效;這個開關就是 dsh-ptc-cordis-preset 設定卡上的同一個開關——兩側共用同一份狀態。僅在已安裝 dsh-ptc-cordis-preset 時顯示。若設為開啟後未生效,原因見 dsh 啟動日誌。",
+				"python.blocked": "此主機是 Windows:實驗性 Python 後端僅支援 POSIX,因此這個開關無法使用。",
 			},
 		};
 
@@ -980,6 +1110,25 @@ window.__ModuleLoader__.load({
 				return typeof unsubscribe === "function" ? unsubscribe : undefined;
 			}, []);
 
+			/* The experimental Python backend refuses to load on Windows
+			   (packages/experimental/ptc-runtime-python: POSIX rlimits, fd-3
+			   stdio, process-group signals), and a browser cannot see the host
+			   OS. The one host fact this card can read is the remote face's
+			   reported home: a drive-letter path means a Windows host, which is
+			   exactly where that backend cannot run. Absent or unreadable keeps
+			   the switch usable — the host side still rejects an impossible
+			   write. */
+			var winState = useState(false);
+			var winHost = winState[0];
+			var setWinHost = winState[1];
+			useEffect(function () {
+				try {
+					var remote = props.ctx === undefined || props.ctx === null ? undefined : props.ctx.get("remote");
+					var host = remote && remote.$host ? remote.$host.home : undefined;
+					if (typeof host === "string" && /^[A-Za-z]:[\\/]/.test(host)) setWinHost(true);
+				} catch (error_) { /* keep the switch usable */ }
+			}, []);
+
 		var bashState = useState("");
 		var bashDraft = bashState[0];
 		var setBashDraft = bashState[1];
@@ -1137,10 +1286,58 @@ window.__ModuleLoader__.load({
 				),
 			) : null;
 
+			/* Python row (v0.26.0): the SECOND seat of the PEER's switch. Unlike
+			   the dedupe row above, the value does NOT live on our row — the
+			   experimental run_code backend replaces a profile-level row, so its
+			   authoritative state is dsh-ptc-cordis-preset's own `pythonRuntime`
+			   field and BOTH cards read/write that one form. Drawn only when the
+			   peer's snapshot actually carries the field (an older peer without
+			   the switch draws nothing), and the buttons write through the peer
+			   form so either side syncs the other immediately. On a Windows host
+			   the switch is inert — the CPython backend refuses to load there —
+			   so the buttons give way to that reason. */
+			var pythonOffered = peerSnap.status === "ready" && peerSnap.value !== null
+				&& typeof peerSnap.value === "object"
+				&& Object.prototype.hasOwnProperty.call(peerSnap.value, PEER_PYTHON_FIELD);
+			var pythonOn = pythonOffered && peerSnap.value[PEER_PYTHON_FIELD] === true;
+			function writePython(next) {
+				setError("");
+				if (peer === null || typeof peer.set !== "function") return;
+				try {
+					Promise.resolve(peer.set(PEER_PYTHON_FIELD, next)).then(
+						function () { bumpTick(function (n) { return n + 1; }); },
+						function (err) {
+							bumpTick(function (n) { return n + 1; });
+							setError(t("error") + ": " + (err && err.message ? err.message : String(err)));
+						},
+					);
+				} catch (err) {
+					bumpTick(function (n) { return n + 1; });
+					setError(t("error") + ": " + (err && err.message ? err.message : String(err)));
+				}
+			}
+
+			var pythonSection = pythonOffered ? E("div", { className: "gb-section" },
+				E("div", { className: "gb-sectionTitle" }, t("sec.python")),
+				E("div", { className: "gb-stack" },
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("python.label") + ":"),
+					E("span", { className: "gb-rowValue" }, pythonOn ? t("python.on") : t("python.off")),
+				),
+				winHost ? null : E("div", { className: "gb-seg" },
+					E("button", { type: "button", className: "gb-segBtn" + (pythonOn ? " gb-segActive" : ""), onClick: function () { if (!pythonOn) writePython(true); } }, t("switch.on")),
+					E("button", { type: "button", className: "gb-segBtn" + (!pythonOn ? " gb-segActive" : ""), onClick: function () { if (pythonOn) writePython(false); } }, t("switch.off")),
+				),
+				E("p", { className: "gb-hint" }, t("python.hint")),
+				winHost ? E("p", { className: "gb-error" }, t("python.blocked")) : null,
+				),
+			) : null;
+
 			var bodyContent = E("div", { className: "gb-body" },
 				dialectSection,
 				terminalSection,
 				dedupeSection,
+				pythonSection,
 				error ? E("p", { className: "gb-error" }, error) : null,
 			);
 

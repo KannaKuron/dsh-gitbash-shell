@@ -651,6 +651,31 @@ test('windowsToMsys rewrites Windows absolute paths to MSYS roots', async () => 
   assert.equal(w('no paths here'), 'no paths here')
 })
 
+test('windowsToMsys keeps JSON-escaped Windows paths canonical (v0.26.0, issue #10)', async () => {
+  const { _internal } = await import('../src/index.js')
+  const w = _internal.windowsToMsys
+  const BS = String.fromCharCode(92)
+  const q = (s) => String.fromCharCode(34) + s + String.fromCharCode(34)
+  // The host renders its sandbox:policy context line as
+  // `JSON.stringify(policy.workspaceRoot)`, so the prompt carries DOUBLED
+  // backslashes. A single-separator atom at the drive colon left the second
+  // one in `rest` and the separator normalization promoted it to a leading
+  // slash: "/d//dsh/工作".
+  const escaped = 'D:' + BS + BS + 'dsh' + BS + BS + '工作'
+  assert.equal(w(escaped), '/d/dsh/工作', 'the bare branch costs no extra slash')
+  assert.equal(w(q(escaped)), q('/d/dsh/工作'), 'the quoted branch agrees')
+  assert.equal(w(JSON.stringify('D:' + BS + 'dsh' + BS + '工作')), q('/d/dsh/工作'), 'exactly what JSON.stringify emits')
+  assert.equal(w('D://dsh//工作'), '/d/dsh/工作', 'doubled forward slashes collapse the same way')
+  assert.equal(w('C:' + BS + BS + 'Program Files' + BS + BS + 'Git'), '/c/Program Files/Git', 'spaced directories keep working')
+  // Negative faces: single separators (the pre-existing behavior) stay
+  // byte-for-byte, and non-drive forms are never touched.
+  assert.equal(w('C:' + BS + 'Users' + BS + 'kanna'), '/c/Users/kanna')
+  assert.equal(w(q('C:' + BS + 'Program Files' + BS + 'Git')), q('/c/Program Files/Git'))
+  assert.equal(w('https://x.dev/a and file://C:/x stay'), 'https://x.dev/a and file://C:/x stay')
+  assert.equal(w(BS + BS + 'server' + BS + 'share stays'), BS + BS + 'server' + BS + 'share stays', 'a UNC path has no drive colon')
+  assert.equal(w('/d/dsh/工作 stays'), '/d/dsh/工作 stays')
+})
+
 test('rewriteResultPaths rewrites result metadata, never content', async () => {
   const { _internal } = await import('../src/index.js')
   const rr = _internal.rewriteResultPaths
@@ -1780,4 +1805,117 @@ test('issue #8 root cause stays fixed: the dispatch face reads the LIVE dialect'
   // goes through the era-aware helper instead of settings.get
   assert.match(src, /const now = readShell\(\)/)
   assert.doesNotMatch(src, /now = s\.get\(SIDEBAR_NS\)/)
+})
+
+// ── experimental CPython run_code switch (peer-owned, v0.26.0) ───────────────
+
+test('python switch: the peer fact is read conservatively, getters included', () => {
+  const { peerFact, PEER_PYTHON_FIELD, PEER_CAPABILITY } = _internal
+  assert.equal(PEER_CAPABILITY, 'ptcCordisPreset')
+  assert.equal(PEER_PYTHON_FIELD, 'pythonRuntime')
+  assert.equal(peerFact({ pythonRuntime: true }, PEER_PYTHON_FIELD), true)
+  assert.equal(peerFact({ pythonRuntime: false }, PEER_PYTHON_FIELD), false)
+  // a live getter is honoured (the peer may report the current switch, not a copy)
+  assert.equal(peerFact({ pythonRuntime: () => true }, PEER_PYTHON_FIELD), true)
+  assert.equal(peerFact({ pythonRuntime: () => false }, PEER_PYTHON_FIELD), false)
+  // absent / wrong type / throwing / absent capability: ALWAYS the Node backend
+  assert.equal(peerFact({}, PEER_PYTHON_FIELD), false)
+  assert.equal(peerFact({ pythonRuntime: 'yes' }, PEER_PYTHON_FIELD), false)
+  assert.equal(peerFact({ get pythonRuntime() { throw new Error('nope') } }, PEER_PYTHON_FIELD), false)
+  assert.equal(peerFact(undefined, PEER_PYTHON_FIELD), false)
+  assert.equal(peerFact(null, PEER_PYTHON_FIELD), false)
+})
+
+test('python switch: workflow rows follow the official Python composition', async () => {
+  const { pluginsFor } = await import('../src/compositions.js')
+  const rows = (list) => new Map(list.map((row) => [row.id, row]))
+  const delegationOf = (list) => new Map(rows(list).get('delegation').config.map((row) => [row.id, row]))
+  for (const kind of ['standard', 'cordis']) {
+    const off = delegationOf(pluginsFor({ kind, gitBash: true, pythonRuntime: false }))
+    assert.notEqual(off.get('workflow-ptc').disabled, true, kind + ': the default keeps the official row live')
+    assert.notEqual(off.get('tool-workflow').disabled, true, kind + ': idem')
+    const on = delegationOf(pluginsFor({ kind, gitBash: true, pythonRuntime: true }))
+    assert.equal(on.get('workflow-ptc').disabled, true, kind + ': CPython is TypeScript-less, so workflow-ptc must be off')
+    assert.equal(on.get('tool-workflow').disabled, true, kind + ': the official Python composition disables it too')
+    // and nothing ELSE moves: the rows are byte-identical apart from those two
+    const before = pluginsFor({ kind, gitBash: true, pythonRuntime: false })
+    const after = pluginsFor({ kind, gitBash: true, pythonRuntime: true })
+    assert.deepEqual(
+      after.map((row) => row.id),
+      before.map((row) => row.id),
+      kind + ': the switch never adds or removes a row',
+    )
+    assert.deepEqual(rows(after).get('tool-presentation'), rows(before).get('tool-presentation'), kind)
+  }
+  // the ptc variant is already workflow-free: the switch changes nothing there
+  const ptcOff = pluginsFor({ kind: 'ptc', gitBash: true, pythonRuntime: false })
+  const ptcOn = pluginsFor({ kind: 'ptc', gitBash: true, pythonRuntime: true })
+  assert.deepEqual(ptcOn, ptcOff, 'kind=ptc already disables both workflow rows')
+  // minimal has no workflow rows at all
+  const { minimalPluginsFor } = await import('../src/compositions.js')
+  assert.deepEqual(minimalPluginsFor(), minimalPluginsFor())
+})
+
+test('python switch: the host rebuilds variants on the peer fact and inserts NO runtime row', () => {
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // read from the peer's published capability (family rule: never guess a peer fact)
+  assert.match(src, /const nextPython = peerFact\(coverage, PEER_PYTHON_FIELD\)/)
+  // the ROWS change, so live variants are re-registered rather than skipped
+  assert.match(src, /registeredPython !== peerPython/)
+  assert.match(src, /pythonRuntime: peerPython \}\)/)
+  const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
+  assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonRuntime = false \}\)/, 'the composition entry point takes the fact')
+  assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonRuntime !== true/)
+  // the runtime row belongs to dsh-ptc-cordis-preset alone: our bundle patch
+  // must never target it (two providers would collide)
+  const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  assert.doesNotMatch(patch, /ptc-runtime/)
+  assert.doesNotMatch(patch, /experimental-ptc-runtime-python/)
+  // and we declare no dependency on the experimental package: the peer owns it
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+    assert.equal(pkg[field]?.['@deepseek-ai/dsh-experimental-ptc-runtime-python'], undefined, field)
+  }
+})
+
+test("client card: the python row mirrors the PEER's field and is Windows-gated", () => {
+  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(src, /var PEER_PYTHON_FIELD = "pythonRuntime"/)
+  // drawn only when the peer's snapshot actually carries the field (older peer = nothing)
+  assert.match(src, /Object\.prototype\.hasOwnProperty\.call\(peerSnap\.value, PEER_PYTHON_FIELD\)/)
+  // the value is the peer's; the write goes through the PEER's form, so either
+  // side updates both (one authoritative copy, no mirror field)
+  assert.match(src, /var pythonOn = pythonOffered && peerSnap\.value\[PEER_PYTHON_FIELD\] === true;/)
+  assert.match(src, /peer\.set\(PEER_PYTHON_FIELD, next\)/)
+  assert.doesNotMatch(src, /writeField\("pythonRuntime"/, 'the python switch must not write OUR row')
+  // the contract carries NO peer-reported reason field: a client card can only
+  // read the row snapshot, so inventing one would be a second, drifting state.
+  // The copy points at the host log instead (asserted below).
+  assert.doesNotMatch(src, /pythonRuntimeIssue/)
+  // Windows: the CPython backend refuses to load, so the buttons give way
+  assert.match(src, /var winHost = winState\[0\]/)
+  assert.match(src, /winHost \? null : E\("div", \{ className: "gb-seg" \}/)
+  assert.match(src, /winHost \? E\("p", \{ className: "gb-error" \}, t\("python\.blocked"\)\) : null/)
+  // hooks stay before the scope's early return
+  const hookAt = src.indexOf('var winState = useState(false);')
+  const earlyReturnAt = src.indexOf('if (snap.status !== "ready") return null;')
+  assert.ok(hookAt > 0 && earlyReturnAt > hookAt, 'the windows-host hook must run before the early return')
+  const sectionAt = src.indexOf('var pythonSection = pythonOffered ?')
+  const bodyAt = src.indexOf('var bodyContent = E("div", { className: "gb-body" }')
+  assert.ok(sectionAt > 0 && bodyAt > sectionAt, 'the section is built before the body')
+  assert.match(src, /\n\t\t\t\tpythonSection,/)
+  for (const key of ['sec.python', 'python.label', 'python.on', 'python.off', 'python.hint', 'python.blocked']) {
+    const occurrences = [...src.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
+    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
+  }
+  // every hint names the restart and the host-log fallback (the contract's
+  // effectiveness and diagnosis story, identical on both cards)
+  const hints = [...src.matchAll(/"python\.hint": ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]))
+  assert.equal(hints.length, 21, 'one python hint per shipped dictionary')
+  // The two sentences the contract fixes, asserted on the two inline
+  // dictionaries; the 19 third languages carry the same two facts (the tail
+  // was appended to every one of them, and the key-parity test guards the set).
+  assert.ok(hints[0].includes('重启') && hints[0].includes('宿主启动日志'), 'the zh hint states the restart and points at the host log')
+  assert.ok(hints[1].includes('restarting dsh') && hints[1].includes('startup log'), 'the en hint states the restart and points at the host log')
+  for (const hint of hints) assert.ok(hint.length > 120, 'a hint looks truncated: ' + hint.slice(0, 60))
 })
