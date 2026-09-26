@@ -2278,3 +2278,117 @@ test('write verdicts: a host REFUSAL never reads as "saved" (no silent false suc
   assert.ok(copies[0].includes('宿主拒绝'), 'zh says the host refused: ' + copies[0])
   assert.ok(copies[1].includes('host refused'), 'en says the host refused: ' + copies[1])
 })
+
+// ── task-25: the official sidebar terminal must not stay on WSL ──────────────
+
+/** A recording stand-in for `ctx.configEditor` (the official write channel). */
+function fakeEditor(options = {}) {
+  const state = {
+    config: {
+      ...(options.extra ?? {}),
+      ...(options.shell === undefined ? {} : { shell: { ...options.shell } }),
+    },
+  }
+  const calls = []
+  const row = () => ({
+    entry: { options: { id: 'terminal-controller' } },
+    override: options.shellInherited === true ? {} : structuredClone(state.config),
+    inherited: options.shellInherited === true ? structuredClone(state.config) : {},
+  })
+  return {
+    calls,
+    state,
+    configuration: () => (options.rowAbsent === true ? [] : [row()]),
+    edit: async (entry, change) => {
+      if (options.fail === true) throw new Error('the editor refused this write')
+      const next = change(structuredClone(state.config))
+      calls.push(next)
+      // `sticky: false` simulates a write the row never picked up.
+      if (options.sticky !== false) state.config = next
+    },
+  }
+}
+
+test('sidebar terminal: an unset shell is adopted with the official bash profile', async () => {
+  const { adoptTerminalShell, terminalAdoptReport, TERMINAL_SHELL_ARGS } = await import('../src/terminal-shell.js')
+  const editor = fakeEditor({ extra: { scrollback: 1000 } })
+  const result = await adoptTerminalShell(editor, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+  assert.equal(result.status, 'adopted')
+  assert.equal(editor.calls.length, 1, 'exactly one write')
+  assert.deepEqual(editor.calls[0].shell, { path: 'Q:/Git/bin/bash.exe', name: 'bash', args: ['-i'] })
+  // the profile matches the official `profile()` convention for a bash path…
+  assert.deepEqual(editor.calls[0].shell.args, TERMINAL_SHELL_ARGS)
+  // …and every other row config field survives the merge
+  assert.equal(editor.calls[0].scrollback, 1000, 'unrelated config keys are preserved')
+  assert.match(terminalAdoptReport(result), /switched to Git Bash/)
+  assert.match(terminalAdoptReport(result), /new terminals use it immediately/)
+})
+
+test('sidebar terminal: same path is left alone, another path is never overwritten', async () => {
+  const { adoptTerminalShell, terminalAdoptReport } = await import('../src/terminal-shell.js')
+  // already ours (case/separator-insensitive) → no write at all
+  const same = fakeEditor({ shell: { path: 'q:\\git\\bin\\BASH.EXE', name: 'bash', args: ['-i'] } })
+  const unchanged = await adoptTerminalShell(same, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+  assert.equal(unchanged.status, 'unchanged')
+  assert.equal(same.calls.length, 0, 'idempotent: nothing written')
+  // an explicit choice (here: the WSL launcher) → log only, never overwrite
+  const other = fakeEditor({ shell: { path: 'C:/Windows/System32/bash.exe', name: 'bash', args: ['-i'] } })
+  const kept = await adoptTerminalShell(other, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+  assert.equal(kept.status, 'kept-user-choice')
+  assert.equal(other.calls.length, 0, 'a user choice is never overwritten')
+  assert.equal(other.state.config.shell.path, 'C:/Windows/System32/bash.exe')
+  assert.match(terminalAdoptReport(kept), /NOT adopted/)
+  assert.match(terminalAdoptReport(kept), /C:\/Windows\/System32\/bash\.exe/)
+  assert.match(terminalAdoptReport(kept), /Settings/, 'the log says how to hand it over')
+})
+
+test('sidebar terminal: switch off, non-Windows, unresolved and absent row all stay read-only', async () => {
+  const { adoptTerminalShell } = await import('../src/terminal-shell.js')
+  const cases = [
+    [{ enabled: false, platform: 'win32', resolved: 'Q:/Git/bin/bash.exe' }, 'skip-disabled'],
+    [{ enabled: true, platform: 'darwin', resolved: 'Q:/Git/bin/bash.exe' }, 'skip-platform'],
+    [{ enabled: true, platform: 'win32', resolved: '' }, 'skip-unresolved'],
+  ]
+  for (const [input, expected] of cases) {
+    const editor = fakeEditor({})
+    const result = await adoptTerminalShell(editor, input)
+    assert.equal(result.status, expected, JSON.stringify(input))
+    assert.equal(editor.calls.length, 0, 'nothing written for ' + expected)
+  }
+  const absent = fakeEditor({ rowAbsent: true })
+  assert.equal((await adoptTerminalShell(absent, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })).status, 'skip-row-absent')
+  assert.equal(absent.calls.length, 0)
+  // a host without the editor service at all is an expected condition, not a crash
+  assert.equal((await adoptTerminalShell(undefined, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })).status, 'skip-row-absent')
+})
+
+test('sidebar terminal: a refused or non-sticky write is reported, never claimed as success', async () => {
+  const { adoptTerminalShell, terminalAdoptReport } = await import('../src/terminal-shell.js')
+  // the editor throws
+  const refused = fakeEditor({ fail: true })
+  const failed = await adoptTerminalShell(refused, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+  assert.equal(failed.status, 'write-failed')
+  assert.match(failed.detail, /refused this write/)
+  assert.match(terminalAdoptReport(failed), /adoption FAILED/)
+  // the editor resolves but the row never carries the value (read-back check)
+  const notSticky = fakeEditor({ sticky: false })
+  const stuck = await adoptTerminalShell(notSticky, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+  assert.equal(stuck.status, 'write-failed', 'resolving edit() is not proof the write landed')
+  assert.match(stuck.detail, /did not stick/)
+})
+
+test('sidebar terminal: the host reaches configEditor, never the settings service', () => {
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(src, /ctx\.inject\(\['configEditor'\], \(editorCtx\) => \{/, 'the editor is an optional service')
+  assert.match(src, /adoptTerminalShell\(editorCtx\.configEditor, \{/)
+  assert.match(src, /enabled: liveSettings\.autoTerminalShell\(\)/, 'the switch gates the write')
+  assert.match(src, /resolved: bashResolution\.ok \? bashResolution\.path : ''/, 'only a VERIFIED bash is offered')
+  assert.match(src, /terminalAdoptReport\(result\)/)
+  assert.doesNotMatch(src, /settings\.update\('terminal'/, 'the settings service cannot write a non-volatile field (measured)')
+  // the better-sidebar channel stays independent
+  assert.match(src, /adoptSidebarShell\(ctx, bashResolution\.path/)
+  // the switch is declared in both eras
+  assert.match(src, /autoTerminalShell: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(src, /autoTerminalShell: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(src, /autoTerminalShell: v\.autoTerminalShell !== false/)
+})

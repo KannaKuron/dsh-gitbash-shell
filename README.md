@@ -147,6 +147,28 @@ dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。�
 > 装了本插件就是要用 Git Bash,偷偷换一个能跑的顶上是错的。失败时弹窗给两件事:在弹窗里**直接填 bashPath**
 > (写入设置卡同一字段)或**去下载 Git for Windows**;同一 boot 只弹一次,可关闭。
 
+## 官方侧栏终端(「新建终端」)自动切到 Git Bash(v0.29.0)
+
+DSH 自己的「新建终端」**不经过**本插件的执行器:它由官方的 `terminal-controller` 决定 shell,未配置时用
+「执行环境的默认 shell」——而在 PATH 里 `bash` 指向 `C:\Windows\System32\bash.EXE`(WSL 启动器)的机器上,
+新终端跑起来就是 Ubuntu。本插件现在会自动把它切过来:
+
+- 仅 **Windows**、且已解析出**通过验证**的 Git Bash 时;设置开关 **「自动接管侧栏终端」默认开启**(`autoTerminalShell`)。
+- 只在官方那一行**没有自己的 shell** 时写入 `{ path: <Git Bash>, name: bash, args: ['-i'] }`
+  (`-i` 就是官方对 bash 的默认参数)。**你已经手动指定过别的 shell(例如某个 WSL 配置)⇒ 绝不覆盖**,只在宿主日志里提示,
+  并告诉你如何交还给 Git Bash(清空该字段)。
+- 写入走**官方配置编辑器**(设置 UI 用的同一个 API),落到 profile 的 patch 层;**新终端立即生效**,已打开的终端保持原样。
+- **不需要重启**,也不会写坏「新建终端」:只写我们验证过存在的 Git Bash(官方对无法解析的路径没有回退,会直接启动失败)。
+- 失败时 **fail-loud**:日志写清原因,并通过**读回校验**确认值真的落进去了(不出现"假成功")。
+- 菜单里仍可能出现一条候选 `bash`(在那些机器上解析到 WSL);默认项/首项是我们写入的 Git Bash。
+  我们**没有**改 `shellCandidates`。
+
+**三步复验(Windows)**:
+1. 装好 Git for Windows,重启 DSH,打开本插件设置卡:开关「自动接管侧栏终端」为开;宿主日志出现
+   `official sidebar terminal switched to Git Bash: …`。
+2. 新建终端,在终端里跑 `uname -r`:应看到 `MINGW64_NT-…`(WSL 会显示 Linux 内核版本如 `5.15…`)。
+3. 回退:把设置开关关掉,或在 profile 的 patch 里删掉 `terminal-controller` 行的 `shell` 字段(重启 DSH),终端即恢复原来的 shell。
+
 ## 配置(执行器)
 
 `gitbash-executor` 行支持:

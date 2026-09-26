@@ -291,6 +291,25 @@
        用户不必去找设置页;文字指路作为兜底。上游若开放深链 API,这里可以直接换成按钮跳转。
      - 改这一层必须跑冒烟里的「bash resolution」四例 + 「no-fallback guards」+「missing-bash popup」+ 真机弹窗读数。
 
+4i. **官方侧栏终端(「新建终端」)自动接管(v0.29.0,task-25)**:dsh 自己的终端由 **`terminal-controller`** 行决定 shell
+     (未配置 ⇒ `subprocess.terminalEnvironment().defaultShell`),与本插件的执行器是两条独立链路;在 PATH 的 `bash`
+     指向 `C:\Windows\System32\bash.EXE`(WSL 启动器)的机器上,新终端就是 Ubuntu。
+     - **官方 settings 服务写不了它(实测)**:`SettingsService.write()` 只接受 **volatile** 字段
+       (`volatileForm(schema) === undefined` ⇒ `Plugin entry "…" has no volatile fields`),而 `TerminalController.Config.shell`
+       是普通字段;探针里 `settings.update('terminal', {shell})` 抛 `No configurable plugin entry "terminal"`。
+     - **可行通道 = `configEditor.edit(entry, change)`**(官方设置 UI 的同一个 API,"ordinary fields keep normal lifecycle
+       rules")⇒ 写入**无需重启**(运行中的 `ctx.terminalController.config.shell` 立刻是新值),落盘到 profile patch 层,
+       由官方 YAML 编辑器保留注释、按 `id` 合并。**不要**手写该文件、**不要**改官方包。
+     - **只写空的**:该行没有自己的 shell ⇒ 写 `{path, name:'bash', args:['-i']}`(`-i` 与官方 `profile()` 对 bash 的默认一致);
+       已是同一个(归一化比较)⇒ 不写;已指向别处 ⇒ **绝不覆盖**,只记日志并说明怎么交还。
+     - **绝不写没验证过的路径**:`resolveShell` 用 `resolveExecutable()` 校验配置路径,失败**没有回退**、直接让「新建终端」启动失败
+       ⇒ 只允许写 `src/bash-path.js` 判据全过的 Git Bash。**写入后必须读回校验**,不符 ⇒ `write-failed` + fail-loud。
+     - `shellCandidates` 不动(配置的 shell 恒排首位);菜单里可能仍有一条候选 `bash`(解析到 WSL)属预期。
+     - 开关 `autoTerminalShell`(volatile,默认 **ON**;旧宿主 settings 命名空间同名字段,缺键 = on);文案 21 语言
+       `term.label`/`term.hint`。原 `adoptSidebarShell`(dsh-better-sidebar 通道)**保持独立**,两条互不干扰。
+     - 改动必须跑冒烟里的「sidebar terminal」五例 + 真机四态(空→写 / 同值→不写且 patch md5 未变 / 异值→不写 / 开关关→不写),
+       并保留 README 的三步复验清单。
+
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
    **`exports` 必须含 `"./package.json": "./package.json"`(v0.24.3 修,与 dsh-better-workspace
@@ -427,6 +446,12 @@
    弹窗渲染(标题/按钮/探测清单条数)、「去下载」点击后 `window.open` 收到 `https://git-scm.com/download/win`、
    内联编辑 + 保存后**宿主侧落盘**(`profiles/<p>/cordis.patch.yml` 的 `bashPath`)、关闭后刷新不再出现。
    **副本改动绝不能落在本仓**(用 `[ "$(pwd)" = "/tmp/..." ]` 之类守卫);Windows 真机部分如实标注未验证。
+
+10. **官方侧栏终端接管改动(§4i,v0.29.0 起)**:隔离实例里用**副本**强制 win32 门 + 伪装"已验证的 Git Bash",
+    **只看 profile patch 的字节变化**证明四态:空值→新增 `- id: terminal-controller` 行且用户手写行/注释原样保留;
+    同值→patch **md5 未变**;异值→patch 未变且日志含"explicit choice is never overwritten";开关关→patch 未变。
+    另用 `--dump-config` 读 `terminal-controller.config.shell.path`、无头浏览器确认零 pageerror。
+    Windows 真机(菜单项、`uname -r` 是否 `MINGW64_NT-*`)如实标注未验证,并在 README 给用户三步复验清单。
 
 ## 发布 checklist(GitHub + npm)
 

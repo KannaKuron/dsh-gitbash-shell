@@ -3,6 +3,57 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.29.0 — 2026-09-26
+
+**类型**:feat(用户实测需求 —— DSH 原生「新建终端」落到 **WSL**,插件只接管了 agent 的 shell 工具,没有接管官方侧栏终端)
+
+> 用户原话:**"能不能让我的gitbash插件自动检测是不是没这个,然后帮忙补上一个 gitbash可以用,反正就自动的。"**
+> 现象证据(用户自备):PATH 里 `bash` 只命中 `C:\WINDOWS\system32\bash.EXE`(Microsoft Bash Launcher)与
+> `%LOCALAPPDATA%\Microsoft\WindowsApps\bash.EXE`,跑起来 `WSL_DISTRO_NAME=Ubuntu-20.04`;`C:\Program Files\Git\cmd`
+> 虽在 PATH 但没有 `bash.exe`。本插件旧有的 `adoptSidebarShell` 写的是 **dsh-better-sidebar** 的命名空间,用户装的是
+> dsh-better-workspace,那条通道被 skip。
+
+### 一、调研结论(全部实测,装置见下)
+1. **官方 settings 服务写不了 `terminal.shell`** —— 任务书设想的"正路"在当前 dsh 0.1.7-rc.2 上**不存在**:
+   `SettingsService.write()` 要求写入路径必须是 **volatile** 字段(`volatileForm(schema)` 为 `undefined` ⇒
+   `Plugin entry "…" has no volatile fields`),而 `TerminalController.Config` 的 `shell` 是普通字段;
+   隔离实例探针实测 `settings.update('terminal', {shell})` 直接抛
+   `No configurable plugin entry "terminal"`(`describe()` 里也没有 `terminal` 这一行)。
+2. **可行且官方的通道是 `configEditor.edit()`** —— 官方设置 UI 持久化时用的同一个 API(注释:
+   "ordinary fields keep normal lifecycle rules")。探针写入后,**运行中的** `ctx.terminalController.config.shell`
+   立刻读到新值 ⇒ **无需重启**;落盘到 profile 的 patch 层,由官方 YAML 编辑器**保留文件头注释**、按 `id` 合并该行。
+3. **`args: ['-i']` 有官方依据**:`shells.ts` 的 `profile()` 对非 cmd/pwsh 的 shell 一律给 `['-i']` —— 我们与官方一致,不是自创。
+4. **配置的 shell 恒排首位**(`discoverShells()` 先 `resolveShell(configured)` 再解析 candidates,按 path 去重),
+   所以只需配 `shell`,**不动 `shellCandidates`**。另注意:菜单里仍可能出现一条候选 `bash`(在那些机器上解析到 WSL);
+   默认项是我们写入的 Git Bash。
+5. **写错路径会直接把「新建终端」弄坏**:`resolveShell` 用 `subprocess.resolveExecutable()` 验证配置路径,
+   失败即抛 `SubprocessExecutableNotFoundError`,**没有回退** ⇒ 只允许写 `src/bash-path.js` 已通过四项判据的 Git Bash。
+
+### 二、实现
+- 新模块 `src/terminal-shell.js`:纯决策 `planTerminalAdopt()` + 执行器 `adoptTerminalShell()`,六态
+  `skip-platform` / `skip-disabled` / `skip-unresolved` / `skip-row-absent` / `unchanged` / `kept-user-choice` / `adopted` / `write-failed`。
+- **只写"空"的**:该行没有自己的 shell ⇒ 写 `{path: <Git Bash>, name: 'bash', args: ['-i']}`;已是同一个(大小写/分隔符无关)⇒ 不写;
+  已指向别处 ⇒ **绝不覆盖**,日志说明"这是你的显式选择"以及如何交还给 Git Bash。
+- **写入后读回校验**(`configuration()` 的 `override`/`inherited`):`edit()` resolve 不等于值落进去了,不符 ⇒ `write-failed` 并 fail-loud
+  (延续 v0.28.0 的"绝不假成功")。
+- 新开关 `autoTerminalShell`(volatile,**默认开**;旧宿主 settings 命名空间同名字段,缺键 = 开)+ 21 语言卡片文案
+  (`term.label`/`term.hint`);保留原 `dsh-better-sidebar` 通道(两条通道各自独立探测);不碰官方包、不手写用户 patch 文件。
+- README 新增该节 + **用户三步复验清单**(开关与日志 → 终端里 `uname -r` 判 `MINGW64_NT-*` → 回退办法)。
+
+### 三、验证
+- `npm test` **99/99**(新增 5 条:空→写且形状为官方 `profile()` 约定 + 无关字段保留 / 同值→不写 + 异值→不写且日志含怎么交还 / 开关关·非 Windows·未解析·无该行→全只读 / 写入被拒或**未落盘**→ `write-failed` 不假成功 / 宿主侧只走 `configEditor` 且绝不调用 `settings.update('terminal')`);`align-official.mjs` 四变体仍逐字节对齐。
+- **隔离实例真机(macOS,副本强制 win32 门 + 伪装已解析 Git Bash)**:
+  - 空值 ⇒ 日志 `switched to Git Bash: Q:/Git/bin/bash.exe (name bash, args -i) …`;
+    profile patch 里用户手写行与注释**原样保留**、新增 `- id: terminal-controller … shell {path,name,args}`;
+    `--dump-config` 读到 `terminal-controller.config.shell.path = Q:/Git/bin/bash.exe`;
+  - 第二次启动 ⇒ `already uses this Git Bash … (nothing written)`,patch **md5 未变**(幂等);
+  - 用户显式指向 `C:/Windows/System32/bash.exe` ⇒ `NOT adopted … an explicit choice is never overwritten`,patch **未变**;
+  - `autoTerminalShell: false` ⇒ `adoption is off …`,patch **未变**;
+  - 无头浏览器零 pageerror。
+- **未在 Windows 验证**:真实 PATH/注册表命中、菜单里 shell 项、新终端里 `uname -r` 是否 `MINGW64_NT-*`;
+  设置卡新增开关行的截图级渲染(该行复用既有开关写法,21 语言键由冒烟 parity 覆盖)。需用户按 README 三步复验。
+- 相关:issue #11 后续(同一用户的 Windows 实测反馈)
+
 ## v0.28.0 — 2026-09-26
 
 **类型**:fix(issue #11 —— Git 没装在 `C:\Program Files\Git` 时,写死的默认 `bashPath` 让每条命令 `spawn … ENOENT`,而整个会话的命令能力归零且无提示)+ feat(fail-loud 引导:弹窗可填写路径 / 可跳转下载)

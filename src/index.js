@@ -254,6 +254,7 @@ import {
   DEFAULT_GIT_BASH, GIT_BASH_DOWNLOAD_URL, bashResolutionReport,
   effectiveConfiguredBashPath, executorConfiguredBashPath, resolveGitBashCached, settingsBashPath,
 } from './bash-path.js'
+import { adoptTerminalShell, terminalAdoptReport } from './terminal-shell.js'
 
 /** The shipped preset whose skills/ dir seeds cordis-gitbash. */
 const SKILLS_SOURCE_PRESET = 'cordis'
@@ -888,6 +889,16 @@ export const Config = Schema === null ? undefined : Schema.object({
   bashPath: live(Schema.string().default('')),
   adoptSidebar: live(Schema.boolean().default(true)),
   /**
+   * Whether the OFFICIAL sidebar terminal ("new terminal") is switched to the
+   * resolved Git Bash (v0.29.0, task-25). Default ON — the user asked for
+   * exactly this ("自动检测 … 帮忙补上一个 gitbash 可以用"). On Windows without
+   * this, dsh resolves the terminal shell from the environment, which on a
+   * machine whose PATH `bash` is the WSL launcher means the new terminal starts
+   * Ubuntu, not Git Bash. Only ever writes when the terminal has NO shell of
+   * its own: an explicit choice is never overwritten.
+   */
+  autoTerminalShell: live(Schema.boolean().default(true)),
+  /**
    * Dedupe switch against dsh-ptc-cordis-preset (their issue #7, v0.25.0):
    * ON while that plugin is installed AND materializing its `PTC 创造模式`
    * against Git Bash drops OUR `创造模式 · Git Bash` from the roster, because
@@ -934,12 +945,15 @@ function makeLiveReader(ctx, config) {
       subagentDialect: valueOf(config.subagentDialect) !== false,
       bashPath: typeof bash === 'string' ? bash : '',
       adoptSidebar: valueOf(config.adoptSidebar) !== false,
+      // Default ON (v0.29.0): the official terminal is ours unless opted out.
+      autoTerminalShell: valueOf(config.autoTerminalShell) !== false,
     }
   }
   return {
     dialect,
     posix: () => dialect().posixPaths === true,
     adoptSidebar: () => dialect().adoptSidebar !== false,
+    autoTerminalShell: () => dialect().autoTerminalShell !== false,
     // Default OFF on both eras: only an explicit true asks for deduplication.
     suppressPeerCordis: () => (legacy || !hasConfig ? readSuppressPeerCordis(ctx) : valueOf(config.suppressPeerCordis) === true),
   }
@@ -1006,7 +1020,7 @@ export function readPosixPaths(ctxLike) {
  * first. All default ON (schema defaults); never throws.
  */
 export function readDialectSettings(ctxLike) {
-  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, gitAutocrlf: false, bashPath: '', subagentDialect: true }
+  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, gitAutocrlf: false, bashPath: '', subagentDialect: true, autoTerminalShell: true }
   try {
     const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
     const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
@@ -1019,6 +1033,8 @@ export function readDialectSettings(ctxLike) {
       codePaths: v.codePaths === true,
       // An old host without the key keeps the default (delegated agents covered).
       subagentDialect: v.subagentDialect !== false,
+      // Default ON: a host without the key still gets the terminal adoption.
+      autoTerminalShell: v.autoTerminalShell !== false,
       gitAutocrlf: v.gitAutocrlf === true,
       bashPath: typeof v.bashPath === 'string' ? v.bashPath : '',
     }
@@ -2415,6 +2431,8 @@ export async function apply(ctx, config = {}) {
             gitAutocrlf: Schema.boolean().default(true),
             bashPath: Schema.string().default(''),
             adoptSidebar: Schema.boolean().default(true),
+            // v0.29.0: official sidebar terminal adoption (default ON).
+            autoTerminalShell: Schema.boolean().default(true),
             // v0.25.0: same switch as the row Config carries on dsh >= 0.1.7
             // (the OLD era has no cross-namespace edits, so this namespace is
             // the only side that can change it here).
@@ -2751,6 +2769,49 @@ export async function apply(ctx, config = {}) {
       })
     } catch (error) {
       console.log(TAG + ' bash status route wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
+  // ── OFFICIAL sidebar terminal adoption (v0.29.0, task-25) ──────────────
+  // User report: dsh's own "new terminal" started WSL, because
+  // `terminal-controller` falls back to the execution environment's default
+  // shell and on that machine PATH's `bash` is the System32 WSL launcher.
+  // The settings service CANNOT be used here (measured: `shell` is not a
+  // volatile field, and there is no `terminal` configurable entry), so this
+  // goes through `configEditor.edit()` — the API the official settings UI
+  // persists through — and it only ever writes when the terminal has no shell
+  // of its own. See src/terminal-shell.js for the full rationale.
+  if (process.platform === 'win32') {
+    try {
+      ctx.inject(['configEditor'], (editorCtx) => {
+        // The terminal row may activate after this plugin; retry a few times
+        // (bounded) instead of silently giving up, and never spam the log.
+        let attempts = 0
+        const run = async () => {
+          attempts += 1
+          let result
+          try {
+            result = await adoptTerminalShell(editorCtx.configEditor, {
+              platform: process.platform,
+              enabled: liveSettings.autoTerminalShell(),
+              resolved: bashResolution.ok ? bashResolution.path : '',
+            })
+          } catch (error) {
+            // adoptTerminalShell reports expected conditions itself; reaching
+            // here means something unexpected — say so instead of swallowing it.
+            console.log(`${TAG} official sidebar terminal adoption crashed: ${error?.message ?? error}`)
+            return
+          }
+          if (result.status === 'skip-row-absent' && attempts < 6) {
+            setTimeout(() => { run().catch((error) => console.log(`${TAG} official sidebar terminal adoption retry failed: ${error?.message ?? error}`)) }, 3000)
+            return
+          }
+          console.log(`${TAG} ${terminalAdoptReport(result)}`)
+        }
+        run().catch((error) => console.log(`${TAG} official sidebar terminal adoption failed: ${error?.message ?? error}`))
+      })
+    } catch (error) {
+      console.log(`${TAG} official sidebar terminal adoption wiring failed: ${error?.message ?? error}`)
     }
   }
 
