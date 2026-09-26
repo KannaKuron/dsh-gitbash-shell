@@ -131,6 +131,8 @@ window.__ModuleLoader__.load({
 			"tools.working": "处理中",
 			"tools.resultOk": "成功",
 			"tools.resultFail": "失败",
+			"tools.installing": "安装中…",
+			"tools.updating": "更新中…",
 		};
 
 		var en = {
@@ -197,6 +199,8 @@ window.__ModuleLoader__.load({
 			"tools.working": "Working",
 			"tools.resultOk": "succeeded",
 			"tools.resultFail": "failed",
+			"tools.installing": "Installing…",
+			"tools.updating": "Updating…",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded
@@ -273,6 +277,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "جارٍ العمل",
 				"tools.resultOk": "نجح",
 				"tools.resultFail": "فشل",
+				"tools.installing": "جارٍ التثبيت…",
+				"tools.updating": "جارٍ الترقية…",
 			},
 			/* locale: de */
 			"de": {
@@ -339,6 +345,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "Läuft",
 				"tools.resultOk": "erfolgreich",
 				"tools.resultFail": "fehlgeschlagen",
+				"tools.installing": "Wird installiert…",
+				"tools.updating": "Wird aktualisiert…",
 			},
 			/* locale: fr */
 			"fr": {
@@ -405,6 +413,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "En cours",
 				"tools.resultOk": "réussi",
 				"tools.resultFail": "échec",
+				"tools.installing": "Installation…",
+				"tools.updating": "Mise à jour…",
 			},
 			/* locale: hi */
 			"hi": {
@@ -471,6 +481,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "चल रहा है",
 				"tools.resultOk": "सफल",
 				"tools.resultFail": "विफल",
+				"tools.installing": "इंस्टॉल हो रहा है…",
+				"tools.updating": "अपडेट हो रहा है…",
 			},
 			/* locale: id */
 			"id": {
@@ -537,6 +549,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "Memproses",
 				"tools.resultOk": "berhasil",
 				"tools.resultFail": "gagal",
+				"tools.installing": "Memasang…",
+				"tools.updating": "Memperbarui…",
 			},
 			/* locale: it */
 			"it": {
@@ -603,6 +617,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "In corso",
 				"tools.resultOk": "riuscito",
 				"tools.resultFail": "non riuscito",
+				"tools.installing": "Installazione…",
+				"tools.updating": "Aggiornamento…",
 			},
 			/* locale: ja */
 			"ja": {
@@ -669,6 +685,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "処理中",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
+				"tools.installing": "インストール中…",
+				"tools.updating": "更新中…",
 			},
 			/* locale: ko */
 			"ko": {
@@ -735,6 +753,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "처리 중",
 				"tools.resultOk": "성공",
 				"tools.resultFail": "실패",
+				"tools.installing": "설치 중…",
+				"tools.updating": "업데이트 중…",
 			},
 			/* locale: nl */
 			"nl": {
@@ -801,6 +821,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "Bezig",
 				"tools.resultOk": "geslaagd",
 				"tools.resultFail": "mislukt",
+				"tools.installing": "Installeren…",
+				"tools.updating": "Bijwerken…",
 			},
 			/* locale: pl */
 			"pl": {
@@ -867,6 +889,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "Przetwarzanie",
 				"tools.resultOk": "sukces",
 				"tools.resultFail": "niepowodzenie",
+				"tools.installing": "Instalowanie…",
+				"tools.updating": "Aktualizowanie…",
 			},
 			/* locale: pt */
 			"pt": {
@@ -933,6 +957,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "A processar",
 				"tools.resultOk": "com êxito",
 				"tools.resultFail": "falhou",
+				"tools.installing": "A instalar…",
+				"tools.updating": "A atualizar…",
 			},
 			/* locale: ru */
 			"ru": {
@@ -999,6 +1025,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "Выполняется",
 				"tools.resultOk": "успешно",
 				"tools.resultFail": "ошибка",
+				"tools.installing": "Установка…",
+				"tools.updating": "Обновление…",
 			},
 			/* locale: sv */
 			"sv": {
@@ -1065,6 +1093,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "Arbetar",
 				"tools.resultOk": "lyckades",
 				"tools.resultFail": "misslyckades",
+				"tools.installing": "Installerar…",
+				"tools.updating": "Uppdaterar…",
 			},
 			/* locale: th */
 			"th": {
@@ -1131,6 +1161,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "กำลังดำเนินการ",
 				"tools.resultOk": "สำเร็จ",
 				"tools.resultFail": "ล้มเหลว",
+				"tools.installing": "กำลังติดตั้ง…",
+				"tools.updating": "กำลังอัปเกรด…",
 			},
 			/* locale: tr */
 			"tr": {
@@ -1197,6 +1229,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "İşleniyor",
 				"tools.resultOk": "başarılı",
 				"tools.resultFail": "başarısız",
+				"tools.installing": "Kuruluyor…",
+				"tools.updating": "Güncelleniyor…",
 			},
 			/* locale: vi */
 			"vi": {
@@ -1263,6 +1297,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "Đang xử lý",
 				"tools.resultOk": "thành công",
 				"tools.resultFail": "thất bại",
+				"tools.installing": "Đang cài…",
+				"tools.updating": "Đang nâng cấp…",
 			},
 			/* locale: zh-hk */
 			"zh-hk": {
@@ -1329,6 +1365,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "處理緊",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
+				"tools.installing": "安裝緊…",
+				"tools.updating": "升級緊…",
 			},
 			/* locale: zh-mo */
 			"zh-mo": {
@@ -1395,6 +1433,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "處理緊",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
+				"tools.installing": "安裝緊…",
+				"tools.updating": "升級緊…",
 			},
 			/* locale: zh-tw */
 			"zh-tw": {
@@ -1461,6 +1501,8 @@ window.__ModuleLoader__.load({
 				"tools.working": "處理中",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
+				"tools.installing": "安裝中…",
+				"tools.updating": "更新中…",
 			},
 		};
 
@@ -1581,6 +1623,21 @@ window.__ModuleLoader__.load({
 			".gb-ok{flex:none;color:var(--dsw-alias-state-success-primary,#3fb950)}",
 			".gb-bad{flex:none;color:var(--dsw-alias-status-danger,#e5484d)}",
 			".gb-segBtn:disabled{opacity:.45;cursor:default}",
+			/* in-list progress (v0.30.1): the row being installed/upgraded shows a
+			   spinner, its action, and a sweeping bar; finished rows keep their
+			   verdict, and a failure prints its reason under the row. */
+			".gb-toolRow.gb-rowActive{border-radius:6px;background:var(--dsw-alias-bg-layer-2,transparent)}",
+			".gb-toolState.gb-st-running{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);display:inline-flex;align-items:center;gap:5px}",
+			".gb-st-ok{border-color:var(--dsw-alias-state-success-primary,#3fb950);color:var(--dsw-alias-state-success-primary,#3fb950)}",
+			".gb-st-fail{border-color:var(--dsw-alias-status-danger,#e5484d);color:var(--dsw-alias-status-danger,#e5484d)}",
+			".gb-spin{flex:none;display:inline-block;width:10px;height:10px;border:2px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);border-radius:50%;animation:gb-spin .8s linear infinite}",
+			".gb-toolBar{flex:1 1 auto;min-width:32px;height:4px;border-radius:2px;background:var(--dsw-alias-border-l2);overflow:hidden}",
+			".gb-toolBarFill{display:block;height:100%;width:38%;border-radius:2px;background:var(--dsw-alias-brand-primary);animation:gb-slide 1.15s ease-in-out infinite}",
+			".gb-jobBar{height:6px;border-radius:3px;background:var(--dsw-alias-border-l2);overflow:hidden}",
+			".gb-jobBarFill{display:block;height:100%;border-radius:3px;background:var(--dsw-alias-brand-primary);transition:width .3s ease}",
+			".gb-toolFail{margin:0 0 4px 26px;font-size:11.5px;line-height:1.5;color:var(--dsw-alias-status-danger,#e5484d);overflow-wrap:anywhere}",
+			"@keyframes gb-spin{to{transform:rotate(360deg)}}",
+			"@keyframes gb-slide{0%{margin-left:-38%}100%{margin-left:100%}}",
 		].join("\n");
 
 		function ensureStyles() {
@@ -2027,8 +2084,23 @@ window.__ModuleLoader__.load({
 			   even be ticked, so an upgrade can never touch it. */
 			var toolRows = toolsData !== null && Array.isArray(toolsData.tools) ? toolsData.tools : [];
 			var wingetOk = !!(toolsData !== null && toolsData.winget && toolsData.winget.ok);
+			/* The job lives on the HOST and keeps running long after the POST has
+			   returned, so "busy" must be derived from the JOB, not from the request.
+			   Keying the buttons off the POST alone re-enabled them the instant the
+			   host answered 202 — which is precisely how a second click could land on
+			   an already-running batch. */
+			var jobRunning = toolJob !== null && toolJob.finished !== true;
+			var busyNow = toolBusy || jobRunning;
+			var jobById = {};
+			if (toolJob !== null && Array.isArray(toolJob.results)) {
+				toolJob.results.forEach(function (entry) {
+					if (entry !== null && typeof entry === "object" && typeof entry.id === "string") jobById[entry.id] = entry;
+				});
+			}
+			var activeCmd = jobRunning && typeof toolJob.current === "string" ? toolJob.current : "";
+			var jobPct = jobRunning && toolJob.total > 0 ? Math.round(toolJob.done / toolJob.total * 100) : 0;
 			function toolSelectable(row) {
-				return wingetOk && !toolBusy && (row.state === "missing" || row.state === "managed");
+				return wingetOk && !busyNow && (row.state === "missing" || row.state === "managed");
 			}
 			var toolSelCount = toolRows.filter(function (row) { return toolSel[row.id] === true; }).length;
 
@@ -2126,8 +2198,31 @@ window.__ModuleLoader__.load({
 					toolErr !== "" ? E("p", { className: "gb-error" }, toolErr) : null,
 					toolsData !== null && !wingetOk ? E("p", { className: "gb-error" }, t("tools.nowinget")) : null,
 					toolRows.length > 0 ? E("div", { className: "gb-tools" },
-						toolRows.map(function (row) {
-							return E("label", { key: row.id, className: "gb-toolRow", title: row.publisher + " · " + row.source },
+						/* ONE row per tool, and the row itself carries the progress: the
+						   tool being worked on shows a spinner, whether it is being
+						   installed or upgraded, and a sweeping bar; a finished tool keeps
+						   its verdict; a failure prints its reason directly underneath, so
+						   nothing has to be hunted for in a separate log area. */
+						toolRows.reduce(function (acc, row) {
+							var entry = jobById[row.id];
+							var active = activeCmd !== "" && activeCmd === row.cmd;
+							var isUpgrade = row.state === "managed";
+							var badge;
+							if (active) {
+								badge = E("span", { className: "gb-toolState gb-st-running" },
+									E("span", { className: "gb-spin" }),
+									t(isUpgrade ? "tools.updating" : "tools.installing"));
+							} else if (entry !== undefined) {
+								badge = E("span", { className: "gb-toolState " + (entry.ok ? "gb-st-ok" : "gb-st-fail") },
+									(entry.ok ? "✓ " : "✗ ") + t(entry.ok ? "tools.resultOk" : "tools.resultFail"));
+							} else {
+								badge = E("span", { className: "gb-toolState gb-st-" + row.state }, t("tools.state." + row.state));
+							}
+							acc.push(E("label", {
+								key: row.id,
+								className: "gb-toolRow" + (active ? " gb-rowActive" : ""),
+								title: row.publisher + " · " + row.source,
+							},
 								E("input", {
 									type: "checkbox",
 									checked: toolSel[row.id] === true,
@@ -2135,27 +2230,39 @@ window.__ModuleLoader__.load({
 									onChange: function () { toggleTool(row.id); },
 								}),
 								E("span", { className: "gb-toolCmd" }, row.cmd),
-								E("span", { className: "gb-toolState gb-st-" + row.state }, t("tools.state." + row.state)),
+								badge,
+								active ? E("span", { className: "gb-toolBar" }, E("span", { className: "gb-toolBarFill" })) : null,
 								E("span", { className: "gb-toolSrc" }, (row.version !== "" ? row.version + " · " : "") + (row.provider !== "" ? row.provider : row.source) + (row.admin ? " · " + t("tools.adminHint") : "")),
-							);
-						}),
+							));
+							if (entry !== undefined && entry.ok !== true) {
+								acc.push(E("p", { key: row.id + ":fail", className: "gb-toolFail" },
+									t(entry.action === "upgrade" ? "tools.updating" : "tools.installing") + " — " + t("tools.resultFail") + ": " + (entry.detail || "")));
+							}
+							return acc;
+						}, []),
 					) : null,
 					toolsData !== null && wingetOk ? E("div", { className: "gb-seg" },
-						E("button", { type: "button", className: "gb-segBtn", disabled: toolBusy, onClick: function () { loadTools(); } }, t("tools.refresh")),
-						E("button", { type: "button", className: "gb-segBtn", disabled: toolBusy, onClick: selectInstallable }, t("tools.selectMissing")),
-						E("button", { type: "button", className: "gb-segBtn" + (toolSelCount > 0 ? " gb-segActive" : ""), disabled: toolBusy || toolSelCount === 0, onClick: runTools }, t("tools.run")),
+						E("button", { type: "button", className: "gb-segBtn", disabled: busyNow, onClick: function () { loadTools(); } }, t("tools.refresh")),
+						E("button", { type: "button", className: "gb-segBtn", disabled: busyNow, onClick: selectInstallable }, t("tools.selectMissing")),
+						/* A running job DISABLES this button and says so — the host keeps
+						   working after the POST returns, so re-enabling on the response
+						   would invite a second click onto a batch already in flight. */
+						E("button", {
+							type: "button",
+							className: "gb-segBtn" + (toolSelCount > 0 && !busyNow ? " gb-segActive" : ""),
+							disabled: busyNow || toolSelCount === 0,
+							onClick: runTools,
+						}, busyNow ? t("tools.working") : t("tools.run")),
 					) : null,
-					toolJob !== null ? E("div", { className: "gb-stack" },
+					jobRunning ? E("div", { className: "gb-stack" },
 						E("div", { className: "gb-row" },
-							E("span", { className: "gb-rowLabel" }, t("tools.working") + ":"),
-							E("span", { className: "gb-rowValue" }, (toolJob.current ? toolJob.current + " " : "") + toolJob.done + " / " + toolJob.total),
+							E("span", { className: "gb-spin" }),
+							E("span", { className: "gb-rowLabel" }, (activeCmd !== "" ? activeCmd + " · " : "") + t("tools.working") + ":"),
+							E("span", { className: "gb-rowValue" }, toolJob.done + " / " + toolJob.total),
 						),
-						(toolJob.results || []).map(function (item) {
-							return E("div", { key: item.id, className: "gb-toolResult" },
-								E("span", { className: item.ok ? "gb-ok" : "gb-bad" }, item.cmd + " " + t(item.ok ? "tools.resultOk" : "tools.resultFail")),
-								E("span", null, item.detail || ""),
-							);
-						}),
+						E("div", { className: "gb-jobBar" },
+							E("div", { className: "gb-jobBarFill", style: { width: jobPct + "%" } }),
+						),
 					) : null,
 					E("p", { className: "gb-hint" }, t("tools.hint")),
 				),
