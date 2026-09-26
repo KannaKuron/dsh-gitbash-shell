@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join, sep } from 'node:path'
+import { join, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _internal } from '../src/index.js'
 import {
@@ -2663,4 +2663,301 @@ test('toolchain route: wired, fenced, and read by the client half', () => {
   assert.match(client, /dsh-gitbash-shell\/api\/tools/)
   assert.match(client, /"sec\.tools":/)
   assert.match(client, /"tools\.state\.external":/)
+})
+
+/* ── native right-sidebar path rescue (v0.31.0) ──────────────────────────────
+   The plugin makes every tool speak MSYS drive roots; dsh's own file links then
+   carry that spelling into the right Sidebar, whose Host resolves it with
+   node:path against the session cwd — '/c/Users/x' becomes
+   '<current drive>:\c\Users\x' and the preview says "file not found". The client
+   half wraps `ctx.sidebarRight.openResource`, the ONE entry every way into that
+   column passes through, and hands it the Host's own spelling. These tests drive
+   the real bundle against a fake cordis ctx, so they cover the address grammar,
+   the host-driven gate, and the reversible install — not a copy of the logic. */
+
+const PATHMAP_FACTS = {
+  platform: 'win32',
+  home: 'C:/Users/kanna',
+  tmpDir: 'C:/Users/kanna/AppData/Local/Temp',
+  gitRoot: 'C:/Program Files/Git',
+  mounts: { '/usr': 'usr', '/bin': 'usr/bin', '/etc': 'etc', '/var': 'var', '/home': 'home', '/root': 'root', '/mnt': 'mnt' },
+}
+
+const reactStub = {
+  createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
+  useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+  useEffect: (effect) => effect(),
+  Component: class Component { constructor(props) { this.props = props; this.state = {} } },
+}
+
+/** One address segment, encoded exactly the way dsh's own builder encodes it. */
+const addressSegment = (segment) => encodeURIComponent(segment).replace(/%3A/gi, ':')
+
+/** Build a session-scoped file address the way dsh's fileAddressFor does. */
+const sessionAddress = (sessionId, path) => 'dsh-resource://file/session/' + addressSegment(sessionId) + '/'
+  + path.split('/').map(addressSegment).join('/')
+
+/** Read one address back into its path, the way dsh's parseFileAddress does. */
+function addressPath(address) {
+  const rest = address.slice('dsh-resource://file/'.length).split('/')
+  const scope = rest.shift()
+  if (scope === 'session') rest.shift()
+  return rest.map(decodeURIComponent).join('/')
+}
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+/**
+ * Load src/client.js the way the browser does and mount it on a fake cordis ctx
+ * whose `sidebarRight` records the address it is handed. `facts` is what
+ * /api/pathmap answers with; `null` keeps the fetch pending forever, which is
+ * the "host has not answered yet" state.
+ */
+function mountClientHalf(facts) {
+  const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  let bundle = null
+  const fetchStub = () => facts === null
+    ? new Promise(() => {})
+    : Promise.resolve({ ok: true, json: () => Promise.resolve(facts) })
+  new Function('window', 'navigator', 'fetch', text)(
+    { __ModuleLoader__: { load: (value) => { bundle = value } } },
+    { language: 'zh-CN' },
+    fetchStub,
+  )
+  const client = bundle.factory((specifier) => (specifier === 'react' ? reactStub : {}))
+
+  const controller = {
+    calls: [],
+    openResource(address, options) { controller.calls.push({ method: 'openResource', address, options }); return 'opened' },
+    openResourceIn(sessionId, address, options) {
+      controller.calls.push({ method: 'openResourceIn', sessionId, address, options })
+      return 'opened'
+    },
+  }
+  const disposers = []
+  const locale = {
+    register: () => () => {},
+    getSnapshot: () => ({ active: 'en' }),
+    subscribe: () => () => {},
+  }
+  const scope = { getSnapshot: () => ({ status: 'ready', value: { posixPaths: true } }), set: async () => {} }
+  const ctx = {
+    get: (name) => (name === 'locale' ? locale : undefined),
+    settingsScope: { bind: () => scope },
+    inject: (names, callback) => {
+      if (names.includes('settingsScope')) callback({ settingsScope: ctx.settingsScope })
+      if (names.includes('sidebarRight')) {
+        callback({
+          sidebarRight: controller,
+          // cordis calls the body at once and keeps its RETURN value as the
+          // disposer — same contract here, so an uninstall is observable.
+          effect: (body) => { disposers.push(body()); return () => {} },
+        })
+      }
+    },
+    slots: { inject: (hole, callback) => { callback() }, register: () => () => {} },
+    locale,
+    effect: (body) => body(),
+  }
+  const original = { openResource: controller.openResource, openResourceIn: controller.openResourceIn }
+  client.apply(ctx)
+  return { controller, original, disposers, client }
+}
+
+test('path rescue: the Host spelling is restored on every file address', async () => {
+  const { controller, original } = mountClientHalf(PATHMAP_FACTS)
+  await tick()
+  assert.notEqual(controller.openResource, original.openResource, 'the navigation entry must be wrapped once the host answers')
+
+  const open = (address) => {
+    controller.calls.length = 0
+    controller.openResource(address)
+    return controller.calls[0].address
+  }
+  const unchanged = (address) => assert.equal(open(address), address, 'must pass through untouched: ' + address)
+
+  // The reported bug: an absolute MSYS path outside the session workspace keeps
+  // its absolute spelling in the address, so only the drive root can be wrong.
+  assert.equal(
+    open(sessionAddress('s-1', '/c/Users/kanna/sandbox/dsh-remote-app/AGENTS.md')),
+    sessionAddress('s-1', 'C:/Users/kanna/sandbox/dsh-remote-app/AGENTS.md'),
+    'a drive root becomes the Windows spelling the Host understands',
+  )
+  // The same mounts the host's own tool-argument translation resolves.
+  assert.equal(open(sessionAddress('s-1', '/tmp/note.txt')), sessionAddress('s-1', PATHMAP_FACTS.tmpDir + '/note.txt'))
+  assert.equal(open(sessionAddress('s-1', '/usr/bin/bash')), sessionAddress('s-1', PATHMAP_FACTS.gitRoot + '/usr/bin/bash'))
+  assert.equal(open(sessionAddress('s-1', '/etc/hosts')), sessionAddress('s-1', PATHMAP_FACTS.gitRoot + '/etc/hosts'))
+  assert.equal(open(sessionAddress('s-1', '~/notes.md')), sessionAddress('s-1', PATHMAP_FACTS.home + '/notes.md'))
+  assert.equal(open(sessionAddress('s-1', '/c')), sessionAddress('s-1', 'C:/'))
+  // A whole-value path only: a mid-word '/tmpfoo' or '/usrx' is not a mount.
+  unchanged(sessionAddress('s-1', '/tmpfoo/x'))
+  unchanged(sessionAddress('s-1', '/usrx'))
+  unchanged(sessionAddress('s-1', '/Tmp/x'))
+  unchanged(sessionAddress('s-1', '/ab/c'))
+  // Already in the Host's spelling — the dialect may be off, or the link may
+  // have been written by Windows in the first place.
+  unchanged(sessionAddress('s-1', 'C:/Users/kanna/x.md'))
+  // A workspace-relative link is resolved by the Host against the session cwd
+  // and needs no rewrite at all.
+  unchanged(sessionAddress('s-1', 'AGENTS.md'))
+  unchanged(sessionAddress('s-1', ''))
+  // Absolute-scope addresses (present / deliverables) carry the same grammar.
+  assert.equal(open('dsh-resource://file/absolute/c/Users/kanna/x.md'), 'dsh-resource://file/absolute/C:/Users/kanna/x.md')
+  unchanged('dsh-resource://file/absolute//server/share/x.md')
+  // Not a file address, not decodable, or not a file at all: the ORIGINAL string
+  // is forwarded, so nothing we did not translate can be altered.
+  unchanged('dsh-resource://browser/https%3A%2F%2Fexample.com')
+  unchanged('session/s-1//c/x')
+  unchanged('dsh-resource://file/session/s-1/%ZZ')
+  unchanged('dsh-resource://file/other/s-1/c/x')
+  // A navigation suffix survives the rebuild.
+  assert.equal(
+    open(sessionAddress('s-1', '/c/Users/kanna/x.md') + '?line=12'),
+    sessionAddress('s-1', 'C:/Users/kanna/x.md') + '?line=12',
+  )
+  // The per-session twin goes through the same rewrite.
+  controller.calls.length = 0
+  controller.openResourceIn('s-9', sessionAddress('s-1', '/c/x.md'))
+  assert.equal(controller.calls[0].address, sessionAddress('s-1', 'C:/x.md'))
+  assert.equal(controller.calls[0].sessionId, 's-9')
+})
+
+test('path rescue: nothing is rewritten until the HOST reports win32', async () => {
+  // A macOS/Linux Host must never see its paths translated — the client's own
+  // user agent says nothing about whose filesystem the path belongs to. The
+  // wrapper may be in place; the GATE is the host's own platform fact, so on a
+  // foreign host it forwards the original string byte for byte.
+  const foreign = mountClientHalf({ ...PATHMAP_FACTS, platform: 'linux' })
+  await tick()
+  const linuxAddress = sessionAddress('s-1', '/c/Users/kanna/x.md')
+  foreign.controller.openResource(linuxAddress)
+  assert.equal(foreign.controller.calls[0].address, linuxAddress,
+    'a non-Windows host must never have its paths translated')
+
+  // The host has not answered yet (or never will): the dialect rewrite stays off
+  // rather than guessing, so a failed fetch degrades to the unpatched behaviour.
+  const pending = mountClientHalf(null)
+  await tick()
+  const address = sessionAddress('s-1', '/c/Users/kanna/x.md')
+  pending.controller.openResource(address)
+  assert.equal(pending.controller.calls[0].address, address,
+    'an unanswered path map must leave the dialect alone')
+})
+
+test('path rescue: installed on the instance, removed with the fiber, never hard-injected', async () => {
+  const client = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  // A HARD inject of a service this plugin does not own would leave the fiber
+  // PENDING forever on a host without it (the settingsScope lesson, v0.24.0),
+  // taking the pluggable card down with it — so sidebarRight is acquired
+  // optionally, exactly like the settings face.
+  assert.match(client, /exports\.inject = \["locale", "slots"\]/)
+  assert.doesNotMatch(client, /exports\.inject = \[[^\]]*sidebarRight/)
+  assert.match(client, /ctx\.inject\(\["sidebarRight"\]/)
+  assert.match(client, /controller\.openResource = function/)
+  assert.match(client, /sctx\.effect\(function \(\) \{ return restore; \}/)
+
+  const { controller, original, disposers } = mountClientHalf(PATHMAP_FACTS)
+  await tick()
+  assert.equal(disposers.length, 1, 'the wrapper must register exactly one disposer')
+  assert.notEqual(controller.openResource, original.openResource)
+  disposers[0]()
+  assert.equal(controller.openResource, original.openResource, 'the disposer restores the original method')
+  assert.equal(controller.openResourceIn, original.openResourceIn)
+  assert.equal(controller.gbPathRescue, undefined, 'the marker must be gone so a remount can wrap again')
+})
+
+test('path rescue: the browser mirror tracks the host translator case for case', async () => {
+  const { controller } = mountClientHalf(PATHMAP_FACTS)
+  await tick()
+  const hostEnv = { home: PATHMAP_FACTS.home, tmpDir: PATHMAP_FACTS.tmpDir, gitRoot: PATHMAP_FACTS.gitRoot }
+  const cases = [
+    '/c/Users/x', '/c', '/tmp/x', '/tmp', '/usr/bin/x', '/bin/x', '/etc/x', '/var/x',
+    '/home/x', '/root/x', '/mnt/x', '~/x', '~', '/dev/null', 'C:/x', 'relative/x',
+    '/tmpfoo/x', '/Tmp/x', '/usrx', '/ab/c', '//server/share/x', '/c/',
+  ]
+  for (const value of cases) {
+    const expected = _internal.translateMsysPath(value, hostEnv)
+    const address = sessionAddress('s-1', value)
+    controller.calls.length = 0
+    controller.openResource(address)
+    const seen = controller.calls[0].address
+    // The wrapper forwards the ORIGINAL string when nothing changed, so an
+    // unchanged case is compared against the input itself.
+    const actual = seen === address ? value : addressPath(seen)
+    assert.equal(actual, expected, 'client mirror must match translateMsysPath for ' + value)
+  }
+})
+
+test('path rescue (measured): the rewritten path is the file the user actually clicked', { skip: process.platform !== 'win32' }, async () => {
+  // The bug as the Host experiences it, on a real file: dsh resolves the link
+  // with node:path against the session cwd, and an MSYS drive root is not
+  // absolute to node — it lands on the CURRENT drive as '<drive>:\c\...'.
+  const real = fileURLToPath(new URL('../package.json', import.meta.url))
+  const msys = '/' + real.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, drive) => drive.toLowerCase())
+  assert.ok(existsSync(real), 'fixture: this repository is on disk')
+  assert.equal(existsSync(resolvePath(process.cwd(), msys)), false,
+    'the MSYS spelling resolves to a path that does not exist — this is the reported "file not found"')
+
+  const { controller } = mountClientHalf(PATHMAP_FACTS)
+  await tick()
+  controller.openResource(sessionAddress('s-1', msys))
+  const opened = addressPath(controller.calls[0].address)
+  assert.equal(opened, real.replace(/\\/g, '/'), 'the Sidebar is handed the Windows spelling instead')
+  assert.ok(existsSync(opened), 'and that spelling IS the file, so the preview can read it')
+})
+
+test('path map route: registered, loopback-fenced, and reporting the host facts', async () => {
+  // The browser half is only allowed to rewrite while the HOST says win32, so
+  // the fact has to actually reach it. Drive the real apply() and serve the
+  // route the way the web server would.
+  const { apply } = await import('../src/index.js')
+  const routes = []
+  const ctx = {
+    effect: () => {},
+    provide: () => () => {},
+    inject: (names, callback) => {
+      if (names.includes('webServer')) {
+        callback({
+          webServer: { register: (registration) => { routes.push(registration); return () => {} } },
+          effect: () => {},
+        })
+      }
+    },
+    on: () => {},
+    get: (name) => (name === 'settings'
+      ? { get: () => ({ terminalShell: '' }), update: async () => {} }
+      : undefined),
+    agentPresets: { roots: [] },
+  }
+  await assert.doesNotReject(() => apply(ctx, {}), 'apply() must not throw on mount')
+
+  const route = routes.find((entry) => entry.path === '/dsh-gitbash-shell/api/pathmap')
+  assert.ok(route, 'the browser half reads its facts from this route')
+  assert.equal(route.kind, 'prefix')
+
+  const serve = (remoteAddress) => {
+    const captured = { code: 0, body: '' }
+    const res = {
+      writeHead: (code) => { captured.code = code },
+      end: (text) => { captured.body = text },
+    }
+    route.handler({ method: 'GET', url: route.path, socket: { remoteAddress }, headers: { host: '127.0.0.1:3080' } }, res)
+    return captured
+  }
+
+  const allowed = serve('127.0.0.1')
+  assert.equal(allowed.code, 200)
+  const facts = JSON.parse(allowed.body)
+  assert.equal(facts.platform, process.platform, 'the client gate reads THIS value')
+  assert.deepEqual(Object.keys(facts.mounts), ['/usr', '/bin', '/etc', '/var', '/home', '/root', '/mnt'],
+    'the client mirror walks these mounts in exactly this order')
+  for (const key of ['home', 'tmpDir', 'gitRoot']) {
+    assert.ok(facts[key] === null || typeof facts[key] === 'string', key + ' must be a path or null')
+  }
+
+  // The web server may be bound to 0.0.0.0, and this route reports the account's
+  // own directories — so it is fenced like the toolchain route.
+  const refused = serve('192.168.1.20')
+  assert.equal(refused.code, 403)
+  assert.equal(JSON.parse(refused.body).reason, 'not-loopback')
 })

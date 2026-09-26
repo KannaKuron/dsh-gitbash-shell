@@ -420,6 +420,41 @@
       真实类 + 打桩 spawn 驱动即可(`apps/desktop/.desktop-build/targets/*/dsh/node_modules/
       @deepseek-ai/dsh-bash-*`),CHANGELOG v0.24.4 记录的 12 项集成检查就是这么跑的。
 
+4j. **原生右侧栏的文件路径救援(v0.31.0,用户报告)**:本插件的方言第一次伸到**浏览器 UI**。
+     症状:点开对话里的文件链接(链接文本来自 shell 输出,是 `/c/Users/...`),官方右侧栏
+     (`ui-sidebar-documentpreview`)显示「文件不存在,可能已被移动或删除」(错误码 `workspace-file/not-found`)。
+     - **这不是 dsh 的 bug**:dsh 只认 POSIX 与 Windows 盘符/UNC 两种拼写(`dsh-util-workspace-path` 的
+       `isAbsoluteWorkspacePath`),**核心没有 MSYS 概念**(`DSH_PATH_DIALECT` 是本插件自定义的环境变量名)。
+       链路是:宿主 `packages/api/workspace-files` → `ctx.fs.resolve(path,{cwd})` →
+       `packages/fs/fs-local/src/fsio.ts:148-150` 在 win32 上就是 `node:path.resolve(cwd,path)`,
+       而 `/c/...` 对 node **不是**绝对路径 ⇒ 落到 `<当前盘符>:\c\...` ⇒ not-found。
+       之所以没被 `fileAddressFor` 转成工作区相对路径,是因为**session 的 cwd 是 Windows 拼写**
+       (本机 session 目录名实测 `--C-Users-kanna-sandbox--`),与 `/c/...` 前缀不匹配。
+     - **修法在客户端半,且只有一个挂点**:`ctx.sidebarRight.openResource` / `openResourceIn` ——
+       官方文档写明"每一种进入右侧栏的方式都是这两者之一的调用",且**所有调用点都是运行时属性访问**
+       (`ctx.sidebarRight.openResource(...)`、文件树经 `tab-domain` 的 `navigator.openResourceIn(...)`),
+       所以实例属性覆盖对全部入口生效。**绝不改 dsh 源码、绝不动 profile**。
+     - **事实来源 = 宿主**:新增只读路由 `GET /dsh-gitbash-shell/api/pathmap`
+       (`{platform, home, tmpDir, gitRoot, mounts}`;mounts 直接从 `GIT_MOUNTS` 生成,**不另抄一份**),
+       与工具链路由同款 `fenceToolRequest`(GET 只需 loopback;web 服务器可能绑 `0.0.0.0`)。
+       **门是宿主的事实**:`pathRescueActive()` 要求已应答且 `platform === 'win32'` ——
+       **不看客户端的 user agent**(路径属于谁的文件系统与浏览器在哪无关);
+       fact 未到时**不翻译**(退化为打补丁前,而不是赌一把)。
+     - **地址语法照官方 `file-address.ts` 实现**:逐段 `encodeURIComponent`、`:` 保留、UNC 空首段、
+       `?`/`#` 后缀保留;**未改变即转发原字符串**(不是"重建后看起来一样");非法转义/非 file 地址原样。
+       转换语义与宿主 `translateMsysPath` 逐例对齐(盘根、`~`、`/tmp`、`/dev/null`、`/usr` 系),
+       **故意不实现它的 `$VAR` 展开**——对话里的路径是文本,不是 shell 词。两边一致性有冒烟测试锁死
+       (23 例跑两个实现比对),改任一侧必须重跑。
+     - **可选注入**:`ctx.inject(["sidebarRight"], …)`,**不得**写进 `exports.inject`
+       (硬注入不拥有的服务会让 fiber 永久 PENDING,v0.24.0 的 settingsScope 教训);包装经
+       `sctx.effect` 随 fiber 卸载并还原。
+     - **已知边界**:只有"整体是一条路径"的链接能被救;`gitRoot`/`tmpDir` 探测不到时保持原样(退化即修复前)。
+       **未覆盖**:真实 UI 里"点击链接 → tab 显示内容"这最后一跳(需要构造会话)——
+       已覆盖的是宿主路由可达(真机 curl 200)、浏览器加载新 client 半、真实浏览器 console 出现
+       `right-sidebar path rescue armed`(= apply + inject 成功)、浏览器真实请求 pathmap。
+     - 改这层必须跑冒烟里的 `path rescue` 五例 + `path map route` 一例(含真实文件系统断言:
+       `path.resolve(cwd, msys)` 指向不存在的路径,而救回后的拼写 `existsSync` 为真)。
+
 ## 验证清单(改动后)
 
 1. `npm test` 全绿;

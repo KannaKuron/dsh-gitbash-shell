@@ -3,6 +3,101 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.31.0 — 2026-09-27
+
+**类型**:fix + feat(用户报告:点开对话里的文件链接,原生右侧栏显示「文件不存在,可能已被移动或删除」)
+
+> 用户原话:**"dsh原生的右侧边栏不支持这种/c/ 路径? 让我们的gitbash插件能不能修复一下这个bug?"**
+> 截图里 tab 标题是 `/c/Users/kanna/sandbox/dsh-remote-app/AGENTS.md`,内容区是那句 not-found。
+
+### 结论:不是 dsh 的 bug,是本插件引入的方言在 UI 侧没有闭环
+
+dsh **设计上只有两种路径拼写**(POSIX 与 Windows 盘符/UNC,见 `dsh-util-workspace-path` 的
+`isAbsoluteWorkspacePath`);MSYS 盘根是本插件教会模型与工具的东西,**官方核心不认识它**。
+修的责任因此在本插件这边 —— 而且这是本插件第一次把方言边界延伸到**浏览器 UI**。
+
+### 根因链(逐层定位,每一层都有代码位置)
+
+1. 右侧栏是官方包 `ui-sidebar-documentpreview`,它的失败文案按错误码 `workspace-file/not-found`
+   映射(locales.ts:27,与截图逐字一致)。
+2. 读文件的宿主实现在 `packages/api/workspace-files/src/index.ts`:所有路径都经
+   `this.ctx.fs.resolve(path, { cwd: workspaceRoot })` / `fs.lstat(path, { cwd })`。
+3. `packages/fs/fs-local/src/fsio.ts:148-150` 在 win32 上就是 **`node:path.resolve(cwd, path)`**。
+4. `/c/Users/...` **不是** node 眼中的绝对路径(`isAbsolute` 只认 `C:\`、`\\server`、posix 根),
+   于是它被解析成 **`<当前盘符>:\c\Users\...`** —— 一个不存在的路径 ⇒ not-found。
+5. 那个 `/c/...` 是从哪来的:对话里的文件链接文本来自 **shell 输出**,而本插件让 shell 说 MSYS 方言。
+   链接打开走 `ui-chat` 的 `openFile` → `fileAddressFor(sessionId, cwd, path)`
+   (`packages/util/workspace-path`):它用 `cwd` 前缀判断"工作区内→转相对路径"。本机实测 session 目录名是
+   `--C-Users-kanna-sandbox--`,即 **cwd 是 Windows 拼写**(`C:/Users/kanna/sandbox`),而链接文本是
+   `/c/Users/kanna/sandbox/...` —— 前缀不匹配 ⇒ 原样保留绝对 MSYS 拼写 ⇒ 第 4 步必然失败。
+
+### 改动
+
+**宿主半(`src/index.js`)**:新增只读路由 `GET /dsh-gitbash-shell/api/pathmap`,返回
+`{ platform, home, tmpDir, gitRoot, mounts }` —— 就是既有翻译层 `buildTranslateEnv()` 的同一份事实
+(挂载表直接从 `GIT_MOUNTS` 生成,不另抄一份),加 `process.platform` 供客户端判断。与工具链路由同款
+loopback + same-origin fence(`fenceToolRequest`;GET 只需 loopback),因为 web 服务器可能绑在 `0.0.0.0`,
+而这个路由会报出账号自己的目录。
+
+**客户端半(`src/client.js`)**:包装 `ctx.sidebarRight` 的 `openResource` 与 `openResourceIn` ——
+官方文档写明**"每一种进入右侧栏的方式都是这两者之一的调用"**(对话文件链接、工具行行号引用、
+文件树的每一行),所以一个包装点覆盖全部入口,**不碰任何 dsh 源码**。
+
+- 地址语法按官方 `file-address.ts` 实现:解析 `dsh-resource://file/{session/<id>|<absolute>}/<path>`
+  (逐段 `encodeURIComponent`、`:` 保留、UNC 空首段),改写后按同一编码规则重建,`?`/`#` 后缀原样保留。
+- **未改变即原样转发原字符串**(不是"重建后看起来一样"),所以没有翻译过的地址绝不会被 URL 往返改动。
+- 转换语义与宿主 `translateMsysPath` 逐例对齐(盘根 → `X:/`、`~` → home、`/tmp` → 用户 TEMP、
+  `/dev/null` → `\\.\NUL`、`/usr` 系 → Git 根);**不实现宿主的 `$VAR` 展开** —— 对话里的路径是文本不是 shell 词。
+- **门是宿主的事实,不是猜测**:`pathRescueActive()` 要求 `/api/pathmap` 已应答且 `platform === 'win32'`。
+  macOS/Linux 宿主**永不**翻译(客户端的 user agent 说明不了路径属于谁的文件系统);fact 未到时也不翻译
+  (退化为打补丁前的行为,而不是赌一把)。
+- **可选注入**:`ctx.inject(["sidebarRight"], …)` 而非写进 `exports.inject` —— 硬注入一个本插件不拥有的服务
+  会让 fiber 在缺该服务的宿主上永久 PENDING(v0.24.0 的 settingsScope 教训)。
+- 包装挂在服务实例上,经 `sctx.effect` 随插件 fiber 卸载并还原原方法。
+
+### 验证
+
+- `npm test` **118/118 全绿**(新增 6 项):
+  - 驱动**真实 bundle**(fake cordis ctx + fake `sidebarRight` 记录收到的地址)覆盖地址语法:
+    盘根 / `~` / `/tmp` / `/usr` / `/etc`、absolute scope、`?line=12` 后缀、UNC 原样、非 file 地址原样、
+    非法转义原样、边界不误伤(`/tmpfoo`、`/usrx`、`/Tmp`、`/ab/c`)、已是 Windows 拼写原样、相对路径原样。
+  - **宿主事实门**:`platform: 'linux'` 与"fetch 未应答"两种情况下地址逐字节原样。
+  - **可逆性**:disposer 还原原方法;`exports.inject` 不得含 `sidebarRight`(静态断言)。
+  - **浏览器镜像与宿主翻译器逐例比对**:23 个输入跑 `_internal.translateMsysPath` 与客户端实现,结果必须相同
+    —— 锁死两边语义漂移。
+  - **真实文件系统实测(win32)**:用本仓库 `package.json` 造 `/c/...` 形式,断言
+    `path.resolve(cwd, msys)` 指向**不存在**的路径(这就是用户看到的 not-found),而救回后的
+    `C:/...` **existsSync 为真** —— bug 与修复都在真文件上量了一遍。
+  - **路由实测**:驱动真实 `apply()`,断言路由注册为 `prefix`、loopback GET 返回 200 且
+    `platform` 等于 `process.platform`、mounts 键序与客户端遍历序一致、非 loopback 返回 403 `not-loopback`。
+- **真机验证(隔离实例,未碰用户正在运行的实例)**:把用户 web profile 复制到一个独立 `DSH_HOME`
+  (Windows 上 `cp -rL` 解引用 pnpm 链接,97M → 366M,5 秒),把插件目录换成**本仓源码**,独立端口起
+  `dsh web`,然后:
+  - 宿主侧:`GET /dsh-gitbash-shell/api/pathmap` 实测 **HTTP 200**,返回
+    `{"platform":"win32","home":"C:/Users/kanna","tmpDir":"C:/Users/kanna/AppData/Local/Temp",
+    "gitRoot":"c:/program files/git","mounts":{…7 项,键序与客户端遍历序一致}}`
+    —— 启动日志出现 `MSYS path map route active at /dsh-gitbash-shell/api/pathmap`。
+  - 客户端侧:首页 `window.__DSH_BOOT__` 里 `dsh-gitbash-shell` 出现 5 次(启动图含本插件);
+    `curl` 它实际会取的 combo URL(`/plugins/??dsh-gitbash-shell/client.js&rev=…`)返回 **200**,
+    内容含完整新代码段且**语法有效**。
+  - **真实浏览器(CDP 驱动 driver 自己的隔离 Chromium,不动用户的浏览器)控制台实测出现**
+    `[gitbash-shell/client] right-sidebar path rescue armed (host spelling restored on open)`
+    —— 这一行在 `ctx.inject(["sidebarRight"], …)` 的回调内部,所以它同时证明:client 半在真实浏览器
+    里 apply、**`sidebarRight` 客户端服务可见、inject 回调被调用、`openResource` 是函数且已被包装**。
+  - 宿主日志随后出现 `path map read by <loopback>` —— **浏览器真的拉到了那份宿主事实**,
+    即 `pathRescueActive()` 在生产链路里会返回 true。
+  - 路由新增一行访问日志(`path map read by <addr>`),既是诊断手段,也是上面这条验证的观测点。
+- **仍未覆盖**:真实 UI 里"点击 `/c/...` 链接 → tab 显示出文件内容"这最后一跳(需要先构造一个带
+  MSYS 路径的会话)。这一跳的两端都被验证过 —— 地址重写(单元矩阵)与宿主可读性(真实文件
+  `existsSync`);用户在重启客户端后即可实测确认。
+
+### 已知边界(如实记录)
+
+- 只有"整体就是一条路径"的链接能被救:`/c/Users/x` 成立;而 shell 输出里**被文本截断/拼接**的路径、
+  以及 `/c` 之外的 MSYS 虚拟根(若宿主探测不到 Git 根,tmpDir/gitRoot 为 null)保持原样 ——
+  退化行为与修复前一致,**不会**产生错误路径。
+- `/dev/null` 这类设备路径即使被点开也没有可读内容(与文件工具一致,EINVAL 如实报错)。
+
 ## v0.30.1 — 2026-09-26
 
 **类型**:fix(用户实测反馈 v0.30.0 的工具列表:点了按钮看不到进度、看不到在装哪一个、看不到报错、还能连点)

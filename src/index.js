@@ -2776,6 +2776,62 @@ export async function apply(ctx, config = {}) {
     }
   }
 
+  // ── MSYS path facts for the browser half (v0.31.0) ───────────────────────
+  // The native right Sidebar receives the path spelling the CONVERSATION
+  // shows. While this plugin's POSIX dialect is on, that spelling is an MSYS
+  // drive root (/c/Users/...), and the Host filesystem resolves it against the
+  // current drive instead — '<drive>:\c\Users\...' — so every file link in the
+  // transcript opens onto "file not found". The browser half rewrites the
+  // resource address before opening it; this route is the fact bag that
+  // rewrite needs. It reports the SAME env the tool-argument translation
+  // already resolves against, plus the platform, so a non-Windows client never
+  // rewrites anything. Read-only and loopback-fenced (a GET needs no Origin),
+  // because the web server may be bound to 0.0.0.0.
+  try {
+    ctx.inject(['webServer'], (wctx) => {
+      try {
+        const route = '/dsh-gitbash-shell/api/pathmap'
+        const mounts = {}
+        for (const [mount, target] of GIT_MOUNTS) mounts[mount] = target
+        const send = (res, code, payload) => {
+          const text = JSON.stringify(payload)
+          res.writeHead(code, {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': 'no-store',
+            'content-length': Buffer.byteLength(text),
+          })
+          res.end(text)
+        }
+        const handler = (req, res) => {
+          const fence = fenceToolRequest(req)
+          if (!fence.ok) {
+            console.log(TAG + ' path map request refused (' + fence.reason + ')')
+            send(res, 403, { error: 'forbidden', reason: fence.reason })
+            return
+          }
+          const env = buildTranslateEnv(configuredBashPath)
+          // One line per read: the browser half fetches this once per page load,
+          // so its presence in the log is how a user can tell the rescue is live.
+          console.log(TAG + ' path map read by ' + (req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : '?'))
+          send(res, 200, {
+            platform: process.platform,
+            home: env.home ?? null,
+            tmpDir: env.tmpDir ?? null,
+            gitRoot: env.gitRoot ?? null,
+            mounts,
+          })
+        }
+        const dispose = wctx.webServer.register({ kind: 'prefix', path: route, handler })
+        wctx.effect(() => dispose, 'dsh-gitbash-shell: path map route')
+        console.log(TAG + ' MSYS path map route active at ' + route + ' (read by the browser half)')
+      } catch (error) {
+        console.log(TAG + ' path map route failed: ' + (error?.message ?? error))
+      }
+    })
+  } catch (error) {
+    console.log(TAG + ' path map route wiring failed: ' + (error?.message ?? error))
+  }
+
   // ── winget toolchain route (v0.30.0) ─────────────────────────────────────
   // The settings card's "install / upgrade" buttons. Installing software is a
   // real side effect, so src/tool-runner.js fences the route: only a loopback

@@ -2452,6 +2452,185 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		// ── native right-sidebar path rescue (v0.31.0) ───────────────────────
+		//
+		// WHY: while the POSIX dialect is on, the conversation shows MSYS drive
+		// roots (/c/Users/...), and dsh's OWN file links carry that spelling into
+		// the right Sidebar. The Host resolves the path with node:path against
+		// the session cwd, so '/c/Users/x' becomes '<current drive>:\c\Users\x'
+		// and the preview answers "file not found". The plugin introduced that
+		// spelling, so the plugin restores its meaning — at the ONE point every
+		// way into the column passes through: `ctx.sidebarRight.openResource`
+		// (conversation file links, tool-row line references, the file tree).
+		//
+		// SAFETY: the rewrite is driven by the HOST's own platform fact, never by
+		// a guess: nothing is rewritten until `/api/pathmap` reports win32, so a
+		// macOS/Linux Host can never see its paths translated. A path already in
+		// the Host's spelling is returned unchanged, so with the dialect off the
+		// wrapper is a pure pass-through. The wrapper lives on the service
+		// instance and is removed with this plugin's own fiber.
+		var FILE_ADDRESS_PREFIX = "dsh-resource://file/";
+		var PATHMAP_URL = "dsh-gitbash-shell/api/pathmap";
+		/** The Host's MSYS facts, or null until /api/pathmap has answered. */
+		var pathMap = null;
+		var pathMapRequested = false;
+
+		/** Read the Host's platform + mount facts once; never blocks a click. */
+		function loadPathMap() {
+			if (pathMapRequested) return;
+			pathMapRequested = true;
+			try {
+				Promise.resolve(fetch(PATHMAP_URL, { headers: { accept: "application/json" } }))
+					.then(function (response) { return response && response.ok ? response.json() : null; })
+					.then(function (body) {
+						if (body && typeof body === "object" && typeof body.platform === "string") pathMap = body;
+						else console.warn(TAG + " path map unavailable: no rewrite until the host answers");
+					})
+					.catch(function (error) {
+						console.warn(TAG + " path map fetch failed:", error && error.message ? error.message : error);
+					});
+			} catch (error) {
+				console.warn(TAG + " path map fetch threw:", error && error.message ? error.message : error);
+			}
+		}
+
+		/** Whether the Host is a Windows one whose filesystem needs the rewrite. */
+		function pathRescueActive() {
+			return pathMap !== null && pathMap.platform === "win32";
+		}
+
+		/**
+		 * '/c/Users/x' -> 'C:/Users/x', plus the Git Bash mounts the Host's own
+		 * translation layer resolves (~, /tmp, /dev/null, /usr & friends). Mirrors
+		 * src/index.js translateMsysPath WITHOUT its `$VAR` expansion: a path
+		 * rendered in the transcript is text, not a shell word.
+		 */
+		function msysToHostPath(value, env) {
+			if (typeof value !== "string" || value === "") return value;
+			var facts = env || {};
+			if (facts.home && (value === "~" || value.slice(0, 2) === "~/")) {
+				return value === "~" ? facts.home : facts.home + "/" + value.slice(2);
+			}
+			var drive = /^\/([a-z])\/(.*)$/i.exec(value);
+			if (drive) return drive[1].toUpperCase() + ":/" + drive[2];
+			var bare = /^\/([a-z])$/i.exec(value);
+			if (bare) return bare[1].toUpperCase() + ":/";
+			if (value === "/dev/null") return "\\\\.\\NUL";
+			if (facts.tmpDir && (value === "/tmp" || value.slice(0, 5) === "/tmp/")) {
+				return value === "/tmp" ? facts.tmpDir : facts.tmpDir + value.slice(4);
+			}
+			if (facts.gitRoot && facts.mounts) {
+				var mounts = facts.mounts;
+				for (var mount in mounts) {
+					if (!Object.prototype.hasOwnProperty.call(mounts, mount)) continue;
+					if (value === mount || value.slice(0, mount.length + 1) === mount + "/") {
+						return facts.gitRoot + "/" + mounts[mount] + (value === mount ? "" : value.slice(mount.length));
+					}
+				}
+			}
+			return value;
+		}
+
+		/** Component-encode one path segment, keeping ':' literal for drive letters. */
+		function encodeAddressSegment(segment) {
+			return encodeURIComponent(segment).replace(/%3A/gi, ":");
+		}
+
+		/** Encode a '/'-separated path the way dsh's own address builder does. */
+		function encodeAddressPath(path) {
+			return path.split("/").map(encodeAddressSegment).join("/");
+		}
+
+		/**
+		 * Rewrite one `dsh-resource://file/...` address so its path uses the
+		 * Host's spelling. Anything that is not a file address, does not decode,
+		 * or does not change comes back untouched — the caller then forwards the
+		 * ORIGINAL string, so no URL round trip can alter a path we never
+		 * translated.
+		 * @param address - the resource address the Sidebar is about to open.
+		 * @param env - the Host's mount facts, or null.
+		 * @returns the address to open.
+		 */
+		function rescueFileAddress(address, env) {
+			if (typeof address !== "string" || address.slice(0, FILE_ADDRESS_PREFIX.length) !== FILE_ADDRESS_PREFIX) return address;
+			var tail = address.slice(FILE_ADDRESS_PREFIX.length);
+			var cut = tail.search(/[?#]/);
+			var suffix = cut === -1 ? "" : tail.slice(cut);
+			var parts = (cut === -1 ? tail : tail.slice(0, cut)).split("/");
+			var scope = parts.shift();
+			if (scope !== "session" && scope !== "absolute") return address;
+			var sessionId = null;
+			if (scope === "session") {
+				sessionId = parts.shift();
+				if (sessionId === undefined || sessionId === "" || parts.length === 0) return address;
+			}
+			var segments;
+			try {
+				segments = parts.map(decodeURIComponent);
+			} catch (error) {
+				return address;   // a malformed escape is not ours to repair
+			}
+			// '//server/share' keeps an empty first segment; a UNC path is never an
+			// MSYS drive root, so it is left exactly as the Host spelled it.
+			if (scope === "absolute" && segments[0] === "" && segments.length > 1) return address;
+			var path = scope === "absolute" ? "/" + segments.join("/") : segments.join("/");
+			var translated = msysToHostPath(path, env);
+			if (translated === path) return address;
+			var rebuilt = scope === "session"
+				? FILE_ADDRESS_PREFIX + "session/" + encodeAddressSegment(sessionId) + "/" + encodeAddressPath(translated)
+				: FILE_ADDRESS_PREFIX + "absolute/" + encodeAddressPath(translated.replace(/^\/+/, ""));
+			return rebuilt + suffix;
+		}
+
+		/**
+		 * Wrap the navigation controller's ONE address-taking entry point. Every
+		 * way into the right column calls `openResource` (or its per-session twin),
+		 * so one wrapper covers the conversation links, the tool rows and the file
+		 * tree at once — no dsh source is touched, and the wrapper is removed when
+		 * this plugin's fiber is.
+		 */
+		function installPathRescue(ctx) {
+			loadPathMap();
+			try {
+				ctx.inject(["sidebarRight"], function (sctx) {
+					try {
+						var controller = sctx && sctx.sidebarRight;
+						if (!controller || controller.gbPathRescue === true) return;
+						var openResource = controller.openResource;
+						if (typeof openResource !== "function") return;
+						var openResourceIn = controller.openResourceIn;
+						var rescue = function (address) {
+							return pathRescueActive() ? rescueFileAddress(address, pathMap) : address;
+						};
+						controller.openResource = function (address, options) {
+							return openResource.call(this, rescue(address), options);
+						};
+						if (typeof openResourceIn === "function") {
+							controller.openResourceIn = function (sessionId, address, options) {
+								return openResourceIn.call(this, sessionId, rescue(address), options);
+							};
+						}
+						controller.gbPathRescue = true;
+						var restore = function () {
+							try {
+								controller.openResource = openResource;
+								if (typeof openResourceIn === "function") controller.openResourceIn = openResourceIn;
+								delete controller.gbPathRescue;
+							} catch (error) { /* a frozen instance keeps the wrapper; harmless */ }
+						};
+						if (typeof sctx.effect === "function") {
+							sctx.effect(function () { return restore; }, "dsh-gitbash-shell: sidebar path rescue");
+						}
+						console.log(TAG + " right-sidebar path rescue armed (host spelling restored on open)");
+					} catch (error) {
+						console.warn(TAG + " right-sidebar path rescue failed:", error && error.message ? error.message : error);
+					}
+				});
+			} catch (error) {
+				console.warn(TAG + " right-sidebar path rescue wiring failed:", error && error.message ? error.message : error);
+			}
+		}
+
 		// ── plugin ────────────────────────────────────────────────────────────
 
 		exports.name = "dsh-gitbash-shell/client";
@@ -2579,6 +2758,11 @@ window.__ModuleLoader__.load({
 			} catch (error) {
 				console.warn(TAG + " settings card registration failed:", error && error.message ? error.message : error);
 			}
+
+			// The native right Sidebar consumes the very dialect this card gates,
+			// so the rescue is armed on the same mount — and independently of the
+			// card, which must never be taken down by it.
+			installPathRescue(ctx);
 		};
 
 		return module.exports;
