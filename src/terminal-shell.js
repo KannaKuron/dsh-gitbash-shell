@@ -69,6 +69,15 @@ export const TERMINAL_SHELL_NAME = 'Git Bash'
 export const TERMINAL_SHELL_ARGS = ['-i']
 
 /**
+ * The ONLY historical name we may rewrite (v0.29.1). v0.29.0 wrote `'bash'`,
+ * which is indistinguishable from the WSL candidate in the new-terminal menu —
+ * that entry is ours and we fix it. Any OTHER name (`My Bash`, `Git`, a hand
+ * edit) is a user decision and is left completely alone, exactly like a shell
+ * path pointing elsewhere: this plugin never rewrites what the user chose.
+ */
+export const LEGACY_TERMINAL_SHELL_NAME = 'bash'
+
+/**
  * The shell profile we write into `terminal-controller`'s config.
  * @param path - verified Git Bash path.
  * @returns the `{ path, name, args }` profile.
@@ -124,14 +133,24 @@ export function planTerminalAdopt({ platform, enabled, resolved, current }) {
     if (current.name === TERMINAL_SHELL_NAME) {
       return { action: 'unchanged', current, reason: 'the terminal already uses this Git Bash under the right name' }
     }
-    // Historical config from v0.29.0 (or a hand edit): the path is OURS, only
-    // the label is stale — migrate the name alone and leave path/args alone.
+    // Only OUR OWN legacy default is migrated: v0.29.0 wrote `name: 'bash'`,
+    // and that is the entry the user cannot tell apart from the WSL candidate.
+    // Every other name is a user decision (or a hand edit) — left untouched.
+    if (current.name === LEGACY_TERMINAL_SHELL_NAME) {
+      return {
+        action: 'rename',
+        current,
+        shell: { ...current, name: TERMINAL_SHELL_NAME },
+        reason: 'the terminal runs this Git Bash under our own legacy label "'
+          + LEGACY_TERMINAL_SHELL_NAME + '" — renaming it to "' + TERMINAL_SHELL_NAME
+          + '" so it cannot be confused with the WSL candidate',
+      }
+    }
     return {
-      action: 'rename',
+      action: 'kept-user-name',
       current,
-      shell: { ...current, name: TERMINAL_SHELL_NAME },
-      reason: 'the terminal already runs this Git Bash but is displayed as "' + current.name
-        + '" — renaming it to "' + TERMINAL_SHELL_NAME + '" so it cannot be confused with the WSL candidate',
+      reason: 'the terminal runs this Git Bash but you named it "' + current.name
+        + '" — a chosen name is never rewritten (and a custom name cannot be confused with the WSL candidate)',
     }
   }
   return {
@@ -219,6 +238,8 @@ export function terminalAdoptReport(result) {
       return 'official sidebar terminal already uses this Git Bash: ' + (result.current ? result.current.path : '') + ' (nothing written)'
     case 'kept-user-choice':
       return 'official sidebar terminal NOT adopted: ' + result.detail
+    case 'kept-user-name':
+      return 'official sidebar terminal NOT renamed: ' + result.detail
     case 'write-failed':
       return 'official sidebar terminal adoption FAILED — ' + result.detail
         + ' | next steps: (1) the new-terminal shell is UNCHANGED, so dsh keeps its own resolution;'

@@ -12,13 +12,16 @@
 
 - **显示名改为 `Git Bash`**(`TERMINAL_SHELL_NAME`):`name` 只是 `TerminalShell.name` 这个**用户可见 profile 名**,解析与执行看 `path`/`args`
   ⇒ 改它**不改变任何行为**,只让菜单里两项可区分;`args: ['-i']` 保留(官方 `profile()` 对 bash 的默认)。
-- **历史配置自动迁移**:path 是我们的 Git Bash 但 `name` ≠ `Git Bash`(v0.29.0 写入的 `bash`,或用户手改)
-  ⇒ 新增 `rename` 动作,**只改 `name`**(path/args 原样保留),同样**写回后读回校验**(路径与名字都对才成功),
-  不符 ⇒ `write-failed` + fail-loud;迁移后**再跑一次仍 `unchanged`**(幂等,patch md5 不变)。
+- **只迁移我们自己写的旧默认名**:`name` 恰为 `'bash'`(v0.29.0 的默认值)⇒ 新增 `rename` 动作,**只改 `name`**
+  (path/args 原样保留),同样**写回后读回校验**(路径与名字都对才成功),不符 ⇒ `write-failed` + fail-loud;
+  迁移后**再跑一次仍 `unchanged`**(幂等,patch md5 不变)。
+- **用户自起的名字绝不动(验收收窄,Lead 裁决)**:path 是我们的 Git Bash 但 `name` 是别的(`My Bash`/`Git`/空)
+  ⇒ 新状态 **`kept-user-name`,零写入**——用户显式起的名就是用户选择,而且自定义名本来也不会与 WSL 候选混淆。
 - **异值仍绝不覆盖**:path 指向别处(例如 WSL)⇒ 维持 `kept-user-choice`,只记日志。**`shellCandidates` 不动**
   (与用户确认过的口径:改名即可区分;那条 WSL 候选仍会出现在菜单里,被区分开的是名字)。
 - 文案:README 的写入形状示例与 AGENTS §4i 同步为 `name: 'Git Bash'`;21 语言卡片文案无需改动(未提名字)。
-- **验证**:`npm test` **101/101**(新增「历史 `bash` 标签迁移 + 迁移后幂等 + 名字没落盘 ⇒ `write-failed [name mismatch]`」,
+- **验证**:`npm test` **102/102**(新增「历史 `bash` 标签迁移 + 迁移后幂等 + 名字没落盘 ⇒ `write-failed [name mismatch]`」
+  与「用户自起名字 ⇒ `kept-user-name`、零写入、patch 不变(含 `My Bash`/`Git`/空名三态)」,
   并把既有断言从 `name: 'bash'` 更新为 `name: 'Git Bash'`);`align-official` 四变体仍逐字节对齐。
   真机(隔离 DSH_HOME + 副本强制 win32 门 + 伪装已解析 Git Bash):新建写入 ⇒ `--dump-config` 读出
   `terminal-controller.config.shell.name = Git Bash`;预置历史 `name: bash` 的 patch ⇒ 日志 `renamed to "Git Bash"` 且

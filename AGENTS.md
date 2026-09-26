@@ -313,9 +313,11 @@
        `C:\Windows\System32\bash.exe` 的机器上会解析到 **WSL**,于是「新建终端」菜单里出现**两条 `bash`**,用户分不清
        ("新增的gitbash显示名称得是gitbash,不然回合wsl的混了")。`name` 只是 `TerminalShell.name` **显示名**,不影响
        解析/执行,但**必须**与 WSL 候选区分开;`shellCandidates` 仍不动。
-     - **历史配置要迁移**:path 是我们的 Git Bash 但 `name` ≠ `Git Bash`(v0.29.0 写进去的 `bash`,或用户手改)
+     - **只迁移"我们自己写下的旧默认名"**:`name` 恰为 `LEGACY_TERMINAL_SHELL_NAME = 'bash'`(v0.29.0 的默认值)
        ⇒ 新增 `rename` 动作**只改 `name`**(path/args 原样保留),同样**写回后读回校验**(路径与名字都要对),
        不符 ⇒ `write-failed`;迁移后再跑仍是 `unchanged`(**幂等**,patch md5 不变)。
+       **其它任何名字**(`My Bash`、`Git`、用户手改、空名)⇒ 新状态 `kept-user-name`,**不写、不动** ——
+       与"path 指向别处"同级:用户显式起的名就是用户选择,而且自定义名本来也不会与 WSL 候选混淆(Lead 裁决 2026-09-26)。
      - **绝不写没验证过的路径**:`resolveShell` 用 `resolveExecutable()` 校验配置路径,失败**没有回退**、直接让「新建终端」启动失败
        ⇒ 只允许写 `src/bash-path.js` 判据全过的 Git Bash。**写入后必须读回校验**,不符 ⇒ `write-failed` + fail-loud。
      - `shellCandidates` 不动(配置的 shell 恒排首位);菜单里可能仍有一条候选 `bash`(解析到 WSL)属预期。
@@ -463,7 +465,7 @@
 
 10. **官方侧栏终端接管改动(§4i,v0.29.0 起)**:隔离实例里用**副本**强制 win32 门 + 伪装"已验证的 Git Bash",
     **只看 profile patch 的字节变化**证明五态:空值→新增 `- id: terminal-controller` 行且 `shell.name: Git Bash`、用户手写行/注释原样保留;
-    **历史 `name: bash`→只改这一行 name 的迁移**;再跑一次同值→patch **md5 未变**(幂等);异值→patch 未变且日志含"explicit choice is never overwritten";开关关→patch 未变。
+    **历史 `name: bash`(我们自己写的默认名)→只改这一行 name 的迁移**、**`name: My Bash`(用户自起)→零写入且 md5 未变**;再跑一次同值→patch **md5 未变**(幂等);异值→patch 未变且日志含"explicit choice is never overwritten";开关关→patch 未变。
     另用 `--dump-config` 读 `terminal-controller.config.shell.path`、无头浏览器确认零 pageerror。
     Windows 真机(菜单项、`uname -r` 是否 `MINGW64_NT-*`)如实标注未验证,并在 README 给用户三步复验清单。
 

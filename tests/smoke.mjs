@@ -2441,16 +2441,46 @@ test('sidebar terminal: a historical `bash` label is migrated to Git Bash, then 
   const again = await adoptTerminalShell(editor, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
   assert.equal(again.status, 'unchanged')
   assert.equal(editor.calls.length, 1, 'no second write after the migration')
-  // the pure decision also reports the plan explicitly
-  const plan = planTerminalAdopt({
+  // the pure decision only migrates OUR legacy default name
+  const legacy = planTerminalAdopt({
     platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe',
-    current: { path: 'Q:/Git/bin/bash.exe', name: '', args: [] },
+    current: { path: 'Q:/Git/bin/bash.exe', name: 'bash', args: [] },
   })
-  assert.equal(plan.action, 'rename')
-  assert.deepEqual(plan.shell, { path: 'Q:/Git/bin/bash.exe', name: 'Git Bash', args: [] })
+  assert.equal(legacy.action, 'rename')
+  assert.deepEqual(legacy.shell, { path: 'Q:/Git/bin/bash.exe', name: 'Git Bash', args: [] })
   // a rename whose name does not stick is a failure, never a success
   const notSticky = fakeEditor({ shell: { path: 'Q:/Git/bin/bash.exe', name: 'bash', args: ['-i'] }, sticky: false })
   const stuck = await adoptTerminalShell(notSticky, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
   assert.equal(stuck.status, 'write-failed')
   assert.match(stuck.detail, /name mismatch/)
+})
+
+test('sidebar terminal: a name the USER chose is never rewritten', async () => {
+  const { adoptTerminalShell, planTerminalAdopt, terminalAdoptReport } = await import('../src/terminal-shell.js')
+  // path is ours, but the label is the user's own → read-only, exactly like an
+  // explicit shell-path choice. Only v0.29.0's own `bash` default is migrated.
+  for (const label of ['My Bash', 'Git', 'Zsh-like', '']) {
+    const editor = fakeEditor({ shell: { path: 'Q:/Git/bin/bash.exe', name: label, args: ['-i'] } })
+    const result = await adoptTerminalShell(editor, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+    assert.equal(result.status, 'kept-user-name', 'name "' + label + '" must be left alone')
+    assert.equal(editor.calls.length, 0, 'zero writes for a user-chosen name: ' + label)
+    assert.equal(editor.state.config.shell.name, label, 'the name is untouched')
+    assert.match(terminalAdoptReport(result), /NOT renamed/)
+    assert.match(terminalAdoptReport(result), /never rewritten/)
+  }
+  const plan = planTerminalAdopt({
+    platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe',
+    current: { path: 'Q:/Git/bin/bash.exe', name: 'My Bash', args: [] },
+  })
+  assert.equal(plan.action, 'kept-user-name')
+  assert.equal(plan.shell, undefined, 'a kept name produces no write payload')
+  // and the boundary: our own legacy default IS migrated, a correct name is not touched
+  assert.equal(planTerminalAdopt({
+    platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe',
+    current: { path: 'Q:/Git/bin/bash.exe', name: 'bash', args: [] },
+  }).action, 'rename')
+  assert.equal(planTerminalAdopt({
+    platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe',
+    current: { path: 'Q:/Git/bin/bash.exe', name: 'Git Bash', args: [] },
+  }).action, 'unchanged')
 })
