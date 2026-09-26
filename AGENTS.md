@@ -29,7 +29,7 @@
 3) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
-0. **双时代总纲(v0.24.0 起,dsh 0.1.7 分界)**:dsh 0.1.7 **删除了目录预设机制**,预设改为声明式——本插件在 register() 可用的宿主上直接 `ctx.agentPresets.register(definition)` 注册四个变体(行数据 = `src/compositions.js`,镜像官方 0.1.7 standard/minimal/ptc/cordis + Git Bash 增量);旧宿主(≤0.1.6)仍走完整物化路径(本文件其余条目继续生效)。时代探测 = `typeof ctx.agentPresets.register === 'function'`。声明式路径要点:变体行集由 `pluginsFor({ kind, gitBash, skillsDir })` / `minimalPluginsFor()` 生成;cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不再拷贝);启动时清理旧物化目录树(仅 marker 判定 unmodified 的);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载)。**设置面同 dsh-agent-lang v0.7.0 双时代**:host 半**顶层 await 惰性 import** schemastery 并导出 `Config`(8 个开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半可选注入 settingsScope/configForms;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。另:peerDependencies 必须声明 `"@deepseek-ai/dsh": ">=0.1.0"` 且标 `peerDependenciesMeta.optional`(rc.1 的兼容门禁只读这类 peer;不设上界;optional 避免 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败)。
+0. **双时代总纲(v0.24.0 起,dsh 0.1.7 分界)**:dsh 0.1.7 **删除了目录预设机制**,预设改为声明式——本插件在 register() 可用的宿主上直接 `ctx.agentPresets.register(definition)` 注册四个变体(行数据 = `src/compositions.js`,镜像官方 0.1.7 standard/minimal/ptc/cordis + Git Bash 增量);旧宿主(≤0.1.6)仍走完整物化路径(本文件其余条目继续生效)。时代探测 = `typeof ctx.agentPresets.register === 'function'`。声明式路径要点:变体行集由 `pluginsFor({ kind, gitBash, skillsDir })` / `minimalPluginsFor()` 生成;cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不再拷贝);启动时清理旧物化目录树(仅 marker 判定 unmodified 的);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载)。**设置面同 dsh-agent-lang v0.7.0 双时代**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(8 个开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;v0.31.1 起取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半可选注入 settingsScope/configForms;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。另:peerDependencies 必须声明 `"@deepseek-ai/dsh": ">=0.1.0"` 且标 `peerDependenciesMeta.optional`(rc.1 的兼容门禁只读这类 peer;不设上界;optional 避免 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败)。
 
 1. **执行器只替换 argv,不替换行为——除 Windows 受限分支(v0.13.2,issue #1)**:沙箱策略、拒绝分类、
    后台任务、设置节全部沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash
@@ -454,6 +454,36 @@
        `right-sidebar path rescue armed`(= apply + inject 成功)、浏览器真实请求 pathmap。
      - 改这层必须跑冒烟里的 `path rescue` 五例 + `path map route` 一例(含真实文件系统断言:
        `path.resolve(cwd, msys)` 指向不存在的路径,而救回后的拼写 `existsSync` 为真)。
+
+4k. **schemastery 取哪一份,由宿主行为决定(v0.31.1,issue #12)**:插件**必须**与它所继承的执行器基类
+     用**同一套语义**的 schemastery。dsh 0.1.7+ 的 `LocalBashExecutor.Config` 把六个字段声明为 `.volatile()`
+     并在 `assertServiceableBashConfig`(line 80)与 `resolve`(line 124/132)里调 `.get()`;用一份
+     **没有 `volatile()`** 的 schemastery 构造 Config ⇒ 字段退化成普通值 ⇒ **每次 shell 调用**都
+     `TypeError: config.timeoutMs.get is not a function`,而插件已经把 pwsh-sandbox 关掉 ⇒
+     **整个会话的命令能力归零**,且宿主日志全绿(插件行本身加载成功,报错也指不到插件)。
+     - **这不是用户的配置问题**:`@deepseek-ai/schemastery` 是 peer,Node 从**插件文件向上**解析,
+       在 hoisted profile 里会先撞上被其他依赖**提升到 profile 根**的旧副本(报告者实测 3.18.2,无 volatile),
+       而宿主自己用的是安装目录里与 shell 包放在一起的那份(3.18.4)。hoisted 布局与依赖提升都是 pnpm 的正常行为。
+     - **v0.24.4(issue #6)的 `live()` 逐字段探测只在「我们碰巧解析到的那份恰好有 `volatile()`」时有效** ——
+       这正是 #12 指出的软肋。`src/schemastery.js` 把它换成**宿主行为驱动**:
+       ① `hostWantsVolatileRefs(ParentConfig)` 直接调用**宿主自己**的 `SandboxBashExecutor.Config({})`,
+          看 `timeoutMs` 解析成 `{ get() }` 还是普通值 —— 读的是**行为**,不碰任何私有 schema 结构;
+          宿主答不上来(抛错/非函数)⇒ `undefined`;
+       ② `chooseCopy` 纯函数:宿主要 refs 且**自己的副本能服务** ⇒ 保持自己那份(**能服务就不换**);
+          自己那份不能 ⇒ **重定向到 shell 包那份**并打一行日志说明取自哪里;宿主读普通值(≤0.1.6)⇒
+          保持自己那份(**绝不**递一个它不会 `.get()` 的 ref —— 那是 #12 的镜像错误);宿主答不上来 ⇒
+          保持历史行为(逐字段探测),**不替宿主猜**;要而哪儿都没有 ⇒ 保留自己那份(**不改其它行为**)
+          但 **fail-loud 说明原因**,不再留一个与插件看不出关系的神秘 TypeError;
+       ③ **两个消费点共用同一份缓存解析**(`src/shell.js` 的执行器 Config ↔ `src/index.js` 的行 Config 与
+          旧时代 settings 命名空间),否则两处可能拿到不同的 schemastery,设置项与执行器就会各说各话。
+     - **不得恢复静态 peer import**(v0.24.3 的教训,见 §0):解析在 `src/schemastery.js` 内**动态**进行;
+       `src/shell.js` 的那个顶层 await 是**唯一**一处,冒烟 harness 用 `stripModule()` 把它换成桩
+       (`new Function` 里不能出现 await)。
+     - **第三种组合(宿主要 refs 而两边都没有)在现实中不可达**:宿主能正常跑,就说明它自己解析到了配套副本,
+       而"shell 包域"正是宿主的域;该分支仍保留 fail-loud 作为防御,并由单元测试覆盖。
+     - 改这层必须跑冒烟里的 `schemastery:` 五例。**判断修复是否成立时,判据必须是「插件与宿主的解析结果
+       是否一致」,不能是「有没有 `.get()`」** —— 后者在旧宿主上会给出反向的错误结论(旧宿主拿到 ref 同样是崩),
+       见 CHANGELOG v0.31.1 的对照实验。
 
 ## 验证清单(改动后)
 

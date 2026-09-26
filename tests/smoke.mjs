@@ -12,6 +12,23 @@ import {
 } from '../src/toolchain.js'
 import { fenceToolRequest, runToolJob } from '../src/tool-runner.js'
 
+/**
+ * Reduce one src module to an evaluable body for the `new Function` harnesses
+ * below: imports/exports go, and so does the module's SINGLE top-level await —
+ * a `new Function` body cannot contain one. v0.31.1 made shell.js and
+ * src/index.js resolve their schemastery copy asynchronously (issue #12, see
+ * src/schemastery.js), so the harness supplies that resolution result directly;
+ * the resolution itself is covered by the schemastery tests further down.
+ */
+function stripModule(source) {
+  return source
+    .replace(/^import .*$/gm, '')
+    .replace(/^export default /gm, '')
+    .replace(/^export /gm, '')
+    .replace(/^.*await loadSchemastery\([^\n]*\).*$/m, (line) => (
+      line.includes('const schema =') ? 'const schema = { z: z }' : 'Schema = z'))
+}
+
 /* Bindings for the shell.js eval harnesses below: those strip every `import`
    line, so the shared bash resolver arrives as explicit stubs. The stub keeps
    the real contract that matters to the executor — a CONFIGURED path resolves
@@ -842,7 +859,7 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
   const baseLiveFields = ['cwd', 'timeoutMs', 'maxTimeoutMs', 'maxOutputBytes', 'maxSpillBytes', 'graceMs']
 
   const src = readFileSync('src/shell.js', 'utf8')
-  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'SandboxBashExecutor', 'z', 'process',
     stripped + '\nreturn { gitBashShellConfig, Config, GitBashSandboxExecutor }')
   class FakeBase {}
@@ -883,14 +900,34 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
     assert.equal(plainFields[key].marked, 0, key + ' must stay plain where volatile() does not exist')
   }
 
-  // 3) The shipping Config is built through that same probe.
-  assert.match(src, /export const Config = gitBashShellConfig\(z\)/)
+  // 3) The host's ANSWER outranks what our copy happens to offer (issue #12):
+  //    a <=0.1.6 host reads plain values, so a `volatile`-capable copy must
+  //    still emit plain fields — handing that base class a ref it never
+  //    `.get()`s is the mirror image of the reported crash.
+  const capableButPlainHost = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withVolatile.z, process)
+    .gitBashShellConfig(withVolatile.z, false)
+  for (const key of [...baseLiveFields, 'bashPath']) {
+    assert.equal(capableButPlainHost[key].marked, 0, key + ' must stay plain when the host reads plain values')
+  }
+  //    …and `true` forces them even where the probe alone would have to guess.
+  const forced = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withVolatile.z, process)
+    .gitBashShellConfig(withVolatile.z, true)
+  for (const key of baseLiveFields) {
+    assert.equal(forced[key].marked, 1, key + ' must be marked volatile when the host demands refs')
+  }
+
+  // 4) The shipping Config comes from the host-aware resolver, not from
+  //    whatever Node resolves first, and the resolution result reaches the
+  //    factory together with the host's answer.
+  assert.match(src, /await loadSchemastery\(\{ parentConfig: SandboxBashExecutor\.Config \}\)/)
+  assert.match(src, /export const Config = schema\.z \? gitBashShellConfig\(schema\.z, schema\.needsVolatile\) : undefined/)
   assert.match(src, /typeof schema\.volatile === 'function' \? schema\.volatile\(\) : schema/)
+  assert.doesNotMatch(src, /^import .*'@deepseek-ai\/schemastery'/m, 'no static peer import may kill the whole row')
 })
 
 test('executor: Windows confined calls run unconfined and say so (issue #1)', async () => {
   const src = readFileSync('src/shell.js', 'utf8')
-  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   class FakeBase {
     constructor() { this.calls = [] }
@@ -1054,7 +1091,7 @@ test('assets keep the pre-rename engine spelling; alignment is a materialization
 
 test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)', async () => {
   const src = readFileSync('src/shell.js', 'utf8')
-  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
@@ -1129,7 +1166,7 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
   // (issue #1) — i.e. the plugin's whole reason to exist would be inert even
   // after the Config fix.
   const src = readFileSync('src/shell.js', 'utf8')
-  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
@@ -1221,7 +1258,7 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
   // the executor's Linux-parity env (GIT_CONFIG_* autocrlf=input) and the
   // better-sidebar terminal adoption both stopped happening with no error.
   const src = readFileSync('src/shell.js', 'utf8')
-  const stripped = src.replace(/^import .*$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '')
+  const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
   const build = (settings) => {
@@ -1527,11 +1564,14 @@ test('host half: lazy Config with volatile probing and the era branch', async ()
   assert.equal(typeof mod.Config, 'function')
   assert.equal(typeof mod.valueOf, 'function')
   const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // Lazy peer import: a static one makes an unresolvable schemastery kill the
+  // Lazy peer load: a static import makes an unresolvable schemastery kill the
   // whole row silently (the Loader skips a failed plugin import non-fatally),
   // which for this plugin means no presets, no executor and no client half.
-  assert.match(hostSource, /await import\('@deepseek-ai\/schemastery'\)/)
-  assert.doesNotMatch(hostSource, /^import Schema from '@deepseek-ai\/schemastery'/m)
+  assert.doesNotMatch(hostSource, /^import .*'@deepseek-ai\/schemastery'/m, 'no static peer import in the host half')
+  assert.match(hostSource, /await loadSchemastery\(\{ parentConfig: await executorConfigSchema\(\) \}\)/)
+  // The peer is still imported lazily — inside the resolver, one domain at a time.
+  const resolver = readFileSync(new URL('../src/schemastery.js', import.meta.url), 'utf8')
+  assert.match(resolver, /await import\(pathToFileURL\(entry\)\.href\)/)
   assert.match(hostSource, /export const Config = Schema === null \? undefined : Schema\.object\(/)
   assert.match(hostSource, /typeof ctx\.agentPresets\.register === 'function'/)
   assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\)\)/)
@@ -2960,4 +3000,123 @@ test('path map route: registered, loopback-fenced, and reporting the host facts'
   const refused = serve('192.168.1.20')
   assert.equal(refused.code, 403)
   assert.equal(JSON.parse(refused.body).reason, 'not-loopback')
+})
+
+/* ── schemastery resolution domain (v0.31.1, issue #12) ──────────────────────
+   The plugin must agree with the executor base class it extends. On dsh 0.1.7+
+   that base declares its shell limits with `.volatile()` and reads them through
+   `.get()`; a Config built from a copy WITHOUT `volatile()` therefore yields
+   plain values and every shell call dies with
+   `TypeError: config.timeoutMs.get is not a function`, taking the whole
+   ctx.shell down. Our own resolution walk can land on an older copy another
+   dependency hoisted to the profile root, so the copy is chosen by asking the
+   HOST what it expects — these tests drive that decision without a filesystem. */
+
+test('schemastery: the host is asked what it expects, and an unreadable host is never guessed at', async () => {
+  const { hostWantsVolatileRefs } = await import('../src/schemastery.js')
+
+  // dsh 0.1.7+: the host's own schema resolves the field to a Volatile ref.
+  assert.equal(hostWantsVolatileRefs(() => ({ timeoutMs: { get: () => 120000 } })), true)
+  // <= 0.1.6: it resolves to the plain value the old base class reads directly.
+  assert.equal(hostWantsVolatileRefs(() => ({ timeoutMs: 120000 })), false)
+  // A schema that refuses `{}` (required fields) tells us nothing — the caller
+  // must fall back to the historical probe rather than guess a semantics change.
+  assert.equal(hostWantsVolatileRefs(() => { throw new Error('cwd is required') }), undefined)
+  assert.equal(hostWantsVolatileRefs(() => null), undefined)
+  assert.equal(hostWantsVolatileRefs(undefined), undefined)
+  assert.equal(hostWantsVolatileRefs({}), undefined, 'a non-callable Config cannot answer')
+})
+
+test('schemastery: hasVolatile recognizes exactly the copies that can serve a 0.1.7 host', async () => {
+  const { hasVolatile, isSchemastery } = await import('../src/schemastery.js')
+  const capable = { object: () => ({}), string: () => ({ volatile: () => ({}) }) }
+  const legacy = { object: () => ({}), string: () => ({}) }
+  const broken = { object: () => ({}), string: () => ({ get volatile() { throw new Error('nope') } }) }
+
+  assert.equal(hasVolatile(capable), true)
+  assert.equal(hasVolatile(legacy), false, '3.18.2 is exactly this shape (published without volatile)')
+  assert.equal(hasVolatile(broken), false, 'a throwing getter must not take the plugin down')
+  assert.equal(hasVolatile(null), false)
+  assert.equal(hasVolatile({}), false)
+  assert.equal(isSchemastery(legacy), true)
+  assert.equal(isSchemastery({ object: 'not-a-function' }), false)
+})
+
+test('schemastery: a volatile-hungry host is served from the shell packages when our own walk lands on a legacy copy', async () => {
+  const { chooseCopy } = await import('../src/schemastery.js')
+  const capable = { object: () => ({}), string: () => ({ volatile: () => ({}) }) }
+  const legacy = { object: () => ({}), string: () => ({}) }
+  const own = { where: 'this plugin', entry: 'own', z: legacy }
+  const beside = { where: 'the shell packages', entry: 'beside', z: capable }
+
+  // THE reported case (issue #12): the profile root hoisted an old copy that our
+  // own walk hits first, while the host runs the capable one beside its shell
+  // packages. The capable copy — not the first one found — must win.
+  const rescue = chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [beside, own] })
+  assert.equal(rescue.chosen, beside)
+  assert.equal(rescue.reason, 'host-volatile-redirected')
+
+  // Order must not decide it: the same answer when our own copy is tried first.
+  assert.equal(chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [own, beside] }).chosen, beside)
+
+  // Our own copy can serve the host too — then there is nothing to redirect.
+  const ownCapable = { where: 'this plugin', entry: 'own', z: capable }
+  const kept = chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [beside, ownCapable] })
+  assert.equal(kept.chosen, ownCapable, 'a capable own copy is never swapped for another capable one')
+  assert.equal(kept.reason, 'host-volatile')
+
+  // The one case the plugin cannot paper over: the host wants refs and NO copy
+  // provides them. Keep our own copy (so nothing else changes) but say why.
+  const hopeless = chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [own] })
+  assert.equal(hopeless.chosen, own)
+  assert.equal(hopeless.reason, 'no-volatile-anywhere')
+
+  // A <=0.1.6 host reads plain values: never hand it a ref it will not `.get()`,
+  // even when a capable copy is lying around.
+  const oldHost = chooseCopy({ needsVolatile: false, ownEntry: 'own', copies: [beside, own] })
+  assert.equal(oldHost.chosen, own)
+  assert.equal(oldHost.reason, 'host-plain')
+
+  // An unreadable host keeps the pre-#12 behaviour verbatim.
+  const unknown = chooseCopy({ needsVolatile: undefined, ownEntry: 'own', copies: [beside, own] })
+  assert.equal(unknown.chosen, own)
+  assert.equal(unknown.reason, 'host-unknown')
+
+  // Nothing resolved anywhere: the caller reports the absent Config surface.
+  assert.equal(chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [] }).chosen, undefined)
+  assert.equal(chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [] }).reason, 'unresolved')
+})
+
+test('schemastery: the loader resolves the real peer here and reports where it came from', async () => {
+  const { loadSchemastery, resetSchemasteryCache, SCHEMASTERY_PEER, SCHEMASTERY_PARENT } = await import('../src/schemastery.js')
+  assert.equal(SCHEMASTERY_PEER, '@deepseek-ai/schemastery')
+  assert.equal(SCHEMASTERY_PARENT, '@deepseek-ai/dsh-bash-sandbox')
+
+  resetSchemasteryCache()
+  // No host Config supplied => the host could not answer, so this is the
+  // historical path: our own copy, and a reason that says so.
+  const resolved = await loadSchemastery({})
+  assert.equal(typeof resolved.z?.object, 'function', 'this repo carries the peer as a devDependency, so it resolves')
+  assert.equal(resolved.needsVolatile, undefined)
+  assert.equal(resolved.reason, 'host-unknown')
+  assert.equal(resolved.source, 'this plugin')
+
+  // One answer per process: both call sites must see the same copy, or the
+  // settings namespace and the executor would disagree about the vocabulary.
+  const again = await loadSchemastery({ parentConfig: () => ({ timeoutMs: { get: () => 1 } }) })
+  assert.equal(again.z, resolved.z, 'the second call must reuse the cached resolution, not re-decide')
+  resetSchemasteryCache()
+})
+
+test('schemastery: both halves resolve through the shared loader, and neither statically imports the peer', () => {
+  for (const file of ['src/shell.js', 'src/index.js']) {
+    const src = readFileSync(file, 'utf8')
+    assert.doesNotMatch(src, /^import .*'@deepseek-ai\/schemastery'/m,
+      file + ' must not statically import the peer (a failed import silently kills the row)')
+    assert.match(src, /loadSchemastery\(/, file + ' must resolve through the shared loader')
+  }
+  // The executor half must supply the host's own Config as the oracle; the host
+  // half reaches the same schema through the executor package.
+  assert.match(readFileSync('src/shell.js', 'utf8'), /loadSchemastery\(\{ parentConfig: SandboxBashExecutor\.Config \}\)/)
+  assert.match(readFileSync('src/index.js', 'utf8'), /executorConfigSchema\(\)/)
 })

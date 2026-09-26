@@ -1,6 +1,6 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.31.0",
+  "version": "0.31.1",
   "description": "Windows 上让 agent 的每条 shell 命令改经 Git for Windows bash 执行;物化四个内置预设的 Git Bash 变体,统一 MSYS 盘根路径方言,侧栏终端接管可开关。· Run every agent shell command through Git for Windows bash on Windows; materialize Git Bash variants of the built-in presets, unify the MSYS drive-root path dialect, and adopt the sidebar terminal behind a switch.",
   "type": "module",
   "repository": {

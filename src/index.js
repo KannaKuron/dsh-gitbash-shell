@@ -55,6 +55,25 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
+import { loadSchemastery } from './schemastery.js'
+
+/**
+ * The executor base class's own Config schema, when this deployment has it.
+ *
+ * Dynamic and optional on purpose: `@deepseek-ai/dsh-bash-sandbox` belongs to
+ * another row of THIS plugin, and a deployment that cannot resolve it must
+ * still mount every other face (the static-peer-import lesson, v0.24.3). What
+ * we need it for is the host's OWN behavioural answer to "do you read your
+ * shell limits through `.get()`?" — see src/schemastery.js.
+ */
+async function executorConfigSchema() {
+  try {
+    const mod = await import('@deepseek-ai/dsh-bash-sandbox')
+    return (mod.SandboxBashExecutor ?? mod.default)?.Config
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * The schemastery module, resolved LAZILY (v0.24.3): `@deepseek-ai/schemastery`
@@ -69,10 +88,15 @@ import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
  * verified with a fixture plugin whose only difference was the static peer
  * import. Deferring the import hides the schema where the module is absent
  * instead of killing the row.
+ *
+ * WHICH copy is resolved is no longer left to our own resolution order
+ * (v0.31.1, issue #12): src/schemastery.js asks the host what it expects and
+ * picks a copy that agrees with it. Both call sites share the one cached
+ * answer, so the settings namespace and the executor can never disagree.
  */
 let Schema = null
 try {
-  Schema = (await import('@deepseek-ai/schemastery')).default
+  Schema = (await loadSchemastery({ parentConfig: await executorConfigSchema() })).z ?? null
 } catch (error) {
   Schema = null
   console.warn(
@@ -2415,11 +2439,14 @@ export async function apply(ctx, config = {}) {
   })()
   if (legacySettings) try {
     ctx.inject(['settings'], (sctx) => {
-      Promise.all([import('@deepseek-ai/dsh-settings'), import('@deepseek-ai/schemastery')])
-        .then(([ds, sm]) => {
+      Promise.resolve(import('@deepseek-ai/dsh-settings'))
+        .then((ds) => {
           const settings = sctx && sctx.settings
           if (!settings || typeof settings.register !== 'function') return
-          const Schema = sm.default
+          // The SAME copy the executor and the row Config were built from
+          // (issue #12): one resolution per process, so the two faces of this
+          // plugin can never disagree about the schema vocabulary.
+          if (!Schema) return
           // Era probe: newer dsh register() takes a plain string; the older
           // one accepted the branded helper — one call satisfies both.
           const ns = typeof ds.settingsNamespace === 'function'

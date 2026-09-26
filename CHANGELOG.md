@@ -3,6 +3,89 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.31.1 — 2026-09-27
+
+**类型**:fix(issue #12:0.29.1 在 DSH 0.1.7-rc.2 上仍解析到 profile 里的 schemastery 3.18.2,每次 shell 调用报
+`TypeError: config.timeoutMs.get is not a function`)
+
+> 报告者 **tkhs101** 的分析是准确的(根因、复现步骤、建议方向都对)。本条目按他的复现步骤逐条核对后落地。
+
+### 结论:是「我们解析到哪一份 schemastery」的问题,不是用户的配置问题
+
+`@deepseek-ai/schemastery` 在本插件里是 **peer**,由环境提供 —— Node 从**插件文件向上**找 `node_modules`,
+在 hoisted profile 里会先撞上**被其他依赖提升到 profile 根**的旧副本(报告者机器实测:3.18.2,**没有 `volatile()`**),
+而宿主 dsh 自己用的是安装目录里与 shell 包放在一起的 3.18.4(有)。
+
+**用户什么都没做错**:hoisted 布局是 pnpm 的正常产物,旧副本被提升也是其他依赖的正常行为,不需要改任何配置。
+
+### 影响
+
+插件把 `pwsh-sandbox` 关掉、把 `ctx.shell` 换成 Git Bash 之后,它的 Config 因为探测不到 `volatile()`
+退化成普通值,基类随即在 `.get()` 上抛错:
+
+```
+TypeError: config.timeoutMs.get is not a function
+```
+
+**每一次 shell 调用都失败**(包括 `echo hi`),等于 agent 完全没有命令行能力;而**宿主日志全绿**
+(插件行加载成功),报错信息也指不到插件 —— 只能靠卸载插件来确认。卸载即恢复。
+
+### 根因链(每层都有代码位置)
+
+1. `src/shell.js:46` 静态 `import z from '@deepseek-ai/schemastery'` —— 自 v0.24.4 起**一字未改**,
+   所以 **0.29.1 与 0.31.0 带的是同一个缺陷**(报告者不是"版本旧",升级插件修不了)。
+2. Node 解析 → 插件所在 profile 的 `node_modules/@deepseek-ai/schemastery` = **3.18.2**。
+3. `live(schema)` 的判据是 `typeof schema.volatile === 'function'` → 3.18.2 没有 → 返回普通 schema。
+4. 宿主 dsh 0.1.7 的 `LocalBashExecutor` 把这六个字段声明为 `.volatile()`
+   (`packages/shell/bash-local/src/index.ts:100-107`),并在 `assertServiceableBashConfig`(line 80)
+   与 `resolve`(line 124/132)里调 `.get()`。
+5. ⇒ 崩。
+
+**v0.24.4(issue #6)的探测只在「我们碰巧解析到的那份恰好有 `volatile()`」时有效** —— 报告者指出的正是这个软肋。
+
+### 修复
+
+新增 **`src/schemastery.js`**:不再让解析顺序决定用哪份,而是**问宿主**。
+
+- **`hostWantsVolatileRefs(ParentConfig)`** —— 直接调用**宿主自己**的 `SandboxBashExecutor.Config({})`,
+  看 `timeoutMs` 解析成 `{ get() }` 还是普通值。这正是"这个宿主会不会调 `.get()`"的直接读数
+  (0.1.7+ → `true`;≤0.1.6 → `false`),读的是**行为**,不碰任何私有 schema 结构。
+- **候选顺序**:shell 包自己的解析域(权威,与执行器同源)→ 插件自身域。
+- **`chooseCopy` 纯函数**(可测)的判定:
+  - 宿主要 volatile 且**自己的副本能服务** → 保持自己那份(**能服务就不换**)。
+  - 宿主要 volatile 而自己的副本**不能** → **重定向到 shell 包那份**(#12 的修法),并打一行日志说明取自哪里。
+  - 宿主读普通值(≤0.1.6)→ 保持自己那份,**绝不**递一个它不会 `.get()` 的 ref(#12 的镜像错误)。
+  - 宿主答不上来 → 保持 v0.31.0 行为(逐字段探测),**不替宿主猜**。
+  - 宿主明确要而哪儿都没有 → 保留自己那份(**不改变其它行为**)但**大声说明原因**,
+    不再留一个与插件看不出关系的神秘 TypeError。
+- **两个消费点共用同一份缓存解析**(`src/shell.js` 的执行器 Config ↔ `src/index.js` 的行 Config 与旧时代
+  settings 命名空间)—— 否则两处可能拿到不同的 schemastery,设置项与执行器就会各说各话。
+- **静态 peer import 全部消除**(它会让一行加载失败静默杀掉整行 —— v0.24.3 的教训),改由
+  `src/schemastery.js` 内**动态**加载。
+
+### 验证
+
+- `npm test` **123/123**(新增 5 项):宿主行为的三种回答(`true`/`false`/无法判定)、`hasVolatile` 的边界
+  (含抛错的 getter)、`chooseCopy` 的完整矩阵(含"能服务就不换"与"顺序不决定结果")、共享加载器的
+  缓存一致性、两个半都不得静态 import peer。
+- **临时拓扑复现 + 修复对照**(插件域真装 `@deepseek-ai/schemastery@3.18.2`,shell 包域真装 `3.18.4`,
+  且 shell 包用真的 `.volatile()` 声明 Config —— 与 issue 描述逐条对应):
+
+  | 场景 | 修复前 v0.31.0 | 修复后 |
+  |---|---|---|
+  | 新宿主 + 根目录被提升的旧副本(**#12 原场景**) | `timeoutMs = 120000`、`.get` 不存在 → **DISAGREE**(即报告者的崩溃) | `timeoutMs = {}`、`.get` 是函数 → **AGREE**;日志 `schemastery taken from the shell packages instead of this plugin's own resolution (host-volatile-redirected)` |
+  | 旧宿主 ≤0.1.6(读普通值) | — | 两边都是普通值 → **AGREE**(即使 shell 包那份 capable,也**没有被误用**) |
+
+  **判据是「插件与宿主的解析结果是否一致」,不是「有没有 `.get()`」** —— 后者在旧宿主上会给出反向的错误结论
+  (旧宿主拿到 ref 同样是崩)。
+- **第三种组合(宿主要 volatile 而两边都没有)在现实中不可达**:宿主能正常跑,就说明它自己解析到了配套副本,
+  而"shell 包域"正是宿主的域。该分支仍保留 fail-loud 日志作为防御,并由单元测试覆盖。
+
+### 相关
+
+- issue #12(报告者 tkhs101,含完整复现步骤与修复建议)
+- issue #6 / v0.24.4:同一崩溃的**另一方向**(当时是完全没有 volatile 探测)
+
 ## v0.31.0 — 2026-09-27
 
 **类型**:fix + feat(用户报告:点开对话里的文件链接,原生右侧栏显示「文件不存在,可能已被移动或删除」)

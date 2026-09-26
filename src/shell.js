@@ -43,7 +43,7 @@ import { DEFAULT_GIT_BASH, bashResolutionReport, effectiveConfiguredBashPath, re
 
 /** Re-exported for callers that historically read it here (the value now lives in bash-path.js). */
 export { DEFAULT_GIT_BASH }
-import z from '@deepseek-ai/schemastery'
+import { loadSchemastery } from './schemastery.js'
 
 
 /** Log prefix, matching src/index.js. */
@@ -77,7 +77,10 @@ const SETTINGS_NAMESPACE = 'gitbash-shell'
  * ones. Published schemastery 3.18.2 has no `volatile()`, which is exactly why
  * the probe (not an unconditional call) is required.
  */
-function live(schema) {
+function live(schema, needsVolatile) {
+  // A <=0.1.6 host reads plain values: never hand it a ref it will not `.get()`
+  // (issue #12 — the host's own answer wins over what our copy happens to offer).
+  if (needsVolatile === false) return schema
   return typeof schema.volatile === 'function' ? schema.volatile() : schema
 }
 
@@ -86,16 +89,19 @@ function live(schema) {
  * the smoke test can drive BOTH eras with a recording stand-in instead of
  * depending on which schemastery happens to be installed here.
  * @param z schemastery module (real one, or the test's recorder).
+ * @param needsVolatile - the host's OWN answer from src/schemastery.js: `true`
+ *   forces Volatile refs, `false` forces plain values, `undefined` keeps the
+ *   per-field probe (the historical behaviour, kept for an unreadable host).
  * @returns the object schema for the `gitbash-executor` row.
  */
-export function gitBashShellConfig(z) {
+export function gitBashShellConfig(z, needsVolatile) {
   return z.object({
-    cwd: live(z.string()),
-    timeoutMs: live(z.number().default(120000)),
-    maxTimeoutMs: live(z.number().default(600000)),
-    maxOutputBytes: live(z.number().default(64000)),
-    maxSpillBytes: live(z.number().default(64 * 1024 * 1024)),
-    graceMs: live(z.number().default(3000)),
+    cwd: live(z.string(), needsVolatile),
+    timeoutMs: live(z.number().default(120000), needsVolatile),
+    maxTimeoutMs: live(z.number().default(600000), needsVolatile),
+    maxOutputBytes: live(z.number().default(64000), needsVolatile),
+    maxSpillBytes: live(z.number().default(64 * 1024 * 1024), needsVolatile),
+    graceMs: live(z.number().default(3000), needsVolatile),
     // Our own knob: the base class neither declares nor `.get()`s it, and
     // `get bashPath()` below reads it as a plain value, so it stays plain.
     //
@@ -107,8 +113,21 @@ export function gitBashShellConfig(z) {
   })
 }
 
+/**
+ * The schemastery copy that matches the executing host (see src/schemastery.js).
+ * Resolving our own way can land on an OLDER copy another dependency hoisted to
+ * the profile root — one without `volatile()` — and the executor then declares
+ * plain limits for a base class that calls `.get()` on them: every shell call
+ * dies with `config.timeoutMs.get is not a function` (issue #12).
+ *
+ * Deliberately ONE line, and the ONLY top-level await in this module: the smoke
+ * harness evaluates this body inside `new Function`, where an await cannot
+ * appear, so it swaps exactly this expression for a stub.
+ */
+const schema = await loadSchemastery({ parentConfig: SandboxBashExecutor.Config })
+
 /** Resolved configuration: the local executor's knobs, plus the Git Bash path. */
-export const Config = gitBashShellConfig(z)
+export const Config = schema.z ? gitBashShellConfig(schema.z, schema.needsVolatile) : undefined
 
 /** Git Bash executor — mirrors the shipped bash/pwsh sandbox executors. */
 export class GitBashSandboxExecutor extends SandboxBashExecutor {
