@@ -307,15 +307,22 @@
        日志必须给出可执行下一步;⑥ **回退语义**:关开关只阻止**以后**的写入,**不会**删除已写入的字段 ——
        要彻底恢复原样需删掉该行 `shell` 字段并重启(README 与 21 语言 hint 都写明);⑦ 未改 `shellCandidates` ⇒
        菜单里仍可能列出解析到 WSL 的候选 `bash`,被改的是**默认项** —— 文档必须如实说明,别让用户以为整条菜单被换掉。
-     - **只写空的**:该行没有自己的 shell ⇒ 写 `{path, name:'bash', args:['-i']}`(`-i` 与官方 `profile()` 对 bash 的默认一致);
-       已是同一个(归一化比较)⇒ 不写;已指向别处 ⇒ **绝不覆盖**,只记日志并说明怎么交还。
+     - **只写空的**:该行没有自己的 shell ⇒ 写 `{path, name:'Git Bash', args:['-i']}`(`-i` 与官方 `profile()` 对 bash 的默认一致);
+       已指向别处 ⇒ **绝不覆盖**,只记日志并说明怎么交还。
+     - **显示名必须是 `Git Bash`(v0.29.1,用户实测)**:官方 `shellCandidates` 里那条 `bash` 在 PATH 命中
+       `C:\Windows\System32\bash.exe` 的机器上会解析到 **WSL**,于是「新建终端」菜单里出现**两条 `bash`**,用户分不清
+       ("新增的gitbash显示名称得是gitbash,不然回合wsl的混了")。`name` 只是 `TerminalShell.name` **显示名**,不影响
+       解析/执行,但**必须**与 WSL 候选区分开;`shellCandidates` 仍不动。
+     - **历史配置要迁移**:path 是我们的 Git Bash 但 `name` ≠ `Git Bash`(v0.29.0 写进去的 `bash`,或用户手改)
+       ⇒ 新增 `rename` 动作**只改 `name`**(path/args 原样保留),同样**写回后读回校验**(路径与名字都要对),
+       不符 ⇒ `write-failed`;迁移后再跑仍是 `unchanged`(**幂等**,patch md5 不变)。
      - **绝不写没验证过的路径**:`resolveShell` 用 `resolveExecutable()` 校验配置路径,失败**没有回退**、直接让「新建终端」启动失败
        ⇒ 只允许写 `src/bash-path.js` 判据全过的 Git Bash。**写入后必须读回校验**,不符 ⇒ `write-failed` + fail-loud。
      - `shellCandidates` 不动(配置的 shell 恒排首位);菜单里可能仍有一条候选 `bash`(解析到 WSL)属预期。
      - 开关 `autoTerminalShell`(volatile,默认 **ON**;旧宿主 settings 命名空间同名字段,缺键 = on);文案 21 语言
        `term.label`/`term.hint`。原 `adoptSidebarShell`(dsh-better-sidebar 通道)**保持独立**,两条互不干扰。
-     - 改动必须跑冒烟里的「sidebar terminal」五例 + 真机四态(空→写 / 同值→不写且 patch md5 未变 / 异值→不写 / 开关关→不写),
-       并保留 README 的三步复验清单。
+     - 改动必须跑冒烟里的「sidebar terminal」六例 + 真机五态(空→写 `name: Git Bash` / **历史 `bash` 名字→改名迁移** /
+       同值→不写且 patch md5 未变 / 异值→不写 / 开关关→不写),并保留 README 的三步复验清单。
 
 5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
@@ -455,8 +462,8 @@
    **副本改动绝不能落在本仓**(用 `[ "$(pwd)" = "/tmp/..." ]` 之类守卫);Windows 真机部分如实标注未验证。
 
 10. **官方侧栏终端接管改动(§4i,v0.29.0 起)**:隔离实例里用**副本**强制 win32 门 + 伪装"已验证的 Git Bash",
-    **只看 profile patch 的字节变化**证明四态:空值→新增 `- id: terminal-controller` 行且用户手写行/注释原样保留;
-    同值→patch **md5 未变**;异值→patch 未变且日志含"explicit choice is never overwritten";开关关→patch 未变。
+    **只看 profile patch 的字节变化**证明五态:空值→新增 `- id: terminal-controller` 行且 `shell.name: Git Bash`、用户手写行/注释原样保留;
+    **历史 `name: bash`→只改这一行 name 的迁移**;再跑一次同值→patch **md5 未变**(幂等);异值→patch 未变且日志含"explicit choice is never overwritten";开关关→patch 未变。
     另用 `--dump-config` 读 `terminal-controller.config.shell.path`、无头浏览器确认零 pageerror。
     Windows 真机(菜单项、`uname -r` 是否 `MINGW64_NT-*`)如实标注未验证,并在 README 给用户三步复验清单。
 

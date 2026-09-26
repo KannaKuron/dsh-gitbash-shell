@@ -3,6 +3,28 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.29.1 — 2026-09-26
+
+**类型**:fix(用户实测:官方「新建终端」下拉里出现**两条 `bash`** —— 一条是 v0.29.0 写入的 Git Bash,另一条是官方 `shellCandidates` 解析到的 WSL,用户分不清)
+
+> 用户原话:**"改一下,新增的gitbash显示名称得是gitbash,不然回合wsl的混了,你反正自动检查说gitbash的给改名为gitbash,别叫bash"**
+> (现象:v0.29.0 写 `name: 'bash'`;官方 `shellCandidates` 那条 `bash` 在 PATH 命中 `C:\Windows\System32\bash.exe` 的机器上解析到 WSL)
+
+- **显示名改为 `Git Bash`**(`TERMINAL_SHELL_NAME`):`name` 只是 `TerminalShell.name` 这个**用户可见 profile 名**,解析与执行看 `path`/`args`
+  ⇒ 改它**不改变任何行为**,只让菜单里两项可区分;`args: ['-i']` 保留(官方 `profile()` 对 bash 的默认)。
+- **历史配置自动迁移**:path 是我们的 Git Bash 但 `name` ≠ `Git Bash`(v0.29.0 写入的 `bash`,或用户手改)
+  ⇒ 新增 `rename` 动作,**只改 `name`**(path/args 原样保留),同样**写回后读回校验**(路径与名字都对才成功),
+  不符 ⇒ `write-failed` + fail-loud;迁移后**再跑一次仍 `unchanged`**(幂等,patch md5 不变)。
+- **异值仍绝不覆盖**:path 指向别处(例如 WSL)⇒ 维持 `kept-user-choice`,只记日志。**`shellCandidates` 不动**
+  (与用户确认过的口径:改名即可区分;那条 WSL 候选仍会出现在菜单里,被区分开的是名字)。
+- 文案:README 的写入形状示例与 AGENTS §4i 同步为 `name: 'Git Bash'`;21 语言卡片文案无需改动(未提名字)。
+- **验证**:`npm test` **101/101**(新增「历史 `bash` 标签迁移 + 迁移后幂等 + 名字没落盘 ⇒ `write-failed [name mismatch]`」,
+  并把既有断言从 `name: 'bash'` 更新为 `name: 'Git Bash'`);`align-official` 四变体仍逐字节对齐。
+  真机(隔离 DSH_HOME + 副本强制 win32 门 + 伪装已解析 Git Bash):新建写入 ⇒ `--dump-config` 读出
+  `terminal-controller.config.shell.name = Git Bash`;预置历史 `name: bash` 的 patch ⇒ 日志 `renamed to "Git Bash"` 且
+  **只改这一行 name**、用户手写行与注释原样保留;二次启动 ⇒ patch **md5 未变**。
+- **未在 Windows 验证**:菜单里实际显示成 `Git Bash`(需用户复验;本次只验证到配置层的 `name` 与迁移行为)。
+
 ## v0.29.0 — 2026-09-26
 
 **类型**:feat(用户实测需求 —— DSH 原生「新建终端」落到 **WSL**,插件只接管了 agent 的 shell 工具,没有接管官方侧栏终端)

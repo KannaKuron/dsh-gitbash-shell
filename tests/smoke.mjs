@@ -2310,12 +2310,13 @@ function fakeEditor(options = {}) {
 }
 
 test('sidebar terminal: an unset shell is adopted with the official bash profile', async () => {
-  const { adoptTerminalShell, terminalAdoptReport, TERMINAL_SHELL_ARGS } = await import('../src/terminal-shell.js')
+  const { adoptTerminalShell, terminalAdoptReport, TERMINAL_SHELL_ARGS, TERMINAL_SHELL_NAME } = await import('../src/terminal-shell.js')
+  assert.equal(TERMINAL_SHELL_NAME, 'Git Bash', 'the display name is Git Bash, never bare bash (v0.29.1)')
   const editor = fakeEditor({ extra: { scrollback: 1000 } })
   const result = await adoptTerminalShell(editor, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
   assert.equal(result.status, 'adopted')
   assert.equal(editor.calls.length, 1, 'exactly one write')
-  assert.deepEqual(editor.calls[0].shell, { path: 'Q:/Git/bin/bash.exe', name: 'bash', args: ['-i'] })
+  assert.deepEqual(editor.calls[0].shell, { path: 'Q:/Git/bin/bash.exe', name: 'Git Bash', args: ['-i'] })
   // the profile matches the official `profile()` convention for a bash path…
   assert.deepEqual(editor.calls[0].shell.args, TERMINAL_SHELL_ARGS)
   // …and every other row config field survives the merge
@@ -2326,8 +2327,8 @@ test('sidebar terminal: an unset shell is adopted with the official bash profile
 
 test('sidebar terminal: same path is left alone, another path is never overwritten', async () => {
   const { adoptTerminalShell, terminalAdoptReport } = await import('../src/terminal-shell.js')
-  // already ours (case/separator-insensitive) → no write at all
-  const same = fakeEditor({ shell: { path: 'q:\\git\\bin\\BASH.EXE', name: 'bash', args: ['-i'] } })
+  // already ours under the right name (case/separator-insensitive) → no write at all
+  const same = fakeEditor({ shell: { path: 'q:\\git\\bin\\BASH.EXE', name: 'Git Bash', args: ['-i'] } })
   const unchanged = await adoptTerminalShell(same, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
   assert.equal(unchanged.status, 'unchanged')
   assert.equal(same.calls.length, 0, 'idempotent: nothing written')
@@ -2421,4 +2422,35 @@ test('sidebar terminal: writes go through the official editor only — no fs pat
   for (const hint of hints) assert.match(hint, /terminal-controller/, 'every hint names the field to delete: ' + hint.slice(0, 40))
   assert.match(hints[0], /只会阻止/, 'zh hint says the switch only stops future writes')
   assert.match(hints[1], /only stops FUTURE writes/)
+})
+
+test('sidebar terminal: a historical `bash` label is migrated to Git Bash, then stays put', async () => {
+  const { adoptTerminalShell, terminalAdoptReport, planTerminalAdopt } = await import('../src/terminal-shell.js')
+  // v0.29.0 wrote `name: 'bash'` — the whole point of v0.29.1 is that an
+  // existing install gets renamed WITHOUT touching path or args.
+  const editor = fakeEditor({ shell: { path: 'Q:/Git/bin/bash.exe', name: 'bash', args: ['-i'] }, extra: { scrollback: 1000 } })
+  const renamed = await adoptTerminalShell(editor, { platform: 'win32', enabled: true, resolved: 'q:\\git\\bin\\bash.exe' })
+  assert.equal(renamed.status, 'renamed')
+  assert.equal(editor.calls.length, 1, 'exactly one write for the migration')
+  assert.deepEqual(editor.calls[0].shell, { path: 'Q:/Git/bin/bash.exe', name: 'Git Bash', args: ['-i'] }, 'only the name changes')
+  assert.equal(editor.calls[0].scrollback, 1000, 'unrelated row config preserved')
+  assert.equal(editor.state.config.shell.path, 'Q:/Git/bin/bash.exe', 'the path is left exactly as it was')
+  assert.match(terminalAdoptReport(renamed), /renamed to "Git Bash"/)
+  assert.match(terminalAdoptReport(renamed), /no longer confusable with the WSL candidate/)
+  // running again over the migrated row is a no-op (idempotent → patch md5 stable)
+  const again = await adoptTerminalShell(editor, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+  assert.equal(again.status, 'unchanged')
+  assert.equal(editor.calls.length, 1, 'no second write after the migration')
+  // the pure decision also reports the plan explicitly
+  const plan = planTerminalAdopt({
+    platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe',
+    current: { path: 'Q:/Git/bin/bash.exe', name: '', args: [] },
+  })
+  assert.equal(plan.action, 'rename')
+  assert.deepEqual(plan.shell, { path: 'Q:/Git/bin/bash.exe', name: 'Git Bash', args: [] })
+  // a rename whose name does not stick is a failure, never a success
+  const notSticky = fakeEditor({ shell: { path: 'Q:/Git/bin/bash.exe', name: 'bash', args: ['-i'] }, sticky: false })
+  const stuck = await adoptTerminalShell(notSticky, { platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe' })
+  assert.equal(stuck.status, 'write-failed')
+  assert.match(stuck.detail, /name mismatch/)
 })

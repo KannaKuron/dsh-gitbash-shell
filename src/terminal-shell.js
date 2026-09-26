@@ -47,8 +47,18 @@ import { normalizeBashPath } from './bash-path.js'
 /** The Loader row id of the official terminal controller. */
 export const TERMINAL_ROW_ID = 'terminal-controller'
 
-/** Profile name written for Git Bash — matches the official `profile()` output. */
-export const TERMINAL_SHELL_NAME = 'bash'
+/**
+ * User-visible profile NAME written for Git Bash (v0.29.1).
+ *
+ * NOT `'bash'`: the official `shellCandidates` still contribute a `bash`
+ * candidate that resolves to the WSL launcher on machines whose PATH has
+ * `C:\Windows\System32\bash.exe`, and the new-terminal menu then showed TWO
+ * entries called `bash` — the user could not tell Git Bash from WSL ("改一下,
+ * 新增的gitbash显示名称得是gitbash,不然回合wsl的混了"). This is the
+ * `TerminalShell.name` display field only: resolution and execution use
+ * `path`/`args`, so renaming changes nothing but the label.
+ */
+export const TERMINAL_SHELL_NAME = 'Git Bash'
 
 /**
  * Arguments written for Git Bash. `['-i']` is not our invention: the official
@@ -111,7 +121,18 @@ export function planTerminalAdopt({ platform, enabled, resolved, current }) {
     return { action: 'adopt', shell: terminalShellProfile(resolved.trim()), reason: 'the terminal has no shell configured; offering the verified Git Bash' }
   }
   if (normalizeBashPath(current.path) === normalizeBashPath(resolved)) {
-    return { action: 'unchanged', current, reason: 'the terminal already uses this Git Bash' }
+    if (current.name === TERMINAL_SHELL_NAME) {
+      return { action: 'unchanged', current, reason: 'the terminal already uses this Git Bash under the right name' }
+    }
+    // Historical config from v0.29.0 (or a hand edit): the path is OURS, only
+    // the label is stale — migrate the name alone and leave path/args alone.
+    return {
+      action: 'rename',
+      current,
+      shell: { ...current, name: TERMINAL_SHELL_NAME },
+      reason: 'the terminal already runs this Git Bash but is displayed as "' + current.name
+        + '" — renaming it to "' + TERMINAL_SHELL_NAME + '" so it cannot be confused with the WSL candidate',
+    }
   }
   return {
     action: 'kept-user-choice',
@@ -143,9 +164,13 @@ export async function adoptTerminalShell(editor, { platform, enabled, resolved }
   }
   const current = currentTerminalShell(row)
   const plan = planTerminalAdopt({ platform, enabled, resolved, current })
-  if (plan.action !== 'adopt') {
+  if (plan.action !== 'adopt' && plan.action !== 'rename') {
     return { status: plan.action, current, detail: plan.reason }
   }
+  // `rename` keeps the profile the user already has and only rewrites the
+  // label; `adopt` writes the full profile. Both go through the same
+  // read-back verification below.
+  const renamed = plan.action === 'rename'
   if (typeof editor.edit !== 'function') {
     return { status: 'write-failed', current, detail: 'the config editor exposes no edit()' }
   }
@@ -163,14 +188,18 @@ export async function adoptTerminalShell(editor, { platform, enabled, resolved }
     return { status: 'write-failed', current, detail: 'the write succeeded but reading it back failed: ' + (error && error.message ? error.message : String(error)) }
   }
   const written = currentTerminalShell(after)
-  if (written === undefined || normalizeBashPath(written.path) !== normalizeBashPath(plan.shell.path)) {
+  const pathOk = written !== undefined && normalizeBashPath(written.path) === normalizeBashPath(plan.shell.path)
+  const nameOk = written !== undefined && written.name === plan.shell.name
+  if (!pathOk || !nameOk) {
     return {
       status: 'write-failed',
       current,
-      detail: 'the write did not stick: the terminal row reads ' + (written === undefined ? '(no shell)' : '"' + written.path + '"'),
+      detail: 'the write did not stick: the terminal row reads '
+        + (written === undefined ? '(no shell)' : '"' + written.path + '" as "' + written.name + '"')
+        + (pathOk ? '' : ' [path mismatch]') + (nameOk ? '' : ' [name mismatch]'),
     }
   }
-  return { status: 'adopted', path: plan.shell.path, current }
+  return { status: renamed ? 'renamed' : 'adopted', path: plan.shell.path, current, name: plan.shell.name }
 }
 
 /**
@@ -182,7 +211,10 @@ export async function adoptTerminalShell(editor, { platform, enabled, resolved }
 export function terminalAdoptReport(result) {
   switch (result.status) {
     case 'adopted':
-      return 'official sidebar terminal switched to Git Bash: ' + result.path + ' (name bash, args -i) — new terminals use it immediately, already-open ones keep their shell'
+      return 'official sidebar terminal switched to Git Bash: ' + result.path + ' (name "' + TERMINAL_SHELL_NAME + '", args -i) — new terminals use it immediately, already-open ones keep their shell'
+    case 'renamed':
+      return 'official sidebar terminal renamed to "' + TERMINAL_SHELL_NAME + '" (was displaying as "' + (result.current ? result.current.name : '?')
+        + '", same Git Bash path ' + result.path + ') — the entry is no longer confusable with the WSL candidate'
     case 'unchanged':
       return 'official sidebar terminal already uses this Git Bash: ' + (result.current ? result.current.path : '') + ' (nothing written)'
     case 'kept-user-choice':
