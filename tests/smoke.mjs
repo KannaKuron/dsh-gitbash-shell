@@ -2392,3 +2392,33 @@ test('sidebar terminal: the host reaches configEditor, never the settings servic
   assert.match(src, /autoTerminalShell: Schema\.boolean\(\)\.default\(true\)/)
   assert.match(src, /autoTerminalShell: v\.autoTerminalShell !== false/)
 })
+
+test('sidebar terminal: writes go through the official editor only — no fs path to the profile patch', async () => {
+  const files = ['index.js', 'terminal-shell.js', 'shell.js', 'bash-path.js', 'client.js', 'compositions.js']
+  for (const name of files) {
+    const code = readFileSync(new URL('../src/' + name, import.meta.url), 'utf8')
+    // The profile patch is the USER's file. We reach it only through
+    // `configEditor.edit()`, which the official settings UI uses as well; a
+    // direct fs write from this repository would race that editor's lock and
+    // clobber hand-written comments/rows.
+    assert.doesNotMatch(code, /cordis\.patch/, name + ' must not name the profile patch file')
+    assert.doesNotMatch(code, /patchPath/, name + ' must not touch the profile patch path')
+    const nearFs = /(writeFile|appendFile|writeFileSync|appendFileSync|createWriteStream)[^\n]*\n?[^\n]*patch/i
+    assert.doesNotMatch(code, nearFs, name + ' must not fs-write anything patch-shaped')
+  }
+  // the terminal module itself carries no filesystem import at all
+  const terminal = readFileSync(new URL('../src/terminal-shell.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(terminal, /node:fs|from 'fs'/, 'terminal-shell.js performs no filesystem work')
+  assert.match(terminal, /await editor\.edit\(row\.entry, \(raw\) => \(\{ \.\.\.raw, shell: plan\.shell \}\)\)/,
+    'the single write site is configEditor.edit()')
+  // and the failure path hands the user an executable next step
+  assert.match(terminal, /next steps: \(1\)/)
+  assert.match(terminal, /turn this plugin\\'s "autoTerminalShell" switch off/, 'log hands over an executable next step')
+  // the revert semantics sentence is in the card hint for every language
+  const client = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  const hints = [...client.matchAll(/"term\.hint": ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]))
+  assert.equal(hints.length, 21, 'one hint per dictionary')
+  for (const hint of hints) assert.match(hint, /terminal-controller/, 'every hint names the field to delete: ' + hint.slice(0, 40))
+  assert.match(hints[0], /只会阻止/, 'zh hint says the switch only stops future writes')
+  assert.match(hints[1], /only stops FUTURE writes/)
+})

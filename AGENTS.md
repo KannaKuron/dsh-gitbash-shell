@@ -299,7 +299,14 @@
        是普通字段;探针里 `settings.update('terminal', {shell})` 抛 `No configurable plugin entry "terminal"`。
      - **可行通道 = `configEditor.edit(entry, change)`**(官方设置 UI 的同一个 API,"ordinary fields keep normal lifecycle
        rules")⇒ 写入**无需重启**(运行中的 `ctx.terminalController.config.shell` 立刻是新值),落盘到 profile patch 层,
-       由官方 YAML 编辑器保留注释、按 `id` 合并。**不要**手写该文件、**不要**改官方包。
+       由官方 YAML 编辑器保留注释、按 `id` 合并。**不要**改官方包。
+     - **硬约束(Lead 裁决 2026-09-26,验收会独立 grep)**:① 只能经 `configEditor.edit()` 写入,**src/ 里绝不能出现**
+       对 profile patch(`cordis.patch.yml` / `patchPath`)的 `writeFile`/`writeFileSync`/`appendFile`/`appendFileSync`
+       或任何 fs 直写(冒烟有断言);② **只写空的**;③ 同值不写(**幂等**,验收看二次启动 patch 的 md5);
+       ④ 异值(用户显式选择)**绝不覆盖**,只记日志;⑤ **写入后必须读回校验**,不符 ⇒ `write-failed` + fail-loud,
+       日志必须给出可执行下一步;⑥ **回退语义**:关开关只阻止**以后**的写入,**不会**删除已写入的字段 ——
+       要彻底恢复原样需删掉该行 `shell` 字段并重启(README 与 21 语言 hint 都写明);⑦ 未改 `shellCandidates` ⇒
+       菜单里仍可能列出解析到 WSL 的候选 `bash`,被改的是**默认项** —— 文档必须如实说明,别让用户以为整条菜单被换掉。
      - **只写空的**:该行没有自己的 shell ⇒ 写 `{path, name:'bash', args:['-i']}`(`-i` 与官方 `profile()` 对 bash 的默认一致);
        已是同一个(归一化比较)⇒ 不写;已指向别处 ⇒ **绝不覆盖**,只记日志并说明怎么交还。
      - **绝不写没验证过的路径**:`resolveShell` 用 `resolveExecutable()` 校验配置路径,失败**没有回退**、直接让「新建终端」启动失败

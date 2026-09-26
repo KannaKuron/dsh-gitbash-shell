@@ -188,7 +188,12 @@ export function terminalAdoptReport(result) {
     case 'kept-user-choice':
       return 'official sidebar terminal NOT adopted: ' + result.detail
     case 'write-failed':
-      return 'official sidebar terminal adoption FAILED — ' + result.detail + ' (nothing was substituted; set "shell" for the terminal row by hand if you need it)'
+      return 'official sidebar terminal adoption FAILED — ' + result.detail
+        + ' | next steps: (1) the new-terminal shell is UNCHANGED, so dsh keeps its own resolution;'
+        + ' (2) set the terminal by hand: add `shell: { path: <git-bash>, name: bash, args: [\'-i\'] }` to the'
+        + ' `terminal-controller` row in the profile patch and restart dsh;'
+        + ' (3) or turn this plugin\'s "autoTerminalShell" switch off to stop the attempts;'
+        + ' (4) the full cause is in the lines above.'
     case 'skip-disabled':
       return 'official sidebar terminal adoption is off (autoTerminalShell = false) — the new-terminal shell stays whatever dsh resolves'
     case 'skip-unresolved':

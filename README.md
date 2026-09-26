@@ -160,14 +160,17 @@ DSH 自己的「新建终端」**不经过**本插件的执行器:它由官方�
 - 写入走**官方配置编辑器**(设置 UI 用的同一个 API),落到 profile 的 patch 层;**新终端立即生效**,已打开的终端保持原样。
 - **不需要重启**,也不会写坏「新建终端」:只写我们验证过存在的 Git Bash(官方对无法解析的路径没有回退,会直接启动失败)。
 - 失败时 **fail-loud**:日志写清原因,并通过**读回校验**确认值真的落进去了(不出现"假成功")。
-- 菜单里仍可能出现一条候选 `bash`(在那些机器上解析到 WSL);默认项/首项是我们写入的 Git Bash。
-  我们**没有**改 `shellCandidates`。
+- ⚠️ **如实说明**:我们**没有**改 `shellCandidates`,所以「新建终端」的 shell 选择菜单里**仍可能列出**一条解析到 WSL 的
+  候选 `bash` —— 被改掉的是**默认项/首项**(它现在是我们写入的 Git Bash),不是整条菜单。想彻底不让 WSL 出现在菜单里,
+  需要另外调整 `terminal-controller` 行的 `shellCandidates`(本插件本轮**不做**,以免覆盖别人的部署配置)。
 
 **三步复验(Windows)**:
 1. 装好 Git for Windows,重启 DSH,打开本插件设置卡:开关「自动接管侧栏终端」为开;宿主日志出现
    `official sidebar terminal switched to Git Bash: …`。
 2. 新建终端,在终端里跑 `uname -r`:应看到 `MINGW64_NT-…`(WSL 会显示 Linux 内核版本如 `5.15…`)。
-3. 回退:把设置开关关掉,或在 profile 的 patch 里删掉 `terminal-controller` 行的 `shell` 字段(重启 DSH),终端即恢复原来的 shell。
+3. **回退**:⚠️ 关掉设置卡里的开关**只阻止以后的自动写入,不会删除已经写进配置的字段**。要彻底恢复原样,
+   请把 profile 的 patch 里 `terminal-controller` 行的 `shell` 字段**删掉**,再重启 DSH(终端随即回到原来的 shell);
+   只想让它别再自动改、但不介意保留现状的话,关开关即可。
 
 ## 配置(执行器)
 

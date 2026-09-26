@@ -39,6 +39,9 @@
 - 新开关 `autoTerminalShell`(volatile,**默认开**;旧宿主 settings 命名空间同名字段,缺键 = 开)+ 21 语言卡片文案
   (`term.label`/`term.hint`);保留原 `dsh-better-sidebar` 通道(两条通道各自独立探测);不碰官方包、不手写用户 patch 文件。
 - README 新增该节 + **用户三步复验清单**(开关与日志 → 终端里 `uname -r` 判 `MINGW64_NT-*` → 回退办法)。
+  **回退语义写明**:关掉开关**只阻止以后的自动写入**,**不会**删除已经写进配置的 `shell` 字段;要彻底恢复原样需删掉
+  profile patch 里 `terminal-controller` 行的 `shell` 字段并重启(21 语言卡片 hint 同步写上这一句)。
+  **菜单如实说明**:未改 `shellCandidates` ⇒ 选择菜单里**仍可能列出**解析到 WSL 的候选 `bash`,被改的是**默认项/首项**。
 
 ### 三、验证
 - `npm test` **99/99**(新增 5 条:空→写且形状为官方 `profile()` 约定 + 无关字段保留 / 同值→不写 + 异值→不写且日志含怎么交还 / 开关关·非 Windows·未解析·无该行→全只读 / 写入被拒或**未落盘**→ `write-failed` 不假成功 / 宿主侧只走 `configEditor` 且绝不调用 `settings.update('terminal')`);`align-official.mjs` 四变体仍逐字节对齐。
