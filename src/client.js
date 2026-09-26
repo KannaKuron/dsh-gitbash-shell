@@ -116,6 +116,21 @@ window.__ModuleLoader__.load({
 			"python.hint": "默认关闭时 run_code 用官方 Node/TypeScript 后端,与官方 ptc 组合逐字节一致;开启后改用 dsh 实验性 CPython 后端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 的语言、生成的 SDK 提示词与工具呈现随之切到 Python。要求 POSIX 平台与 CPython ≥ 3.10(Windows 不可用);与 workflow 工具互斥——官方 Python 组合同样禁用 workflow,因此开启期间本插件四个变体的 workflow 侧强制关闭(你的工作流设置值保留,关掉后恢复)。改动需重启 dsh 后生效;此开关就是 dsh-ptc-cordis-preset 设置卡上的同一个开关——两侧共享同一份状态,任一侧改动两侧同步。仅在已安装 dsh-ptc-cordis-preset 时显示。若置为开启后未生效,原因见宿主启动日志。",
 			"python.degraded": "后端不可用,当前仍为 Node(原因见宿主启动日志)",
 			"python.blocked": "本机是 Windows:实验性 Python 后端仅支持 POSIX,此开关不可用。",
+			"sec.tools": "终端工具",
+			"tools.hint": "从 winget 官方源安装常用命令行工具。已经存在的(无论什么来源)一律不重复安装;由 LLVM、WinLibs 等提供的工具链也不会被升级,只如实显示来源。",
+			"tools.refresh": "刷新状态",
+			"tools.run": "安装 / 升级选中",
+			"tools.selectMissing": "全选可安装",
+			"tools.loading": "正在检测…",
+			"tools.nowinget": "未检测到 winget,无法安装或升级。Windows 10 1809 起系统自带,可在 Microsoft Store 更新「应用安装程序」。",
+			"tools.state.missing": "未安装",
+			"tools.state.external": "已有(其他来源)",
+			"tools.state.managed": "可升级",
+			"tools.state.current": "已是最新",
+			"tools.adminHint": "需要管理员权限:会弹出 UAC 窗口,请在电脑上确认",
+			"tools.working": "处理中",
+			"tools.resultOk": "成功",
+			"tools.resultFail": "失败",
 		};
 
 		var en = {
@@ -167,6 +182,21 @@ window.__ModuleLoader__.load({
 			"python.hint": "While off (default) run_code uses the official Node/TypeScript backend, byte-identical to the shipped ptc composition; turning it on switches to dsh's experimental CPython backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), which also switches run_code's language, generated SDK prompt and tool presentation to Python. Requires a POSIX platform and CPython ≥ 3.10 (unavailable on Windows) and is mutually exclusive with the workflow tool — the official Python composition disables workflow too, so the workflow side of all four variants is forced off while this is on (your workflow setting is kept and restored when you turn it back off). Takes effect after restarting dsh; this is the very same switch on dsh-ptc-cordis-preset's card — both sides share one state, so either side updates both. Shown only while dsh-ptc-cordis-preset is installed. If turning it on does not take effect, the dsh startup log states why.",
 			"python.degraded": "backend unavailable, still Node (reason in the dsh startup log)",
 			"python.blocked": "This host is Windows: the experimental Python backend supports POSIX only, so this switch is unavailable.",
+			"sec.tools": "Terminal tools",
+			"tools.hint": "Installs common command-line tools from the official winget source. Anything already present is never re-installed, and a toolchain provided by LLVM, WinLibs or similar is never upgraded — its origin is simply shown.",
+			"tools.refresh": "Refresh",
+			"tools.run": "Install / upgrade selected",
+			"tools.selectMissing": "Select installable",
+			"tools.loading": "Checking…",
+			"tools.nowinget": "winget was not found, so nothing can be installed or upgraded. It ships with Windows 10 1809+; update “App Installer” in the Microsoft Store.",
+			"tools.state.missing": "Not installed",
+			"tools.state.external": "Present (other source)",
+			"tools.state.managed": "Upgrade available",
+			"tools.state.current": "Up to date",
+			"tools.adminHint": "Needs administrator: a UAC prompt will appear — accept it on this machine",
+			"tools.working": "Working",
+			"tools.resultOk": "succeeded",
+			"tools.resultFail": "failed",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded
@@ -228,6 +258,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "عند الإيقاف (افتراضيًا) يستخدم run_code الخلفية الرسمية Node/TypeScript، مطابقة تمامًا لتركيبة ptc الرسمية؛ وعند التشغيل يتحول إلى خلفية CPython التجريبية في dsh (@deepseek-ai/dsh-experimental-ptc-runtime-python)، فتتحول لغة run_code ومطالبة SDK المولَّدة وعرض الأداة إلى Python. يتطلب نظام POSIX و CPython ≥ 3.10 (غير متاح على Windows)، وهو متعارض مع أداة workflow — فالتركيبة الرسمية لـ Python تعطّل workflow أيضًا، لذا يبقى جانب workflow مُعطَّلًا في المتغيّرات الأربعة أثناء التشغيل (قيمتك محفوظة وتعود عند الإيقاف). يسري التغيير بعد إعادة تشغيل dsh؛ هذا هو المفتاح نفسه على بطاقة dsh-ptc-cordis-preset — الجانبان يتشاركان حالة واحدة. يظهر فقط عند تثبيت dsh-ptc-cordis-preset. إذا لم يسري التشغيل، فسبب ذلك مذكور في سجل تشغيل dsh.",
 				"python.degraded": "الخلفية غير متاحة، لا يزال Node (السبب في سجل بدء التشغيل)",
 				"python.blocked": "هذا المضيف يعمل بـ Windows: الخلفية التجريبية Python تدعم POSIX فقط، لذا لا يتوفر هذا المفتاح.",
+				"sec.tools": "أدوات الطرفية",
+				"tools.hint": "يثبّت أدوات سطر أوامر شائعة من مصدر winget الرسمي. لا يُعاد تثبيت أي أداة موجودة أصلًا، ولا تُرقّى سلسلة أدوات يوفّرها LLVM أو WinLibs أو ما شابه — يُعرض مصدرها فقط.",
+				"tools.refresh": "تحديث الحالة",
+				"tools.run": "تثبيت / ترقية المحدد",
+				"tools.selectMissing": "تحديد القابل للتثبيت",
+				"tools.loading": "جارٍ الفحص…",
+				"tools.nowinget": "لم يُعثر على winget، فلا يمكن التثبيت أو الترقية. يأتي مع Windows 10 إصدار 1809 وما بعده؛ حدّث «مثبّت التطبيقات» من متجر Microsoft.",
+				"tools.state.missing": "غير مثبَّت",
+				"tools.state.external": "موجود (مصدر آخر)",
+				"tools.state.managed": "ترقية متاحة",
+				"tools.state.current": "محدَّث",
+				"tools.adminHint": "يتطلب صلاحيات المسؤول: ستظهر نافذة UAC — أكّدها على هذا الجهاز",
+				"tools.working": "جارٍ العمل",
+				"tools.resultOk": "نجح",
+				"tools.resultFail": "فشل",
 			},
 			/* locale: de */
 			"de": {
@@ -279,6 +324,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Aus (Standard): run_code nutzt das offizielle Node/TypeScript-Backend, byte-identisch zur ausgelieferten ptc-Komposition; an: dsh wechselt auf das experimentelle CPython-Backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), womit Sprache, generierter SDK-Prompt und Darstellung von run_code auf Python umstellen. Erfordert POSIX und CPython ≥ 3.10 (unter Windows nicht verfügbar) und ist mit dem workflow-Tool unvereinbar — die offizielle Python-Komposition deaktiviert workflow ebenfalls, deshalb bleibt die workflow-Seite aller vier Varianten so lange aus (dein Workflow-Wert bleibt erhalten und kehrt nach dem Ausschalten zurück). Wirkt nach einem Neustart von dsh; dies ist derselbe Schalter auf der Karte von dsh-ptc-cordis-preset — beide Seiten teilen einen Zustand. Nur sichtbar, solange dsh-ptc-cordis-preset installiert ist. Bleibt das Einschalten ohne Wirkung, nennt das dsh-Startprotokoll den Grund.",
 				"python.degraded": "Backend nicht verfügbar, weiterhin Node (Grund im dsh-Startprotokoll)",
 				"python.blocked": "Dieser Host ist Windows: Das experimentelle Python-Backend unterstützt nur POSIX, der Schalter ist nicht verfügbar.",
+				"sec.tools": "Terminal-Werkzeuge",
+				"tools.hint": "Installiert gängige Kommandozeilen-Werkzeuge aus der offiziellen winget-Quelle. Bereits Vorhandenes wird nie erneut installiert, und eine Toolchain von LLVM, WinLibs o. Ä. wird nie aktualisiert — ihre Herkunft wird nur angezeigt.",
+				"tools.refresh": "Status aktualisieren",
+				"tools.run": "Ausgewählte installieren / aktualisieren",
+				"tools.selectMissing": "Installierbare auswählen",
+				"tools.loading": "Prüfe…",
+				"tools.nowinget": "winget wurde nicht gefunden, es kann nichts installiert oder aktualisiert werden. Es ist ab Windows 10 1809 enthalten; „App-Installer“ im Microsoft Store aktualisieren.",
+				"tools.state.missing": "Nicht installiert",
+				"tools.state.external": "Vorhanden (andere Quelle)",
+				"tools.state.managed": "Update verfügbar",
+				"tools.state.current": "Aktuell",
+				"tools.adminHint": "Erfordert Administratorrechte: Ein UAC-Fenster erscheint — bitte an diesem Rechner bestätigen",
+				"tools.working": "Läuft",
+				"tools.resultOk": "erfolgreich",
+				"tools.resultFail": "fehlgeschlagen",
 			},
 			/* locale: fr */
 			"fr": {
@@ -330,6 +390,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Désactivé (par défaut), run_code utilise le backend officiel Node/TypeScript, identique octet pour octet à la composition ptc livrée ; activé, dsh bascule sur le backend CPython expérimental (@deepseek-ai/dsh-experimental-ptc-runtime-python) : la langue, l'invite SDK générée et la présentation de run_code passent en Python. Exige POSIX et CPython ≥ 3.10 (indisponible sous Windows) et est incompatible avec l'outil workflow — la composition Python officielle désactive aussi workflow, donc le côté workflow des quatre variantes reste désactivé tant que l'option est active (ta valeur est conservée et revient à la désactivation). Prend effet après un redémarrage de dsh ; c'est le même interrupteur que sur la carte de dsh-ptc-cordis-preset — les deux côtés partagent un seul état. Affiché uniquement si dsh-ptc-cordis-preset est installé. Si l'activation reste sans effet, le journal de démarrage de dsh en indique la raison.",
 				"python.degraded": "backend indisponible, toujours Node (raison dans le journal de démarrage de dsh)",
 				"python.blocked": "Cet hôte est sous Windows : le backend Python expérimental n'est disponible que sur POSIX, l'interrupteur est indisponible.",
+				"sec.tools": "Outils de terminal",
+				"tools.hint": "Installe des outils en ligne de commande courants depuis la source winget officielle. Ce qui est déjà présent n'est jamais réinstallé, et une chaîne d'outils fournie par LLVM, WinLibs ou similaire n'est jamais mise à jour — son origine est simplement affichée.",
+				"tools.refresh": "Actualiser",
+				"tools.run": "Installer / mettre à jour la sélection",
+				"tools.selectMissing": "Sélectionner les installables",
+				"tools.loading": "Vérification…",
+				"tools.nowinget": "winget est introuvable : rien ne peut être installé ni mis à jour. Il est fourni avec Windows 10 1809 et versions ultérieures ; mettez à jour « App Installer » dans le Microsoft Store.",
+				"tools.state.missing": "Non installé",
+				"tools.state.external": "Présent (autre source)",
+				"tools.state.managed": "Mise à jour disponible",
+				"tools.state.current": "À jour",
+				"tools.adminHint": "Nécessite les droits administrateur : une fenêtre UAC va s'afficher — validez-la sur cette machine",
+				"tools.working": "En cours",
+				"tools.resultOk": "réussi",
+				"tools.resultFail": "échec",
 			},
 			/* locale: hi */
 			"hi": {
@@ -381,6 +456,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "बंद (डिफ़ॉल्ट) रहने पर run_code आधिकारिक Node/TypeScript बैकएंड इस्तेमाल करता है, जो भेजे गए ptc संयोजन से पूरी तरह मेल खाता है; चालू करने पर dsh का प्रयोगात्मक CPython बैकएंड (@deepseek-ai/dsh-experimental-ptc-runtime-python) चलता है और run_code की भाषा, बना SDK प्रॉम्प्ट तथा प्रस्तुति Python में बदल जाती है। इसके लिए POSIX और CPython ≥ 3.10 चाहिए (Windows पर उपलब्ध नहीं), और यह workflow टूल से परस्पर अनन्य है — आधिकारिक Python संयोजन भी workflow बंद करता है, इसलिए चालू रहने तक चारों वेरिएंट का workflow पक्ष बंद रहता है (आपकी workflow सेटिंग सुरक्षित रहती है और बंद करने पर लौट आती है)। बदलाव dsh को फिर से शुरू करने के बाद लागू होता है; यह dsh-ptc-cordis-preset के कार्ड पर मौजूद वही स्विच है — दोनों ओर एक ही स्थिति साझा होती है। यह केवल तभी दिखता है जब dsh-ptc-cordis-preset इंस्टॉल हो। चालू करने पर असर न हो तो कारण dsh के स्टार्टअप लॉग में मिलेगा।",
 				"python.degraded": "बैकएंड उपलब्ध नहीं, अब भी Node (कारण dsh स्टार्टअप लॉग में)",
 				"python.blocked": "यह होस्ट Windows है: प्रयोगात्मक Python बैकएंड केवल POSIX पर चलता है, इसलिए यह स्विच उपलब्ध नहीं है।",
+				"sec.tools": "टर्मिनल टूल",
+				"tools.hint": "आधिकारिक winget स्रोत से सामान्य कमांड-लाइन टूल इंस्टॉल करता है। जो पहले से मौजूद है उसे दोबारा इंस्टॉल नहीं किया जाता, और LLVM, WinLibs आदि द्वारा दी गई टूलचेन को कभी अपग्रेड नहीं किया जाता — केवल उसका स्रोत दिखाया जाता है।",
+				"tools.refresh": "स्थिति ताज़ा करें",
+				"tools.run": "चयनित इंस्टॉल / अपग्रेड करें",
+				"tools.selectMissing": "इंस्टॉल-योग्य चुनें",
+				"tools.loading": "जाँच हो रही है…",
+				"tools.nowinget": "winget नहीं मिला, इसलिए कुछ भी इंस्टॉल या अपग्रेड नहीं हो सकता। यह Windows 10 1809 और उसके बाद के साथ आता है; Microsoft Store से “App Installer” अपडेट करें।",
+				"tools.state.missing": "इंस्टॉल नहीं है",
+				"tools.state.external": "मौजूद (अन्य स्रोत)",
+				"tools.state.managed": "अपग्रेड उपलब्ध",
+				"tools.state.current": "अद्यतन",
+				"tools.adminHint": "व्यवस्थापक अनुमति चाहिए: एक UAC विंडो दिखेगी — इस मशीन पर पुष्टि करें",
+				"tools.working": "चल रहा है",
+				"tools.resultOk": "सफल",
+				"tools.resultFail": "विफल",
 			},
 			/* locale: id */
 			"id": {
@@ -432,6 +522,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Saat nonaktif (bawaan), run_code memakai backend resmi Node/TypeScript, identik byte demi byte dengan komposisi ptc resmi; saat aktif, dsh memakai backend CPython eksperimental (@deepseek-ai/dsh-experimental-ptc-runtime-python) sehingga bahasa run_code, prompt SDK yang dihasilkan, dan penyajiannya beralih ke Python. Memerlukan POSIX dan CPython ≥ 3.10 (tidak tersedia di Windows) serta saling eksklusif dengan alat workflow — komposisi Python resmi juga menonaktifkan workflow, jadi sisi workflow keempat varian tetap mati selama ini aktif (nilai workflow-mu dipertahankan dan kembali saat dimatikan). Berlaku setelah dsh dimulai ulang; ini sakelar yang sama di kartu dsh-ptc-cordis-preset — kedua sisi berbagi satu status. Hanya tampil saat dsh-ptc-cordis-preset terpasang. Jika diaktifkan tetapi tidak berpengaruh, alasannya ada di log mulai dsh.",
 				"python.degraded": "backend tidak tersedia, masih Node (alasan di log mulai dsh)",
 				"python.blocked": "Host ini Windows: backend Python eksperimental hanya mendukung POSIX, sakelar ini tidak tersedia.",
+				"sec.tools": "Alat terminal",
+				"tools.hint": "Memasang alat baris perintah umum dari sumber winget resmi. Yang sudah ada tidak pernah dipasang ulang, dan toolchain dari LLVM, WinLibs, dan sejenisnya tidak pernah ditingkatkan — asalnya hanya ditampilkan.",
+				"tools.refresh": "Segarkan status",
+				"tools.run": "Pasang / tingkatkan yang dipilih",
+				"tools.selectMissing": "Pilih yang bisa dipasang",
+				"tools.loading": "Memeriksa…",
+				"tools.nowinget": "winget tidak ditemukan, jadi tidak ada yang bisa dipasang atau ditingkatkan. winget tersedia sejak Windows 10 1809; perbarui “App Installer” di Microsoft Store.",
+				"tools.state.missing": "Belum terpasang",
+				"tools.state.external": "Ada (sumber lain)",
+				"tools.state.managed": "Ada peningkatan",
+				"tools.state.current": "Terbaru",
+				"tools.adminHint": "Perlu administrator: jendela UAC akan muncul — setujui di komputer ini",
+				"tools.working": "Memproses",
+				"tools.resultOk": "berhasil",
+				"tools.resultFail": "gagal",
 			},
 			/* locale: it */
 			"it": {
@@ -483,6 +588,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Disattivato (predefinito) run_code usa il backend ufficiale Node/TypeScript, identico byte per byte alla composizione ptc distribuita; attivandolo dsh passa al backend CPython sperimentale (@deepseek-ai/dsh-experimental-ptc-runtime-python): lingua, prompt SDK generato e presentazione di run_code passano a Python. Richiede POSIX e CPython ≥ 3.10 (non disponibile su Windows) ed è incompatibile con lo strumento workflow — anche la composizione Python ufficiale disattiva workflow, quindi il lato workflow di tutte e quattro le varianti resta spento finché è attivo (il tuo valore viene conservato e torna alla disattivazione). Ha effetto dopo il riavvio di dsh; è lo stesso interruttore sulla scheda di dsh-ptc-cordis-preset — entrambi i lati condividono un unico stato. Visibile solo quando dsh-ptc-cordis-preset è installato. Se l'attivazione non ha effetto, il motivo è nel log di avvio di dsh.",
 				"python.degraded": "backend non disponibile, resta Node (motivo nel log di avvio di dsh)",
 				"python.blocked": "Questo host è Windows: il backend Python sperimentale supporta solo POSIX, l'interruttore non è disponibile.",
+				"sec.tools": "Strumenti da terminale",
+				"tools.hint": "Installa strumenti da riga di comando comuni dalla fonte winget ufficiale. Ciò che è già presente non viene mai reinstallato, e una toolchain fornita da LLVM, WinLibs o simili non viene mai aggiornata — ne viene solo mostrata l'origine.",
+				"tools.refresh": "Aggiorna stato",
+				"tools.run": "Installa / aggiorna selezionati",
+				"tools.selectMissing": "Seleziona installabili",
+				"tools.loading": "Verifica…",
+				"tools.nowinget": "winget non trovato: non è possibile installare né aggiornare. È incluso da Windows 10 1809; aggiorna “App Installer” dal Microsoft Store.",
+				"tools.state.missing": "Non installato",
+				"tools.state.external": "Presente (altra fonte)",
+				"tools.state.managed": "Aggiornamento disponibile",
+				"tools.state.current": "Aggiornato",
+				"tools.adminHint": "Richiede privilegi di amministratore: apparirà una finestra UAC — confermala su questo computer",
+				"tools.working": "In corso",
+				"tools.resultOk": "riuscito",
+				"tools.resultFail": "non riuscito",
 			},
 			/* locale: ja */
 			"ja": {
@@ -534,6 +654,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "オフ(既定)では run_code は公式の Node/TypeScript バックエンドを使い、公式 ptc 構成とバイト単位で一致します。オンにすると dsh の実験的 CPython バックエンド(@deepseek-ai/dsh-experimental-ptc-runtime-python)に切り替わり、run_code の言語・生成される SDK プロンプト・提示が Python に変わります。POSIX と CPython ≥ 3.10 が必要(Windows では利用不可)で、workflow ツールとは排他です —— 公式 Python 構成も workflow を無効化するため、オン期間中は 4 変体すべてで workflow 側が強制的にオフになります(ワークフロー設定値は保持され、オフに戻すと復帰)。変更は dsh の再起動後に有効です。これは dsh-ptc-cordis-preset のカードにある同じスイッチで、両側が同一状態を共有します。dsh-ptc-cordis-preset がインストールされているときだけ表示されます。 オンにしても効かない場合の理由は dsh の起動ログにあります。",
 				"python.degraded": "バックエンド利用不可・現在も Node(理由は dsh の起動ログ)",
 				"python.blocked": "このホストは Windows です。実験的 Python バックエンドは POSIX 専用のため、このスイッチは利用できません。",
+				"sec.tools": "ターミナルツール",
+				"tools.hint": "winget の公式ソースから定番のコマンドラインツールを導入します。すでに入っているものは再インストールせず、LLVM や WinLibs などが提供するツールチェーンは更新しません(入手元を表示するだけです)。",
+				"tools.refresh": "状態を更新",
+				"tools.run": "選択したものをインストール / 更新",
+				"tools.selectMissing": "導入可能なものを選択",
+				"tools.loading": "確認中…",
+				"tools.nowinget": "winget が見つからないため、インストールも更新もできません。Windows 10 1809 以降に同梱されています。Microsoft Store で「アプリ インストーラー」を更新してください。",
+				"tools.state.missing": "未インストール",
+				"tools.state.external": "あり(別の入手元)",
+				"tools.state.managed": "更新あり",
+				"tools.state.current": "最新",
+				"tools.adminHint": "管理者権限が必要です。UAC の画面が表示されるので、この PC で承認してください",
+				"tools.working": "処理中",
+				"tools.resultOk": "成功",
+				"tools.resultFail": "失敗",
 			},
 			/* locale: ko */
 			"ko": {
@@ -585,6 +720,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "끄면(기본) run_code는 공식 Node/TypeScript 백엔드를 사용해 공식 ptc 구성과 바이트 단위로 일치합니다. 켜면 dsh의 실험적 CPython 백엔드(@deepseek-ai/dsh-experimental-ptc-runtime-python)로 바뀌어 run_code의 언어, 생성되는 SDK 프롬프트, 도구 표시가 Python으로 전환됩니다. POSIX와 CPython ≥ 3.10이 필요하며(Windows에서는 사용 불가) workflow 도구와 상호 배타적입니다 — 공식 Python 구성도 workflow를 끄므로 켜져 있는 동안 네 변형 모두 workflow 쪽이 강제로 꺼집니다(워크플로 설정값은 유지되고 끄면 복구됩니다). 변경은 dsh 재시작 후 적용됩니다. 이 스위치는 dsh-ptc-cordis-preset 카드에 있는 바로 그 스위치이며 양쪽이 같은 상태를 공유합니다. dsh-ptc-cordis-preset이 설치되어 있을 때만 표시됩니다. 켠 뒤에도 적용되지 않으면 그 이유는 dsh 시작 로그에 있습니다.",
 				"python.degraded": "백엔드 사용 불가, 여전히 Node(이유는 dsh 시작 로그)",
 				"python.blocked": "이 호스트는 Windows입니다. 실험적 Python 백엔드는 POSIX만 지원하므로 이 스위치를 쓸 수 없습니다.",
+				"sec.tools": "터미널 도구",
+				"tools.hint": "공식 winget 소스에서 자주 쓰는 명령줄 도구를 설치합니다. 이미 있는 것은 다시 설치하지 않고, LLVM·WinLibs 등이 제공하는 툴체인은 업그레이드하지 않습니다(출처만 표시합니다).",
+				"tools.refresh": "상태 새로 고침",
+				"tools.run": "선택 항목 설치 / 업그레이드",
+				"tools.selectMissing": "설치 가능 항목 선택",
+				"tools.loading": "확인 중…",
+				"tools.nowinget": "winget을 찾을 수 없어 설치하거나 업그레이드할 수 없습니다. Windows 10 1809부터 기본 포함되며, Microsoft Store에서 “앱 설치 관리자”를 업데이트하세요.",
+				"tools.state.missing": "설치되지 않음",
+				"tools.state.external": "있음(다른 출처)",
+				"tools.state.managed": "업그레이드 가능",
+				"tools.state.current": "최신",
+				"tools.adminHint": "관리자 권한이 필요합니다. UAC 창이 뜨면 이 PC에서 승인하세요",
+				"tools.working": "처리 중",
+				"tools.resultOk": "성공",
+				"tools.resultFail": "실패",
 			},
 			/* locale: nl */
 			"nl": {
@@ -636,6 +786,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Uit (standaard) gebruikt run_code de officiële Node/TypeScript-backend, byte voor byte gelijk aan de meegeleverde ptc-compositie; aan schakelt dsh over op de experimentele CPython-backend (@deepseek-ai/dsh-experimental-ptc-runtime-python), waardoor taal, gegenereerde SDK-prompt en weergave van run_code naar Python gaan. Vereist POSIX en CPython ≥ 3.10 (niet beschikbaar op Windows) en is onverenigbaar met de workflow-tool — de officiële Python-compositie schakelt workflow ook uit, dus de workflow-kant van alle vier varianten blijft uit zolang dit aan staat (je workflow-waarde blijft bewaard en keert terug als je het uitzet). Werkt na een herstart van dsh; dit is dezelfde schakelaar op de kaart van dsh-ptc-cordis-preset — beide kanten delen één status. Alleen zichtbaar zolang dsh-ptc-cordis-preset is geïnstalleerd. Werkt het aanzetten niet, dan staat de reden in het opstartlogboek van dsh.",
 				"python.degraded": "backend niet beschikbaar, nog steeds Node (reden in het dsh-opstartlogboek)",
 				"python.blocked": "Deze host is Windows: de experimentele Python-backend ondersteunt alleen POSIX, deze schakelaar is niet beschikbaar.",
+				"sec.tools": "Terminalhulpmiddelen",
+				"tools.hint": "Installeert gangbare opdrachtregelprogramma’s uit de officiële winget-bron. Wat al aanwezig is wordt nooit opnieuw geïnstalleerd, en een toolchain van LLVM, WinLibs en dergelijke wordt nooit bijgewerkt — de herkomst wordt alleen getoond.",
+				"tools.refresh": "Status vernieuwen",
+				"tools.run": "Geselecteerde installeren / bijwerken",
+				"tools.selectMissing": "Installeerbare selecteren",
+				"tools.loading": "Controleren…",
+				"tools.nowinget": "winget is niet gevonden, dus er kan niets worden geïnstalleerd of bijgewerkt. Het zit sinds Windows 10 1809 in het systeem; werk “App Installer” bij in de Microsoft Store.",
+				"tools.state.missing": "Niet geïnstalleerd",
+				"tools.state.external": "Aanwezig (andere bron)",
+				"tools.state.managed": "Update beschikbaar",
+				"tools.state.current": "Bijgewerkt",
+				"tools.adminHint": "Vereist beheerdersrechten: er verschijnt een UAC-venster — bevestig dat op deze computer",
+				"tools.working": "Bezig",
+				"tools.resultOk": "geslaagd",
+				"tools.resultFail": "mislukt",
 			},
 			/* locale: pl */
 			"pl": {
@@ -687,6 +852,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Wyłączony (domyślnie) run_code używa oficjalnego backendu Node/TypeScript, identycznego co do bajtu z dostarczaną kompozycją ptc; włączenie przełącza dsh na eksperymentalny backend CPython (@deepseek-ai/dsh-experimental-ptc-runtime-python), więc język, generowany prompt SDK i prezentacja run_code przechodzą na Python. Wymaga POSIX i CPython ≥ 3.10 (niedostępny w Windows) i jest wykluczający z narzędziem workflow — oficjalna kompozycja Python również wyłącza workflow, więc strona workflow wszystkich czterech wariantów pozostaje wyłączona, dopóki to jest włączone (twoje ustawienie workflow jest zachowane i wraca po wyłączeniu). Zmiana działa po restarcie dsh; to ten sam przełącznik na karcie dsh-ptc-cordis-preset — obie strony dzielą jeden stan. Widoczny tylko, gdy dsh-ptc-cordis-preset jest zainstalowany. Jeśli włączenie nie przyniesie skutku, powód znajdziesz w logu startowym dsh.",
 				"python.degraded": "backend niedostępny, nadal Node (powód w logu startowym dsh)",
 				"python.blocked": "Ten host to Windows: eksperymentalny backend Python obsługuje tylko POSIX, przełącznik jest niedostępny.",
+				"sec.tools": "Narzędzia terminala",
+				"tools.hint": "Instaluje popularne narzędzia wiersza poleceń z oficjalnego źródła winget. To, co już jest, nie jest instalowane ponownie, a łańcuch narzędzi dostarczany przez LLVM, WinLibs itp. nie jest aktualizowany — pokazujemy tylko jego pochodzenie.",
+				"tools.refresh": "Odśwież stan",
+				"tools.run": "Zainstaluj / zaktualizuj wybrane",
+				"tools.selectMissing": "Wybierz instalowalne",
+				"tools.loading": "Sprawdzanie…",
+				"tools.nowinget": "Nie znaleziono winget, więc nie można niczego zainstalować ani zaktualizować. Jest dołączony od Windows 10 1809; zaktualizuj „App Installer” w Microsoft Store.",
+				"tools.state.missing": "Nie zainstalowano",
+				"tools.state.external": "Obecne (inne źródło)",
+				"tools.state.managed": "Dostępna aktualizacja",
+				"tools.state.current": "Aktualne",
+				"tools.adminHint": "Wymaga uprawnień administratora: pojawi się okno UAC — potwierdź je na tym komputerze",
+				"tools.working": "Przetwarzanie",
+				"tools.resultOk": "sukces",
+				"tools.resultFail": "niepowodzenie",
 			},
 			/* locale: pt */
 			"pt": {
@@ -738,6 +918,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Desligado (padrão), o run_code usa o backend oficial Node/TypeScript, idêntico byte a byte à composição ptc distribuída; ligado, o dsh passa para o backend CPython experimental (@deepseek-ai/dsh-experimental-ptc-runtime-python), e a linguagem, o prompt SDK gerado e a apresentação do run_code passam para Python. Exige POSIX e CPython ≥ 3.10 (indisponível no Windows) e é incompatível com a ferramenta workflow — a composição Python oficial também desativa workflow, pelo que o lado workflow das quatro variantes fica desligado enquanto isto estiver ligado (o teu valor é mantido e regressa ao desligar). Produz efeito após reiniciar o dsh; é o mesmo interruptor no cartão do dsh-ptc-cordis-preset — os dois lados partilham um único estado. Só aparece quando o dsh-ptc-cordis-preset está instalado. Se ligar não tiver efeito, o motivo está no registo de arranque do dsh.",
 				"python.degraded": "backend indisponível, continua Node (motivo no registo de arranque do dsh)",
 				"python.blocked": "Este anfitrião é Windows: o backend Python experimental só suporta POSIX, pelo que este interruptor não está disponível.",
+				"sec.tools": "Ferramentas de terminal",
+				"tools.hint": "Instala ferramentas de linha de comando comuns a partir da fonte oficial winget. O que já existe nunca é reinstalado, e uma toolchain fornecida por LLVM, WinLibs ou similar nunca é atualizada — apenas mostramos a origem.",
+				"tools.refresh": "Atualizar estado",
+				"tools.run": "Instalar / atualizar selecionados",
+				"tools.selectMissing": "Selecionar instaláveis",
+				"tools.loading": "A verificar…",
+				"tools.nowinget": "winget não foi encontrado, por isso nada pode ser instalado ou atualizado. Vem com o Windows 10 1809 ou superior; atualize o “App Installer” na Microsoft Store.",
+				"tools.state.missing": "Não instalado",
+				"tools.state.external": "Presente (outra origem)",
+				"tools.state.managed": "Atualização disponível",
+				"tools.state.current": "Atualizado",
+				"tools.adminHint": "Requer administrador: aparecerá uma janela UAC — confirme-a neste computador",
+				"tools.working": "A processar",
+				"tools.resultOk": "com êxito",
+				"tools.resultFail": "falhou",
 			},
 			/* locale: ru */
 			"ru": {
@@ -789,6 +984,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Выключено (по умолчанию) — run_code использует официальный бэкенд Node/TypeScript, побайтово совпадающий с поставляемой композицией ptc; при включении dsh переходит на экспериментальный бэкенд CPython (@deepseek-ai/dsh-experimental-ptc-runtime-python), и язык, сгенерированная подсказка SDK и представление run_code переключаются на Python. Требуются POSIX и CPython ≥ 3.10 (в Windows недоступно), и это несовместимо с инструментом workflow — официальная композиция Python тоже отключает workflow, поэтому сторона workflow всех четырёх вариантов остаётся выключенной, пока это включено (ваша настройка workflow сохраняется и возвращается после выключения). Изменение действует после перезапуска dsh; это тот же переключатель на карточке dsh-ptc-cordis-preset — обе стороны делят одно состояние. Показывается только когда установлен dsh-ptc-cordis-preset. Если включение не подействовало, причина указана в журнале запуска dsh.",
 				"python.degraded": "бэкенд недоступен, по-прежнему Node (причина в журнале запуска dsh)",
 				"python.blocked": "Этот хост — Windows: экспериментальный бэкенд Python поддерживает только POSIX, переключатель недоступен.",
+				"sec.tools": "Терминальные инструменты",
+				"tools.hint": "Устанавливает распространённые консольные утилиты из официального источника winget. Уже имеющееся никогда не переустанавливается, а инструментарий от LLVM, WinLibs и подобных никогда не обновляется — показывается только его источник.",
+				"tools.refresh": "Обновить состояние",
+				"tools.run": "Установить / обновить выбранное",
+				"tools.selectMissing": "Выбрать доступные для установки",
+				"tools.loading": "Проверка…",
+				"tools.nowinget": "winget не найден, поэтому ничего нельзя установить или обновить. Он входит в Windows 10 1809 и новее; обновите «App Installer» в Microsoft Store.",
+				"tools.state.missing": "Не установлено",
+				"tools.state.external": "Есть (другой источник)",
+				"tools.state.managed": "Доступно обновление",
+				"tools.state.current": "Актуально",
+				"tools.adminHint": "Нужны права администратора: появится окно UAC — подтвердите его на этом компьютере",
+				"tools.working": "Выполняется",
+				"tools.resultOk": "успешно",
+				"tools.resultFail": "ошибка",
 			},
 			/* locale: sv */
 			"sv": {
@@ -840,6 +1050,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Av (standard) använder run_code den officiella Node/TypeScript-backenden, byte för byte identisk med den medföljande ptc-kompositionen; på växlar dsh till den experimentella CPython-backenden (@deepseek-ai/dsh-experimental-ptc-runtime-python), vilket även byter run_codes språk, genererade SDK-prompt och presentation till Python. Kräver POSIX och CPython ≥ 3.10 (ej tillgängligt i Windows) och utesluter workflow-verktyget — den officiella Python-kompositionen stänger också av workflow, så workflow-sidan i alla fyra varianter hålls avstängd medan detta är på (ditt workflow-värde behålls och återställs när du stänger av). Gäller efter omstart av dsh; detta är samma växel på dsh-ptc-cordis-presets kort — båda sidor delar ett tillstånd. Visas bara när dsh-ptc-cordis-preset är installerat. Om påslaget inte får effekt står orsaken i dsh:s startlogg.",
 				"python.degraded": "backend otillgänglig, fortfarande Node (orsak i dsh-startloggen)",
 				"python.blocked": "Den här värden är Windows: den experimentella Python-backenden stöder bara POSIX, så växeln är otillgänglig.",
+				"sec.tools": "Terminalverktyg",
+				"tools.hint": "Installerar vanliga kommandoradsverktyg från den officiella winget-källan. Det som redan finns installeras aldrig om, och en verktygskedja från LLVM, WinLibs eller liknande uppgraderas aldrig — bara dess ursprung visas.",
+				"tools.refresh": "Uppdatera status",
+				"tools.run": "Installera / uppgradera valda",
+				"tools.selectMissing": "Välj installeringsbara",
+				"tools.loading": "Kontrollerar…",
+				"tools.nowinget": "winget hittades inte, så inget kan installeras eller uppgraderas. Det ingår från Windows 10 1809; uppdatera “App Installer” i Microsoft Store.",
+				"tools.state.missing": "Ej installerat",
+				"tools.state.external": "Finns (annan källa)",
+				"tools.state.managed": "Uppgradering finns",
+				"tools.state.current": "Senaste",
+				"tools.adminHint": "Kräver administratör: ett UAC-fönster visas — bekräfta det på den här datorn",
+				"tools.working": "Arbetar",
+				"tools.resultOk": "lyckades",
+				"tools.resultFail": "misslyckades",
 			},
 			/* locale: th */
 			"th": {
@@ -891,6 +1116,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "เมื่อปิด (ค่าเริ่มต้น) run_code จะใช้แบ็กเอนด์ Node/TypeScript อย่างเป็นทางการ ซึ่งเหมือนกับคอมโพซิชัน ptc ที่จัดส่งทุกไบต์; เมื่อเปิด dsh จะเปลี่ยนไปใช้แบ็กเอนด์ CPython ทดลอง (@deepseek-ai/dsh-experimental-ptc-runtime-python) ภาษา พรอมป์ต์ SDK ที่สร้างขึ้น และการนำเสนอของ run_code จะเปลี่ยนเป็น Python ต้องใช้ POSIX และ CPython ≥ 3.10 (ใช้ไม่ได้บน Windows) และใช้ร่วมกับเครื่องมือ workflow ไม่ได้ — คอมโพซิชัน Python อย่างเป็นทางการก็ปิด workflow เช่นกัน ฝั่ง workflow ของทั้งสี่รูปแบบจึงถูกปิดขณะเปิดอยู่ (ค่าที่คุณตั้งไว้จะถูกเก็บและกลับมาเมื่อปิด) การเปลี่ยนแปลงมีผลหลังรีสตาร์ต dsh; นี่คือสวิตช์เดียวกันบนการ์ดของ dsh-ptc-cordis-preset — ทั้งสองฝั่งใช้สถานะเดียวกัน แสดงเฉพาะเมื่อติดตั้ง dsh-ptc-cordis-preset แล้วเท่านั้น หากเปิดแล้วไม่เกิดผล เหตุผลอยู่ในบันทึกการเริ่มต้นของ dsh",
 				"python.degraded": "แบ็กเอนด์ใช้ไม่ได้ ยังเป็น Node (เหตุผลในบันทึกเริ่มต้นของ dsh)",
 				"python.blocked": "โฮสต์นี้เป็น Windows: แบ็กเอนด์ Python ทดลองรองรับเฉพาะ POSIX สวิตช์นี้จึงใช้ไม่ได้",
+				"sec.tools": "เครื่องมือเทอร์มินัล",
+				"tools.hint": "ติดตั้งเครื่องมือบรรทัดคำสั่งที่ใช้บ่อยจากแหล่ง winget อย่างเป็นทางการ สิ่งที่มีอยู่แล้วจะไม่ติดตั้งซ้ำ และ toolchain ที่มาจาก LLVM, WinLibs หรืออื่น ๆ จะไม่ถูกอัปเกรด เพียงแสดงแหล่งที่มาเท่านั้น",
+				"tools.refresh": "รีเฟรชสถานะ",
+				"tools.run": "ติดตั้ง / อัปเกรดรายการที่เลือก",
+				"tools.selectMissing": "เลือกรายการที่ติดตั้งได้",
+				"tools.loading": "กำลังตรวจสอบ…",
+				"tools.nowinget": "ไม่พบ winget จึงติดตั้งหรืออัปเกรดไม่ได้ มีมาให้ตั้งแต่ Windows 10 1809 ขึ้นไป อัปเดต “App Installer” ใน Microsoft Store",
+				"tools.state.missing": "ยังไม่ได้ติดตั้ง",
+				"tools.state.external": "มีอยู่แล้ว (แหล่งอื่น)",
+				"tools.state.managed": "มีเวอร์ชันใหม่",
+				"tools.state.current": "ล่าสุดแล้ว",
+				"tools.adminHint": "ต้องใช้สิทธิ์ผู้ดูแลระบบ จะมีหน้าต่าง UAC ขึ้นมา กรุณายืนยันบนเครื่องนี้",
+				"tools.working": "กำลังดำเนินการ",
+				"tools.resultOk": "สำเร็จ",
+				"tools.resultFail": "ล้มเหลว",
 			},
 			/* locale: tr */
 			"tr": {
@@ -942,6 +1182,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Kapalıyken (varsayılan) run_code resmî Node/TypeScript arka ucunu kullanır ve gönderilen ptc bileşimiyle bayt bayt aynıdır; açıldığında dsh deneysel CPython arka ucuna (@deepseek-ai/dsh-experimental-ptc-runtime-python) geçer; run_code dil, üretilen SDK istemi ve sunum Python'a döner. POSIX ve CPython ≥ 3.10 gerektirir (Windows'ta kullanılamaz) ve workflow aracıyla birbirini dışlar — resmî Python bileşimi de workflow'u kapatır, bu yüzden bu açıkken dört varyantın workflow tarafı kapalı kalır (workflow ayarın korunur ve kapatınca geri gelir). Değişiklik dsh yeniden başlatıldıktan sonra geçerli olur; bu, dsh-ptc-cordis-preset kartındaki aynı anahtardır — iki taraf tek durumu paylaşır. Yalnızca dsh-ptc-cordis-preset kurulu olduğunda görünür. Açmak etkili olmazsa nedeni dsh başlangıç günlüğünde yazar.",
 				"python.degraded": "arka uç kullanılamıyor, hâlâ Node (neden dsh başlangıç günlüğünde)",
 				"python.blocked": "Bu ana makine Windows: deneysel Python arka ucu yalnızca POSIX destekler, bu anahtar kullanılamaz.",
+				"sec.tools": "Terminal araçları",
+				"tools.hint": "Resmî winget kaynağından yaygın komut satırı araçlarını kurar. Zaten var olanlar asla yeniden kurulmaz ve LLVM, WinLibs vb. tarafından sağlanan bir araç zinciri asla yükseltilmez — yalnızca kaynağı gösterilir.",
+				"tools.refresh": "Durumu yenile",
+				"tools.run": "Seçilenleri kur / yükselt",
+				"tools.selectMissing": "Kurulabilirleri seç",
+				"tools.loading": "Denetleniyor…",
+				"tools.nowinget": "winget bulunamadı; hiçbir şey kurulamaz veya yükseltilemez. Windows 10 1809 ve sonrasıyla birlikte gelir; Microsoft Store’dan “App Installer”ı güncelleyin.",
+				"tools.state.missing": "Kurulu değil",
+				"tools.state.external": "Var (başka kaynak)",
+				"tools.state.managed": "Güncelleme var",
+				"tools.state.current": "Güncel",
+				"tools.adminHint": "Yönetici izni gerekir: bir UAC penceresi açılır — bu bilgisayarda onaylayın",
+				"tools.working": "İşleniyor",
+				"tools.resultOk": "başarılı",
+				"tools.resultFail": "başarısız",
 			},
 			/* locale: vi */
 			"vi": {
@@ -993,6 +1248,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "Khi tắt (mặc định), run_code dùng backend Node/TypeScript chính thức, giống từng byte với tổ hợp ptc được phát hành; khi bật, dsh chuyển sang backend CPython thử nghiệm (@deepseek-ai/dsh-experimental-ptc-runtime-python), kéo theo ngôn ngữ, prompt SDK được sinh và cách trình bày của run_code chuyển sang Python. Yêu cầu POSIX và CPython ≥ 3.10 (không dùng được trên Windows) và loại trừ lẫn nhau với công cụ workflow — tổ hợp Python chính thức cũng tắt workflow, nên phía workflow của cả bốn biến thể bị tắt trong lúc bật (giá trị workflow của bạn được giữ và trở lại khi tắt). Thay đổi có hiệu lực sau khi khởi động lại dsh; đây chính là công tắc trên thẻ của dsh-ptc-cordis-preset — hai bên dùng chung một trạng thái. Chỉ hiện khi đã cài dsh-ptc-cordis-preset. Nếu bật mà không có hiệu lực, lý do nằm trong nhật ký khởi động dsh.",
 				"python.degraded": "backend không khả dụng, vẫn là Node (lý do trong nhật ký khởi động dsh)",
 				"python.blocked": "Máy chủ này là Windows: backend Python thử nghiệm chỉ hỗ trợ POSIX, nên công tắc này không dùng được.",
+				"sec.tools": "Công cụ terminal",
+				"tools.hint": "Cài các công cụ dòng lệnh phổ biến từ nguồn winget chính thức. Thứ đã có sẽ không bao giờ được cài lại, và bộ công cụ do LLVM, WinLibs… cung cấp sẽ không bao giờ bị nâng cấp — chỉ hiển thị nguồn gốc.",
+				"tools.refresh": "Làm mới trạng thái",
+				"tools.run": "Cài / nâng cấp mục đã chọn",
+				"tools.selectMissing": "Chọn mục cài được",
+				"tools.loading": "Đang kiểm tra…",
+				"tools.nowinget": "Không tìm thấy winget nên không thể cài hay nâng cấp. Nó có sẵn từ Windows 10 1809 trở lên; hãy cập nhật “App Installer” trong Microsoft Store.",
+				"tools.state.missing": "Chưa cài",
+				"tools.state.external": "Đã có (nguồn khác)",
+				"tools.state.managed": "Có bản nâng cấp",
+				"tools.state.current": "Mới nhất",
+				"tools.adminHint": "Cần quyền quản trị: cửa sổ UAC sẽ hiện ra — hãy xác nhận trên máy này",
+				"tools.working": "Đang xử lý",
+				"tools.resultOk": "thành công",
+				"tools.resultFail": "thất bại",
 			},
 			/* locale: zh-hk */
 			"zh-hk": {
@@ -1044,6 +1314,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "閂咗(預設)嗰陣 run_code 用官方 Node/TypeScript 後端,同官方 ptc 組合逐位元組一致;開咗就轉用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 嘅語言、生成嘅 SDK 提示詞同工具呈現都會轉去 Python。需要 POSIX 平台同 CPython ≥ 3.10(Windows 用唔到),而且同 workflow 工具互斥——官方 Python 組合同樣停用 workflow,所以開住嗰陣本插件四個變體嘅 workflow 側會強制關閉(你嘅工作流設定值會保留,閂咗之後恢復)。改動要重啟 dsh 先生效;呢個開關就係 dsh-ptc-cordis-preset 設定卡上面同一個開關——兩邊共享同一份狀態。只喺已安裝 dsh-ptc-cordis-preset 時顯示。開咗之後唔生效,原因喺 dsh 啟動日誌度。",
 				"python.degraded": "後端用唔到,暫時仍然係 Node(原因喺 dsh 啟動日誌)",
 				"python.blocked": "呢部主機係 Windows:實驗性 Python 後端淨係支援 POSIX,所以呢個開關用唔到。",
+				"sec.tools": "終端工具",
+				"tools.hint": "由 winget 官方源安裝常用命令列工具。已經有嘅(唔理乜來源)一律唔會重複安裝;LLVM、WinLibs 等提供嘅工具鏈亦都唔會升級,只會照實顯示來源。",
+				"tools.refresh": "更新狀態",
+				"tools.run": "安裝 / 升級已揀",
+				"tools.selectMissing": "全選可安裝",
+				"tools.loading": "檢查緊…",
+				"tools.nowinget": "搵唔到 winget,所以裝唔到亦升級唔到。Windows 10 1809 起已經內置,可以喺 Microsoft Store 更新「應用程式安裝程式」。",
+				"tools.state.missing": "未安裝",
+				"tools.state.external": "已有(其他來源)",
+				"tools.state.managed": "可升級",
+				"tools.state.current": "已經最新",
+				"tools.adminHint": "需要管理員權限:會彈出 UAC 視窗,請喺電腦度確認",
+				"tools.working": "處理緊",
+				"tools.resultOk": "成功",
+				"tools.resultFail": "失敗",
 			},
 			/* locale: zh-mo */
 			"zh-mo": {
@@ -1095,6 +1380,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "閂咗(預設)嗰陣 run_code 用官方 Node/TypeScript 後端,同官方 ptc 組合逐位元組一致;開咗就轉用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 嘅語言、生成嘅 SDK 提示詞同工具呈現都會轉去 Python。需要 POSIX 平台同 CPython ≥ 3.10(Windows 用唔到),而且同 workflow 工具互斥——官方 Python 組合同樣停用 workflow,所以開住嗰陣本插件四個變體嘅 workflow 側會強制關閉(你嘅工作流設定值會保留,閂咗之後恢復)。改動要重啟 dsh 先生效;呢個開關就係 dsh-ptc-cordis-preset 設定卡上面同一個開關——兩邊共享同一份狀態。只喺已安裝 dsh-ptc-cordis-preset 時顯示。開咗之後唔生效,原因喺 dsh 啟動日誌度。",
 				"python.degraded": "後端用唔到,暫時仍然係 Node(原因喺 dsh 啟動日誌)",
 				"python.blocked": "呢部主機係 Windows:實驗性 Python 後端淨係支援 POSIX,所以呢個開關用唔到。",
+				"sec.tools": "終端工具",
+				"tools.hint": "由 winget 官方源安裝常用命令列工具。已經有嘅(唔理乜來源)一律唔會重複安裝;LLVM、WinLibs 等提供嘅工具鏈亦都唔會升級,只會照實顯示來源。",
+				"tools.refresh": "更新狀態",
+				"tools.run": "安裝 / 升級已揀",
+				"tools.selectMissing": "全選可安裝",
+				"tools.loading": "檢查緊…",
+				"tools.nowinget": "搵唔到 winget,所以裝唔到亦升級唔到。Windows 10 1809 起已經內置,可以喺 Microsoft Store 更新「應用程式安裝程式」。",
+				"tools.state.missing": "未安裝",
+				"tools.state.external": "已有(其他來源)",
+				"tools.state.managed": "可升級",
+				"tools.state.current": "已經最新",
+				"tools.adminHint": "需要管理員權限:會彈出 UAC 視窗,請喺電腦度確認",
+				"tools.working": "處理緊",
+				"tools.resultOk": "成功",
+				"tools.resultFail": "失敗",
 			},
 			/* locale: zh-tw */
 			"zh-tw": {
@@ -1146,6 +1446,21 @@ window.__ModuleLoader__.load({
 				"python.hint": "關閉(預設)時 run_code 使用官方 Node/TypeScript 後端,與官方 ptc 組合逐位元組一致;開啟後改用 dsh 實驗性 CPython 後端(@deepseek-ai/dsh-experimental-ptc-runtime-python),run_code 的語言、產生的 SDK 提示詞與工具呈現都會切換到 Python。需要 POSIX 平台與 CPython ≥ 3.10(Windows 無法使用),且與 workflow 工具互斥——官方 Python 組合同樣會停用 workflow,因此開啟期間本外掛四個變體的 workflow 側強制關閉(你的工作流設定值會保留,關閉後恢復)。變更需重新啟動 dsh 後生效;這個開關就是 dsh-ptc-cordis-preset 設定卡上的同一個開關——兩側共用同一份狀態。僅在已安裝 dsh-ptc-cordis-preset 時顯示。若設為開啟後未生效,原因見 dsh 啟動日誌。",
 				"python.degraded": "後端無法使用,目前仍為 Node(原因見 dsh 啟動日誌)",
 				"python.blocked": "此主機是 Windows:實驗性 Python 後端僅支援 POSIX,因此這個開關無法使用。",
+				"sec.tools": "終端工具",
+				"tools.hint": "從 winget 官方來源安裝常用命令列工具。已經存在的(不論來源)一律不重複安裝;由 LLVM、WinLibs 等提供的工具鏈也不會被升級,只會如實顯示來源。",
+				"tools.refresh": "重新整理狀態",
+				"tools.run": "安裝 / 升級選取項目",
+				"tools.selectMissing": "全選可安裝項目",
+				"tools.loading": "正在檢查…",
+				"tools.nowinget": "未偵測到 winget,無法安裝或升級。Windows 10 1809 起內建,可在 Microsoft Store 更新「應用程式安裝程式」。",
+				"tools.state.missing": "未安裝",
+				"tools.state.external": "已有(其他來源)",
+				"tools.state.managed": "可升級",
+				"tools.state.current": "已是最新",
+				"tools.adminHint": "需要管理員權限:會彈出 UAC 視窗,請在這台電腦上確認",
+				"tools.working": "處理中",
+				"tools.resultOk": "成功",
+				"tools.resultFail": "失敗",
 			},
 		};
 
@@ -1252,6 +1567,20 @@ window.__ModuleLoader__.load({
 			".gb-saveBtn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}",
 			".gb-saveBtn.gb-saved{border-color:var(--dsw-alias-state-success-primary,#3fb950);color:var(--dsw-alias-state-success-primary,#3fb950)}",
 			".gb-stack{display:flex;flex-direction:column;gap:8px}",
+			/* terminal toolchain (v0.30.0) */
+			".gb-tools{display:flex;flex-direction:column;max-height:260px;overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:4px 8px;background:var(--dsw-alias-bg-layer-1,transparent)}",
+			".gb-toolRow{display:flex;align-items:center;gap:8px;font-size:12.5px;line-height:1.95;color:var(--dsw-alias-label-secondary);cursor:pointer}",
+			".gb-toolRow input{flex:none;margin:0}",
+			".gb-toolCmd{flex:none;min-width:78px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--dsw-alias-label-primary)}",
+			".gb-toolState{flex:none;font-size:11.5px;padding:0 6px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);white-space:nowrap}",
+			".gb-st-missing{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}",
+			".gb-st-managed{border-color:var(--dsw-alias-state-warning-primary,#d29922);color:var(--dsw-alias-state-warning-primary,#d29922)}",
+			".gb-st-current{border-color:var(--dsw-alias-state-success-primary,#3fb950);color:var(--dsw-alias-state-success-primary,#3fb950)}",
+			".gb-toolSrc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}",
+			".gb-toolResult{display:flex;gap:6px;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}",
+			".gb-ok{flex:none;color:var(--dsw-alias-state-success-primary,#3fb950)}",
+			".gb-bad{flex:none;color:var(--dsw-alias-status-danger,#e5484d)}",
+			".gb-segBtn:disabled{opacity:.45;cursor:default}",
 		].join("\n");
 
 		function ensureStyles() {
@@ -1336,6 +1665,9 @@ window.__ModuleLoader__.load({
 		 * write bumps a local tick so the card re-reads without an external-store
 		 * hook adapter.
 		 */
+		/** Host route serving the winget toolchain status and job control. */
+		var TOOLS_URL = "dsh-gitbash-shell/api/tools";
+
 		function GitBashCard(props) {
 			var t = typeof props.t === "function" ? props.t : function (key) { return key; };
 
@@ -1361,6 +1693,29 @@ window.__ModuleLoader__.load({
 			var peerState = useState(null);
 			var peer = peerState[0];
 			var setPeer = peerState[1];
+
+			/* Terminal toolchain (v0.30.0): the winget catalog behind the
+			   "install / upgrade" buttons. Loaded only once the card is open, and
+			   polled only while a job is actually running. */
+			var toolsState = useState(null);
+			var toolsData = toolsState[0];
+			var setToolsData = toolsState[1];
+			var toolSelState = useState({});
+			var toolSel = toolSelState[0];
+			var setToolSel = toolSelState[1];
+			var toolJobState = useState(null);
+			var toolJob = toolJobState[0];
+			var setToolJob = toolJobState[1];
+			var toolBusyState = useState(false);
+			var toolBusy = toolBusyState[0];
+			var setToolBusy = toolBusyState[1];
+			var toolErrState = useState("");
+			var toolErr = toolErrState[0];
+			var setToolErr = toolErrState[1];
+			var toolsLoadedState = useState(false);
+			var toolsLoaded = toolsLoadedState[0];
+			var setToolsLoaded = toolsLoadedState[1];
+			void toolsLoaded;
 
 			useEffect(function () {
 				var forms;
@@ -1663,9 +2018,153 @@ window.__ModuleLoader__.load({
 				),
 			) : null;
 
+			/* ── terminal toolchain (v0.30.0) ────────────────────────────────
+			   Installs the fixed catalog from src/toolchain.js through winget.
+			   The card never invents a package id: it posts CATALOG ids to the
+			   host route, which maps them and pins `--exact --source winget`.
+			   Rows already present are shown but never re-installed — a toolchain
+			   provided by LLVM/WinLibs arrives as state 'external', which cannot
+			   even be ticked, so an upgrade can never touch it. */
+			var toolRows = toolsData !== null && Array.isArray(toolsData.tools) ? toolsData.tools : [];
+			var wingetOk = !!(toolsData !== null && toolsData.winget && toolsData.winget.ok);
+			function toolSelectable(row) {
+				return wingetOk && !toolBusy && (row.state === "missing" || row.state === "managed");
+			}
+			var toolSelCount = toolRows.filter(function (row) { return toolSel[row.id] === true; }).length;
+
+			function loadTools() {
+				setToolBusy(true);
+				setToolErr("");
+				return fetch(TOOLS_URL, { headers: { accept: "application/json" } })
+					.then(function (res) {
+						if (!res.ok) throw new Error("HTTP " + res.status);
+						return res.json();
+					})
+					.then(function (data) {
+						setToolsData(data);
+						setToolsLoaded(true);
+						setToolJob(data !== null && typeof data === "object" && data.job ? data.job : null);
+						// Pre-tick only what is genuinely absent: anything already on the
+						// machine is never re-installed by default.
+						var next = {};
+						var list = data !== null && typeof data === "object" && Array.isArray(data.tools) ? data.tools : [];
+						list.forEach(function (row) { if (row.state === "missing") next[row.id] = true; });
+						setToolSel(next);
+					})
+					.catch(function (err) {
+						setToolsData(null);
+						setToolErr(String((err && err.message) || err));
+					})
+					.then(function () { setToolBusy(false); });
+			}
+
+			function toggleTool(id) {
+				setToolSel(function (prev) {
+					var next = {};
+					for (var key in prev) if (Object.prototype.hasOwnProperty.call(prev, key)) next[key] = prev[key];
+					if (next[id] === true) delete next[id]; else next[id] = true;
+					return next;
+				});
+			}
+
+			function selectInstallable() {
+				var next = {};
+				toolRows.forEach(function (row) {
+					if (wingetOk && (row.state === "missing" || row.state === "managed")) next[row.id] = true;
+				});
+				setToolSel(next);
+			}
+
+			function runTools() {
+				var ids = toolRows
+					.filter(function (row) { return toolSel[row.id] === true && (row.state === "missing" || row.state === "managed"); })
+					.map(function (row) { return row.id; });
+				if (ids.length === 0 || !wingetOk) return;
+				setToolBusy(true);
+				setToolErr("");
+				// action 'auto': the host upgrades what winget already owns and installs
+				// the rest, so one button covers both halves of the request.
+				fetch(TOOLS_URL + "?action=run", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ action: "auto", ids: ids }),
+				})
+					.then(function (res) { return res.json(); })
+					.then(function (data) { setToolJob(data !== null && typeof data === "object" && data.job ? data.job : null); })
+					.catch(function (err) { setToolErr(String((err && err.message) || err)); })
+					.then(function () { setToolBusy(false); });
+			}
+
+			useEffect(function () {
+				if (!open && !pageView) return undefined;
+				if (toolsLoaded || toolBusy) return undefined;
+				loadTools();
+				return undefined;
+			}, [open]);
+
+			/* Poll ONLY while a job is unfinished, and through the cheap ?job=1
+			   form: a full probe re-runs three winget commands per second. */
+			useEffect(function () {
+				if (toolJob === null || toolJob.finished) return undefined;
+				var timer = setTimeout(function () {
+					fetch(TOOLS_URL + "?job=1", { headers: { accept: "application/json" } })
+						.then(function (res) { return res.json(); })
+						.then(function (data) {
+							var next = data !== null && typeof data === "object" && data.job ? data.job : null;
+							setToolJob(next);
+							if (next !== null && next.finished) loadTools();
+						})
+						.catch(function () { /* keep the last known progress */ });
+				}, 1200);
+				return function () { clearTimeout(timer); };
+			}, [toolJob]);
+
+			var toolsSection = E("div", { className: "gb-section" },
+				E("div", { className: "gb-sectionTitle" }, t("sec.tools")),
+				E("div", { className: "gb-stack" },
+					toolsData === null && toolErr === "" ? E("p", { className: "gb-hint" }, t("tools.loading")) : null,
+					toolErr !== "" ? E("p", { className: "gb-error" }, toolErr) : null,
+					toolsData !== null && !wingetOk ? E("p", { className: "gb-error" }, t("tools.nowinget")) : null,
+					toolRows.length > 0 ? E("div", { className: "gb-tools" },
+						toolRows.map(function (row) {
+							return E("label", { key: row.id, className: "gb-toolRow", title: row.publisher + " · " + row.source },
+								E("input", {
+									type: "checkbox",
+									checked: toolSel[row.id] === true,
+									disabled: !toolSelectable(row),
+									onChange: function () { toggleTool(row.id); },
+								}),
+								E("span", { className: "gb-toolCmd" }, row.cmd),
+								E("span", { className: "gb-toolState gb-st-" + row.state }, t("tools.state." + row.state)),
+								E("span", { className: "gb-toolSrc" }, (row.version !== "" ? row.version + " · " : "") + (row.provider !== "" ? row.provider : row.source) + (row.admin ? " · " + t("tools.adminHint") : "")),
+							);
+						}),
+					) : null,
+					toolsData !== null && wingetOk ? E("div", { className: "gb-seg" },
+						E("button", { type: "button", className: "gb-segBtn", disabled: toolBusy, onClick: function () { loadTools(); } }, t("tools.refresh")),
+						E("button", { type: "button", className: "gb-segBtn", disabled: toolBusy, onClick: selectInstallable }, t("tools.selectMissing")),
+						E("button", { type: "button", className: "gb-segBtn" + (toolSelCount > 0 ? " gb-segActive" : ""), disabled: toolBusy || toolSelCount === 0, onClick: runTools }, t("tools.run")),
+					) : null,
+					toolJob !== null ? E("div", { className: "gb-stack" },
+						E("div", { className: "gb-row" },
+							E("span", { className: "gb-rowLabel" }, t("tools.working") + ":"),
+							E("span", { className: "gb-rowValue" }, (toolJob.current ? toolJob.current + " " : "") + toolJob.done + " / " + toolJob.total),
+						),
+						(toolJob.results || []).map(function (item) {
+							return E("div", { key: item.id, className: "gb-toolResult" },
+								E("span", { className: item.ok ? "gb-ok" : "gb-bad" }, item.cmd + " " + t(item.ok ? "tools.resultOk" : "tools.resultFail")),
+								E("span", null, item.detail || ""),
+							);
+						}),
+					) : null,
+					E("p", { className: "gb-hint" }, t("tools.hint")),
+				),
+			);
+
 			var bodyContent = E("div", { className: "gb-body" },
 				dialectSection,
 				terminalSection,
+				toolsSection,
 				dedupeSection,
 				pythonSection,
 				error ? E("p", { className: "gb-error" }, error) : null,

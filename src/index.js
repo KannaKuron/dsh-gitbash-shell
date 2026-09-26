@@ -255,6 +255,10 @@ import {
   effectiveConfiguredBashPath, executorConfiguredBashPath, resolveGitBashCached, settingsBashPath,
 } from './bash-path.js'
 import { adoptTerminalShell, terminalAdoptReport } from './terminal-shell.js'
+import {
+  clearToolJob, currentToolJob, defaultRunnerIo, fenceToolRequest,
+  probeToolchain, readJsonBody, startToolJob,
+} from './tool-runner.js'
 
 /** The shipped preset whose skills/ dir seeds cordis-gitbash. */
 const SKILLS_SOURCE_PRESET = 'cordis'
@@ -2769,6 +2773,90 @@ export async function apply(ctx, config = {}) {
       })
     } catch (error) {
       console.log(TAG + ' bash status route wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
+  // ── winget toolchain route (v0.30.0) ─────────────────────────────────────
+  // The settings card's "install / upgrade" buttons. Installing software is a
+  // real side effect, so src/tool-runner.js fences the route: only a loopback
+  // caller with a same-origin Origin/Referer gets through, and the ids in the
+  // body are mapped onto the CLOSED catalog before any argv is built. The
+  // request can therefore never name a package winget would install.
+  //
+  // GET  (no query)   → full status: every catalog row + the live job snapshot
+  // GET  ?job=1       → the job snapshot ONLY (the cheap poll while installing)
+  // POST ?action=run  → start a job; 409 while one is already running
+  // POST ?action=clear→ forget a finished job
+  if (process.platform === 'win32') {
+    try {
+      ctx.inject(['webServer'], (wctx) => {
+        try {
+          const route = '/dsh-gitbash-shell/api/tools'
+          const io = defaultRunnerIo()
+          const send = (res, code, payload) => {
+            const text = JSON.stringify(payload)
+            res.writeHead(code, {
+              'content-type': 'application/json; charset=utf-8',
+              'cache-control': 'no-store',
+              'content-length': Buffer.byteLength(text),
+            })
+            res.end(text)
+          }
+          const snapshot = () => {
+            const job = currentToolJob()
+            if (!job) return null
+            return {
+              id: job.id, action: job.action, total: job.total, done: job.done,
+              current: job.current, finished: job.finished, results: job.results.slice(),
+            }
+          }
+          const handler = async (req, res) => {
+            const fence = fenceToolRequest(req)
+            if (!fence.ok) {
+              console.log(TAG + ' toolchain request refused (' + fence.reason + ')')
+              send(res, 403, { error: 'forbidden', reason: fence.reason })
+              return
+            }
+            let query = new URLSearchParams()
+            try { query = new URL(req.url || '/', 'http://localhost').searchParams } catch { /* keep empty */ }
+            const method = String(req.method || 'GET').toUpperCase()
+            try {
+              if (method === 'POST') {
+                const action = query.get('action') || ''
+                if (action === 'clear') {
+                  clearToolJob('')
+                  send(res, 200, { ok: true, job: null })
+                  return
+                }
+                if (action !== 'run') { send(res, 400, { error: 'bad-action', action }); return }
+                const body = await readJsonBody(req)
+                if (!body) { send(res, 400, { error: 'bad-request' }); return }
+                const started = startToolJob(io, body)
+                if (!started.started) {
+                  send(res, 409, { error: 'busy', job: snapshot() })
+                  return
+                }
+                send(res, 202, { ok: true, job: snapshot() })
+                return
+              }
+              // The cheap poll: while a job runs the card only needs its progress,
+              // not another three winget invocations.
+              if (query.get('job') === '1') { send(res, 200, { job: snapshot() }); return }
+              const status = await probeToolchain(io)
+              send(res, 200, { ...status, job: snapshot() })
+            } catch (error) {
+              send(res, 500, { error: 'internal', detail: String((error && error.message) || error) })
+            }
+          }
+          const dispose = wctx.webServer.register({ kind: 'prefix', path: route, handler })
+          wctx.effect(() => dispose, 'dsh-gitbash-shell: toolchain route')
+          console.log(TAG + ' winget toolchain route active at ' + route + ' (loopback + same-origin fenced)')
+        } catch (error) {
+          console.log(TAG + ' toolchain route failed: ' + (error?.message ?? error))
+        }
+      })
+    } catch (error) {
+      console.log(TAG + ' toolchain route wiring failed: ' + (error?.message ?? error))
     }
   }
 

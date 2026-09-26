@@ -3,6 +3,64 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.30.0 — 2026-09-26
+
+**类型**:feat(新能力 —— 设置卡里一键安装/升级一份**固定的终端工具清单**,全部经 winget 官方源)
+
+> 用户需求原话:**"所有缺的工具,能不能在插件的设置里增加一个按钮,可以选择自己一次性安装升级到最新,用winget,或者可以自定义选择一部分安装升级"**
+> 追加的硬要求:**"绝对要保证是下载的正确的源,你这些工具id都要查清楚"**
+> 以及**"只要人家已经有了已经安装过了就不需要安装"** / **"有的人的电脑可能安装过llvm 之类的…这种情况下我们不需要帮忙winget安装,要跳过,也不帮忙升级"**。
+
+### 清单(`src/toolchain.js`,22 项,闭合集合)
+
+- **基础补全(4)**:`make`(ezwinports.make)、`wget`(JernejSimoncic.Wget)、`yq`(MikeFarah.yq)、`xtree`(Excelano.xtree,现代 tree 替代)。
+- **现代 CLI(13)**:bat、fzf、delta、zoxide、dust、procs、xh、just、shellcheck、hexyl、tldr、jj、gdu。
+- **纳入版本管理(3)**:jq、ripgrep、fd(本机已有,交给插件统一升级)。
+- **需要管理员(2)**:7-Zip、经典 tree —— manifest 写 `Scope: machine`,winget 必须提权,会弹 UAC。
+- 每项自带 `publisher` + 安装器域名(`source`),**卡片上渲染出来**,让来源可核对而不是口头保证。
+
+### 源核实(逐包查证,三重证据)
+
+- **源**:全部来自 `winget` 官方源(`cdn.winget.microsoft.com/cache`),本机未添加任何第三方源;`--source winget` 写死在 argv 里,msstore 与第三方源永不参与。
+- **定义**:22 个包的 manifest 全部在 **microsoft/winget-pkgs** 官方仓库,逐个读取核对(发布者字段与真实项目作者一致:sharkdp→David Peter、BurntSushi、Casey Rodarmor、Vidar Holen…)。
+- **完整性**:22/22 均有 `InstallerSha256`,winget 安装时强制校验;18 个安装器指向 `github.com/<官方项目>/releases`,其余指向官方站
+  (ezwinports→sourceforge、7-Zip→www.7-zip.org、wget→eternallybored.org —— 后者是 GNU wget 官方认可的 Windows 构建站)。
+
+### 实测发现(全部真机复现,并已固化为冒烟断言)
+
+1. **同一个工具存在多个 winget 包 ID**:本机装的 ripgrep 是 **`BurntSushi.ripgrep.GNU`**,而 MSVC 构建是**另一个包**。只认一个 ID 会导致"再装一份"。
+   ⇒ 清单支持 `ids[]` 变体:**识别**用任一变体,**升级**用 `winget export` 报出的**实际那个**,只有全新安装才用首选。
+2. **已装 ≠ 命令在 PATH**:本机 7-Zip 由 winget 装好,但 MSI 没有把目录加进 PATH,`7z` 命令根本不存在。按"命令是否存在"判断会把它当缺失并重复安装。
+   ⇒ 判定**以 winget 自己的库存为准**(`winget export` 的 JSON),命令存在性只用来识别"外部提供"。
+3. **两个"无事可做"的退出码都是非零,其中一个曾被误判**:实测 `winget upgrade` 对已最新的包返回 `0x8A15002B`("找不到可用的升级"),对未安装的包返回 `0x8A150014`。
+   Node 收到的是**完整 HRESULT**(Git Bash 里只显示低位 20)。初版把 `0x8A15002B` 错归为"需要管理员",会让**每台健康的机器在升级轮里误报失败** ——
+   现按**码结构化判定**(辅以 21 语言文案兜底),并把两条断言锁进冒烟。`0x8A150014`(低位 0x14)与 `0x8A15002B`(低位 0x2B)不会互相误伤。
+4. **"外部提供"必须只读**:本机 `fd` 来自 kimi-code(`~/.kimi-code/bin`)、`tree` 来自 Windows 自带的 `C:\WINDOWS\system32\tree.com` ——
+   两者都判为 `external`:**不安装、不升级、复选框不可勾**,只显示来源。LLVM/WinLibs 提供的工具链同理,永远不会被本插件动到。
+5. **只读探测也能拿到权威清单**:`winget export -o <file> --include-versions` 输出 **JSON**(`list` 的表格是本地化的、宽 ID 会被截断),
+   是本插件唯一采信的库存来源;传给它的必须是 **Windows 路径**(原生程序不认 MSYS 的 `/tmp/...`)。
+
+### 安全边界
+
+- **路由有副作用 ⇒ 有围栏**:`/dsh-gitbash-shell/api/tools` 只接受 **loopback** 调用,且**改动类请求必须带同源 `Origin`/`Referer`**;
+  用户只是访问过的网页因此无法让他的机器装软件(跨站请求在 origin 检查处被拒)。
+- **请求只能命名清单内的条目**:请求体里的 id 先映射到 `src/toolchain.js` 的闭合集合,未知 id 直接丢弃;`install`/`upgrade` 的 argv 一律带
+  **`--exact` + `--source winget`**,并且只由服务端拼装(`execFile` + argv 数组,永不拼 shell 字符串)。
+- **无自由文本包 ID 输入框**(用户明确选择"固定清单就好"),所以不存在"用户填错 ID 装错包"的路径。
+- 一次只跑一个 job(并发安装正是"半个清单已应用"的来源);进度经 `?job=1` 轻量轮询,不重复跑三个 winget 命令。
+
+### 验证
+
+- `npm test`:**102 → 112 全绿**。新增 10 个用例覆盖:清单结构与来源字段齐备、argv 三重锁定、变体 ID 的安装/升级取向、PATH 扫描(首个命中优先/坏目录不致命)、
+  四态状态机(`missing`/`external`/`managed`/`current`,含"winget 有而命令不在 PATH"、"外部提供即使有命令也不可动")、export JSON 只认 winget 源、
+  两个实测退出码的分类、CSRF 围栏五态、请求 ID 闭合性、`auto` 模式的装/升分流、路由接线守卫。
+- **真机读数**(本机):22 项判定为 `missing 16 / current 4 / external 2`,其中 `rg` 正确识别为 `BurntSushi.ripgrep.GNU 15.2.0`、`7z` 识别为 `7zip.7zip 26.03`(命令不在 PATH 也判对)、
+  `fd`/`tree` 如实标为外部提供。
+- ⚠️ **尚未做**:设置卡 UI 的浏览器端真机点击验证(需重启 DSH 或起隔离实例);本次未替用户重启其运行中的实例。
+- 版本号 `0.29.2` → **`0.30.0`**(`package.json` 与 `dsh.plugin.json` 一致)。
+- 顺带修复:本仓库此前**从未跑过 `npm install`**(无 `node_modules`),导致 peer 依赖 `@deepseek-ai/schemastery` 不可解析、`Config` 导出缺失而有一条测试恒失败;
+  已补装 devDependencies 并生成 `package-lock.json`。
+
 ## v0.29.2 — 2026-09-26
 
 **类型**:docs(纯文档 patch —— 更正复验判据:原先写成 `uname -r`,实为 `uname -s`;无任何代码/行为变更)

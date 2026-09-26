@@ -3,9 +3,14 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _internal } from '../src/index.js'
+import {
+  TOOLCHAIN, WINGET_SOURCE, classifyToolState, classifyWingetResult, installArgv,
+  isActionable, isNoMatchExit, parseExportJson, scanCommands, toolById, upgradeArgv,
+} from '../src/toolchain.js'
+import { fenceToolRequest, runToolJob } from '../src/tool-runner.js'
 
 /* Bindings for the shell.js eval harnesses below: those strip every `import`
    line, so the shared bash resolver arrives as explicit stubs. The stub keeps
@@ -2483,4 +2488,179 @@ test('sidebar terminal: a name the USER chose is never rewritten', async () => {
     platform: 'win32', enabled: true, resolved: 'Q:/Git/bin/bash.exe',
     current: { path: 'Q:/Git/bin/bash.exe', name: 'Git Bash', args: [] },
   }).action, 'unchanged')
+})
+
+// ── winget toolchain (v0.30.0) ───────────────────────────────────────────────
+// Every fact these tests pin was MEASURED on winget 1.29.380 / Windows 11:
+// the full-HRESULT exit codes, the GNU-vs-MSVC ripgrep ids, 7-Zip being
+// winget-owned while `7z` is not on PATH, and `winget export` being the only
+// machine-readable inventory.
+
+test('toolchain: the catalog is structurally sound and fully provenance-tagged', () => {
+  assert.ok(TOOLCHAIN.length >= 20, 'catalog size')
+  const seen = new Set()
+  for (const tool of TOOLCHAIN) {
+    assert.ok(typeof tool.id === 'string' && tool.id !== '', 'id')
+    assert.ok(typeof tool.cmd === 'string' && tool.cmd !== '', tool.id + ' cmd')
+    assert.ok(Array.isArray(tool.ids) && tool.ids.length > 0, tool.id + ' ids')
+    for (const id of tool.ids) {
+      // A community-repo id: Publisher.Package, nothing exotic.
+      assert.match(id, /^[A-Za-z0-9-]+\.[A-Za-z0-9._-]+$/, tool.id + ' id shape')
+      assert.ok(!seen.has(id), 'duplicate winget id ' + id)
+      seen.add(id)
+    }
+    assert.ok(['base', 'cli', 'managed', 'admin'].includes(tool.group), tool.id + ' group')
+    // Provenance is rendered to the user, so it may not be blank or invented.
+    assert.ok(typeof tool.publisher === 'string' && tool.publisher !== '', tool.id + ' publisher')
+    assert.ok(typeof tool.source === 'string' && tool.source !== '', tool.id + ' source')
+    assert.equal(tool.admin === true, tool.group === 'admin', tool.id + ' admin flag matches group')
+  }
+  // Exactly the two manifests that say Scope: machine.
+  const admin = TOOLCHAIN.filter((tool) => tool.admin === true).map((tool) => tool.id).sort()
+  assert.deepEqual(admin, ['7zip', 'tree'])
+})
+
+test('toolchain: every argv pins the exact id AND the official source', () => {
+  for (const tool of TOOLCHAIN) {
+    const install = installArgv(tool)
+    assert.equal(install[0], 'install')
+    assert.ok(install.includes('--exact'), tool.id + ' install --exact')
+    assert.ok(install.includes('--source'), tool.id + ' install --source')
+    assert.ok(install.includes(WINGET_SOURCE), tool.id + ' install source value')
+    // The id is the catalog's own; a caller can never substitute one.
+    assert.ok(install.includes(tool.ids[0]), tool.id + ' install id')
+    const upgrade = upgradeArgv(tool)
+    assert.equal(upgrade[0], 'upgrade')
+    assert.ok(upgrade.includes('--exact') && upgrade.includes(WINGET_SOURCE), tool.id + ' upgrade pins')
+  }
+  // ripgrep ships as two separate packages: a fresh install takes the first,
+  // an upgrade must target whatever the machine actually has.
+  const rg = toolById('rg')
+  assert.equal(rg.ids[0], 'BurntSushi.ripgrep.MSVC')
+  assert.ok(installArgv(rg).includes('BurntSushi.ripgrep.MSVC'))
+  assert.ok(upgradeArgv(rg, 'BurntSushi.ripgrep.GNU').includes('BurntSushi.ripgrep.GNU'))
+})
+
+test('toolchain: the PATH scan resolves commands, first hit wins, bad dirs are skipped', () => {
+  const io = {
+    pathDirs: () => ['C:/a', 'C:/b'],
+    readdir: (dir) => (dir === 'C:/a' ? ['make.exe', 'README.md'] : ['make.cmd', 'yq.exe']),
+  }
+  const hits = scanCommands(io, TOOLCHAIN)
+  // The scan keeps each PATH directory's own spelling and appends a backslash,
+  // so the expectation is built the same way instead of being normalized by
+  // join() (which would rewrite 'C:/a' to 'C:\\a' and mask a real difference).
+  assert.equal(hits.get('make'), 'C:/a' + sep + 'make.exe', 'earlier PATH entry wins')
+  assert.equal(hits.get('yq'), 'C:/b' + sep + 'yq.exe')
+  assert.equal(hits.has('wget'), false)
+  const broken = { pathDirs: () => ['C:/nope'], readdir: () => { throw new Error('EACCES') } }
+  assert.equal(scanCommands(broken, TOOLCHAIN).size, 0, 'an unreadable directory is not fatal')
+})
+
+test('toolchain: the state machine — winget inventory first, others never touched', () => {
+  assert.equal(classifyToolState({ hasCommand: false, wingetOwned: false, upgradable: false }), 'missing')
+  // Somebody else's toolchain: present but NOT ours to install or upgrade.
+  assert.equal(classifyToolState({ hasCommand: true, wingetOwned: false, upgradable: false }), 'external')
+  // MEASURED: 7-Zip is winget-owned while `7z` is absent from PATH. Deciding by
+  // command presence would offer to install a package that is already there.
+  assert.equal(classifyToolState({ hasCommand: false, wingetOwned: true, upgradable: false }), 'current')
+  assert.equal(classifyToolState({ hasCommand: true, wingetOwned: true, upgradable: true }), 'managed')
+  // Only absent and upgradable rows may be selected.
+  assert.equal(isActionable('missing'), true)
+  assert.equal(isActionable('managed'), true)
+  assert.equal(isActionable('external'), false)
+  assert.equal(isActionable('current'), false)
+})
+
+test('toolchain: winget export JSON is the inventory, winget source only', () => {
+  const json = JSON.stringify({
+    Sources: [
+      // A Store copy must never masquerade as the community-repo package.
+      { SourceDetails: { Name: 'msstore' }, Packages: [{ PackageIdentifier: 'jqlang.jq', Version: '9.9.9' }] },
+      { SourceDetails: { Name: 'winget' }, Packages: [
+        { PackageIdentifier: 'BurntSushi.ripgrep.GNU', Version: '15.2.0' },
+        { PackageIdentifier: 'jqlang.jq', Version: '1.8.2' },
+      ] },
+    ],
+  })
+  const found = parseExportJson(json, TOOLCHAIN)
+  assert.equal(found.get('rg').pkgId, 'BurntSushi.ripgrep.GNU', 'the sibling build is recognized')
+  assert.equal(found.get('rg').version, '15.2.0')
+  assert.equal(found.get('jq').version, '1.8.2', 'the winget source wins, not msstore')
+  assert.equal(parseExportJson('not json', TOOLCHAIN).size, 0)
+  assert.equal(parseExportJson('', TOOLCHAIN).size, 0)
+})
+
+test('toolchain: measured exit codes are classified, and the two no-ops never read as failures', () => {
+  // MEASURED: upgrading a current package exits 0x8A15002B ("nothing newer").
+  const fresh = classifyWingetResult(0x8A15002B, '找不到可用的升级。')
+  assert.equal(fresh.ok, false)
+  assert.equal(fresh.kind, 'up-to-date')
+  // MEASURED: an absent package exits 0x8A150014.
+  assert.equal(classifyWingetResult(0x8A150014, '找不到与输入条件匹配的已安装程序包。').kind, 'not-found')
+  // Node reports the full HRESULT; a POSIX shell shows only its low byte.
+  assert.equal(isNoMatchExit(0x8A150014), true)
+  assert.equal(isNoMatchExit(20), true)
+  assert.equal(isNoMatchExit(0x8A15002B), false, 'the two must not collide')
+  // Success is the ONLY ok:true; an unrecognized non-zero stays failed.
+  assert.equal(classifyWingetResult(0, 'ok').ok, true)
+  assert.equal(classifyWingetResult(1, 'something odd').kind, 'failed')
+})
+
+test('toolchain: only loopback + same-origin may install (the CSRF fence)', () => {
+  const call = (o) => fenceToolRequest(o)
+  assert.equal(call({ socket: { remoteAddress: '127.0.0.1' }, method: 'GET', headers: {} }).ok, true)
+  assert.equal(call({ socket: { remoteAddress: '::1' }, method: 'GET', headers: {} }).ok, true)
+  const lan = call({ socket: { remoteAddress: '192.168.1.5' }, method: 'GET', headers: {} })
+  assert.equal(lan.ok, false)
+  assert.equal(lan.reason, 'not-loopback')
+  const sameOrigin = { host: '127.0.0.1:19387', origin: 'http://127.0.0.1:19387' }
+  assert.equal(call({ socket: { remoteAddress: '127.0.0.1' }, method: 'POST', headers: sameOrigin }).ok, true)
+  const blocked = call({ socket: { remoteAddress: '127.0.0.1' }, method: 'POST', headers: { host: '127.0.0.1:19387', origin: 'https://evil.example' } })
+  assert.equal(blocked.ok, false)
+  assert.equal(blocked.reason, 'cross-origin')
+  // A mutating request with no origin at all is refused outright.
+  assert.equal(call({ socket: { remoteAddress: '127.0.0.1' }, method: 'POST', headers: { host: '127.0.0.1:19387' } }).ok, false)
+})
+
+test('tool-runner: a request can only ever name catalog entries', async () => {
+  const calls = []
+  const io = {
+    run: async (file, args) => { calls.push([file].concat(args).join(' ')); return { code: 0, output: 'v1.29.380' } },
+    pathDirs: () => [], readdir: () => [], readFile: () => JSON.stringify({ Sources: [] }),
+    tmpFile: (name) => join(tmpdir(), name), remove: () => {},
+  }
+  await runToolJob(io, { action: 'install', ids: ['make', 'NOT-IN-CATALOG', '../../etc/passwd', 'make'] })
+  const installs = calls.filter((line) => line.includes(' install '))
+  assert.equal(installs.length, 1, 'unknown ids are dropped and duplicates collapse')
+  assert.ok(installs[0].includes('ezwinports.make'))
+  assert.ok(calls.every((line) => !line.includes('NOT-IN-CATALOG')))
+  assert.ok(calls.every((line) => !line.includes('passwd')))
+})
+
+test('tool-runner: auto upgrades what winget owns and installs the rest', async () => {
+  const calls = []
+  const inventory = JSON.stringify({ Sources: [{ SourceDetails: { Name: 'winget' }, Packages: [{ PackageIdentifier: 'jqlang.jq', Version: '1.8.2' }] }] })
+  const io = {
+    run: async (file, args) => { calls.push([file].concat(args).join(' ')); return { code: 0, output: 'v1.29.380' } },
+    pathDirs: () => [], readdir: () => [], readFile: () => inventory,
+    tmpFile: (name) => join(tmpdir(), name), remove: () => {},
+  }
+  const job = await runToolJob(io, { action: 'auto', ids: ['jq', 'make'] })
+  assert.equal(job.total, 2)
+  assert.equal(job.results.find((r) => r.id === 'jq').action, 'upgrade', 'installed means upgraded')
+  assert.equal(job.results.find((r) => r.id === 'make').action, 'install', 'absent means installed')
+  assert.ok(calls.some((line) => line.includes('upgrade --id jqlang.jq')))
+  assert.ok(calls.some((line) => line.includes('install --id ezwinports.make')))
+})
+
+test('toolchain route: wired, fenced, and read by the client half', () => {
+  const host = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(host, /\/dsh-gitbash-shell\/api\/tools/)
+  assert.match(host, /fenceToolRequest\(req\)/)
+  assert.match(host, /if \(!fence\.ok\)/, 'a refused request must not fall through to the work')
+  const client = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.match(client, /dsh-gitbash-shell\/api\/tools/)
+  assert.match(client, /"sec\.tools":/)
+  assert.match(client, /"tools\.state\.external":/)
 })
