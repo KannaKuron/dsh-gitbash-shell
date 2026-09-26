@@ -185,6 +185,26 @@ assembly, so zero prompt noise), path arguments and result metadata are no longe
 the file tools receive Windows paths. **Bash stays Git Bash either way** — the switch only
 governs the cross-tool path dialect.
 
+## Sidebar terminal (v0.29.0+): the official "new terminal" runs Git Bash
+
+dsh's own terminal is resolved by the official `terminal-controller` row, not by this plugin's executor. On a machine
+whose PATH `bash` is the WSL launcher, that terminal used to start Ubuntu. This plugin now writes the verified Git Bash
+into that row (only when the row has no shell of its own — an explicit choice is never overwritten; the display name is
+`Git Bash` so it cannot be confused with the WSL candidate, which is left in the menu). `shellCandidates` is untouched.
+
+**Three-step check (Windows)**
+
+1. Install Git for Windows, restart dsh, open this plugin's settings card: the "adopt the sidebar terminal" switch is on
+   and the host log shows `official sidebar terminal switched to Git Bash: …`.
+2. Open a new terminal and confirm it really is Git Bash (either check works; **`uname -s` is the hardest**):
+   - `uname -s` ⇒ `MINGW64_NT-10.0-<build>` (Git Bash's system name; WSL prints `Linux`);
+   - `echo $MSYSTEM` ⇒ `MINGW64` (simplest).
+   ⚠️ **Do not judge by `uname -r`**: under Git Bash / MSYS2 it is the **MSYS runtime version** (e.g.
+   `3.6.9-b4195d69.x86_64`), whereas WSL prints `6.x.y.z-microsoft-standard-WSL2` — neither can decide this alone.
+3. **Revert**: turning the switch off only stops FUTURE writes; it does not remove the `shell` field already written to
+   the profile config. To restore the original exactly, delete that field from the `terminal-controller` row in the
+   profile patch and restart dsh.
+
 ## Cooperation with dsh-better-sidebar
 
 When [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (v0.15.2+) is installed, on Windows this plugin adopts its official runtime settings seam (`terminalShell` — by the sidebar's own contract, "settings-page overrides win for terminals opened afterwards"), so both the sidebar's UI terminal tabs and the model-facing `terminal_*` tools open Git Bash — no upstream change, new terminals pick it up immediately. In addition, this bundle's patch also sets `config.shell` on the sidebar's row (boot-time resolution, so the **tab label reads `bash` too**; the row edit is harmless-skipped when the sidebar is not installed). Rules:

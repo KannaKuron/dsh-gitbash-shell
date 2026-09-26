@@ -3,6 +3,26 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.29.2 — 2026-09-26
+
+**类型**:docs(纯文档 patch —— 更正复验判据:原先写成 `uname -r`,实为 `uname -s`;无任何代码/行为变更)
+
+> 用户在 Windows 上按 README 的"三步复验清单"跑 `uname -r`,得到 `3.6.9-b4195d69.x86_64` —— 按我们文档里写的判据
+> ("应出现 `MINGW64_NT-…`")会被**误判为失败**,实际它就是 Git Bash。事实:`MINGW64_NT-10.0-<build>` 是 **`uname -s`**
+> (system name)的输出;**`uname -r`**(release)在 Git Bash / MSYS2 下是 **MSYS 运行时版本**(形如 `3.6.9-<hash>.x86_64`),
+> 而 **WSL 的 `uname -r`** 才是 `6.x.y.z-microsoft-standard-WSL2`。两个都不能单独用来判定。
+
+- **README.md 三步复验第 ② 条**:判据改为 **`uname -s` ⇒ `MINGW64_NT-10.0-<build>`**(最硬)或 **`echo $MSYSTEM` ⇒ `MINGW64`**(最简),
+  并补一句"⚠️ 不要用 `uname -r` 判定"(附上两种 `uname -r` 的真实形态)。
+- **README_EN.md**:原文没有侧栏终端一节(英文 README 尚未跟进 v0.29.x),本次补上该节并把**同样更正过的**三步复验清单写进去,
+  使中英两处判据一致。
+- **AGENTS.md 验证清单第 10 条**:同一处错判据更正为 `uname -s`/`$MSYSTEM`,并写明为什么 `uname -r` 不能单独用;
+  同时明确**代码里的"一票否决"用的是 `bash -c "uname -s"`(`MINGW(32|64)_NT-*`),那一直是对的,未改动**。
+- **历史条目加指路**:v0.29.0 条目里留下的 `uname -r` 判据加"(判据有误,见 v0.29.2 更正)",不改写历史叙事。
+- **grep 复核**:全仓 `uname -r` 仅出现在 CHANGELOG 的历史条目(已加指路);`src/` 里只有 `uname -s`(`src/bash-path.js`
+  的一票否决与 `src/terminal-shell.js` 的注释),设置卡 21 语言文案与启动日志均未使用该判据。
+- 版本号 `0.29.1` → **`0.29.2`**(`package.json` 与 `dsh.plugin.json` 一致);`npm test` 101→102 全绿不受影响(纯文档)。
+
 ## v0.29.1 — 2026-09-26
 
 **类型**:fix(用户实测:官方「新建终端」下拉里出现**两条 `bash`** —— 一条是 v0.29.0 写入的 Git Bash,另一条是官方 `shellCandidates` 解析到的 WSL,用户分不清)
@@ -64,6 +84,7 @@
 - 新开关 `autoTerminalShell`(volatile,**默认开**;旧宿主 settings 命名空间同名字段,缺键 = 开)+ 21 语言卡片文案
   (`term.label`/`term.hint`);保留原 `dsh-better-sidebar` 通道(两条通道各自独立探测);不碰官方包、不手写用户 patch 文件。
 - README 新增该节 + **用户三步复验清单**(开关与日志 → 终端里 `uname -r` 判 `MINGW64_NT-*` → 回退办法)。
+  **(判据有误,见 v0.29.2 更正:Git Bash 的 `uname -r` 是 MSYS 运行时版本,应看 `uname -s` / `$MSYSTEM`。)**
   **回退语义写明**:关掉开关**只阻止以后的自动写入**,**不会**删除已经写进配置的 `shell` 字段;要彻底恢复原样需删掉
   profile patch 里 `terminal-controller` 行的 `shell` 字段并重启(21 语言卡片 hint 同步写上这一句)。
   **菜单如实说明**:未改 `shellCandidates` ⇒ 选择菜单里**仍可能列出**解析到 WSL 的候选 `bash`,被改的是**默认项/首项**。
@@ -78,7 +99,7 @@
   - 用户显式指向 `C:/Windows/System32/bash.exe` ⇒ `NOT adopted … an explicit choice is never overwritten`,patch **未变**;
   - `autoTerminalShell: false` ⇒ `adoption is off …`,patch **未变**;
   - 无头浏览器零 pageerror。
-- **未在 Windows 验证**:真实 PATH/注册表命中、菜单里 shell 项、新终端里 `uname -r` 是否 `MINGW64_NT-*`;
+- **未在 Windows 验证**:真实 PATH/注册表命中、菜单里 shell 项、新终端里 `uname -r` 是否 `MINGW64_NT-*`(判据有误,见 v0.29.2);
   设置卡新增开关行的截图级渲染(该行复用既有开关写法,21 语言键由冒烟 parity 覆盖)。需用户按 README 三步复验。
 - 相关:issue #11 后续(同一用户的 Windows 实测反馈)
 

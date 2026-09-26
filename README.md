@@ -169,7 +169,11 @@ DSH 自己的「新建终端」**不经过**本插件的执行器:它由官方�
 **三步复验(Windows)**:
 1. 装好 Git for Windows,重启 DSH,打开本插件设置卡:开关「自动接管侧栏终端」为开;宿主日志出现
    `official sidebar terminal switched to Git Bash: …`。
-2. 新建终端,在终端里跑 `uname -r`:应看到 `MINGW64_NT-…`(WSL 会显示 Linux 内核版本如 `5.15…`)。
+2. 新建终端,在终端里确认**它确实是 Git Bash**(两条判据任选,**`uname -s` 最硬**):
+   - `uname -s` ⇒ `MINGW64_NT-10.0-<build>`(Git Bash 的 system name;WSL 这里是 `Linux`);
+   - `echo $MSYSTEM` ⇒ `MINGW64`(最简)。
+   ⚠️ **不要用 `uname -r` 判定**:Git Bash / MSYS2 下它是 **MSYS 运行时版本**(形如 `3.6.9-b4195d69.x86_64`,
+   真实用户实测就是这个值),而 **WSL 的 `uname -r`** 才是 `6.x.y.z-microsoft-standard-WSL2` —— 两者都不能单独用来判定。
 3. **回退**:⚠️ 关掉设置卡里的开关**只阻止以后的自动写入,不会删除已经写进配置的字段**。要彻底恢复原样,
    请把 profile 的 patch 里 `terminal-controller` 行的 `shell` 字段**删掉**,再重启 DSH(终端随即回到原来的 shell);
    只想让它别再自动改、但不介意保留现状的话,关开关即可。

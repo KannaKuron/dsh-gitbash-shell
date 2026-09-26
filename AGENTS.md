@@ -467,7 +467,10 @@
     **只看 profile patch 的字节变化**证明五态:空值→新增 `- id: terminal-controller` 行且 `shell.name: Git Bash`、用户手写行/注释原样保留;
     **历史 `name: bash`(我们自己写的默认名)→只改这一行 name 的迁移**、**`name: My Bash`(用户自起)→零写入且 md5 未变**;再跑一次同值→patch **md5 未变**(幂等);异值→patch 未变且日志含"explicit choice is never overwritten";开关关→patch 未变。
     另用 `--dump-config` 读 `terminal-controller.config.shell.path`、无头浏览器确认零 pageerror。
-    Windows 真机(菜单项、`uname -r` 是否 `MINGW64_NT-*`)如实标注未验证,并在 README 给用户三步复验清单。
+    Windows 真机(菜单项、终端里 `uname -s` 是否 `MINGW64_NT-10.0-<build>` 或 `$MSYSTEM` 是否 `MINGW64`)如实标注未验证,
+    并在 README 给用户三步复验清单。**判据不要写成 `uname -r`(v0.29.2 更正)**:Git Bash/MSYS2 的 `uname -r` 是
+    **MSYS 运行时版本**(形如 `3.6.9-b4195d69.x86_64`),WSL 的才是 `…-microsoft-standard-WSL2` —— 两者都不能单独判定;
+    代码里的"一票否决"用的是 `bash -c "uname -s"`(`MINGW(32|64)_NT-*`),那个**一直是对的**。
 
 ## 发布 checklist(GitHub + npm)
 
