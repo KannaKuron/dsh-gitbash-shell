@@ -316,19 +316,16 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * @returns {object} the request with the parity facts merged in
    */
   /**
-   * The plugin row's live dialect settings, across eras. dsh 0.1.7 replaced the
-   * settings namespace API: the service still exists but exposes only
-   * `describe()` / `update()` — `get(ns)` is gone — so the old read silently
-   * returned undefined on the new host and the Linux-parity env below never
-   * applied. The new era reads the row Config's projected values from the form
-   * descriptors (the same read dsh-agent-lang uses for the `locale` namespace).
+   * The plugin row's live dialect settings. The settings service exposes only
+   * `describe()` / `update()`, so the row Config's projected values come from
+   * the form descriptors (the same read dsh-agent-lang uses for the `locale`
+   * namespace).
    * @returns the row's settings object, or undefined when unavailable.
    */
   dialectSettings() {
     try {
       const settings = this.ctx && typeof this.ctx.get === 'function' ? this.ctx.get('settings') : undefined
       if (settings === undefined || settings === null) return undefined
-      if (typeof settings.get === 'function') return settings.get(SETTINGS_NAMESPACE)
       if (typeof settings.describe === 'function') {
         const entry = settings.describe().find((row) => row !== null && typeof row === 'object' && row.ns === SETTINGS_NAMESPACE)
         return entry === undefined ? undefined : entry.value

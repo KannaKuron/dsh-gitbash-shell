@@ -244,7 +244,7 @@ test('client half is a ModuleLoader bundle with baseline requires only', () => {
   const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.match(text, /window\.__ModuleLoader__\.load\(/)
   assert.match(text, /return module\.exports/, 'factory must return its exports (0.10.1 guard: without it the module materializes undefined and the loader rejects the plugin)')
-  assert.match(text, /slots\.inject\("settings\.plugin\.item", function \(\) \{[\s\S]*return slots\.register\(/, 'two-stage slot registration: slots.inject(hole, cb) whose body calls slots.register — direct options/component args never register (0.10.3 lesson)')
+  assert.match(text, /slots\.inject\("plugins\.bundle\.config", function \(\) \{[\s\S]*return slots\.register\(/, 'two-stage slot registration: slots.inject(hole, cb) whose body calls slots.register — direct options/component args never register (0.10.3 lesson)')
   assert.match(text, /id: "dsh-gitbash-shell"/)
   const requires = [...text.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1])
   const baseline = new Set(['react', '@deepseek-ai/dsh-client-ui-primitives'])
@@ -327,9 +327,8 @@ test('client dictionaries resolve live, never from a captured table', () => {
   const scope = { getSnapshot: () => ({ status: 'ready', value: { posixPaths: true } }), set: async () => {} }
   const ctx = {
     get: (name) => (name === 'locale' ? locale : undefined),
-    settingsScope: { bind: () => scope },
-    // the era-split acquisition: the OLD-era optional inject fires at once
-    inject: (names, cb) => { if (names.includes('settingsScope')) cb({ settingsScope: ctx.settingsScope }) },
+    // the settings face: a ConfigForm per live profile entry (the only era now)
+    inject: (names, cb) => { if (names.includes('configForms')) cb({ configForms: { get: () => scope } }) },
     slots: {
       inject: (hole, callback) => { callback() },
       register: (options, component) => { registration = { options, component }; return () => {} },
@@ -375,9 +374,13 @@ test('client dictionaries resolve live, never from a captured table', () => {
   assert.ok(subscribers.length >= 1 && subscribers.every((fn) => typeof fn === 'function'), 'the card subscribes to the locale service for the repaint')
 })
 
-test('client dual settings seat across dsh generations (0.1.6-alpha.2+)', () => {
+test('client settings seat: the live configForms seat only — the legacy seat is gone', () => {
   const text = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
-  assert.match(text, /slots\.inject\("settings\.plugin\.item"/)
+  // v0.32.1: the dsh <= 0.1.6-alpha.1 "Settings → Plugins" seat is deleted —
+  // no supported host dispatches it any more (the namespace registration that
+  // paired with it is gone from the host half too).
+  assert.doesNotMatch(text, /settings\.plugin\.item/, 'the legacy seat must stay deleted')
+  assert.doesNotMatch(text, /settingsScope/, 'the removed settingsScope service must not be injected')
   assert.match(text, /slots\.inject\("plugins\.bundle\.config"/)
   assert.match(text, /key: "dsh-gitbash-shell"/, 'the Plugins-page seat is keyed by the PACKAGE name')
   assert.match(text, /props\.view === "page"/, 'the page view drops the collapsible shell')
@@ -385,31 +388,22 @@ test('client dual settings seat across dsh generations (0.1.6-alpha.2+)', () => 
 
 test('sidebar adoption is switchable, default on, and never clobbers manual picks', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(text, /adoptSidebar: Schema\.boolean\(\)\.default\(true\)/)
-  assert.match(text, /readAdoptSidebar/, 'host reads the switch through the settings service')
+  assert.match(text, /adoptSidebar: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(text, /adoptSidebar: \(\) => dialect\(\)\.adoptSidebar !== false/, 'host reads the switch through the live Config reader')
   // OFF restores only while the current value is still ours
   assert.match(text, /if \(!desired && adopted && current === bashPath\)/)
-  const { _internal } = await import('../src/index.js')
-  assert.equal(_internal.readAdoptSidebar({ get: () => undefined }), true)
-  assert.equal(_internal.readAdoptSidebar({ get: () => ({ get: () => ({ adoptSidebar: false }) }) }), false)
 })
 
 test('host gates the path dialect behind the posixPaths setting', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(text, /SETTINGS_NAMESPACE = 'gitbash-shell'/)
-  assert.match(text, /posixPaths: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(text, /posixPaths: live\(Schema\.boolean\(\)\.default\(true\)\)/)
   // dsh 0.1.7: the wrapper and the directive closure read the era-aware
-  // live reader (Config refs on new hosts — re-read per dispatch/assembly;
-  // the registered namespace through the OLD helpers on old hosts).
+  // live reader (Config refs — re-read per dispatch/assembly).
   assert.match(text, /const dialect = liveSettings\.dialect\(\)/, 'wrapper must read the gate per dispatch')
   assert.match(text, /liveSettings\.dialect\(\)/, 'directive closure must read the live dialect')
   // v0.27.0: the same live dialect object also carries the delegated-agent gate
   assert.match(text, /dialect\.posixPaths && dialectApplies\(dialect, exec && exec\.agent\)/,
     'the dispatch face asks the per-agent gate with THIS execution\'s agent')
-  const { _internal } = await import('../src/index.js')
-  assert.equal(_internal.readPosixPaths({ get: () => undefined }), false)
-  assert.equal(_internal.readPosixPaths(undefined), false)
-  assert.equal(_internal.readPosixPaths({ get: () => ({ get: () => ({ posixPaths: true }) }) }), true)
 })
 
 test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', () => {
@@ -801,7 +795,7 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
 
     // The parity env is still merged into the spec the spawn sees.
     const parityEx = build(NewBase, 'win32')
-    parityEx.ctx = { get: () => ({ get: () => ({ posixPaths: true }) }) }
+    parityEx.ctx = { get: () => ({ describe: () => [{ ns: 'gitbash-shell', value: { posixPaths: true } }] }) }
     await parityEx.execute(full)
     assert.equal(kindOf(parityEx, 'executeArgv')[0][2].dshEnv.GIT_CONFIG_VALUE_0, 'input')
 
@@ -841,10 +835,7 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
 
   // New era: the values live in the row Config's projected form.
   const newEra = build({ describe: () => [{ ns: 'locale', value: {} }, { ns: 'gitbash-shell', value: { posixPaths: true, gitAutocrlf: true } }], update: async () => {} })
-  assert.equal(gitConfig(newEra.withParityEnv(spec())), 'input', 'the 0.1.7 describe() read must find the row form')
-  // Old era: the registered namespace through get(ns).
-  const oldEra = build({ get: (ns) => (ns === 'gitbash-shell' ? { posixPaths: true, gitAutocrlf: true } : undefined), update: async () => {} })
-  assert.equal(gitConfig(oldEra.withParityEnv(spec())), 'input', 'the <=0.1.6 namespace read still works')
+  assert.equal(gitConfig(newEra.withParityEnv(spec())), 'input', 'the describe() read must find the row form')
   // Switch off, namespace missing, service missing: the spec is returned as-is.
   const off = build({ describe: () => [{ ns: 'gitbash-shell', value: { posixPaths: true, gitAutocrlf: false } }] })
   assert.equal(off.withParityEnv(spec()).dshEnv, undefined, 'gitAutocrlf:false disables the parity env')
@@ -853,7 +844,7 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
   // A describe() that throws must degrade, not break the spawn.
   assert.equal(build({ describe: () => { throw new Error('boom') } }).withParityEnv(spec()).dshEnv, undefined)
 
-  // The better-sidebar adoption read: same era split, same silent-death trap.
+  // The better-sidebar adoption read goes through describe() as well.
   const { _internal } = await import('../src/index.js')
   const adopt = async (settings) => {
     const updates = []
@@ -867,10 +858,7 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
   }
   const newEraUpdates = await adopt({ describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: '' } }] })
   assert.deepEqual(newEraUpdates, [['dsh-better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
-    '0.1.7: the adoption must still find the sidebar row through describe()')
-  const oldEraUpdates = await adopt({ get: (ns) => (ns === 'dsh-better-sidebar' ? { terminalShell: '' } : undefined) })
-  assert.deepEqual(oldEraUpdates, [['dsh-better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
-    '<=0.1.6: the namespace read still drives the adoption')
+    'the adoption must still find the sidebar row through describe()')
   // Already adopted: nothing to write.
   const settled = await adopt({ describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: 'X:/git/bin/bash.exe' } }] })
   assert.deepEqual(settled, [], 'an already-adopted sidebar is left alone')
@@ -919,14 +907,9 @@ test('run_code program literals ride the same MSYS mount table (v0.20.0)', async
 
 test('the run_code literal rewrite has its own switch (codePaths)', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(text, /codePaths: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(text, /codePaths: live\(Schema\.boolean\(\)\.default\(true\)\)/)
   assert.match(text, /exec\.name === 'run_code' && dialect\.codePaths/)
   assert.match(text, /rewriteCodePaths\(translated\.code, env\)/)
-  const { _internal } = await import('../src/index.js')
-  const withFlag = (value) => _internal.readDialectSettings({ get: () => ({ get: () => value }) })
-  assert.equal(withFlag({ posixPaths: true, codePaths: true }).codePaths, true)
-  assert.equal(withFlag({ posixPaths: true, codePaths: false }).codePaths, false)
-  assert.equal(withFlag({ posixPaths: true }).codePaths, false, 'absent value stays off until the schema default applies')
   // v0.20.1: the run_code sentence is NOT in the base directive — it rides the
   // same context entry only for assemblies whose tool list carries run_code, so
   // every other mode (standard/cordis sessions, run_code disabled) stays quiet.
@@ -966,7 +949,7 @@ test('run_code gets TEMP/TMP only — never a fake HOME or PATH (v0.21.0)', asyn
 test('the model git gets Linux line endings from the executor (v0.21.1)', () => {
   const host = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
-  assert.match(host, /gitAutocrlf: Schema\.boolean\(\)\.default\(true\)/)
+  assert.match(host, /gitAutocrlf: live\(Schema\.boolean\(\)\.default\(true\)\)/)
   // the injection lives where the child env is actually built
   assert.match(shell, /withParityEnv\(spec\)/)
   assert.match(shell, /GIT_CONFIG_COUNT: '2'/)
@@ -1146,10 +1129,9 @@ test('host half: lazy Config with volatile probing and the era branch', async ()
   assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\)\)/)
 })
 
-test('client half: era-split settings acquisition, no hard settingsScope inject', () => {
+test('client half: settings acquisition through configForms only, no dead inject', () => {
   const clientSource = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.match(clientSource, /exports\.inject = \["locale", "slots"\]/)
-  assert.match(clientSource, /ctx\.inject\(\["settingsScope"\]/)
   assert.match(clientSource, /ctx\.inject\(\["configForms"\]/)
   assert.match(clientSource, /forms\.get\(SETTINGS_NAMESPACE\)/)
 })
@@ -1313,22 +1295,11 @@ test('effectivePresetIds drops only the peer-covered variant, and only when both
   assert.deepEqual(configured, PRESET_IDS)
 })
 
-test('readSuppressPeerCordis: old-era namespace read, default off', () => {
-  const { readSuppressPeerCordis } = _internal
-  const ctxWith = (value) => ({ get: (name) => (name === 'settings' ? { get: () => value } : undefined) })
-  assert.equal(readSuppressPeerCordis(ctxWith({ suppressPeerCordis: true })), true)
-  assert.equal(readSuppressPeerCordis(ctxWith({ suppressPeerCordis: false })), false)
-  assert.equal(readSuppressPeerCordis(ctxWith({})), false)
-  assert.equal(readSuppressPeerCordis(undefined), false)
-  assert.equal(readSuppressPeerCordis({ get: () => { throw new Error('nope') } }), false)
-})
-
-test('host half: the dedupe switch is wired on both eras and defaults OFF', () => {
+test('host half: the dedupe switch is wired and defaults OFF', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // declared on the row Config (new era) and on the legacy namespace
+  // declared on the row Config (volatile)
   assert.match(src, /suppressPeerCordis: live\(Schema\.boolean\(\)\.default\(false\)\)/)
-  assert.match(src, /suppressPeerCordis: Schema\.boolean\(\)\.default\(false\)/)
-  // new era: reactive — peer capability arrival + the volatile switch itself
+  // reactive — peer capability arrival + the volatile switch itself
   assert.match(src, /ctx\.inject\(\[PEER_CAPABILITY\]/)
   assert.match(src, /ctx\.on\('loader\/volatile-update'/)
   assert.match(src, /const unregister = await registerVariant\(ctx, presetId/)
@@ -1400,15 +1371,14 @@ test('translateDispatch covers every argument face issue #8 reported', () => {
 
 test('issue #8 root cause stays fixed: the dispatch face reads the LIVE dialect', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // The legacy reader cannot see a >= 0.1.7 host at all: `settings.get(ns)` is
-  // gone there, so it returns the all-off fallback. Reading the dialect through
-  // it inside apply() silently disabled the whole translation layer while the
-  // directive text and the shell env (both already on the live reader) kept
-  // working — issue #8's "half-alive dialect".
-  const rc1Shaped = { get: (name) => (name === 'settings' ? { describe: () => [], update: async () => {} } : undefined) }
-  assert.equal(_internal.readDialectSettings(rc1Shaped).posixPaths, false, 'the legacy reader is blind on 0.1.7 — that is WHY it may not gate the dispatch face')
+  // The legacy namespace reader is GONE (v0.32.1): `settings.get(ns)` stopped
+  // existing on dsh >= 0.1.7, so a reader that went through it returned the
+  // all-off fallback and silently disabled the whole translation layer while
+  // the directive text and the shell env (both on the live reader) kept
+  // working — issue #8's "half-alive dialect". The dispatch face must read
+  // the live reader, and the dead registration path must stay dead.
   const applyBody = src.slice(src.indexOf('export async function apply'))
-  // strip line comments first: this very fix documents the old call in a
+  // strip line comments first: the history documents the old call in a
   // comment, and the assertion is about CODE, not prose
   const codeOnly = applyBody.replace(/^\s*\/\/.*$/gm, '')
   assert.doesNotMatch(codeOnly, /readDialectSettings\(ctx\)/, 'the dispatch face must not use the legacy reader')
@@ -1417,6 +1387,12 @@ test('issue #8 root cause stays fixed: the dispatch face reads the LIVE dialect'
   // goes through the era-aware helper instead of settings.get
   assert.match(src, /const now = readShell\(\)/)
   assert.doesNotMatch(src, /now = s\.get\(SIDEBAR_NS\)/)
+  // v0.32.1: the whole legacy namespace surface is deleted — the registration
+  // block and the four namespace readers died with the 0.1.6 era. A stray
+  // `settings.register` would be dead-on-arrival code on every supported host.
+  const code = src.replace(/^\s*\/\/.*$/gm, '')
+  assert.doesNotMatch(code, /settings\.register/, 'the legacy settings registration must stay deleted')
+  assert.doesNotMatch(code, /SETTINGS_NAMESPACE/, 'the legacy namespace constant must stay deleted')
 })
 
 // ── experimental CPython run_code switch (peer-owned, v0.26.0) ───────────────
@@ -1659,22 +1635,14 @@ test('subagent switch: OFF keeps the dialect to the main agent', () => {
   assert.doesNotMatch(src, /\{ next\(\); return \}/, 'a waterfall listener never drops its chain')
 })
 
-test('subagent switch: an old host without the key defaults to ON', () => {
-  const { readDialectSettings } = _internal
-  const ctxWith = (value) => ({ get: (name) => (name === 'settings' ? { get: () => value } : undefined) })
-  assert.equal(readDialectSettings(ctxWith({})).subagentDialect, true, 'missing key = default on')
-  assert.equal(readDialectSettings(ctxWith({ posixPaths: true })).subagentDialect, true)
-  assert.equal(readDialectSettings(ctxWith({ subagentDialect: false })).subagentDialect, false)
-  assert.equal(readDialectSettings(ctxWith({ subagentDialect: true })).subagentDialect, true)
-  // a throwing read falls back to the all-off dialect BUT keeps the new default
-  assert.equal(readDialectSettings({ get: () => { throw new Error('nope') } }).subagentDialect, true)
-  assert.equal(readDialectSettings(undefined).subagentDialect, true)
+test('subagent switch: a missing key defaults to ON', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // declared on both eras, default true on both
+  // declared volatile with default true on the row Config
   assert.match(src, /subagentDialect: live\(Schema\.boolean\(\)\.default\(true\)\)/)
-  assert.match(src, /subagentDialect: Schema\.boolean\(\)\.default\(true\)/)
+  // the live reader keeps the opt-out semantics (only an explicit false turns it off)
   assert.match(src, /subagentDialect: valueOf\(config\.subagentDialect\) !== false/)
-  assert.match(src, /subagentDialect: v\.subagentDialect !== false/)
+  // and the no-Config fallback keeps delegations covered
+  assert.match(src, /subagentDialect: true/)
 })
 
 // ── issue #11: the ONE bash resolution chain, and the two hard rules ─────────
@@ -1984,10 +1952,8 @@ test('sidebar terminal: the host reaches configEditor, never the settings servic
   assert.doesNotMatch(src, /settings\.update\('terminal'/, 'the settings service cannot write a non-volatile field (measured)')
   // the better-sidebar channel stays independent
   assert.match(src, /adoptSidebarShell\(ctx, bashResolution\.path/)
-  // the switch is declared in both eras
+  // the switch is declared volatile with default ON on the row Config
   assert.match(src, /autoTerminalShell: live\(Schema\.boolean\(\)\.default\(true\)\)/)
-  assert.match(src, /autoTerminalShell: Schema\.boolean\(\)\.default\(true\)/)
-  assert.match(src, /autoTerminalShell: v\.autoTerminalShell !== false/)
 })
 
 test('sidebar terminal: writes go through the official editor only — no fs path to the profile patch', async () => {
@@ -2138,11 +2104,12 @@ test('toolchain: the PATH scan resolves commands, first hit wins, bad dirs are s
     readdir: (dir) => (dir === 'C:/a' ? ['make.exe', 'README.md'] : ['make.cmd', 'yq.exe']),
   }
   const hits = scanCommands(io, TOOLCHAIN)
-  // The scan keeps each PATH directory's own spelling and appends a backslash,
-  // so the expectation is built the same way instead of being normalized by
-  // join() (which would rewrite 'C:/a' to 'C:\\a' and mask a real difference).
-  assert.equal(hits.get('make'), 'C:/a' + sep + 'make.exe', 'earlier PATH entry wins')
-  assert.equal(hits.get('yq'), 'C:/b' + sep + 'yq.exe')
+  // The scan keeps each PATH directory's own spelling and always joins with a
+  // WINDOWS backslash (this plugin only ever runs the toolchain scan on win32),
+  // so the expectation pins the literal separator — building it from
+  // process.platform's sep made this test fail on every non-Windows host.
+  assert.equal(hits.get('make'), 'C:/a' + '\\' + 'make.exe', 'earlier PATH entry wins')
+  assert.equal(hits.get('yq'), 'C:/b' + '\\' + 'yq.exe')
   assert.equal(hits.has('wget'), false)
   const broken = { pathDirs: () => ['C:/nope'], readdir: () => { throw new Error('EACCES') } }
   assert.equal(scanCommands(broken, TOOLCHAIN).size, 0, 'an unreadable directory is not fatal')

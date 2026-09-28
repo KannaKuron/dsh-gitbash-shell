@@ -2,11 +2,10 @@
  * dsh-gitbash-shell — browser half (hand-written ModuleLoader bundle).
  *
  * ONE job: the Settings → Plugins card that gates the unified POSIX path
- * dialect. The Plugins tab dispatches the intersection of Host-served
- * namespaces and registered cards, so the card appears only when the host
- * half (src/index.js) has registered the 'gitbash-shell' settings namespace.
+ * dialect. The card lives on the plugin's detail page (the
+ * plugins.bundle.config seat, keyed by the package name).
  *
- * The card flips one boolean — posixPaths — through a bound settingsScope:
+ * The card flips one boolean — posixPaths — through this plugin's row Config form:
  *   on  → the host injects the order-126 directive (every tool takes MSYS
  *         drive roots /c/...) and the tools/execute wrapper translates
  *         path-argument fields (/x/ → X:/) for the Node-backed file tools;
@@ -21,7 +20,7 @@
  *     (react and @deepseek-ai/dsh-client-ui-primitives only, smoke-enforced);
  *   - plain React.createElement, no JSX/TS; components at module level;
  *   - dsh.client.inject in package.json lists the packages that must load
- *     first so locale / settingsScope / slots exist when this applies;
+ *     first so locale / configForms / slots exist when this applies;
  *   - copy ships in three layers: zh/en inline, one LOCALES entry per third
  *     language (each preceded by a locale marker line), every dictionary
  *     key-aligned with zh (smoke-enforced) and read through a live lookup —
@@ -1872,7 +1871,7 @@ window.__ModuleLoader__.load({
 
 			// dsh 0.1.6-alpha.2: the Plugins page renders this card through the
 			// `plugins.bundle.config` slot with view="page" — the page draws the
-			// title itself, so the collapsible shell is only for the legacy seat.
+			// title itself; the collapsible shell only shows on the popup seat.
 			var pageView = props.view === "page";
 
 			var mounts = snap.value.virtualMounts !== false;
@@ -2637,32 +2636,16 @@ window.__ModuleLoader__.load({
 
 		/**
 		 * Required client services: only era-guaranteed ones are hard-injected;
-		 * the settings face is acquired OPTIONALLY (dsh 0.1.7 removed the
-		 * settingsScope service and a hard inject would leave this fiber PENDING
-		 * forever, taking the card down with it).
+		 * the settings face is acquired OPTIONALLY (a missing configForms on a
+		 * stripped-down host must not take the card down with it).
 		 */
 		exports.inject = ["locale", "slots"];
 
 		exports.apply = function (ctx) {
-			// Era-split settings face (same contract both eras: getSnapshot/set/unset).
+			// The settings face: one ConfigForm per live profile entry; the form
+			// key is the row id "gitbash-shell" (contract: getSnapshot/set/unset).
 			var scope = null;
 
-			// OLD era (dsh <= 0.1.6): bound settings scope.
-			try {
-				ctx.inject(["settingsScope"], function (sctx) {
-					try {
-						var svc = sctx && sctx.settingsScope;
-						if (svc && typeof svc.bind === "function") scope = svc.bind({ namespace: SETTINGS_NAMESPACE });
-					} catch (error) {
-						console.warn(TAG + " settingsScope acquisition failed:", error && error.message ? error.message : error);
-					}
-				});
-			} catch (error) {
-				console.warn(TAG + " settingsScope wiring failed:", error && error.message ? error.message : error);
-			}
-
-			// NEW era (dsh >= 0.1.7): one ConfigForm per live profile entry; the form
-			// key is the row id "gitbash-shell" (same string as the old namespace).
 			try {
 				ctx.inject(["configForms"], function (fctx) {
 					try {
@@ -2714,23 +2697,8 @@ window.__ModuleLoader__.load({
 					// members (top-level options fields do NOT reach the component).
 					return { scope: scope, ctx: ctx };
 				};
-				// Legacy seat (dsh <= 0.1.6-alpha.1): Settings → Plugins card.
-				slots.inject("settings.plugin.item", function () {
-					return slots.register({
-						name: "settings.plugin.item",
-						key: SETTINGS_NAMESPACE,
-						locale: NS,
-						inject: injected,
-					}, function CardWithLocale(props) {
-						/* The registration's locale field also hands out the framework's own
-						   t seat; the plugin's lookup wins (21 locale tags against the catalog's
-						   zh/en), passed last so no prop merge order can override it. */
-						return E(LocaleLive, { ctx: ctx, t: t, cardProps: props });
-					});
-				});
-				// dsh 0.1.6-alpha.2+: the Plugins page's bundle configuration seat,
-				// keyed by the PACKAGE name. Each inject waits for its own slot
-				// declaration, so exactly one seat is live on any host version.
+				// The Plugins page's bundle configuration seat, keyed by the PACKAGE
+				// name. Each inject waits for its own slot declaration.
 				/* Root-level popup seat: rendered regardless of which page is open,
 				   which is the point — the user may never open settings. */
 				slots.inject("shell.overlay", function () {
@@ -2750,7 +2718,7 @@ window.__ModuleLoader__.load({
 						locale: NS,
 						inject: injected,
 					}, function BundleConfigWithBoundary(props) {
-						/* Same LocaleLive wrap as the legacy seat: the plugin's 21-tag
+						/* Same LocaleLive wrap: the plugin's 21-tag
 						   dictionary wins over the catalog's zh/en t seat. */
 						return E(LocaleLive, { ctx: ctx, t: t, cardProps: props });
 					});

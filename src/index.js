@@ -408,13 +408,11 @@ export function installRegisterShim(reg) {
 // ── unified path dialect: settings namespace + gate (v0.9.0) ───────────────
 //
 // The dialect (directive + translation wrapper) is OFF by default and gated
-// by the posixPaths boolean in the 'gitbash-shell' settings namespace,
-// flipped from the Settings → Plugins card (src/client.js). The directive's
-// text closure returns '' while off — empty context contributions are
-// dropped at assembly, so a disabled dialect adds zero prompt noise; the
+// by the posixPaths boolean on this plugin's row Config (volatile, read live
+// per dispatch), flipped from the plugin's settings card (src/client.js). The
+// directive's text closure returns '' while off — empty context contributions
+// are dropped at assembly, so a disabled dialect adds zero prompt noise; the
 // wrapper reads the same value per dispatch and passes calls through.
-
-const SETTINGS_NAMESPACE = 'gitbash-shell'
 
 /**
  * dsh >= 0.1.7 marks a Config field live-editable without remount; a
@@ -493,14 +491,16 @@ export function valueOf(value) {
  * @returns {{ dialect: () => object, posix: () => boolean, adoptSidebar: () => boolean, suppressPeerCordis: () => boolean }}
  */
 function makeLiveReader(ctx, config) {
-  let legacy = false
-  try {
-    const settings = ctx.get('settings')
-    legacy = !!(settings && typeof settings.register === 'function')
-  } catch { legacy = false }
   const hasConfig = !!(config && typeof config === 'object')
   const dialect = () => {
-    if (legacy || !hasConfig) return readDialectSettings(ctx)
+    if (!hasConfig) {
+      // No row Config (schemastery unresolvable): everything off except the
+      // opt-out booleans, the exact shape the old fallback returned.
+      return {
+        posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false,
+        codePaths: false, gitAutocrlf: false, bashPath: '', subagentDialect: true, autoTerminalShell: true,
+      }
+    }
     const bash = valueOf(config.bashPath)
     return {
       posixPaths: valueOf(config.posixPaths) === true,
@@ -522,8 +522,8 @@ function makeLiveReader(ctx, config) {
     posix: () => dialect().posixPaths === true,
     adoptSidebar: () => dialect().adoptSidebar !== false,
     autoTerminalShell: () => dialect().autoTerminalShell !== false,
-    // Default OFF on both eras: only an explicit true asks for deduplication.
-    suppressPeerCordis: () => (legacy || !hasConfig ? readSuppressPeerCordis(ctx) : valueOf(config.suppressPeerCordis) === true),
+    // Default OFF: only an explicit true asks for deduplication.
+    suppressPeerCordis: () => (hasConfig ? valueOf(config.suppressPeerCordis) === true : false),
   }
 }
 
@@ -567,79 +567,6 @@ const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results: 
 // the stray \r, byte assertions fail), while a Linux guest has autocrlf=false.
 // They cannot ride the shell-env registry below: that registry accepts DSH_*
 // facts only, and a non-DSH key throws the whole contribution away.
-
-/** Read the posixPaths switch from the live settings service; never throws. */
-export function readPosixPaths(ctxLike) {
-  try {
-    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
-    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
-    return !!(value && value.posixPaths === true)
-  } catch {
-    return false
-  }
-}
-
-/**
- * Read every dialect switch at once (v0.19.0): posixPaths gates the whole
- * dialect; virtualMounts gates the bash virtual mounts + ~ + $VAR expansion
- * (off = strict drive-root-only translation); globSplit gates the absolute
- * glob-pattern rewrite; errorDialect gates error-message translation and the
- * NUL guidance block; bashPath (optional) joins the Git-root probe candidates
- * first. All default ON (schema defaults); never throws.
- */
-export function readDialectSettings(ctxLike) {
-  const fallback = { posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false, codePaths: false, gitAutocrlf: false, bashPath: '', subagentDialect: true, autoTerminalShell: true }
-  try {
-    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
-    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
-    const v = value && typeof value === 'object' ? value : {}
-    return {
-      posixPaths: v.posixPaths === true,
-      virtualMounts: v.virtualMounts === true,
-      globSplit: v.globSplit === true,
-      errorDialect: v.errorDialect === true,
-      codePaths: v.codePaths === true,
-      // An old host without the key keeps the default (delegated agents covered).
-      subagentDialect: v.subagentDialect !== false,
-      // Default ON: a host without the key still gets the terminal adoption.
-      autoTerminalShell: v.autoTerminalShell !== false,
-      gitAutocrlf: v.gitAutocrlf === true,
-      bashPath: typeof v.bashPath === 'string' ? v.bashPath : '',
-    }
-  } catch {
-    return fallback
-  }
-}
-
-/**
- * Read the adoptSidebar switch (v0.15.0, default ON). Unlike posixPaths the
- * default is on, so only an explicit false disables the takeover.
- */
-export function readAdoptSidebar(ctxLike) {
-  try {
-    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
-    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
-    return !(value && value.adoptSidebar === false)
-  } catch {
-    return true
-  }
-}
-
-/**
- * Read the peer-dedupe switch (v0.25.0, default OFF) from the OLD era's
- * registered namespace — on dsh >= 0.1.7 the row Config is the surface and
- * `makeLiveReader` reads it directly. Never throws.
- */
-export function readSuppressPeerCordis(ctxLike) {
-  try {
-    const settings = ctxLike && typeof ctxLike.get === 'function' ? ctxLike.get('settings') : undefined
-    const value = settings && typeof settings.get === 'function' ? settings.get(SETTINGS_NAMESPACE) : undefined
-    return !!(value && value.suppressPeerCordis === true)
-  } catch {
-    return false
-  }
-}
-
 
 // Windows absolute path -> MSYS drive-root form, for rewriting PROSE in place
 // (v0.10.0). Quoted spaced paths ("C:\Program Files\Git") are matched whole; a bare
@@ -1470,10 +1397,6 @@ const SIDEBAR_NS = 'dsh-better-sidebar'
 const SIDEBAR_TRIES = 12
 const SIDEBAR_RETRY_MS = 1500
 
-// Owner scope of the gitbash-shell namespace once registered (shared with
-// the register callback so a late registration can reconcile + watch).
-let sidebarScope = undefined
-
 // Reconciler installed by adoptSidebarShell; a no-op until then.
 let reconcileSidebar = () => {}
 
@@ -1502,14 +1425,9 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
     const settings = ctx.get('settings')
     if (!settings || typeof settings.update !== 'function') return null
     try {
-      // <=0.1.6: the sidebar registers a settings namespace and `get(ns)` reads
-      // it. >=0.1.7: that API is gone (the service exposes describe/update
-      // only), so the value comes from the row Config's projected form —
-      // without this branch the adoption was silently skipped on the new host.
-      if (typeof settings.get === 'function') {
-        const value = settings.get(SIDEBAR_NS)
-        return value && typeof value === 'object' && typeof value.terminalShell === 'string' ? value.terminalShell : ''
-      }
+      // The sidebar's value lives in ITS row Config, projected into the
+      // settings describe() list; the service exposes describe/update only
+      // (the old `get(ns)` reader died with dsh 0.1.6).
       if (typeof settings.describe === 'function') {
         const entry = settings.describe().find((row) => row !== null && typeof row === 'object' && row.ns === SIDEBAR_NS)
         const value = entry === undefined ? undefined : entry.value
@@ -1560,18 +1478,7 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
   const run = () => {
     tried += 1
     const ok = reconcileSidebar(readAdopt())
-    if (ok) {
-      // The namespace scope may register after the settings service; hook
-      // the live watch once it exists (idempotent via the effect disposer).
-      if (sidebarScope && typeof sidebarScope.watch === 'function' && !run.watched) {
-        run.watched = true
-        try {
-          const off = sidebarScope.watch((next) => { reconcileSidebar(next && next.adoptSidebar !== false) })
-          ctx.effect(() => off, 'dsh-gitbash-shell: adoptSidebar watch (polling path)')
-        } catch { /* best effort */ }
-      }
-      return
-    }
+    if (ok) return
     if (tried < SIDEBAR_TRIES) {
       timer = setTimeout(run, SIDEBAR_RETRY_MS)
       return
@@ -1922,81 +1829,10 @@ export async function apply(ctx, config = {}) {
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
 
-  // Era-aware live settings: NEW hosts read this plugin's own Config refs
-  // (volatile, re-read per dispatch/assembly), OLD hosts keep the registered
-  // namespace. Every consumer below already re-reads on every use, so a
-  // flipped knob lands on the next dispatch with zero wiring.
+  // Era-aware live settings: every consumer below re-reads the row Config
+  // refs on every use (volatile), so a flipped knob lands on the next
+  // dispatch with zero wiring.
   const liveSettings = makeLiveReader(ctx, config)
-
-  // ── settings namespace: the posixPaths switch (default ON, v0.1.0) — OLD
-  // hosts only; on dsh >= 0.1.7 the row Config above IS the surface.
-
-  // Served on the host so the Plugins tab pairs it with the browser card
-  // (the tab dispatches Host-served namespaces ∩ registered cards). Dynamic
-  // imports keep the zero-dependency smoke path importable; the schema MUST
-  // be a callable schemastery object (dsh-settings calls schema(merged)).
-  const legacySettings = (() => {
-    try {
-      const settings = ctx.get('settings')
-      return !!(settings && typeof settings.register === 'function')
-    } catch {
-      return false
-    }
-  })()
-  if (legacySettings) try {
-    ctx.inject(['settings'], (sctx) => {
-      Promise.resolve(import('@deepseek-ai/dsh-settings'))
-        .then((ds) => {
-          const settings = sctx && sctx.settings
-          if (!settings || typeof settings.register !== 'function') return
-          // The SAME copy the executor and the row Config were built from
-          // (issue #12): one resolution per process, so the two faces of this
-          // plugin can never disagree about the schema vocabulary.
-          if (!Schema) return
-          // Era probe: newer dsh register() takes a plain string; the older
-          // one accepted the branded helper — one call satisfies both.
-          const ns = typeof ds.settingsNamespace === 'function'
-            ? ds.settingsNamespace(SETTINGS_NAMESPACE)
-            : SETTINGS_NAMESPACE
-          const scope = settings.register(ns, Schema.object({
-            posixPaths: Schema.boolean().default(true),
-            virtualMounts: Schema.boolean().default(true),
-            globSplit: Schema.boolean().default(true),
-            errorDialect: Schema.boolean().default(true),
-            codePaths: Schema.boolean().default(true),
-            subagentDialect: Schema.boolean().default(true),
-            gitAutocrlf: Schema.boolean().default(true),
-            bashPath: Schema.string().default(''),
-            adoptSidebar: Schema.boolean().default(true),
-            // v0.29.0: official sidebar terminal adoption (default ON).
-            autoTerminalShell: Schema.boolean().default(true),
-            // v0.25.0: same switch as the row Config carries on dsh >= 0.1.7
-            // (the OLD era has no cross-namespace edits, so this namespace is
-            // the only side that can change it here).
-            suppressPeerCordis: Schema.boolean().default(false),
-          }))
-          sidebarScope = scope
-          console.log(`${TAG} settings namespace registered: ${SETTINGS_NAMESPACE} (posixPaths default on, adoptSidebar default on)`)
-          // A late register (settings service up after the adoption polling
-          // finished) still reconciles once, and the live watch flips the
-          // takeover when the user toggles the card switch.
-          try {
-            if (typeof scope?.watch === 'function') {
-              const off = scope.watch((next) => { reconcileSidebar(next && next.adoptSidebar !== false) })
-              ctx.effect(() => off, 'dsh-gitbash-shell: adoptSidebar watch')
-            }
-            reconcileSidebar(readAdoptSidebar(ctx))
-          } catch (error) {
-            console.log(`${TAG} adoptSidebar watch wiring failed: ${error?.message ?? error}`)
-          }
-        })
-        .catch((error) => {
-          console.log(`${TAG} settings namespace registration FAILED: ${error && error.stack || String(error)}`)
-        })
-    })
-  } catch (error) {
-    console.log(`${TAG} settings inject wiring failed: ${error?.message ?? error}`)
-  }
 
   // ── official shell-env fact: DSH_PATH_DIALECT (Windows only, gated; v0.11.0) ──
   // dsh-shell-env owns the model-visible $DSH_* facts (host-plane service;
@@ -2516,4 +2352,4 @@ export async function apply(ctx, config = {}) {
 
 }
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, readSuppressPeerCordis, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, readPosixPaths, readAdoptSidebar, readDialectSettings, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim }
+export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim }

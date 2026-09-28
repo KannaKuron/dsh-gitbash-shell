@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.32.1 — 2026-09-28
+
+**类型**:chore(清掉 v0.32.0 遗留的 legacy settings 死代码)+ fix(冒烟里 mac 平台误判的 toolchain 路径用例)
+
+- **legacy settings 面整体删除**(v0.32.0 识别的死代码,当时保守留了一手):宿主 settings 服务自 0.1.7 起只有 describe()/update()(packages/settings/settings/src/index.ts 方法面核对),没有 register(SettingsScope)也没有 get(ns) ⇒ 全部探测分支不可达。删除:① host 半的 legacy settings namespace 注册块(legacySettings 探测 + ctx.inject(['settings']) 注册 schema + scope.watch 接线);② makeLiveReader 的 era 探测(legacy 恒 false,"legacy || !hasConfig" 收敛为 !hasConfig 的等价 fallback);③ 四个 settings.get(ns) 读取器(readPosixPaths / readDialectSettings / readAdoptSidebar / readSuppressPeerCordis,生产调用全在死分支里)与 SETTINGS_NAMESPACE 常量;④ sidebarScope(唯一赋值点在死代码里)及其 polling watch 挂钩;⑤ adoptSidebarShell.readShell 的 get(ns) 死分支(describe 分支保留,0.1.7 上在用);⑥ shell.js dialectSettings() 的同款 get(ns) 分支;⑦ client 半的 settingsScope 注入段与 settings.plugin.item 旧座位(设置卡只剩 plugins.bundle.config 详情页座位)。行数:src/index.js 2549 → 约 2470 行。
+- **行为不变**:所有被删分支在 >=0.1.7-rc 宿主上均不可达;每个消费点的现役路径(describe() 读取 / 行 Config volatile 读取)逐字未动。冒烟 96 项全绿,新增防复活守卫(源码不得再出现 settings.register / SETTINGS_NAMESPACE)。
+- **fix(tests):toolchain PATH 扫描用例在非 Windows 平台误判**——实现永远以 Windows 反斜杠拼接(该扫描只在 win32 跑,行为正确),期望却用 process.platform 的 sep 构造,mac/Linux 上必挂。期望改为字面量反斜杠;该用例从 v0.32.0 起的既有的平台失败就此消除。
+- 同步:AGENTS.md 条目 0(死代码段改为「已整体删除」)、4b(SERVICE READ RULE 更新为 makeLiveReader)、§4e/§4g/§4i 的双时代措辞收敛;验证清单与发布 checklist 更新(含 minimumReleaseAge 冷却提示)。
+
 ## v0.32.0 — 2026-09-28
 
 **类型**:chore(宿主下限提高到 >= 0.1.7-rc:删除 0.1.6 以前的全部兼容路径,插件瘦身六分之一)
