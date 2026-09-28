@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.32.0 — 2026-09-28
+
+**类型**:chore(宿主下限提高到 >= 0.1.7-rc:删除 0.1.6 以前的全部兼容路径,插件瘦身六分之一)
+
+- **删除物化路径**:dsh 0.1.7 移除目录预设机制后,声明式注册(registerVariant + src/compositions.js)是唯一生效路径,物化分支在所有受支持宿主上都是死代码。整体删除:era 探测(detectBuiltInEra / baseForRoster / eraSuffix,0.1.1→0.1.2 code→ptc 改名)、persona text/split 双形态(0.1.3-alpha.2)、present 探测注入(0.1.5-alpha.2)、行形态对齐(0.1.6-alpha.1)、materialize / pickComposition / syncDecision / firstUserRoot / detectPeerCoverage(仅旧 era 调用;声明式路径的 peer 信号走 PEER_CAPABILITY inject 链)与 apply 的物化分支。src/index.js 3099 → 2549 行。
+- **资产目录删除**:assets/<variant>/ 是物化专用源(声明式数据在 src/compositions.js),随路径一并删除;package.json 的 files 同步去掉 assets。
+- **保留**:声明式四变体注册与 volatile 重注册、PEER_CAPABILITY 去重链(preset id 永不变,含 code-gitbash 历史名)、路径方言(POSIX 翻译/虚拟挂载/run_code 内路径)、终端工具清单、inspect-registry shim、marker 守卫的旧物化残留清理(升级路径)。
+- **宿主下限**:engines.dsh 与 peer @deepseek-ai/dsh → >=0.1.7-rc。smoke 123 项 → 98 项(物化 / era / persona / present / rows 断言随实现删除);已知无关失败保留:toolchain 的 PATH 顺序用例在 macOS 上因分隔符断言失败(HEAD 既有,Windows 专用)。
+
 ## v0.31.1 — 2026-09-27
 
 **类型**:fix(issue #12:0.29.1 在 DSH 0.1.7-rc.2 上仍解析到 profile 里的 schemastery 3.18.2,每次 shell 调用报
