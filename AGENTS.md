@@ -24,12 +24,12 @@
 
 `dsh-gitbash-shell`:Windows 上把 dsh 的 `ctx.shell` 换成 Git for Windows bash 的插件。
 1) host 执行器(`src/shell.js`,继承官方 `@deepseek-ai/dsh-bash-sandbox`);
-2) preset 物化(`src/index.js`,把 standard/minimal/code/cordis 的 Git Bash 变体写进
-用户 preset 根,哈希标记管理、卸载清理);
+2) 声明式 preset 变体(`src/index.js` + `src/compositions.js`,以 `ctx.agentPresets.register`
+注册 standard/minimal/ptc/cordis 四个 `* · Git Bash` 变体;启动时单向清理旧物化残留目录);
 3) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
-0. **双时代总纲(v0.24.0 起,dsh 0.1.7 分界)**:dsh 0.1.7 **删除了目录预设机制**,预设改为声明式——本插件在 register() 可用的宿主上直接 `ctx.agentPresets.register(definition)` 注册四个变体(行数据 = `src/compositions.js`,镜像官方 0.1.7 standard/minimal/ptc/cordis + Git Bash 增量);旧宿主(≤0.1.6)仍走完整物化路径(本文件其余条目继续生效)。时代探测 = `typeof ctx.agentPresets.register === 'function'`。声明式路径要点:变体行集由 `pluginsFor({ kind, gitBash, skillsDir })` / `minimalPluginsFor()` 生成;cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不再拷贝);启动时清理旧物化目录树(仅 marker 判定 unmodified 的);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载)。**设置面同 dsh-agent-lang v0.7.0 双时代**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(8 个开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;v0.31.1 起取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半可选注入 settingsScope/configForms;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。另:peerDependencies 必须声明 `"@deepseek-ai/dsh": ">=0.1.0"` 且标 `peerDependenciesMeta.optional`(rc.1 的兼容门禁只读这类 peer;不设上界;optional 避免 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败)。
+0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.1.7-rc`(兼容门禁 `plugin-compatibility.ts` 读 peer `@deepseek-ai/dsh`,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 必须标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`,没有「旧宿主分支」可回退。要点:四个变体由 `pluginsFor({ kind, gitBash, skillsDir, pythonActive })` / `minimalPluginsFor()` 生成行集(`src/compositions.js`,镜像官方 0.1.7 standard/minimal/ptc/cordis + Git Bash 增量);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(8 个开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**已知死代码**:源内仍残留 legacy settings 注册段与 makeLiveReader 的旧 era 探测(0.1.7 分界的防御,宿主下限已是 0.1.7-rc 后不可达),已识别、待下轮清理,新代码不得再引用。
 
 1. **执行器只替换 argv,不替换行为——除 Windows 受限分支(v0.13.2,issue #1)**:沙箱策略、拒绝分类、
    后台任务、设置节全部沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash
@@ -52,16 +52,16 @@
    "全权访问走 Git Bash argv""win32 受限改走 unconfined"两条继续成立(`run`/`start` 只留给
    ≤0.1.6,`execute` 在无 `super.execute` 时委派给 `run`);父类的 `decorateResult` 是私有的,
    就地记忆化投影由本插件的 `decorateExecution` 复刻。③ `settings` 服务在 0.1.7 上**没有
-   `get(ns)` 了**(只剩 `describe()`/`update()`):任何"读插件设置"的代码都要按 era 分流,
-   否则静默降级 —— 本插件踩过两处(`withParityEnv` 的 Linux 行尾 env、better-sidebar 的
-   `terminalShell` 接管),现都用 `describe()` 里本行(行 id `gitbash-shell`)的表单值。
-2. **preset 组合文本可审查**:assets/*/agent.cordis.yml 是完整组合,物化只做逐字节拷贝,
-   绝不经过 YAML parse→dump 往返(会丢 `!!js` 表达式)。**两个纯字符串手术例外,都不解析 YAML**:
-   ① v0.13.0 的 present 行条件注入(`injectPresentRow`,按锚点拼接);② v0.14.0 的**行形态对齐**
-   (`alignEngineRow` / `alignRalphRow`,把引擎行与 `tool-ralph` 重写成宿主内置 preset 的拼法 +
-   disabled 状态,见第 9 条)。两者都必须幂等、探测失败即 no-op,`!!js` 字面量照旧安全。
-3. **用户改过的 preset 绝不覆盖、绝不删除**:.plugin-managed.json 哈希是唯一判据;
-   孤儿清理只删 `managedBy === 'dsh-gitbash-shell'` 且 unmodified 的目录。
+   `get(ns)` 了**(只剩 `describe()`/`update()`):读插件设置一律用 `describe()` 里本行
+   (行 id `gitbash-shell`)的表单值 —— 本插件踩过两处(`withParityEnv` 的 Linux 行尾 env、
+   better-sidebar 的 `terminalShell` 接管)后总结出的规则。
+2. **组合数据可审查(v0.32.0 起)**:四个变体的行集是 `src/compositions.js` 里**已提交、可 diff 的
+   JS 数据**(新时代的等价物;assets 目录已随物化路径删除),绝不引入运行时读内置 preset 合成行集的
+   逻辑——组合要可审查、可对照。对齐纪律见第 9 条(fixture 锁官方行序列)。
+3. **旧物化残留只删 marker 判定 unmodified 的(v0.32.0 保留的升级路径)**:`cleanupLegacyTrees()`
+   在声明式注册前跑,`.plugin-managed.json`(managedBy + 逐文件 sha256)是唯一判据——
+   `unmodified` → 删 + 日志;`user-modified` / `foreign`(marker 不识别)→ 绝不碰。
+   这是**单向清理**:声明式 era 本插件再也不写任何目录。
 4. **`gitBash` 能力服务**是联动契约:`{ active, bashPath }`,仅 Windows 为 active;
    形状变更要同步 dsh-ptc-cordis-preset(v0.6.0+ 依赖)。
  4a. **inspect-registry shim 的安装时机(v0.7.2,对齐 ptc 0.6.3)**:shim 曾在 apply() 里
@@ -80,10 +80,9 @@
     tools/execute 官方契约写「只能改 signal」,实现层 mutableExec 同对象透传
     给工具体;wrapper 防御式写入(冻结即吞异常降级),上游收紧时自动退化为
     纯指令模式。指令文本改动需同步复核 smoke 的翻译断言。
-    **设置化(v0.9.0)**:方言默认关闭,由 settings 命名空间 gitbash-shell 的
-    posixPaths(布尔,默认 false)门控——设置卡与默认关闭:client 半(手写
-    ModuleLoader bundle,src/client.js)注册 settings.plugin.item 卡片(key=
-    gitbash-shell,宿主不注册命名空间卡片永不出现),经 settingsScope.bind 写入;
+    **设置化(v0.9.0;旧 settings.plugin.item 座位已随 v0.32.0 删除,现为 `plugins.bundle.config`
+    详情页卡——`configForms` 座位,两段式注册形状不变)**:方言默认关闭,由
+    posixPaths(布尔,默认 false)门控;
     host 侧指令 text 闭包读设置(关→空文本,组装期丢弃,零提示噪声),wrapper
     每次分发读同一值(关→原样放行)。设置 schema 必须 schemastery(动态 import,
     冒烟零依赖);readPosixPaths 走 ctx.get('settings')(SERVICE READ RULE)。
@@ -101,7 +100,7 @@
     原地写入严格模式下抛 TypeError 被防御吞掉、静默不翻译(0.10.0/0.10.1 真机 read /c/ 报 C:/c/...);
     改为纯函数返回新对象 + wrapper 替换 exec.arguments 属性(exec 本体到 tools/result 才
     freeze,signal 替换是 registry 自有先例)。smoke 加冻结输入用例锁定。
-    **两段式槽注册(v0.10.3)**:settings.plugin.item 的正确形状是
+    **两段式槽注册(v0.10.3)**:slots 卡片的正确形状是
     slots.inject(洞名, 回调),回调体内 return slots.register(options, card)——直接把
     (options, component) 作为 slots.inject 的第二三参会静默不注册、卡片永不出现
     (agent-lang/better-workspace 均两段式;smoke 已加形状断言)。
@@ -170,29 +169,25 @@
      「success echo rides tools/execute」四例。
  4e. **与 dsh-ptc-cordis-preset 的去重(v0.25.0,issue #7)**:联动生效后对方的 `PTC 创造模式` 已是
      Git Bash 版,与本插件的 `创造模式 · Git Bash`(`cordis-gitbash`,`PEER_COVERED_PRESET_ID`)指向
-     同一件事;开关 `suppressPeerCordis`(本插件行 Config 的 volatile 布尔,默认 **false**;旧宿主
-     ≤0.1.6 在 settings 命名空间 `gitbash-shell` 里声明同名同默认字段)只决定要不要摘掉本插件那一条。
+     同一件事;开关 `suppressPeerCordis`(本插件行 Config 的 volatile 布尔,默认 **false**)
+     只决定要不要摘掉本插件那一条。
      - ① **判定必须「开关 ON 且对方能力报 gitBashActive」,缺一不可**:纯函数
-       `effectivePresetIds(configured, { suppress, peerGitBash })` 是唯一判据,注册(新宿主)与物化
-       (旧宿主)两条路径共用它。对方缺失/未装/未生效/尚未挂载/版本 < 0.14.0 ⇒ **一律不摘**——
+       `effectivePresetIds(configured, { suppress, peerGitBash })` 是唯一判据。对方缺失/未装/未生效/尚未挂载/版本 < 0.14.0 ⇒ **一律不摘**——
        **绝不能因为「探测不到对方」就少注册一个变体**(宁可多一条名录,不可少一个模式);默认 false
        保持 0.24.x 的四变体名录不变。信号只认对方 `ctx.provide('ptcCordisPreset', { id, gitBashActive })`
        的主动上报,**不要**去 `agentPresets.list()` 按 name/description 猜(文本会随对方版本漂移、还可能
        被用户改)。
-     - ② **两个时代的取舍**:新宿主(≥0.1.7)**实时**——`ctx.inject(['ptcCordisPreset'])`(与行激活顺序
-       无关,同 4a 的教训)+ `ctx.on('loader/volatile-update')` 监听本行开关,两者都触发**串行
-       reconcile**(`runDeclarativeEra`):不再需要的 `unregister`(先删 `live` 表再 await)、重新需要的
-       `register`,retire/register 各打一行日志;已挂载会话钉在组合快照上、不受影响。旧宿主(≤0.1.6)
-       无注册表可观察、无 volatile 通道 ⇒ **启动时判定一次**:有界探测 `detectPeerCoverage(ctx)`
-       (默认 1s 轮询,读不到即 false),结果同时喂给物化循环与 `purgeOrphans` ⇒ 打开开关会清掉上一轮
-       物化的目录,关掉要**下次启动**才回来(README 已写明这一代价)。
-     - ③ **权威状态只有一份**:就是本插件这一行 Config(旧宿主是 `gitbash-shell` 命名空间);对方的设置卡
+     - ② **接线与节律**:`ctx.inject(['ptcCordisPreset'])`(与行激活顺序无关,同 4a 的教训)+
+       `ctx.on('loader/volatile-update')` 监听本行开关,两者都触发**串行 reconcile**
+       (`runDeclarativeEra`):不再需要的 `unregister`(**先删 `live` 表再 await**——宿主 registry
+       拒绝重复 id,必须先退役再注册)、重新需要的 `register`,retire/register 各打一行日志;
+       已挂载会话钉在组合快照上、不受影响。
+     - ③ **权威状态只有一份**:就是本插件这一行 Config;对方的设置卡
        经 `ctx.configForms.get('gitbash-shell')` 绑定**同一行**写**同一字段**(官方支持编辑另一插件拥有的
-       命名空间)。**不要再引入第二份镜像字段或双向同步逻辑**;旧宿主上 `configForms` 不存在,镜像卡片
-       不出现,开关只在本插件设置面可改。
+       命名空间)。**不要再引入第二份镜像字段或双向同步逻辑**。
      - ④ **服务契约**:能力名 `ptcCordisPreset`、形状 `{ id, gitBashActive }` 由 dsh-ptc-cordis-preset
        **≥0.14.0** 提供(本插件侧的去重开关自 ≥0.25.0);**该形状变更要同步对方仓库**。改这一层必须跑
-       冒烟里的去重判定矩阵、能力探测、旧时代读取与两个时代的接线断言四例。
+       冒烟里的去重判定矩阵与接线断言。
 4f. **run_code 的实验性 Python 后端开关(v0.26.0)**:dsh 的实验性 CPython PTC 后端
      (`@deepseek-ai/dsh-experimental-ptc-runtime-python`)替换的是 **profile 级** `ptc-runtime` 行,
      不是 preset 内的行,所以**开关与运行行都归 dsh-ptc-cordis-preset**:权威状态是它那一行
@@ -252,8 +247,8 @@
        ⑤ `shellEnv.resolve(execution)` 的 `DSH_PATH_DIALECT` 事实。**任何新方言消费点都必须接同一个 gate**,否则会出现"半方言"。
      - **能力边界(必须如实写进文档)**:dsh **每进程只有一个 shell 执行器**(`ctx.shell` 是单例服务),所以 Git Bash **二进制本身仍是全局的**;
        这个开关管的是方言/翻译层。关闭后委托代理看到与写出的是 Windows 形式路径,而 Git Bash 同样接受 `C:/...`,行为自洽。
-     - **两个时代的读取**:新宿主是本行 Config 的 volatile 布尔 `subagentDialect`(默认 true);旧宿主在 settings 命名空间 `gitbash-shell`
-       声明同名字段,**缺键 = true**(`v.subagentDialect !== false`)⇒ 旧宿主/老配置行为不变。21 语言文案 `sub.label`/`sub.hint`。
+     - **读取**:本行 Config 的 volatile 布尔 `subagentDialect`(默认 true);缺键 = true
+       (`v.subagentDialect !== false`)⇒ 老配置行为不变。21 语言文案 `sub.label`/`sub.hint`。
      - 改动必须跑冒烟里的「subagent switch」三例 + 真机两态(见 CHANGELOG v0.27.0 的装置:真 root/child/nested agent + 真 assemble 调用)。
 
 4h. **bashPath 解析链与两条硬边界(v0.28.0,issue #11)**:用户机器上 Git 装在 `Q:\Git` 而 patch 写死
@@ -321,12 +316,12 @@
      - **绝不写没验证过的路径**:`resolveShell` 用 `resolveExecutable()` 校验配置路径,失败**没有回退**、直接让「新建终端」启动失败
        ⇒ 只允许写 `src/bash-path.js` 判据全过的 Git Bash。**写入后必须读回校验**,不符 ⇒ `write-failed` + fail-loud。
      - `shellCandidates` 不动(配置的 shell 恒排首位);菜单里可能仍有一条候选 `bash`(解析到 WSL)属预期。
-     - 开关 `autoTerminalShell`(volatile,默认 **ON**;旧宿主 settings 命名空间同名字段,缺键 = on);文案 21 语言
+     - 开关 `autoTerminalShell`(volatile,默认 **ON**);文案 21 语言
        `term.label`/`term.hint`。原 `adoptSidebarShell`(dsh-better-sidebar 通道)**保持独立**,两条互不干扰。
      - 改动必须跑冒烟里的「sidebar terminal」六例 + 真机五态(空→写 `name: Git Bash` / **历史 `bash` 名字→改名迁移** /
        同值→不写且 patch md5 未变 / 异值→不写 / 开关关→不写),并保留 README 的三步复验清单。
 
-5. **无构建**:发布产物就是 src/* + assets/*;npm test 全绿即可;安装不触发 lifecycle
+5. **无构建**:发布产物就是 src/*(assets 目录已随物化路径删除);npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。
    **`exports` 必须含 `"./package.json": "./package.json"`(v0.24.3 修,与 dsh-better-workspace
    issue #9 同源)**:桌面 Electron renderer 没有 `ctx.loader.internal`,模块发现回退
@@ -337,70 +332,36 @@
    `loader.internal` 分支,本机自测永远测不出来)。冒烟有字段断言 + `createRequire(...).resolve()`
    运行时断言双保险。另外三个子路径同为宿主解析面,不可删:`.`、`./shell`(执行器行名)、
    `./client`(client 半入口)、`./locale/*.json`(插件管理页元数据)。
-6. **`presets` 配置**:物化清单由 `gitbash-presets` 行配置,默认 4 个;变更要同步
-   本机 web profile 的 patch。
-7. **双 era 组合文本与 marker.base(v0.6.0)**:dsh 0.1.2 把内置 `code` preset 改名
-   `ptc`(`mode: code`→`ptc`,无别名,另新增 `command-goal` 行、`modelSelectionSettings: true`、
-   `fetch: true`)。受影响变体(standard/code/cordis)各有双 era 已提交文本
-   (`agent.cordis.yml` ↔ 0.1.1,`agent.cordis.ptc.yml` ↔ 0.1.2+;minimal 内置未变,单文本双 era),
-   `detectBase` 每启动探测 roster 选文件,marker 记 `base`,探测翻转 → `syncDecision` 刷新。
-   **preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);
-   内置 preset 变化时两个 era 文件都要对照各自版本的内置手工同步;组合文本里不得出现另一 era 的
-   字面量(`mode: ptc` / `mode: code`),smoke 测试有断言把关。**ptc era 组成随 alpha 演进继续漂移
-   (v0.10.5,2026-09-02 同步 dsh 0.1.2-alpha.4)**:内置 `ptc` preset 给 `tool-workflow` 行加
-   `disabled: true`(#3425:`run_code` 为唯一模型编排面,引擎保留给 `ralph`),内置 standard/cordis
-   删 subagent-report 注释块、更新 fork 注释;`code-gitbash` 的 ptc-era(含头部文案与 preset.yml
-   描述)与 `standard-gitbash`/`cordis-gitbash` 的 ptc-era 已同步;smoke 增加「code-gitbash ptc-era
-   必须 disabled、其 code-era 及 standard/cordis 两 era 必须启用」断言。code-era 文本(↔0.1.1)不动。**persona 拆分第三维(v0.12.0,2026-09-04 同步 dsh 0.1.3-alpha.2)**:
-    dsh 0.1.3-alpha.2(40792330c0)把 dsh-persona 的单一 `text` 键拆成 `prefix:`+`suffix:`
-    (schema `prefix: required`,**无兼容别名**),shipped 四预设全部跟进——旧键组合在新宿主上
-    persona 行校验失败。维度:`detectPersonaEra` 读 roster 内置条目(仅 ptc/standard/cordis/
-    minimal,**绝不探测自家变体**——会回声旧形态)的 agent.cordis.yml,`personaEraForText` 判
-    split/text;marker 记 `persona`(旧 marker 无此字段视为 text);`pickComposition(base, persona,
-    available)` 候选链 `.ptc.ps.yml` → `.ptc.yml` → `.ps.yml`(minimal 专属)→ 基文件。资产:
-    standard/code/cordis 各加 `agent.cordis.ptc.ps.yml`,minimal 加 `agent.cordis.ps.yml`(首次
-    分叉);code-era(≤0.1.1)与 0.1.2~alpha.1 ptc-era 文件原样保留。**升级顺序无关**:新插件装在
-    alpha.1 宿主上探测得 text、物化旧式(与 0.11.x 行为一致);宿主升 alpha.2+ 后首启探测翻转
-    → 同版本自动刷新。smoke:ps 键形/旧文件保形/pickComposition 矩阵/syncDecision persona 翻转/
-    探测忽略自家变体,共 20 项。**present 能力维度(v0.13.0,2026-09-10 同步 dsh 0.1.5-alpha.2→rc.1)**:
-    官方给 ptc/standard/cordis 三模式组合追加 `- id: present / name: '@deepseek-ai/dsh-tool-present'`
-    (不可变文件交付下载卡片;minimal 不加——单工具预设)。该包 **0.1.5-alpha.2 首发**,而组合里
-    一行 import 失败会拒绝**整棵 preset 挂载**(agent-presets mount.ts),所以 present 行**绝不写进
-    资产**,改由物化时探测宿主(`hostHasToolPresent`:createRequire.resolve,按 boot 缓存)注入:
-    仅 `.ptc.` 文件、有 tool-presentation 块者锚点后相邻插入、无锚者( cordis/standard 孪生)尾部
-    追加(与官方位置一致)、幂等。marker 记 `present`(旧 marker 无字段视为 false),宿主升级使探测
-    翻转 → syncDecision 自动重物化补行。minimal 资产同步官方单工具化(v0.13.0):删 filesystem
-    组(fs-local + str_replace_editor)、bash 描述的固定网络两行换为环境相关单行、banner 与 preset.yml
-    描述改单工具——这些是纯内容变化,全 era 安全直接改。smoke:注入锚/尾追加/幂等/syncDecision 翻转/
-    materialize 端到端(含 minimal 不注入)/资产不得写死 present,共 25 项。
+6. **`presets` 配置**:声明式变体清单由 `gitbash-shell` 行 Config 的 `presets` 字段配置,默认 4 个
+   (standard/minimal/code/cordis 的 `*-gitbash` id);变更经 volatile-update 触发 reconcile 重注册。
+7. **preset id 永不随官方改名,组合对齐由 fixture 锁死(v0.32.0 收敛)**:`code-gitbash` 保持历史 id
+   (会话钉在 id 上,改名即 preset not found——dsh 0.1.2 把内置 `code` 改名 `ptc` 时本插件变体 id
+   就没有跟随)。变体组合与官方内置 preset 的对齐由 `tests/smoke.mjs` 的
+   `compositions: full variants mirror the official 0.1.7 row split` 一项锁住(era 资产/marker 维度
+   已随物化路径删除,历史叙事见 CHANGELOG v0.6.0~v0.31.1)。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
-   `2026-08-25-rename-code-mode-to-ptc` 的 Deferred 一节)。落地时复查双 era 划分(2026-08-29 复核:
-   dsh 0.1.2-alpha.1 仍为 SESSION_FORMAT_VERSION=0,迁移未落地;2026-09-02 复核:dsh 0.1.2-alpha.4
-   仍为 0,Session 重构只到 branded types,消费面无变化);dsh-better-sidebar
+   `2026-08-25-rename-code-mode-to-ptc` 的 Deferred 一节)。落地时复查变体组合是否需要第三形态
+   (2026-08-29 复核:dsh 0.1.2-alpha.1 仍为 SESSION_FORMAT_VERSION=0,迁移未落地;2026-09-02 复核:
+   dsh 0.1.2-alpha.4 仍为 0,Session 重构只到 branded types,消费面无变化);dsh-better-sidebar
    的命名空间(`terminalShell`/`shell`)演化同样需在其升级后复核。
 
-9. **适配新版 dsh 的核对纪律(2026-09-15 立,dsh 0.1.6-alpha.1 教训)**:物化类插件升级 dsh 时,
-   **绝不只看本站 `assets/` 的自身 diff**——真正的漂移只存在于「本站资产 × 宿主内置 preset」之间。
+9. **适配新版 dsh 的核对纪律(2026-09-15 立,dsh 0.1.6-alpha.1 教训)**:组合类插件升级 dsh 时,
+   **绝不只看 `src/compositions.js` 的自身 diff**——真正的漂移只存在于「本站组合 × 宿主内置 preset」之间。
    每次跟随升级必须完整做一遍:
-   ① **结构化行序列对比**:取宿主当前的预设组合文本 —— dsh 0.1.7 起在
+   ① **结构化行序列对比**:取宿主当前的预设组合文本 ——
       `packages/bundle/web-app/presets/{standard,cordis,ptc,minimal}.patch.yml`(行位于
-      `insert[0].config.plugins`;0.1.6 及以前的目录预设路径已不存在),抽出 `- id:` / `name:` /
-      `disabled:` 三行序列,与本插件对应变体逐条对齐;**提示词**(persona 的 `prefix:`/`suffix:`
-      文本)与**工具行**同样要 diff,不要只看 id 名字。
+      `insert[0].config.plugins`),抽出 `- id:` / `name:` / `disabled:` 三行序列,与本插件
+      对应变体(`src/compositions.js`)逐条对齐;**提示词**(persona 的 `prefix:`/`suffix:`
+      文本)与**工具行**同样要 diff,不要只看 id 名字。smoke 的
+      `compositions: full variants mirror the official 0.1.7 row split` 锁住对齐。
    ② **行改名是致命项**:dsh 0.1.6-alpha.1 把引擎行 `workflow-worker-thread` 改名 `workflow-ptc`
       并**删除**了旧包(`packages/workflow/workflow-worker-thread` 整包消失)。组合里一行 import
-      失败会拒绝**整棵 preset 挂载**(agent-presets `mount.ts`),物化出的 preset 会直接不可用——
+      失败会拒绝**整棵 preset 挂载**(agent-presets `mount.ts`),变体直接不可用——
       不是「少个工具」那么轻。
    ③ **默认值变化同样要跟**:同一版把 `tool-ralph` 改成默认 `disabled: true`(内置预设全改);
-      不跟就是「物化出来的 preset 替部署偷偷打开了一个已被关掉的工具」。
-   ④ **对齐优先用运行时改写,而不是再加 era 资产**:能从宿主内置 preset 现场抄的行一律抄
-      (`rowFormsOf` / `alignEngineRow` / `alignRalphRow` + `detectRowForms`,v0.14.0)。只有整段
-      文本结构变化时才新增变体文件。改写必须是**纯字符串手术**(绝不 YAML parse→dump,`!!js` 必须
-      活下来)、**幂等**、**探测失败即 no-op**(旧宿主保持逐字节原样)。
-   ⑤ marker 用 `rows` 指纹记录对齐结果,宿主形态翻转时 `syncDecision` 自动重物化(与 `base` /
-      `persona` / `present` 同一套维度模式)。
-   ⑥ **工具面/翻译层覆盖核对(2026-09-19 立,v0.17.0 教训)**:翻译层按「顶层字段名白名单
+      不跟就是「我们的变体替部署偷偷打开了一个已被关掉的工具」。
+   ④ **工具面/翻译层覆盖核对(2026-09-19 立,v0.17.0 教训)**:翻译层按「顶层字段名白名单
       (`file_path`/`path`/`workdir`)+ present 嵌套形状」工作,dsh 新版本**新增或改动工具的
       路径参数**是独立于 preset 的另一个漂移源(0.1.5 新增 present 的 `files[].path` 嵌套,直到
       v0.17.0 才覆盖)。每次跟随升级必须盘点**所有带路径参数的工具**:对照宿主工具 schema
@@ -408,7 +369,7 @@
       元数据字段;有遗漏则补 `TRANSLATABLE_PATH_FIELDS` / 嵌套形状 / `rewriteResultPaths`,
       并在真机跑一遍「虚拟路径 × 工具」矩阵(~、/tmp、/dev/null、/usr、裸盘根、绝对 glob
       pattern、present 嵌套、bash workdir)。
-   ⑦ **审计窗口从「上一个已知可用版本」起算(v0.24.4 立,issue #6 教训)**:上一轮 rc.1 复核只 diff
+   ⑤ **审计窗口从「上一个已知可用版本」起算(v0.24.4 立,issue #6 教训)**:上一轮 rc.1 复核只 diff
       `alpha.1 → rc.1`,而本插件的基线是 alpha.1 —— 整个 `0.1.6 → 0.1.7-alpha.1` 窗口(#4587 的
       volatile Config 投影 + shell 包大重构)从未被对照,于是"用户装上就每次 shell 调用报错"这种
       最粗的破坏直接漏过。规则:每次跟随升级,diff 的起点必须是**本插件上一个真机验证通过的宿主
@@ -488,18 +449,19 @@
 ## 验证清单(改动后)
 
 1. `npm test` 全绿;
-2. 真机验证:重启 DSH → 物化日志(含 era 字样)→ 模式选择器出现 `* · Git Bash` → 新会话 bash 工具存在、
-   `command -v bash` 指向 Git 安装目录;
-3. 组合文本改动后:用 cordis 会话跑 `agentPresets.standingKeyFor('<variant>')` 挂载校验;
-4. era 相关改动另需双向验证,两个方向(`code` era ≤ 0.1.1 / `ptc` era)均已真机通过,记录见
-   CHANGELOG v0.6.0;仍待覆盖:「旧 marker(无 base)首启刷新一次」路径(可手造无 `base` 的
-   marker 再启动验证)。
+2. 真机验证(隔离 `DSH_HOME` + 含 `@deepseek-ai/dsh-web-app` 的 profile):启动 →
+   `registered 4 preset(s) declaratively (standard-gitbash, minimal-gitbash, code-gitbash, cordis-gitbash)`
+   → 模式选择器出现四个 `* · Git Bash` 变体;Windows 上另验:新会话 bash 工具存在、
+   `command -v bash` 指向 Git 安装目录(mac 上 shell 解析失败日志为设计内行为)。
+3. 组合改动后:用 cordis 会话跑 `agentPresets.standingKeyFor('<variant>')` 挂载校验;
+4. 旧物化残留清理改动:手造带 marker 的 unmodified 树 → 启动被删 + 日志;篡改文件成
+   user-modified → 保留 + 提示;无 marker 的 foreign 目录 → 绝不碰。
 5. **升级 dsh 后**(v0.14.0 起强制):按第 9 条把四个内置 preset 各核对一遍——行序列 + 提示词 +
-   disabled 默认值;smoke 的 `assets keep the pre-rename engine spelling` 与 `materialize aligns
-   the engine row to the host` 两项锁住对齐行为;真机确认物化日志出现四个变体且模式选择器里都能挂载。
+   disabled 默认值;smoke 的 `compositions: full variants mirror the official 0.1.7 row split`
+   锁住对齐;真机确认声明式注册日志出现四个变体且模式选择器里都能挂载。
 6. **去重改动(§4e,v0.25.0 起)**:隔离实例(`DSH_HOME` 独立 + 新建 profile + 两份插件 `link:` 安装
    + 探针插件定时打印 `agentPresets.list()`)里**真的翻转开关**看名录:默认两侧条目并存 → 写
-   `settings.update('gitbash-shell', { suppressPeerCordis: true })` 后出现 `preset 'cordis-gitbash'
+   行 Config `suppressPeerCordis: true`(经 configForms 或 volatile 通道)后出现 `preset 'cordis-gitbash'
    retired …` 且名录少一条 → 写回 `false` 后出现 `preset 'cordis-gitbash' registered declaratively`
    且名录恢复。非 Windows 机上用探针副本把 `gitBash` 能力的 `active` 强制为 `true` 模拟 win32 语义;
    顺带在无头浏览器确认对方设置卡上的镜像行渲染出来(同一份状态)。
@@ -547,4 +509,6 @@
 6. **触发 npmmirror 同步**(机器默认 registry 是 npmmirror,不触发要等它自行同步,
    期间 `dshmarket`/pnpm 对新版本号解析会报 ERR_PNPM_NO_MATCHING_VERSION):
    `curl -X PUT https://registry.npmmirror.com/dsh-gitbash-shell/sync`;
+   注意 pnpm 的 `minimumReleaseAge` 冷却:刚 publish 的版本要等几分钟才能被任何
+   `dsh plugin add`/profile 依赖解析接受(profile 级操作重解析整个 lockfile,单个过新版本会拒掉整个操作);
 7. 用户侧更新 = `dsh plugin --profile <name> add dsh-gitbash-shell`(npm 包名);host 半变更需重启 DSH。
