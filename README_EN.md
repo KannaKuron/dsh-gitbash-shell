@@ -91,8 +91,15 @@ Executor config:
 
 ```yaml
 config:
-  bashPath: "D:/Tools/Git/bin/bash.exe"   # default C:/Program Files/Git/bin/bash.exe
+  bashPath: "D:/Tools/Git/bin/bash.exe"   # default '' (empty) = automatic chain
 ```
+
+The automatic chain (empty `bashPath`) probes, in order: explicit settings → default
+install locations → PATH → `git.exe` reverse lookup → `git --exec-path` (covers
+Scoop/choco shim layouts and the `ucrt64` runtime, v0.33.0) + the GitForWindows
+registry `InstallPath` → the registry `Path`. Resolution is re-read live per
+consumer (never frozen at boot, v0.33.0), and only Git for Windows' own bash
+counts — WSL / MSYS2 / Cygwin are refused with guidance, never substituted.
 
 ## Cooperation with dsh-ptc-cordis-preset
 

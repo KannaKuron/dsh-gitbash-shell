@@ -20,7 +20,7 @@
  * arrives through `io`, so the whole chain is unit-testable off-Windows.
  */
 
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -44,7 +44,7 @@ export const GIT_WINDOWS_VERSION_MARKER = '.windows.'
 export const GIT_BASH_UNAME = /^MINGW(32|64)_NT-/
 
 /** Exit codes/sources reported back to the caller. */
-export const BASH_SOURCES = ['configured', 'default', 'path', 'path-git', 'registry']
+export const BASH_SOURCES = ['configured', 'default', 'path', 'path-git', 'exec-path', 'registry']
 
 /**
  * Normalize a Windows path for comparison: forward slashes, lowercase, no
@@ -133,10 +133,45 @@ export function classifyBashCandidate(candidate, io) {
 }
 
 /**
+ * Walk UP from a `git --exec-path` output looking for the Git for Windows
+ * root, and return its `<root>/bin/bash.exe` candidate (issue #13).
+ *
+ * Why this tier exists: package managers that SHIM Git (Scoop, and portable
+ * installs generally) put `git.exe` on PATH in a directory (`E:/Scoop/shims`)
+ * that is neither `<root>/cmd` nor `<root>/bin`, so the PATH reverse lookup
+ * never fires and there is no `bash.exe` on PATH at all. The REAL git still
+ * knows where it lives — `git --exec-path` prints
+ * `<root>/<mingw64|ucrt64>/libexec/git-core` (or `<root>/libexec/git-core`
+ * on old layouts) even when launched through a shim — so climbing ≤5 levels
+ * and demanding BOTH `cmd/git.exe` and `usr/bin/bash.exe` finds the root on
+ * every layout. That pair is also the discriminator: MSYS2's git reports
+ * `<msys64>/usr/libexec/git-core`, whose root has `usr/bin/bash.exe` but NO
+ * `cmd/git.exe`, so it never produces a candidate here (and even if it did,
+ * classifyBashCandidate's blacklist + fingerprints would refuse it).
+ * @param {string|undefined} execPath - raw `git --exec-path` output.
+ * @param {(path: string) => boolean} exists - filesystem probe.
+ * @returns {string[]} zero or one candidate.
+ */
+export function execPathBashCandidates(execPath, exists) {
+  if (typeof execPath !== 'string' || execPath.trim() === '') return []
+  let dir = execPath.replace(/\\/g, '/').replace(/\/+$/, '')
+  for (let i = 0; i < 5; i++) {
+    const parent = dirname(dir)
+    if (parent === dir || parent === '' || parent === '.') break
+    dir = parent
+    if (exists(dir + '/cmd/git.exe') && exists(dir + '/usr/bin/bash.exe')) {
+      return [dir + '/bin/bash.exe']
+    }
+  }
+  return []
+}
+
+/**
  * The ordered candidate chain for one resolution, WITHOUT validation. Order is
  * the contract (issue #11): explicit setting → default install locations →
- * PATH → git.exe reverse lookup → registry PATH (the last one only helps when
- * the process PATH snapshot predates a user's PATH edit).
+ * PATH → git.exe reverse lookup → git --exec-path / GitForWindows registry
+ * (the last one only helps when the process PATH snapshot predates a user's
+ * PATH edit).
  * @param {object} input - resolution input.
  * @param {string} input.configured - explicit path ('' = none).
  * @param {object} io - injected facts.
@@ -152,6 +187,7 @@ export function bashCandidates({ configured }, io) {
   for (const path of io.defaults()) out.push({ path, source: 'default' })
   for (const path of io.pathBashCandidates()) out.push({ path, source: 'path' })
   for (const path of io.gitReverseCandidates()) out.push({ path, source: 'path-git' })
+  for (const path of io.execPathBashCandidates()) out.push({ path, source: 'exec-path' })
   for (const path of io.registryBashCandidates()) out.push({ path, source: 'registry' })
   return out
 }
@@ -262,23 +298,50 @@ export function effectiveConfiguredBashPath(ownRowValue, settingsValue) {
 
 /**
  * The `gitbash-executor` ROW's own `bashPath` — the highest-priority tier.
- * Read through the Loader's public `resolve(id)` (the row id is part of this
+ * Read through the Loader's public surface (the row id is part of this
  * plugin's own bundle patch), so the translation layer sees the same explicit
  * value the executor row carries instead of quietly resolving a different
  * one. Absent row / absent config / any loader shape change reads ''.
+ *
+ * TWO access paths, because hosts differ (issue #13, measured on 0.2.0-rc.2):
+ * bundle-patched rows live in the OWNING PLUGIN'S SUBTREE there, so a bare
+ * `resolve('gitbash-executor')` throws from the root tree FOREVER (not just
+ * at boot) — the explicit tier silently read '' while the executor's own lazy
+ * `this.config.bashPath` worked, i.e. the two halves of this plugin disagreed
+ * about the user's explicit answer. `entries()` iterates subtrees as well, so
+ * it finds the row on both layouts; the direct resolve stays as the first try
+ * for older hosts where the row sits in the root tree.
  * @param {object} ctx - a context exposing `loader`.
  * @returns {string} the row's configured path, '' when unset.
  */
 export function executorConfiguredBashPath(ctx) {
-  try {
-    const entry = ctx && ctx.loader && typeof ctx.loader.resolve === 'function'
-      ? ctx.loader.resolve('gitbash-executor')
-      : undefined
+  const read = (entry) => {
     const value = entry && entry.options ? entry.options.config : undefined
     return value && typeof value.bashPath === 'string' ? value.bashPath : ''
-  } catch {
-    return ''
   }
+  const loader = ctx && ctx.loader
+  if (!loader) return ''
+  // Subtree walk: finds the row wherever the host nests bundle-patched rows.
+  const walk = () => {
+    try {
+      if (typeof loader.entries !== 'function') return undefined
+      for (const entry of loader.entries()) {
+        if (entry && entry.options && entry.options.id === 'gitbash-executor') return entry
+      }
+      return undefined
+    } catch {
+      return undefined
+    }
+  }
+  try {
+    // Direct resolve first: the row sits in the ROOT tree on older hosts, and
+    // an EMPTY string it may carry is a real answer (= run the automatic
+    // chain) — only a throw (subtree row, newer hosts) falls through.
+    if (typeof loader.resolve === 'function') {
+      return read(loader.resolve('gitbash-executor'))
+    }
+  } catch { /* not in the root tree — walk the subtrees below */ }
+  return read(walk())
 }
 
 /**
@@ -289,19 +352,29 @@ export function executorConfiguredBashPath(ctx) {
  * @returns {object} the production io.
  */
 export function defaultIo() {
+  // spawnSync (not execFileSync): the sync-exec family LEAKS a failing
+  // child's stderr straight onto the host log (reg's GBK error text showed
+  // up as mojibake on every failed probe), while spawnSync with piped stdio
+  // captures it into the result where the catch below can drop it.
   const run = (file, args) => {
     try {
-      return String(execFileSync(file, args, { encoding: 'utf8', timeout: 5000, windowsHide: true })).trim()
+      const result = spawnSync(file, args, { encoding: 'utf8', timeout: 5000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      if (result.error !== undefined || result.status !== 0) return undefined
+      return String(result.stdout ?? '').trim()
     } catch {
       return undefined
     }
   }
+  const registryValue = (hive, key, name) => {
+    const out = run('reg', ['query', hive + '\\' + key, '/v', name])
+    if (typeof out !== 'string') return undefined
+    const match = new RegExp(name + '\\s+REG_(?:EXPAND_)?SZ\\s+(.*)', 'i').exec(out)
+    return match === null ? undefined : match[1].trim()
+  }
   const registryPath = (hive, key) => {
-    const out = run('reg', ['query', hive + '\\' + key, '/v', 'Path'])
-    if (typeof out !== 'string') return []
-    const match = /Path\s+REG_(?:EXPAND_)?SZ\s+(.*)/i.exec(out)
-    if (match === null) return []
-    return match[1].split(';').map((entry) => entry.trim()).filter((entry) => entry !== '')
+    const value = registryValue(hive, key, 'Path')
+    if (typeof value !== 'string') return []
+    return value.split(';').map((entry) => entry.trim()).filter((entry) => entry !== '')
   }
   const dirs = () => {
     const out = []
@@ -314,6 +387,23 @@ export function defaultIo() {
     return out
   }
   const pathDirs = () => String(process.env.PATH ?? '').split(process.platform === 'win32' ? ';' : ':').map((entry) => entry.trim()).filter((entry) => entry !== '')
+  const gitForWindowsInstalls = () => {
+    const roots = []
+    // The official installer writes these (machine-wide / per-user); the
+    // 32-bit-on-64-bit install lives under WOW6432Node. Scoop/portable usually
+    // has none of them, which is why this rides behind `git --exec-path`.
+    for (const [hive, key] of [
+      ['HKLM', 'SOFTWARE\\GitForWindows'],
+      ['HKLM', 'SOFTWARE\\WOW6432Node\\GitForWindows'],
+      ['HKCU', 'Software\\GitForWindows'],
+    ]) {
+      const install = registryValue(hive, key, 'InstallPath')
+      if (typeof install === 'string' && install.trim() !== '') {
+        roots.push(install.replace(/\\/g, '/').replace(/\/+$/, '') + '/bin/bash.exe')
+      }
+    }
+    return roots
+  }
   return {
     exists: (path) => {
       try { return existsSync(path) } catch { return false }
@@ -326,6 +416,19 @@ export function defaultIo() {
         const parent = dirname(dir.replace(/\\/g, '/'))
         return [parent + '/bin/bash.exe', dirname(parent) + '/bin/bash.exe']
       }),
+    // issue #13: shimmed Git layouts (Scoop, portable) have no bash.exe on PATH
+    // and a shim directory that defeats the cmd/bin reverse lookup. The REAL
+    // git reports its own home through --exec-path even when launched via a
+    // shim, and the official installer's InstallPath backs it up.
+    execPathBashCandidates: () => {
+      const gitExe = pathDirs()
+        .map((dir) => dir.replace(/\\/g, '/') + '/git.exe')
+        .find((path) => { try { return existsSync(path) } catch { return false } })
+      const execPath = gitExe === undefined ? undefined : run(gitExe, ['--exec-path'])
+      return [...execPathBashCandidates(execPath, (path) => {
+        try { return existsSync(path) } catch { return false }
+      }), ...gitForWindowsInstalls()]
+    },
     registryBashCandidates: () => [
       ...registryPath('HKCU', 'Environment'),
       ...registryPath('HKLM', 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'),

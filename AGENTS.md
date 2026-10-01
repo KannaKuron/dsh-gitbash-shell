@@ -252,25 +252,49 @@
        (`v.subagentDialect !== false`)⇒ 老配置行为不变。21 语言文案 `sub.label`/`sub.hint`。
      - 改动必须跑冒烟里的「subagent switch」三例 + 真机两态(见 CHANGELOG v0.27.0 的装置:真 root/child/nested agent + 真 assemble 调用)。
 
-4h. **bashPath 解析链与两条硬边界(v0.28.0,issue #11)**:用户机器上 Git 装在 `Q:\Git` 而 patch 写死
-     `C:/Program Files/Git/bin/bash.exe` ⇒ **每条命令 spawn ENOENT**;又因本插件撤掉 `pwsh-sandbox` 而 dsh
-     每进程只允许一个 `ctx.shell`,**整个会话的命令能力归零且无提示**。本版把解析统一、并把"没有 Git Bash"
-     变成可引导的显式失败。
+4h. **bashPath 解析链与两条硬边界(v0.28.0,issue #11;懒化与 exec-path 层 v0.33.0,issue #13)**:用户机器上 Git 装在
+     `Q:\Git` 而 patch 写死 `C:/Program Files/Git/bin/bash.exe` ⇒ **每条命令 spawn ENOENT**;又因本插件撤掉
+     `pwsh-sandbox` 而 dsh 每进程只允许一个 `ctx.shell`,**整个会话的命令能力归零且无提示**。本版把解析统一、并把"没有 Git Bash"
+     变成可引导的显式失败。**v0.33.0(issue #13)补的另一半:解析结果绝不在 apply() 期冻结** —— 那一刻
+     `loader.resolve('gitbash-executor')` 会因行不在 root 树而 throw、settings 服务可能未注入,冻结的空值让
+     "配置正确"被误判为"未配置"而跑自动链;同一次启动里执行器(懒解析)正常而日志/弹窗/终端接管(冻结值)失败,
+     **两条路径相反结论**。修法:`readConfiguredBashPath()` / `readBashResolution()` 两个懒读取器,**每个消费点
+     逐次重读**(capability 全 getter、status 路由 fresh 重读、pathmap/翻译层、两侧终端接管),`gitbash-shell` 行的
+     值直接读 apply() 的 `config` 参数(`rowBashPath`,volatile ref 三态,不绕 settings 服务);启动日志 boot +
+     settle 两段(失败且显式层为空时轮询 250ms×20 仅 win32,翻转后补打 settled 段;terminal 接管挂 `onBashSettled`
+     通知,boot 失败→settled 成功无需重启即可接管)。**防回归断言在冒烟「explicit tier is LAZY」**:源码不得再现
+     `const configuredBashPath = effectiveConfiguredBashPath(` / `const bashResolution = resolveGitBashCached(`。
+     **executor 行读取二段式(同版,真机实测)**:dsh 0.2.0-rc.2 起 bundle-patch insert 的行挂**所属插件 subtree**,
+     `loader.resolve('gitbash-executor')` 从 root 树查找**恒 throw**(不是启动时序,是永远读不到;探针 7 次采样全 throw)
+     ——`executorConfiguredBashPath` 因此先试 `resolve`(旧宿主,行在 root 树,空串也是真实答案=自动链),throw 则
+     `loader.entries()` 迭代(含 subtree)按行自身 `options.id` 匹配(0.2.0 实测稳定可读)。冒烟「executor row lookup
+     survives the subtree layout change」锁死三种 loader 形状。**教训**:宿主 loader 的树结构变化会静默断掉按 id 直查的
+     读取——面向 loader 的读取一律带 entries() 兜底。
      - **两条硬边界(用户明确表态,高于任何"为了不报错"的降级提议;动这层前先问用户)**:
        ① **永不回退**:找不到 Git Bash 就**只报错 + 引导**,绝不换 pwsh / cmd / WSL bash / MSYS2 bash 顶上,
           也不做"暂时留个能跑的"。理由(用户原话):"人家大可自己卸载插件,既然人家下载了我们插件就是要用。"
        ② **只认 Git for Windows 的 bash**:WSL(`C:\Windows\System32\bash.exe`、WindowsApps 别名)、
           MSYS2、Cygwin 的 bash **一律不算命中**,宁可报错("绝对不能用 wsl")。
      - **解析链(`src/bash-path.js`,唯一实现;执行器与翻译层共用同一 memo)**,顺序即契约:
-       1. **设置里填的**:`gitbash-executor` 行 config(用 `ctx.loader.resolve('gitbash-executor')` 让翻译层也看到)
-          > `gitbash-shell` 行/设置 `bashPath` > 空(=自动链)。**显式值即答案,失败也不换别的**。
+       1. **设置里填的**:`gitbash-executor` 行 config(翻译层经 `executorConfiguredBashPath` 的
+          **resolve→entries() 二段式**读到 —— 见上) > `gitbash-shell` 行 `bashPath`(apply() 的
+          `config` 参数,`rowBashPath`) > 空(=自动链)。**显式值即答案,失败也不换别的**。
        2. **默认安装位置**:`C:/Program Files/Git/bin/bash.exe`(主)、`%ProgramFiles(x86)%`、`%ProgramW6432%`、
           `%LOCALAPPDATA%/Programs/Git/bin/bash.exe`。
        3. **PATH**(用户+系统,进程级已合并)逐目录 `bash.exe`;**黑名单在这些候选之前生效**。
        4. **PATH 上的 `git.exe` 反推**(`<gitdir>/../bin/bash.exe`、`<gitdir>/../../bin/bash.exe`)。
-       5. **注册表 Path**(`HKCU\Environment`、`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`,
+       5. **`git --exec-path` 反推 + GitForWindows 注册表(v0.33.0,issue #13)**:对 PATH 上第一个 `git.exe`
+          (Scoop/choco 的 **shim** 也照常启动真身)跑 `--exec-path`,从输出向上 ≤5 级找「同时含 `cmd/git.exe`
+          与 `usr/bin/bash.exe`」的目录 ⇒ `<root>/bin/bash.exe`——兼容 `mingw64`/`ucrt64`/旧 flat `libexec`
+          三种布局;MSYS2 的 `usr/libexec/git-core` 根上没有 `cmd/git.exe`,天然不产出候选。随后兜底
+          `InstallPath` 注册表(`HKLM\SOFTWARE\GitForWindows`、`HKLM\SOFTWARE\WOW6432Node\GitForWindows`、
+          `HKCU\Software\GitForWindows`;官方安装器写的,Scoop/便携通常没有,故列 exec-path 之后)。两者同报
+          source `exec-path`;纯函数 `execPathBashCandidates(execPath, exists)` 独立可测;候选仍过下面全套判据。
+       6. **注册表 Path**(`HKCU\Environment`、`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`,
           覆盖"GUI 启动时 PATH 快照过期");`reg query` 走 **argv 数组**,不拼字符串。
-       6. 全落空 ⇒ `{ ok:false, path:'', tried:[…] }` + `bashResolutionReport()` 的 fail-loud 文案。
+       7. 全落空 ⇒ `{ ok:false, path:'', tried:[…] }` + `bashResolutionReport()` 的 fail-loud 文案。
+       (探测子进程一律 **spawnSync + piped stdio**:execFileSync 同步家族在子进程失败时把 stderr 直接泄漏到
+       宿主日志 —— reg 的 GBK 错误文本以乱码刷屏,v0.33.0 实测修正。)
      - **判据(缺一不可)**:黑名单(`system32`/`windowsapps`/`msys`/`cygwin`/`wsl`,归一化后逐段匹配,先于探测)
        → 形状 `<root>/bin/bash.exe` → `<root>/cmd/git.exe|bin/git.exe` → `<root>/usr/bin/bash.exe` →
        (`<root>/mingw64` 或 `<root>/usr/bin/msys-2.0.dll`) → `<git> --version` 含 **`.windows.`** →

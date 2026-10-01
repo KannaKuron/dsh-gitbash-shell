@@ -276,7 +276,7 @@ export function effectivePresetIds(configured, { suppress, peerGitBash } = {}) {
  */
 import {
   DEFAULT_GIT_BASH, GIT_BASH_DOWNLOAD_URL, bashResolutionReport,
-  effectiveConfiguredBashPath, executorConfiguredBashPath, resolveGitBashCached, settingsBashPath,
+  effectiveConfiguredBashPath, executorConfiguredBashPath, resolveGitBashCached,
 } from './bash-path.js'
 import { adoptTerminalShell, terminalAdoptReport } from './terminal-shell.js'
 import {
@@ -479,6 +479,24 @@ export const Config = Schema === null ? undefined : Schema.object({
 /** Read one Config value across eras: Volatile ref (>= 0.1.7) or plain value. */
 export function valueOf(value) {
   return value && typeof value.get === 'function' ? value.get() : value
+}
+
+/**
+ * This row's OWN live `bashPath` (issue #13): apply()'s `config` parameter IS
+ * the `gitbash-shell` row's resolved Config, so reading it here replaces the
+ * settings-service detour (`settingsBashPath`) that could read '' at apply
+ * time on hosts where the service is describe()/update()-only or not injected
+ * yet. Volatile refs mean a settings edit lands on the next read, no listener.
+ * @param {object|undefined} config - apply()'s resolved Config (may be absent).
+ * @returns {string} the row's `bashPath`, '' when unset or unreadable.
+ */
+export function rowBashPath(config) {
+  try {
+    const value = config && typeof config === 'object' ? valueOf(config.bashPath) : undefined
+    return typeof value === 'string' ? value.trim() : ''
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -1805,25 +1823,38 @@ export async function apply(ctx, config = {}) {
   // materialize: service present, 'active: true' on Windows, 'active: false'
   // where the bundle is installed but the platform stack stayed native.
   /* The explicit tier of the resolution chain, in its documented priority:
-     the `gitbash-executor` row's own config > the `gitbash-shell` row/settings
-     field > empty (= run the automatic chain). Both this layer and the
-     executor resolve from this same value, so an explicit answer is never
+     the `gitbash-executor` row's own config > the `gitbash-shell` row's
+     `bashPath` field > empty (= run the automatic chain). Both this layer and
+     the executor resolve from this same value, so an explicit answer is never
      substituted and never silently ignored.
-     (issue #11: the row config is where the reporter's workaround landed.) */
-  const configuredBashPath = effectiveConfiguredBashPath(executorConfiguredBashPath(ctx), settingsBashPath(ctx))
-  const bashResolution = resolveGitBashCached({ configured: configuredBashPath })
+     (issue #11: the row config is where the reporter's workaround landed.)
+     LAZY, never frozen (issue #13): at apply() time the loader store may not
+     hold the executor row yet — `loader.resolve()` throws and reads '' — and
+     the old settings-service detour could equally read '' before the service
+     was injected. A frozen '' then ran the automatic chain (which fails on
+     shimmed Git layouts) while the executor's own per-call lazy resolution
+     worked, i.e. the same boot gave OPPOSITE verdicts. Every consumer below
+     re-reads per use; the own row's value comes from apply()'s `config`
+     parameter (this row's live Config refs — volatile, so a settings edit is
+     visible on the next read without any listener). */
+  const readConfiguredBashPath = () => effectiveConfiguredBashPath(executorConfiguredBashPath(ctx), rowBashPath(config))
+  const readBashResolution = () => resolveGitBashCached({ configured: readConfiguredBashPath() })
   const gitBashCapability = {
     active: process.platform === 'win32',
     // Kept for existing consumers (peer plugins read `bashPath`): the resolved
     // interpreter. When resolution failed we report the explicit value (or the
     // historical default) so the ENOENT a consumer may hit names a real path —
-    // never a substitute shell.
-    bashPath: bashResolution.ok ? bashResolution.path : (configuredBashPath || DEFAULT_GIT_BASH),
+    // never a substitute shell. Getters keep the capability live (issue #13):
+    // a consumer reading it after the rows settle sees the settled verdict.
+    get bashPath() {
+      const resolution = readBashResolution()
+      return resolution.ok ? resolution.path : (readConfiguredBashPath() || DEFAULT_GIT_BASH)
+    },
     // Additive (v0.28.0): the full verdict, for the guided popup and peers.
-    ok: bashResolution.ok,
-    source: bashResolution.source,
-    configured: configuredBashPath,
-    tried: bashResolution.tried,
+    get ok() { return readBashResolution().ok },
+    get source() { return readBashResolution().source },
+    get configured() { return readBashResolution().configured },
+    get tried() { return readBashResolution().tried },
     downloadUrl: GIT_BASH_DOWNLOAD_URL,
   }
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
@@ -1979,7 +2010,7 @@ export async function apply(ctx, config = {}) {
           // untouched and the result metadata is not echoed back in MSYS form.
           if (dialect.posixPaths && dialectApplies(dialect, exec && exec.agent)) {
             echo = true
-            const env = dialect.virtualMounts ? buildTranslateEnv(configuredBashPath) : null
+            const env = dialect.virtualMounts ? buildTranslateEnv(readConfiguredBashPath()) : null
             echoEnv = env
             if (exec && exec.arguments && typeof exec.arguments === 'object') {
               const translated = translateDispatch(exec, dialect, env)
@@ -2034,7 +2065,7 @@ export async function apply(ctx, config = {}) {
           if (!dialectApplies(dialect, exec && exec.agent)) return next()
           if (dialect.posixPaths && dialect.errorDialect && exec && result && typeof result === 'object'
             && result.isError === true && Array.isArray(result.content)) {
-            const env = dialect.virtualMounts ? buildTranslateEnv(configuredBashPath) : null
+            const env = dialect.virtualMounts ? buildTranslateEnv(readConfiguredBashPath()) : null
             if (exec.name === 'run_code') {
               // paths only — the /dev/null hint is for file tools
               const content = rewriteErrorContent(result.content, { nulHint: false, env })
@@ -2108,14 +2139,59 @@ export async function apply(ctx, config = {}) {
   // Now the boot log names the value, the whole probe chain and where to fix
   // it, and the client half reads the same verdict over HTTP to raise the
   // guided popup. Nothing here substitutes another shell — by design.
-  console.log(TAG + ' bash resolution: ' + bashResolutionReport(bashResolution).split('\n').join('\n' + TAG + ' '))
+  //
+  // issue #13: the boot verdict may legitimately be wrong for a few seconds —
+  // at apply() time the loader store may not hold the executor row yet, so
+  // the explicit tier reads '' while the executor's own per-call lazy
+  // resolution succeeds. A FAILURE with an EMPTY configured value is therefore
+  // not final: poll briefly for the explicit tier to appear as the rows
+  // settle, print the settled verdict when it changes, and notify the
+  // adoptions below (official terminal / better-sidebar) through
+  // `onBashSettled`. A failure with a NON-empty configured value IS final (the
+  // user's explicit answer was rejected), and so is any success.
+  let settledBashResolution = null
+  const bashSettleWaiters = []
+  const onBashSettled = (listener) => {
+    if (settledBashResolution !== null) listener(settledBashResolution)
+    else bashSettleWaiters.push(listener)
+  }
+  const settleBashResolution = (resolution) => {
+    settledBashResolution = resolution
+    for (const listener of bashSettleWaiters.splice(0)) {
+      try { listener(resolution) } catch { /* a waiter never blocks settling */ }
+    }
+  }
+  const printBashResolution = (phase, resolution) => {
+    console.log(TAG + ' bash resolution' + (phase === '' ? '' : ' (' + phase + ')') + ': '
+      + bashResolutionReport(resolution).split('\n').join('\n' + TAG + ' '))
+  }
+  const bootBashResolution = readBashResolution()
+  printBashResolution('boot', bootBashResolution)
+  // Non-win32 hosts settle immediately: resolution failure there is the
+  // designed state (nothing consumes the capability), so no poll.
+  if (bootBashResolution.ok || bootBashResolution.configured !== '' || process.platform !== 'win32') {
+    settleBashResolution(bootBashResolution)
+  } else {
+    let ticks = 0
+    const timer = setInterval(() => {
+      ticks += 1
+      if (readConfiguredBashPath() === '' && ticks < 20) return // rows still mounting
+      clearInterval(timer)
+      const settled = readBashResolution()
+      if (settled.ok || settled.configured !== '') printBashResolution('settled', settled)
+      settleBashResolution(settled)
+    }, 250)
+    ctx.effect(() => () => clearInterval(timer), 'dsh-gitbash-shell: bash resolution settle poll')
+  }
   if (process.platform === 'win32') {
     try {
       ctx.inject(['webServer'], (wctx) => {
         try {
           const route = '/dsh-gitbash-shell/api/status'
           const read = () => {
-            const resolution = resolveGitBashCached({ configured: configuredBashPath, fresh: true })
+            // LIVE re-read (issue #13): the popup must see what the executor
+            // actually resolves NOW, not a value frozen at apply() time.
+            const resolution = resolveGitBashCached({ configured: readConfiguredBashPath(), fresh: true })
             return {
               ok: resolution.ok,
               platform: process.platform,
@@ -2178,7 +2254,7 @@ export async function apply(ctx, config = {}) {
             send(res, 403, { error: 'forbidden', reason: fence.reason })
             return
           }
-          const env = buildTranslateEnv(configuredBashPath)
+          const env = buildTranslateEnv(readConfiguredBashPath())
           // One line per read: the browser half fetches this once per page load,
           // so its presence in the log is how a user can tell the rescue is live.
           console.log(TAG + ' path map read by ' + (req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : '?'))
@@ -2304,10 +2380,14 @@ export async function apply(ctx, config = {}) {
           attempts += 1
           let result
           try {
+            // LAZY re-read per attempt (issue #13): the first try may run
+            // before the loader store holds the executor row, when the
+            // resolution legitimately still reads ''.
+            const resolution = readBashResolution()
             result = await adoptTerminalShell(editorCtx.configEditor, {
               platform: process.platform,
               enabled: liveSettings.autoTerminalShell(),
-              resolved: bashResolution.ok ? bashResolution.path : '',
+              resolved: resolution.ok ? resolution.path : '',
             })
           } catch (error) {
             // adoptTerminalShell reports expected conditions itself; reaching
@@ -2332,9 +2412,20 @@ export async function apply(ctx, config = {}) {
   // The sidebar resolves its terminal shell through the settings seam per
   // open; adopt it through that seam (see adoptSidebarShell for rationale).
   // Disable with `betterSidebarShell: false` in the plugin row config.
+  // Rides the settle notification (issue #13): a boot-time failure with an
+  // empty explicit tier may still settle into a success once the loader rows
+  // mount, and the adoption then happens without a restart.
   if (config.betterSidebarShell !== false && process.platform === 'win32') {
-    if (bashResolution.ok) adoptSidebarShell(ctx, bashResolution.path, () => liveSettings.adoptSidebar())
-    else console.log(TAG + ' sidebar terminal adoption skipped: no Git Bash resolved (nothing is substituted)')
+    let sidebarAdopted = false
+    onBashSettled((resolution) => {
+      if (resolution.ok) {
+        if (sidebarAdopted) return
+        sidebarAdopted = true
+        adoptSidebarShell(ctx, resolution.path, () => liveSettings.adoptSidebar())
+        return
+      }
+      console.log(TAG + ' sidebar terminal adoption skipped: no Git Bash resolved (nothing is substituted)')
+    })
   }
 
   // ── era split: declarative registration on dsh >= 0.1.7 ──────────────────

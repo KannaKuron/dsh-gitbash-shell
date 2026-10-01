@@ -126,7 +126,7 @@ dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。�
     default: ptc-cordis   # 或 standard-gitbash / minimal-gitbash
 ```
 
-## bash 从哪里来:解析链与失败引导(v0.28.0,issue #11)
+## bash 从哪里来:解析链与失败引导(v0.28.0,issue #11;懒化与 exec-path 层 v0.33.0,issue #13)
 
 `bashPath` **默认留空 = 自动探测**;解析顺序就是契约:
 
@@ -136,8 +136,16 @@ dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。�
    `%LOCALAPPDATA%\Programs\Git\bin\bash.exe`;
 3. **PATH**(用户 PATH + 系统 PATH,进程内已合并)逐目录找 `bash.exe`;
 4. **PATH 上的 `git.exe` 反推** `<gitdir>/../bin/bash.exe`;
-5. **注册表 `Path`**(`HKCU\Environment`、`HKLM\...\Session Manager\Environment`)——覆盖"GUI 启动时 PATH 快照过期";
-6. **全落空 ⇒ 报错 + 引导**(启动日志一份完整报告,客户端弹一次引导框)。
+5. **`git --exec-path` 反推 + GitForWindows 注册表**(v0.33.0):对 PATH 上的 `git.exe`(Scoop / choco 的
+   **shim** 也照常启动真身)跑 `--exec-path`,从输出向上找 Git 根 —— 兼容 `mingw64` / `ucrt64` 两种运行时
+   布局,补上「Scoop 安装、PATH 上只有 shims、没有 `bash.exe`」的盲区;随后兜底读注册表
+   `HKLM\SOFTWARE\GitForWindows` 的 `InstallPath`;
+6. **注册表 `Path`**(`HKCU\Environment`、`HKLM\...\Session Manager\Environment`)——覆盖"GUI 启动时 PATH 快照过期";
+7. **全落空 ⇒ 报错 + 引导**(启动日志一份完整报告,客户端弹一次引导框)。
+
+**解析结果是活的,不是启动时判一次**(v0.33.0,issue #13):启动那一刻插件行可能还没全部挂载,显式配置
+会被短暂读成空 —— 现在启动日志、状态接口、弹窗与侧栏终端接管都在**使用时实时重读**,执行器能用,
+它们就不会再说「解析失败」;启动日志也会在行挂载稳定后补一份最终结论。
 
 > **只认 Git for Windows 的 bash。** WSL(`C:\Windows\System32\bash.exe`,永远在 PATH 且排序靠前)、
 > WindowsApps 别名、MSYS2、Cygwin 的 bash **一律拒绝**;候选还要通过 Git 布局(`usr/bin` + `cmd\git.exe` +

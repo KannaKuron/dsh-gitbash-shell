@@ -3,6 +3,43 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.33.0 — 2026-10-01
+
+**类型**:fix(issue #13:Scoop 安装 Git 时 `bashPath` 配置正确但每次启动仍报 could NOT be resolved 并弹引导框)+ feat(解析链新增 `git --exec-path` 与 GitForWindows 注册表两级发现)
+
+> 报告者 **ID-izlq-Github** 的定位是准确的:装配期冻结、两个读取器在 apply 时刻读空、自动链对 shim 布局盲区,三条全部成立。本条目按他的分析与建议落地(建议 1/2/3/4 全采纳)。
+
+### 修复一:显式层懒化,不再在装配期冻结(`src/index.js`)
+
+- **冻结点**(issue 引用的 `index.js:1813`):apply() 时 `effectiveConfiguredBashPath(executorConfiguredBashPath(ctx), settingsBashPath(ctx))` 算一次就定死。那一刻 `ctx.loader.resolve('gitbash-executor')` 因行未进 store 而 throw → 被吞成 `''`;settings 服务也可能尚未注入(0.1.7+ 只有 describe()/update())。两者皆空 ⇒ 误判「未配置」⇒ 跑自动链。执行器(`shell.js` 的 `get bashPath()` 懒解析)却正常 —— **同一次启动、两条路径、相反结论**,这正是 issue 的内核。
+- **修法**:冻结值换成两个读取器 `readConfiguredBashPath()` / `readBashResolution()`,**全部消费点逐次重读**:① `gitBash` capability 改 getter(bashPath/ok/source/configured/tried;ptc 侧只读静态 `active`,不受影响);② status 路由实时重读(弹窗因此不再误报 —— 行挂载完成后 `configured` 非空,解析成功,`ok:true`,弹窗根本不出现);③ pathmap 路由与 tools/execute / post-execute 的 `buildTranslateEnv`;④ 官方侧栏终端接管每次尝试重读;⑤ better-sidebar 接管改挂 settle 通知。
+- **settings 绕行退役**:`gitbash-shell` 行的 `bashPath` 直接从 apply() 的 `config` 参数读(新 `rowBashPath(config)`:volatile ref / 普通值 / 缺席三态,绝不抛)—— 这就是同一行的值,比绕 `settings.describe()` 更直接,且 volatile 意味着用户改设置下一读即生效。宿主半不再 import `settingsBashPath`(shell.js 侧保留:executor 行运行时读 describe() 实测正常)。
+- **启动日志 settle 化**:boot 打印一次;「失败且显式层为空」(行可能还在挂载)时轮询 250ms×20(仅 win32,5 秒封顶),显式层出现或解析翻转后补打 `(settled)` 段;成功或显式值被拒为最终态,不轮询。terminal 接管通过 `onBashSettled` 通知(better-sidebar 在 boot 失败→settled 成功时也能接管,无需重启)。
+
+### 修复一·续:executor 行读取在 0.2.0-rc.2 上恒断,不只是时序(`src/bash-path.js`)
+
+- **真机实测(隔离实例 + 探针插件,报告场景复现)**:dsh 0.2.0-rc.2 上 bundle-patch insert 的行(`gitbash-executor`)挂在**所属插件的 subtree** 里,`loader.resolve('gitbash-executor')` 从 root 树查找**恒 throw**(探针 apply 时刻与 12 秒后各 7 次采样全部 throw)——报告者以为的「启动时序问题」在这台宿主上实际是**永远读不到**。旧代码把 throw 吞成 `''` ⇒ 显式层整个失效:patch 写 `gitbash-executor.config.bashPath` 的用户(issue #11 起推荐、#13 报告者的实际配置方式)在 0.2.0 上 boot/status/翻译层全部看不到该值,而执行器自己读 `this.config.bashPath` 正常 —— 「命令能用但每次启动报错+弹框」的另一半根因。**并连带违反 §4h 契约**:显式值(哪怕被拒)不得被自动链顶替 —— 实测坏值 `Q:/nope/bin/bash.exe` 被自动链的 default 层「顶替成功」,boot 谎报 resolved。
+- **修法**:`executorConfiguredBashPath` 二段式 —— `resolve('gitbash-executor')` 先试(旧宿主行在 root 树,命中即返回,空串也是真实答案=自动链);throw 则 `loader.entries()` 迭代(**含 subtree**)按行自身 `options.id` 匹配(0.2.0 实测稳定可读,`bashPath` 值全程不变)。防回归用例锁死三种 loader 形状(root 命中 / subtree+entries / 行缺失)。
+- **修复后 A/B 真机读数**(隔离实例,patch 写 `gitbash-executor.config.bashPath`):
+  - 坏值 `Q:/nope/...`:boot `bashPath is set to "Q:/nope/bin/bash.exe" and that value was rejected; nothing else is substituted`(fail-loud、无轮询、default 层不再顶替);status `ok:false, configured:"Q:/nope/bin/bash.exe", tried[0]={source:'configured',code:'missing'}` —— boot/status/执行器三方一致;
+  - 好值:boot `Git Bash resolved from the configured source`;status `ok:true, source:"configured"` —— 弹窗不出现。
+
+### 修复二:解析链补 shim 布局的发现方式(`src/bash-path.js`)
+
+- **新 source `exec-path`**(位置:PATH 反推之后、注册表 PATH 之前):对 PATH 上第一个 `git.exe` 跑 `git --exec-path`(Scoop/choco 的 **shim 也能启动真身**,真身报告自己的家),从输出向上最多 5 级找「同时含 `cmd/git.exe` 与 `usr/bin/bash.exe`」的目录,产出 `<root>/bin/bash.exe`。纯函数 `execPathBashCandidates(execPath, exists)` 可测;`ucrt64`/`mingw64`/旧 flat `libexec` 三种布局全覆盖,MSYS2(`usr/libexec/git-core`,根上没有 `cmd/git.exe`)天然不产出候选。
+- **GitForWindows 注册表兜底**:`HKLM\SOFTWARE\GitForWindows`、`HKLM\SOFTWARE\WOW6432Node\GitForWindows`、`HKCU\Software\GitForWindows` 的 `InstallPath`(官方安装器写的;Scoop/便携通常没有,故排在 exec-path 之后),同样走 `exec-path` source。
+- **候选仍过全套判据**(黑名单 → 形状 → `cmd/git.exe`/`usr/bin/bash.exe` → mingw64/msys-2.0.dll → `.windows.` 版本指纹 → `uname -s` 一票否决):§4h 两条硬边界不变 —— 永不回退、只认 Git for Windows 的 bash。冒烟新增「WSL bash 经 exec-path 到达仍被拒」用例。
+- **顺带**:`defaultIo().run` 从 execFileSync 换 spawnSync(piped stdio)—— execFileSync 的同步家族在子进程失败时把 stderr 直接泄漏到宿主日志(reg 的 GBK 错误文本 = 乱码),v0.28.0 起每次失败探测都在漏;spawnSync 捕获进 result 由 catch 丢弃。本机实测乱码消除、探测结果不变(exec-path 层产出 `C:/Program Files/Git/bin/bash.exe`,mingw64 布局反推正确,全链仍 `source=default` 先命中,新层是后备)。
+
+### 冒烟与真机
+
+- 新增三组用例:①「exec-path covers Scoop layouts」(纯函数三布局 + MSYS2 不命中 + 全链 Scoop 场景 + WSL 否决);②「explicit tier is LAZY」(冻结模式防回归:断言 `const configuredBashPath = effectiveConfiguredBashPath(` 与 `const bashResolution = resolveGitBashCached(` 不得再现;懒读取器/status 实时重读/settle 通知必须存在;`rowBashPath` 三态);③「executor row lookup survives the subtree layout change」(loader 三形状:root 命中 / subtree+entries / 行缺失,空串=真实答案)。
+- **顺手修掉存量失败**(0.32.1 在 win32 上 latent):「full apply() mount on a stub ctx」的 settings stub 还停在 `settings.get(ns)` 时代,readShell 自 v0.25.1 起只认 `describe()` ⇒ stub 恒 null ⇒ 轮询 12×1500ms 后断言必挂。stub 补 `describe()`,与现役读法对齐。
+- 99 项全绿(96 存量 + 3 新增;toolchain PATH 用例的平台误判 v0.32.1 已修,本次全平台绿)。
+- **真机验证**(隔离 `DSH_HOME`(Temp 目录)+ profile 副本 `cp -rL` 解引用 + 插件目录换本仓源码 + 探针插件采 loader 形状;全程独占 3080 —— 用户实例当时未运行,验证后实例已杀、410M 副本与探针已删净,`~/.dsh` 零触碰):默认场景 boot `resolved from the default source`、status `ok:true`;坏值/好值 A/B 见上文「修复一·续」;官方侧栏终端接管懒读路径正常(`already uses this Git Bash ... (nothing written)` 幂等);ptc 联动正常(cordis-gitbash 去重、对方注册 Git Bash rows —— capability getter 无碍);spawnSync 改造后启动日志**零乱码**。**未覆盖**:settle 轮询分支的翻转真机时序(0.2.0-rc.2 上 entries() 在 apply 时刻即稳定可读,轮询多数情况下不触发;接线由源码断言锁定,行为留待真实慢宿主检验)。
+
+- 相关:issue #13(<https://github.com/KannaKuron/dsh-gitbash-shell/issues/13>)、issue #11(解析链的由来)、AGENTS.md §4h(顺序契约更新)。
+
 ## v0.32.1 — 2026-09-28
 
 **类型**:chore(清掉 v0.32.0 遗留的 legacy settings 死代码)+ fix(冒烟里 mac 平台误判的 toolchain 路径用例)

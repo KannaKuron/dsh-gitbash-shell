@@ -1230,8 +1230,8 @@ test('regression (v0.24.2): apply() mounts — adoptSidebarShell never reaches i
   assert.doesNotMatch(body, /\bliveSettings\b/, 'the module-level helper must receive the gate, not reach into apply() scope')
   assert.match(
     source,
-    /if \(bashResolution\.ok\) adoptSidebarShell\(ctx, bashResolution\.path, \(\) => liveSettings\.adoptSidebar\(\)\)/,
-    'apply() must hand its era-aware gate getter to the helper, and only adopt with a RESOLVED bash',
+    /adoptSidebarShell\(ctx, resolution\.path, \(\) => liveSettings\.adoptSidebar\(\)\)/,
+    'apply() must hand its era-aware gate getter to the helper, and only adopt with a RESOLVED bash (via the settle notification since issue #13)',
   )
 })
 
@@ -1247,11 +1247,13 @@ test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async
     inject: () => {},
     on: () => {},
     // settings present WITHOUT register() = the NEW-era surface (Config
-    // refs, dsh >= 0.1.7); get/update pair lets the reconciler settle on
-    // its first tick instead of polling for 18s.
+    // refs, dsh >= 0.1.7). describe() is the read shape readShell has used
+    // since v0.25.1 (`settings.get(ns)` died with dsh 0.1.6) — the stub's
+    // old get-only pair left readShell reading null, a stale-stub failure
+    // already latent in v0.32.1 on win32.
     get: (name) => (name === 'settings'
       ? {
-          get: () => ({ terminalShell: '' }),
+          describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: '' } }],
           update: async (ns, patch) => { updates.push([ns, patch]) },
         }
       : undefined),
@@ -1656,6 +1658,7 @@ function fakeIo(files, options = {}) {
     defaults: () => options.defaults ?? [],
     pathBashCandidates: () => options.path ?? [],
     gitReverseCandidates: () => options.reverse ?? [],
+    execPathBashCandidates: () => options.execPath ?? [],
     registryBashCandidates: () => options.registry ?? [],
     gitVersion: options.version ?? (() => 'git version 2.54.0.windows.1'),
     uname: options.uname ?? (() => 'MINGW64_NT-10.0-22631'),
@@ -1708,6 +1711,116 @@ test('bash resolution: defaults, then PATH — with the WSL traps rejected on th
   const byRegistry = resolveGitBash({ configured: '', io: fakeIo(gitTree('E:/Git'), { registry: ['E:/Git/bin/bash.exe'] }) })
   assert.equal(byRegistry.ok, true)
   assert.equal(byRegistry.source, 'registry')
+})
+
+// ── issue #13: shimmed Git layouts (Scoop, portable) and the lazy tier ──────
+
+test('bash resolution: `git --exec-path` covers Scoop layouts the PATH tiers cannot see (issue #13)', async () => {
+  const { resolveGitBash, execPathBashCandidates } = await import('../src/bash-path.js')
+  // The reporter's machine: Git under E:/Scoop/apps/git/2.56.0 (ucrt64
+  // runtime), only SHIMS on PATH — no bash.exe anywhere on it, and the shim
+  // directory is neither <root>/cmd nor <root>/bin, so every pre-existing
+  // tier probes dead air. The real git still reports its home.
+  const scoop = 'E:/Scoop/apps/git/2.56.0'
+  const scoopTree = [
+    ...gitTree(scoop).filter((p) => !p.endsWith('/mingw64')), // ucrt64 layout: no mingw64/
+    scoop + '/ucrt64', scoop + '/usr/bin/msys-2.0.dll',
+  ]
+  // pure root-finder: ucrt64, mingw64 and the old flat libexec layouts
+  const exists = (path) => scoopTree.concat(['C:/msys64/usr/bin/bash.exe']).map((p) => p.toLowerCase()).includes(path.toLowerCase())
+  assert.deepEqual(execPathBashCandidates(scoop + '/ucrt64/libexec/git-core', exists), [scoop + '/bin/bash.exe'])
+  assert.deepEqual(execPathBashCandidates(scoop + '/mingw64/libexec/git-core', exists), [scoop + '/bin/bash.exe'])
+  // the OLD flat layout: --exec-path is <root>/libexec/git-core, one level up
+  const flatTree = gitTree('C:/Git')
+  const flatExists = (path) => flatTree.map((p) => p.toLowerCase()).includes(path.toLowerCase())
+  assert.deepEqual(execPathBashCandidates('C:/Git/libexec/git-core', flatExists), ['C:/Git/bin/bash.exe'])
+  // MSYS2's git reports <msys64>/usr/libexec/git-core: the root has bash but
+  // NO cmd/git.exe, so the pair requirement never fires
+  assert.deepEqual(execPathBashCandidates('C:/msys64/usr/libexec/git-core', exists), [])
+  // garbage / absent input is inert
+  assert.deepEqual(execPathBashCandidates(undefined, exists), [])
+  assert.deepEqual(execPathBashCandidates('', exists), [])
+  assert.deepEqual(execPathBashCandidates('E:/', exists), [])
+  // the full chain: shims on PATH (bash.exe missing there), nothing in
+  // defaults or reverse, the exec-path tier finds the real install
+  const verdict = resolveGitBash({
+    configured: '',
+    io: fakeIo(scoopTree, {
+      defaults: ['C:/Program Files/Git/bin/bash.exe'],
+      path: ['E:/Scoop/shims/bash.exe', 'C:/WINDOWS/system32/bash.exe'],
+      execPath: [scoop + '/bin/bash.exe'],
+    }),
+  })
+  assert.equal(verdict.ok, true, 'the Scoop install resolves without any manual bashPath')
+  assert.equal(verdict.source, 'exec-path')
+  assert.equal(verdict.path, scoop + '/bin/bash.exe')
+  // and the exec-path tier still refuses a tree that fails the fingerprint
+  const vetoed = resolveGitBash({
+    configured: '',
+    io: fakeIo(scoopTree, { defaults: [], path: [], execPath: [scoop + '/bin/bash.exe'], uname: () => 'Linux' }),
+  })
+  assert.equal(vetoed.ok, false, 'a WSL bash reached through exec-path is still refused')
+  assert.equal(vetoed.tried[0].code, 'not-git-bash')
+})
+
+test('bash resolution: the explicit tier is LAZY, never frozen at apply time (issue #13)', async () => {
+  const { rowBashPath } = await import('../src/index.js')
+  const { effectiveConfiguredBashPath } = await import('../src/bash-path.js')
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // the freeze itself is gone: no apply()-time const snapshot of the merged tier
+  assert.doesNotMatch(src, /const configuredBashPath = effectiveConfiguredBashPath\(/, 'the merged explicit tier must not be frozen (issue #13)')
+  assert.doesNotMatch(src, /const bashResolution = resolveGitBashCached\(/, 'the boot verdict must not be frozen (issue #13)')
+  // every consumer reads through the lazy reader instead
+  assert.match(src, /const readConfiguredBashPath = \(\) => effectiveConfiguredBashPath\(executorConfiguredBashPath\(ctx\), rowBashPath\(config\)\)/)
+  assert.match(src, /const readBashResolution = \(\) => resolveGitBashCached\(\{ configured: readConfiguredBashPath\(\) \}\)/)
+  // the own row's live value comes from apply()'s config (volatile refs), not
+  // the settings-service detour that reads '' before the service is injected
+  assert.match(src, /rowBashPath\(config\)/)
+  assert.doesNotMatch(src, /settingsBashPath\(ctx\)/, 'the settings detour is retired from the host half')
+  // the status route re-reads LIVE — the popup must see what the executor
+  // resolves NOW, so a settled row stops the "could NOT be resolved" popup
+  assert.match(src, /resolveGitBashCached\(\{ configured: readConfiguredBashPath\(\), fresh: true \}\)/)
+  // a boot failure with an EMPTY explicit tier is not final: the settle poll
+  // re-reads and notifies the adoptions
+  assert.match(src, /printBashResolution\('settled', settled\)/)
+  assert.match(src, /onBashSettled\(\(resolution\) => \{/)
+  // rowBashPath: volatile ref OR plain value OR absent config — never throws
+  assert.equal(rowBashPath({ bashPath: { get: () => 'Q:/Git/bin/bash.exe' } }), 'Q:/Git/bin/bash.exe')
+  assert.equal(rowBashPath({ bashPath: 'Q:/Git/bin/bash.exe' }), 'Q:/Git/bin/bash.exe')
+  assert.equal(rowBashPath({ bashPath: '  ' }), '')
+  assert.equal(rowBashPath(undefined), '')
+  assert.equal(rowBashPath({ get bashPath() { throw new Error('nope') } }), '')
+  // and the merged tier still prefers the executor row's own config
+  assert.equal(effectiveConfiguredBashPath('E:/exec/bin/bash.exe', 'E:/row/bin/bash.exe'), 'E:/exec/bin/bash.exe')
+  assert.equal(effectiveConfiguredBashPath('', 'E:/row/bin/bash.exe'), 'E:/row/bin/bash.exe')
+})
+
+test('executor row lookup survives the subtree layout change (issue #13, measured on 0.2.0-rc.2)', async () => {
+  const { executorConfiguredBashPath } = await import('../src/bash-path.js')
+  const row = (bashPath) => ({ options: { id: 'gitbash-executor', config: bashPath === undefined ? {} : { bashPath } } })
+  // OLD hosts: the row sits in the ROOT tree — resolve(id) returns it
+  const rootCtx = { loader: { resolve: (id) => (id === 'gitbash-executor' ? row('D:/root/bin/bash.exe') : undefined) } }
+  assert.equal(executorConfiguredBashPath(rootCtx), 'D:/root/bin/bash.exe')
+  // NEW hosts (0.2.0-rc.2): the bundle-inserted row lives in the OWNING
+  // PLUGIN'S SUBTREE — resolve(id) throws forever; entries() (which iterates
+  // subtrees) is what finds it. The old code read the throw as "not
+  // configured", so the explicit tier silently vanished while the executor's
+  // own lazy this.config.bashPath kept working.
+  const subtreeCtx = {
+    loader: {
+      resolve: () => { throw new Error('cannot resolve entry gitbash-executor') },
+      entries: function* () { yield row('E:/scoop/apps/git/2.56.0/bin/bash.exe') },
+    },
+  }
+  assert.equal(executorConfiguredBashPath(subtreeCtx), 'E:/scoop/apps/git/2.56.0/bin/bash.exe')
+  // an empty string on the row is a REAL answer (= automatic chain), not a miss
+  assert.equal(executorConfiguredBashPath({ loader: { resolve: () => row('') } }), '')
+  // the row genuinely absent (disabled / not inserted) reads ''
+  const absentCtx = { loader: { resolve: () => { throw new Error('cannot resolve entry gitbash-executor') }, entries: function* () { yield { options: { id: 'gitbash-shell', config: {} } } } } }
+  assert.equal(executorConfiguredBashPath(absentCtx), '')
+  // no loader / broken entries never throw
+  assert.equal(executorConfiguredBashPath({}), '')
+  assert.equal(executorConfiguredBashPath({ loader: { resolve: () => row('F:/x/bin/bash.exe'), entries: () => { throw new Error('boom') } } }), 'F:/x/bin/bash.exe')
 })
 
 test('bash resolution: ONLY Git for Windows counts — WSL, MSYS2, Cygwin and non-Windows git are refused', async () => {
@@ -1809,14 +1922,16 @@ test('bash status route + capability expose the verdict to the client and to pee
   assert.match(src, /ctx\.inject\(\['webServer'\]/, 'the route is an optional service, never a hard inject')
   assert.match(src, /const route = '\/dsh-gitbash-shell\/api\/status'/)
   assert.match(src, /wctx\.webServer\.register\(\{ kind: 'prefix', path: route, handler \}\)/)
-  // the capability keeps `bashPath` for existing peers and adds the verdict
+  // the capability keeps `bashPath` for existing peers and adds the verdict.
+  // Getters since issue #13: a frozen snapshot at apply() time disagreed with
+  // the executor's own lazy resolution (same boot, opposite verdicts).
   assert.match(src, /const gitBashCapability = \{/)
-  assert.match(src, /ok: bashResolution\.ok,/)
-  assert.match(src, /tried: bashResolution\.tried,/)
+  assert.match(src, /get ok\(\) \{ return readBashResolution\(\)\.ok \}/)
+  assert.match(src, /get tried\(\) \{ return readBashResolution\(\)\.tried \}/)
   assert.match(src, /downloadUrl: GIT_BASH_DOWNLOAD_URL,/)
   // ONE resolver for the executor and the translation layer (issue #11's split)
   assert.match(src, /const resolution = resolveGitBashCached\(\{ configured: cacheKey \}\)/)
-  assert.match(src, /buildTranslateEnv\(configuredBashPath\)/)
+  assert.match(src, /buildTranslateEnv\(readConfiguredBashPath\(\)\)/, 'the path map reads the LIVE explicit tier')
   const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
   assert.match(shell, /resolveGitBashCached\(\{ configured \}\)/, 'the executor resolves through the same shared memo')
 })
@@ -1947,11 +2062,11 @@ test('sidebar terminal: the host reaches configEditor, never the settings servic
   assert.match(src, /ctx\.inject\(\['configEditor'\], \(editorCtx\) => \{/, 'the editor is an optional service')
   assert.match(src, /adoptTerminalShell\(editorCtx\.configEditor, \{/)
   assert.match(src, /enabled: liveSettings\.autoTerminalShell\(\)/, 'the switch gates the write')
-  assert.match(src, /resolved: bashResolution\.ok \? bashResolution\.path : ''/, 'only a VERIFIED bash is offered')
+  assert.match(src, /resolved: resolution\.ok \? resolution\.path : ''/, 'only a VERIFIED bash is offered — re-read LAZILY per attempt (issue #13)')
   assert.match(src, /terminalAdoptReport\(result\)/)
   assert.doesNotMatch(src, /settings\.update\('terminal'/, 'the settings service cannot write a non-volatile field (measured)')
   // the better-sidebar channel stays independent
-  assert.match(src, /adoptSidebarShell\(ctx, bashResolution\.path/)
+  assert.match(src, /adoptSidebarShell\(ctx, resolution\.path/)
   // the switch is declared volatile with default ON on the row Config
   assert.match(src, /autoTerminalShell: live\(Schema\.boolean\(\)\.default\(true\)\)/)
 })
