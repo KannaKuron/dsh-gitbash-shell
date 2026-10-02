@@ -5,25 +5,20 @@
 [简体中文](README.md) | English
 
 > Run **every agent shell command through Git Bash** on Windows with DeepSeek
-> Harness (dsh) — replaces the PowerShell executor and materializes Git Bash
+> Harness (dsh) — replaces the PowerShell executor and registers Git Bash
 > variants of all four agent presets.
 
-### dsh 0.1.6: the workflow-engine row was renamed
+### Host requirement & preset alignment
 
-dsh 0.1.6-alpha.1 renamed the built-in presets' workflow-engine row from
-`workflow-worker-thread` to `workflow-ptc` and **deleted** the old package. One row
-that fails to import rejects the **whole preset mount**, so a composition pinning the
-old name simply stops working on the new host. This plugin pins neither spelling: at
-materialization it copies that row — id, package and `disabled` state — straight out
-of the host's own built-in preset (`rowFormsOf` / `alignEngineRow`), and aligns
-`tool-ralph` with the new `disabled: true` default. The rewrite is plain string
-surgery (no YAML round-trip, so `!!js` stays safe) and idempotent; a failed probe (old
-host, no roster) leaves the assets byte-for-byte untouched — **one set of assets serves
-both eras, in either upgrade order**.
-
-The same release made `LocalBashExecutor`'s protected hooks asynchronous: the
-`runArgv` result unwrapping, the `start` return shape and the `confine` cancellation
-signal are all probed at load time, so both host generations behave identically.
+Since v0.32.0 the host floor is **dsh >= 0.1.7-rc** (declared through the
+`@deepseek-ai/dsh` peer, prereleases included; older hosts are no longer
+supported). The four variants are committed JS row sets in
+`src/compositions.js`, mirroring the official 0.1.7 standard/minimal/ptc/cordis
+split plus the Git Bash delta; upgrade alignment is locked by the smoke test
+`compositions: full variants mirror the official row split`. **Preset ids
+never change** (`code-gitbash` kept its historical id when dsh 0.1.2 renamed
+the built-in `code` to `ptc` — sessions are pinned to ids, and a rename would
+orphan them).
 
 ## Install (public npm package)
 
@@ -35,19 +30,6 @@ dsh plugin --profile web add dsh-gitbash-shell
 `dsh.bundle` declaration, appends the package to `dsh.profile.bundles`.
 **Restart the profile's host to activate.**
 
-## Works with both dsh 0.1.1 and 0.1.2+
-
-dsh 0.1.2 renamed the built-in `code` preset to `ptc` (`mode: code` → `mode: ptc`,
-no compatibility aliases) and added new built-in rows (`command-goal`, …). For
-the affected variants (standard/code/cordis) this plugin **ships both committed
-era texts**, probes the built-in roster at every boot, records the choice in
-`.plugin-managed.json` (`base`), and re-materializes automatically when the
-detection flips. `minimal-gitbash`'s built-in base did not change across the
-rename, so one text serves both eras. **Preset ids never change**
-(`code-gitbash` keeps its historical id — sessions are pinned to ids, and a
-rename would orphan them). Either upgrade order converges automatically; directories
-you modified are still never touched.
-
 ## What it does
 
 The bundle patch (`cordis.patch.yml`):
@@ -56,16 +38,58 @@ The bundle patch (`cordis.patch.yml`):
 2. mounts `dsh-gitbash-shell/shell` — a subclass of the shipped
    `@deepseek-ai/dsh-bash-sandbox` whose inner argv is
    `<git-bash.exe> -c <command>` (sandbox policy, denial classification,
-   background jobs, and settings behavior all inherited);
-3. mounts `dsh-gitbash-shell/presets`, which materializes
-   `standard-gitbash`, `minimal-gitbash`, `code-gitbash`,
-   `cordis-gitbash` into the first user-trust preset root, guarded by
-   per-file `.plugin-managed.json` hashes (user edits are never overwritten;
-   unmodified trees are cleaned on uninstall).
+   background jobs, and settings behavior all inherited; **one Windows
+   exception for confined modes — see the next section**);
+3. mounts `dsh-gitbash-shell`, which registers the four preset variants
+   **declaratively** (`ctx.agentPresets.register`, v0.32.0+) — the row sets
+   are committed, diffable JS data (`src/compositions.js`) and **no directory
+   is ever materialized**; materialized trees left by older versions are
+   cleaned one-way at boot only when the marker proves the user never edited
+   them.
 
 Environment: `bash.exe` is spawned as a direct child of the host, so it
 inherits the full system environment plus the `DSH_*` snapshot, exactly like
 the pwsh executor did.
+
+## Security semantics: confined modes on Windows
+
+**POSIX hosts**: the official sandbox semantics are **fully preserved** —
+restricted tokens, workspace fencing, denial classification, identical to
+`@deepseek-ai/dsh-bash-sandbox`. This section is about Windows only.
+
+**On Windows**, shell commands under the `read-only` / `workspace-write`
+permission presets actually run **UNCONFINED**:
+
+- **Why**: the MSYS2 runtime cannot start under the restricted-token sandbox —
+  `msys-2.0.dll` creates its cygheap mapping and signal pipe with DACLs naming
+  only the user SID, while a WRITE_RESTRICTED token's pass-2 write check
+  demands a restricting-SID ACE, so init dies with Win32 error 5 / 0xC0000142
+  before argv ever runs — **every version, no workaround** (cmd/pwsh use
+  anonymous pipes and are unaffected). This is an OS-level conflict with no
+  in-plugin cure; the two options are **a labelled bypass** (this plugin,
+  since v0.13.0) or **refusing to run at all**. The former was chosen because
+  installing this plugin means wanting Git Bash — silently falling back to
+  pwsh, or failing every command, is worse than putting the truth in the result.
+- **How it is labelled (never silent)**: every such result carries
+  `sandbox: { mode: "<requested mode>", denied: false, enforcement: "unconfined" }`,
+  plus a one-time notice per process (`File sandbox enforcement is partial on
+  this host.`).
+- **File tools are NOT affected**: the read / write / edit / glob / grep
+  sandbox is a **separate layer** (the fs-tool policy) and still fences
+  out-of-workspace access. Under `workspace-write` the shell can write outside
+  the workspace while file tools cannot — **the two boundaries differ**.
+- **Observable differences** vs the pwsh-sandbox era: the session process's
+  integrity level is no longer lowered (Low → Medium), and `$env:TEMP` is no
+  longer redirected to a per-session directory.
+
+**If you need the shell itself hard-fenced too** (e.g. the model must not
+write anywhere outside the workspace through the shell), this plugin is not
+for you on Windows — uninstalling restores `pwsh-sandbox`'s confined
+semantics; there is no middle ground. The `danger-full-access` preset is
+unconfined by design either way.
+
+> The full analysis (the 0.6.0–0.13.1 failure history and the community's two
+> camps) is in the CHANGELOG under v0.13.2 and in the `src/shell.js` header.
 
 ## Config
 

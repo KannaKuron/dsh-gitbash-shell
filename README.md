@@ -6,14 +6,16 @@
 
 > 让 DeepSeek Harness (dsh) 在 Windows 上**全部使用 Git Bash** 的官方风格插件
 > —— 以 Git for Windows 的 `bash.exe` 替换 PowerShell 执行器,并为所有模式
-> 物化对应的 Git Bash 版 agent preset。
+> 注册对应的 Git Bash 版 agent preset。
 
 ## 它解决什么
 
 官方 Windows 组合默认把 `dsh-pwsh-sandbox` 作为 `ctx.shell`(PowerShell 执行器),
 且各 preset 的 `tool-bash` 行在 win32 上被禁用——因为在 Windows 上裸 `bash`
 会解析到 `C:\Windows\System32\bash.exe`(WSL 占位),本插件直接指定
-`C:/Program Files/Git/bin/bash.exe` 并保留官方沙箱语义。
+`C:/Program Files/Git/bin/bash.exe`。沙箱语义在 POSIX 宿主上完整保留;
+**Windows 宿主上受限模式有一处重要例外——见下方
+[「安全语义:Windows 上的受限模式」](#安全语义windows-上的受限模式)**。
 
 安装本插件后:
 
@@ -28,29 +30,15 @@
 Git Bash host 下会拿到"暗示 PowerShell 语法的工具",请改用上面的变体;
 已装 dsh-ptc-cordis-preset 的话,`PTC 创造模式` 用户 preset 不受影响。
 
-### dsh 版本双适配(0.1.1 与 0.1.2+)
+### 宿主要求与 preset 对齐
 
-dsh 0.1.2 把内置 `code` preset 改名为 `ptc`(`mode: code` → `mode: ptc`,官方不做
-兼容别名),并给各内置 preset 新增 `command-goal` 等行。本插件为受影响的变体
-(standard/code/cordis)**同时携带两个 era 的已提交组合文本**,启动时探测内置
-roster 自动选择,并记进 `.plugin-managed.json` 的 `base` 字段;探测翻转(dsh
-升级前后)自动重物化。`minimal-gitbash` 的内置底稿跨版本未变,单文本服务两个
-era。**preset id 保持 `code-gitbash` 不变**(会话钉在 id 上,改名会让已固定的
-会话报 preset not found)。无论先升级插件还是先升级 dsh,都会自动收敛;用户改
-过的目录照旧不碰。
-
-### dsh 0.1.6 适配(工作流引擎行改名)
-
-dsh 0.1.6-alpha.1 把内置预设的工作流引擎行 `workflow-worker-thread` 改名为
-`workflow-ptc`,并**删除**了旧包。组合里一行 import 失败会拒绝**整棵 preset 挂载**,
-所以把旧名钉死在资产里的 preset 在新版上会直接不可用。本插件两个拼法都不钉:物化时
-**从宿主自己的内置 preset 现场抄**那一行的 id、包名与 `disabled` 状态
-(`rowFormsOf` / `alignEngineRow`),并让 `tool-ralph` 跟随新版默认的 `disabled: true`。
-改写是纯字符串手术(不解析 YAML,`!!js` 安全)且幂等;探测失败(旧宿主、无 roster)时
-资产保持逐字节原样——**一份资产通吃两个 era,升级顺序无关**。
-
-同一版还把 `LocalBashExecutor` 的受保护钩子改成了异步:插件的 `runArgv` 结果解包、
-`start` 的返回形态与 `confine` 的取消信号都按**加载期探测**自适应,新旧宿主行为一致。
+自 v0.32.0 起宿主下限为 **dsh >= 0.1.7-rc**(经 peer `@deepseek-ai/dsh` 声明,
+prerelease 含入求值;旧宿主不再支持)。四个变体的行集是 `src/compositions.js`
+里已提交的 JS 数据,镜像官方 0.1.7 的 standard/minimal/ptc/cordis 行切分并叠加
+Git Bash 增量;跟随 dsh 升级的对齐由冒烟测试
+`compositions: full variants mirror the official row split` 锁住。
+**preset id 保持 `code-gitbash` 不变**——会话钉在 id 上,dsh 0.1.2 把内置 `code`
+改名 `ptc` 时本插件的变体 id 就没有跟随(改名会让已固定的会话报 preset not found)。
 
 ## 安装(公开 npm 插件,推荐)
 
@@ -74,24 +62,59 @@ bundle patch(`cordis.patch.yml`)应用三个改动:
 2. 插入 `gitbash-executor`(`dsh-gitbash-shell/shell`):继承官方
    `@deepseek-ai/dsh-bash-sandbox`,仅把内层 argv 换成
    `<git-bash.exe> -c <command>`。沙箱策略/拒绝分类/后台任务/超时/设置节
-   全部沿用官方实现;full-access 分支单独接 Git Bash(父类那里硬编码裸 `bash`);
-3. 插入 `gitbash-presets`(`dsh-gitbash-shell/presets`):启动时把上表 4 个
-   preset 物化到首个 user-trust preset 根目录,并写
-   `.plugin-managed.json`(逐文件哈希)——未改动则随版本刷新;被用户改过就
-   不再碰;卸载时(且仅当未改动)会清理。
+   沿用官方实现;full-access 分支单独接 Git Bash(父类那里硬编码裸 `bash`);
+   **Windows 上受限分支有一处例外,见下一节**;
+3. 插入 `gitbash-shell`(`dsh-gitbash-shell`):以**声明式注册**
+   (`ctx.agentPresets.register`,v0.32.0 起)提供上表 4 个 preset 变体——
+   行集是仓库里已提交、可 diff 的 JS 数据(`src/compositions.js`),**不再物化
+   任何目录**;旧版本遗留在磁盘上的物化树,启动时仅当 marker 判定为
+   「未被用户改过」才单向清理,用户改过的绝不碰。
 
 **环境变量**:`bash.exe` 是 host 进程的直接子进程(不经 git-bash 登录壳),完整继承
 系统环境变量与 `DSH_*` 快照,和原来 pwsh 拿到的完全一致。
 
+## 安全语义:Windows 上的受限模式
+
+**POSIX 宿主**:官方沙箱语义**完整保留**——受限令牌、工作区围栏、拒绝分类,
+与 `@deepseek-ai/dsh-bash-sandbox` 完全一致。本节只讲 Windows。
+
+**Windows 宿主上的事实**:`read-only` / `workspace-write` 权限预设下的 **shell 命令**,
+实际以**不受限(unconfined)方式执行**:
+
+- **为什么**:MSYS2 运行时无法在 restricted-token 沙箱下启动——`msys-2.0.dll`
+  初始化时创建的 cygheap 映射与信号管道,DACL 只含用户 SID;而 WRITE_RESTRICTED
+  令牌的二次写检查要求 restricting-SID ACE → 初始化即死于 Win32 error 5 /
+  0xC0000142,**任何版本、任何参数都无解**(cmd/pwsh 走匿名管道不受影响)。
+  这是 OS 层冲突,插件内没有真正的修法,只有两个选择:**如实标注的绕过**(本插件,
+  v0.13.0 起)或**直接拒绝执行**。选了前者,是因为装这个插件的目的就是用 Git Bash——
+  静默换 pwsh 顶上、或让每条命令都失败,都不如把真相摆在结果里。
+- **如何标注(绝不静默)**:每条此类结果的元数据携带
+  `sandbox: { mode: "<请求的模式>", denied: false, enforcement: "unconfined" }`,
+  并在每个进程首次受限调用时打印一行说明日志(`File sandbox enforcement is
+  partial on this host.`)。
+- **文件工具不受影响**:read / write / edit / glob / grep 的沙箱是**另一层**
+  (fs-tool policy),照常拦截工作区外访问——也就是说 `workspace-write` 下
+  shell 能写出工作区、文件工具不能,**两者的边界并不一致**。
+- **可观察的对照**(相对 pwsh-sandbox 时代):会话进程的完整性级别不再被压低
+  (Low → Medium);`$env:TEMP` 不再被重定向到 per-session 隔离目录。
+
+**如果你需要 shell 也被硬性拦住**(例如不希望模型经 shell 写工作区外的任何路径),
+这个插件在 Windows 上不适合你——卸载即回到 `pwsh-sandbox` 的受限语义,没有中间态。
+`danger-full-access` 预设本来就不受限,装不装本插件行为一致。
+
+> 这一取舍的完整分析(含 0.6.0~0.13.1 的故障史与社区两派对比)见 CHANGELOG
+> v0.13.2 与 `src/shell.js` 头注释。
+
 ## 配置
 
 `gitbash-shell` 行(行 id 自 v0.24.0 起与设置命名空间同串;≤ v0.23.0 为 `gitbash-presets`)
-支持 `presets` 数组,只物化你常用的模式(未列出的旧物化目录、且未被用户修改过的,会自动清理):
+支持 `presets` 数组,只注册你常用的模式(未列出的变体不再进入名录;改动经
+volatile-update 触发重注册):
 
 ```yaml
 - id: gitbash-shell
   config:
-    presets: [standard-gitbash, minimal-gitbash]   # 默认物化全部 4 个
+    presets: [standard-gitbash, minimal-gitbash]   # 默认注册全部 4 个
     suppressPeerCordis: false                       # 与 dsh-ptc-cordis-preset 去重,默认关
 ```
 
@@ -219,13 +242,10 @@ preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 ## 与 dsh-ptc-cordis-preset 联动
 
 本插件在 host 上发布 `gitBash` 能力服务(`{ active, bashPath }`,仅 Windows 为 active)。
-[dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset) v0.5.0+ 在物化
-`PTC 创造模式` 时会检测该信号:两个插件都安装时,**PTC 创造模式自动物化为 Git Bash 版**
+[dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset) v0.5.0+ 在注册
+`PTC 创造模式` 时会检测该信号:两个插件都安装时,**PTC 创造模式自动注册为 Git Bash 版**
 (`tool-bash` 启用、`tool-pwsh` 禁用),无需新增模式、无需手工修改 preset;
 只装本插件时 PTC 创造模式保持原样(由它自己的插件管理)。
-
-> 切换生效后若 `ptc-cordis` 目录已存在且被旧版本物化,删除
-> `~/.dsh/.agent-presets/ptc-cordis` 并重启,即由新逻辑重新物化。
 
 ### 去重开关:`suppressPeerCordis`(默认关,v0.25.0)
 
@@ -245,14 +265,11 @@ preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
 
 **生效时机**:
 
-- **新宿主(dsh ≥ 0.1.7)是实时的**:开关走行 Config 的 volatile 通道,对方的能力则经
+- **开关是实时的**:走行 Config 的 volatile 通道,对方的能力则经
   `ctx.inject(['ptcCordisPreset'])` 观察(**与插件行激活顺序无关**),两边任一变化都当场
   reconcile——摘掉打日志 `preset 'cordis-gitbash' retired (dsh-ptc-cordis-preset covers Creation
   mode on Git Bash)`,恢复打 `preset 'cordis-gitbash' registered declaratively`。已经挂载的会话
   钉在自己的组合快照上,不受影响;名录变化从新会话开始可见。
-- **旧宿主(dsh ≤ 0.1.6)是启动时判定一次**:旧宿主没有可观察的注册表,能力探测是有界的
-  (默认 1s,读不到即视为"对方不覆盖"),所以打开开关后,上一轮物化出来的 `cordis-gitbash`
-  目录会被清理;把开关关掉后,该变体要到**下一次启动**才重新物化。
 
 **两侧设置卡上是同一份状态**:权威值只有本插件这一行 Config 一份;对方的设置卡通过
 `ctx.configForms.get('gitbash-shell')` **绑定同一行**、写同一个字段(DSH 官方支持编辑另一个

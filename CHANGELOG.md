@@ -3,6 +3,18 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.33.1 — 2026-10-02
+
+**类型**:docs(issue #14:README「保留官方沙箱语义」与 Windows 受限模式的实际行为不一致)
+
+> 报告者 **SenkjM** 的五条观察(enforcement 元数据、完整性级别 Low→Medium、shell 越界写成功而文件工具被拒、一次性提示、README 关键词计数)**全部与设计一致**;他指出的是文档缺口——行为在代码层有如实标注(§1 红线「绝不静默假成功」守住的是结果元数据与运行期提示),但 README 层面除了「保留官方沙箱语义」这句误导性概括外零披露。本版补齐,并顺带修正 README 里残留的物化时代描述。
+
+- **README.md / README_EN.md 新增「安全语义:Windows 上的受限模式」章节**(置于「它做了什么」之后):POSIX 完整保留 / Windows 受限模式 shell 走 unconfined 的根因(MSYS2 vs restricted-token,OS 层冲突无插件内解)与取舍理由、如何标注(结果元数据 `enforcement: "unconfined"` + 每进程一次性日志)、**文件工具不受影响**(fs 沙箱另一层,边界不一致如实写明)、可观察对照(完整性级别不再压低 Low→Medium、TEMP 不再隔离)、以及「需要 shell 也被硬拦 ⇒ 本插件在 Windows 上不适合你,卸载即回 pwsh-sandbox,没有中间态」的明确选择提示;「它解决什么」的「保留官方沙箱语义」改为指向该章节。
+- **顺带清理 README 的物化时代残留描述**(行为未变,纯文档对齐 v0.32.0+ 现状):「它做了什么」第 3 条改为声明式注册(`ctx.agentPresets.register`,行集为已提交 JS 数据,不再物化目录,旧物化树按 marker 单向清理);删除「dsh 版本双适配」「dsh 0.1.6 适配」两个过时段落(era 机制已随 v0.32.0 删除),替换为「宿主要求与 preset 对齐」(下限 >=0.1.7-rc + smoke 锁对齐 + preset id 不变);「配置」/「ptc 联动」/「去重开关」段的「物化」措辞与旧宿主(≤0.1.6)双时代描述同步更新。
+- docs-only:src/ 零改动,冒烟 99 项不变(README 内容无 smoke 断言)。发 patch 版本而非仅推文档,是因为 README 随 npm 包分发——安全披露应让 `npm view` / 插件管理页看到的 README 同步更新。
+
+- 相关:issue #14(<https://github.com/KannaKuron/dsh-gitbash-shell/issues/14>)、CHANGELOG v0.13.2(取舍的完整分析)。
+
 ## v0.33.0 — 2026-10-01
 
 **类型**:fix(issue #13:Scoop 安装 Git 时 `bashPath` 配置正确但每次启动仍报 could NOT be resolved 并弹引导框)+ feat(解析链新增 `git --exec-path` 与 GitForWindows 注册表两级发现)
