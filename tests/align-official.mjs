@@ -21,11 +21,16 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { minimalPluginsFor, pluginsFor } from '../src/compositions.js'
 
-/** dsh-v0.1.7-rc.2, packages/bundle/web-app/presets/*.patch.yml. */
+/** dsh-v0.2.1-alpha.1, packages/bundle/web-app/presets/*.patch.yml.
+ * 0.2.1 added time-context + tool-schedule rows and the subagent schedule_*
+ * deny to standard/cordis/ptc (minimal unchanged — its pin is byte-identical
+ * across both releases). The plugin mirrors those rows ONLY when the host
+ * probe resolves the packages (hostExtras in oursOf below), so the alignment
+ * target is the full-probe row set against the 0.2.1 text. */
 const PRESET_SHA256 = {
-  standard: '6cd2f197737fc94a45e487d0bb57869461dd6f392d45f6429b576e75d973eda8',
-  cordis: 'b74d71901b692f11111d02d20072735b2fe94b74744ee7e3bfdc5d972f1a3aa5',
-  ptc: '8fcf6b04dce7c2c76fab925129f6ac9b05ebb546840508e6cde72aa2da991832',
+  standard: '961d18e0c2481e926374ca5a14a7be63c023f9c44e6cd300889991738f579390',
+  cordis: '459c0a97f36df0519a5a621bb8c7fa9d249cc84e587743dc8f4c2fb79cfcf859',
+  ptc: '9287485b993c3a7ad47785614bf9239f68467f59e5742c670ff63624b16c9535',
   minimal: '71ef887f43d8a37931ba3b014e5b116f79018af873d06625fb22e280a23c1dfc',
 }
 
@@ -120,11 +125,13 @@ export function flatten(rows, depth = 0) {
   return out
 }
 
-/** Our rows for one variant id, with the Git Bash delta applied. */
+/** Our rows for one variant id, with the Git Bash delta applied.
+ * The full host probe (dsh 0.2.1 additions) is ON: the alignment target is
+ * the 0.2.1 text, and the 0.1.7-era row set stays locked by smoke.mjs. */
 function oursOf(variant) {
   const kind = KINDS[variant]
   if (kind === 'minimal') return flatten(minimalPluginsFor())
-  return flatten(pluginsFor({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined }))
+  return flatten(pluginsFor({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true } }))
 }
 
 const reported = []

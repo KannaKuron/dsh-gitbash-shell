@@ -29,7 +29,7 @@
 3) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
-0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.1.7-rc`(兼容门禁 `plugin-compatibility.ts` 读 peer `@deepseek-ai/dsh`,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 必须标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`,没有「旧宿主分支」可回退。要点:四个变体由 `pluginsFor({ kind, gitBash, skillsDir, pythonActive })` / `minimalPluginsFor()` 生成行集(`src/compositions.js`,镜像官方 0.1.7 standard/minimal/ptc/cordis + Git Bash 增量);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(8 个开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
+0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.1.7-rc`(兼容门禁 `plugin-compatibility.ts` 读 peer `@deepseek-ai/dsh`,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 必须标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`,没有「旧宿主分支」可回退。要点:四个变体由 `pluginsFor({ kind, gitBash, skillsDir, pythonActive, hostExtras })` / `minimalPluginsFor()` 生成行集(`src/compositions.js`,双态镜像官方 standard/minimal/ptc/cordis + Git Bash 增量:`hostExtras` 缺省 ↔ 0.1.7 行集,`{ timeContext, toolSchedule }` ↔ 0.2.1 行集,探测式接入见第 8 条);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(8 个开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
 
 1. **执行器只替换 argv,不替换行为——除 Windows 受限分支(v0.13.2,issue #1)**:沙箱策略、拒绝分类、
    后台任务、设置节全部沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash
@@ -370,6 +370,20 @@
    (2026-08-29 复核:dsh 0.1.2-alpha.1 仍为 SESSION_FORMAT_VERSION=0,迁移未落地;2026-09-02 复核:
    dsh 0.1.2-alpha.4 仍为 0,Session 重构只到 branded types,消费面无变化);dsh-better-sidebar
    的命名空间(`terminalShell`/`shell`)演化同样需在其升级后复核。
+   **shell-env 键声明精简提案(2026-10-04 追记)**:dsh 仓库 notes
+   `proposed/simplification/2026-09-19-shell-env-key-declarations`(proposed 状态)计划删除
+   `list()`、`BashEnvVariable`/`BashEnvVariableInfo`、描述对象与仅描述性校验,贡献方声明改为
+   **显式只读键集合**;`register`/`collect`/保留键/所有权冲突/未声明输出拒绝/确定性输出/effect 释放
+   全部保留。本插件 `shellEnv.register` 的 `variables: { DSH_PATH_DIALECT: { description } }` 是描述
+   对象形状——**该提案实施的 dsh 升级必须同步把贡献声明改成键集合形状**(描述本就没有消费方,删除
+   是纯减法);§4b 的官方 shell-env 事实段随改。
+   **dsh 0.2.1 组合增量已探测式接入(v0.34.0)**:官方全工具 preset 新增 `time-context`/`tool-schedule`
+   行与 subagent 的 `toolFilter.deny`(`schedule_*`);本插件**不抬宿主下限**,由 `probeHostExtras(ctx)`
+   从 **`ctx.baseUrl`**(行挂载同一解析基准)逐包 `require.resolve` 探测,可用才加行(仅
+   standard/ptc/cordis 三个 kind;minimal 永不加),toolFilter 跟随 `toolSchedule` 单独走;探测每 boot
+   一次、reconcile 重注册复用;任何解析异常降级为「不可用」。**不要**把这两行写成无条件(包缺失拒绝
+   整棵挂载),也**不要**为此抬 `engines.dsh`。官方下一版再加行时:先重跑 `tests/align-official.mjs`
+   (pins 换新 sha)再决定是否新增探测位。
 
 9. **适配新版 dsh 的核对纪律(2026-09-15 立,dsh 0.1.6-alpha.1 教训)**:组合类插件升级 dsh 时,
    **绝不只看 `src/compositions.js` 的自身 diff**——真正的漂移只存在于「本站组合 × 宿主内置 preset」之间。

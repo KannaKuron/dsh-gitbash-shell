@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.34.0 — 2026-10-04
+
+**类型**:feat(跟随 dsh 0.2.1:宿主可用时三个全工具变体自动纳入官方时间上下文与提醒工具)
+
+- **背景**:dsh 0.2.1 给每个全工具官方 preset(standard/ptc/cordis)新增两行——`time-context`(@deepseek-ai/dsh-time-context,请求时钟上下文)与 `tool-schedule`(@deepseek-ai/dsh-tool-schedule,提醒工具 schedule_create/delete/list/update),并给 subagent / subagent_fork 的 config 加 `toolFilter.deny` 四个 schedule_* 工具(官方「提醒工具按模式提供:极简模式和子代理不可用」);官方 minimal 无变化(0.1.7-rc.2 与 0.2.1 的 minimal.patch.yml sha256 逐字节一致)。
+- **同步方式(探测式,不抬宿主下限)**:preset 行的包缺失会拒绝**整棵挂载**(AGENTS 不变量 2),所以新行不能无条件加——`src/index.js` 新增 `probeHostExtras(ctx)`:从 **`ctx.baseUrl`**(行挂载的同一解析基准,`prepareProfileEntries`)逐包 `require.resolve` 探测,可用才加行 + 加 toolFilter;探测一次每 boot,peer 翻转触发的 reconcile 重注册复用同一结果;**任何解析异常都降级为不可用,绝不 reject boot**。`minimalPluginsFor` 不动(minimal 无新行)。dsh ≤ 0.2.0 宿主行为逐字节不变(0.1.7 镜像),0.2.1+ 宿主全对齐(0.2.1 镜像)——`engines.dsh` 保持 `>=0.1.7-rc`。
+- **组合与测试**:`pluginsFor` 增加 `hostExtras` 参数(`{ timeContext, toolSchedule }`,缺省全 false;toolFilter 跟随 toolSchedule 单独走)。冒烟 99 → 101 项(+hostExtras 专项 + probeHostExtras 单测,含抛异常降级与半探测边界);**`tests/align-official.mjs` 的 pins 升级到 dsh-v0.2.1-alpha.1**(standard/cordis/ptc 换新 sha;minimal 不变),对齐目标切为「全探测行集 × 0.2.1 文本」——本机实测 **alignment OK: all four variants mirror the official row sequence**(34/35/35/7 行);旧宿主形态由 smoke 的 0.1.7 镜像断言继续锁死。两处既有源码形状断言随签名同步(`pluginsFor` 形参、`registerVariant` 调用)。
+- **上游预警(AGENTS 第 8 条追记)**:dsh 仓库有 **proposed** 状态的「让 shell 环境声明只负责键所有权」提案(2026-09-19)——落地后将删 `list()`、`BashEnvVariable`、描述对象与仅描述性校验,贡献方声明改为**显式只读键集合**。本插件 `shellEnv.register` 的 `variables: { DSH_PATH_DIALECT: { description } }` 正是描述对象形状,**提案实施的下一版 dsh 升级必须同步改贡献形状**(register/collect/所有权冲突/未声明拒绝语义不变)。
+- 相关:[dsh v0.2.1-alpha.1 release notes](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-alpha.1)、[shell-env 提案(中文)](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/proposed/simplification/2026-09-19-shell-env-key-declarations.zh.md)。
+
 ## v0.33.1 — 2026-10-02
 
 **类型**:docs(issue #14:README「保留官方沙箱语义」与 Windows 受限模式的实际行为不一致)

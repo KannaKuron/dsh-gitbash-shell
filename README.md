@@ -40,6 +40,11 @@ Git Bash 增量;跟随 dsh 升级的对齐由冒烟测试
 **preset id 保持 `code-gitbash` 不变**——会话钉在 id 上,dsh 0.1.2 把内置 `code`
 改名 `ptc` 时本插件的变体 id 就没有跟随(改名会让已固定的会话报 preset not found)。
 
+**dsh 0.2.1 增量自动随行(v0.34.0)**:官方 0.2.1 给全工具 preset 加了时间上下文
+(`time-context`)与提醒工具(`schedule_*`,子代理不可用)——本插件在 0.2.1+ 宿主上
+探测到对应包即自动把这两行与 subagent 的 schedule_* deny 纳入三个全工具变体
+(极简变体不加,与官方一致);旧宿主行为逐字节不变,**无需为此升级 dsh**。
+
 ## 安装(公开 npm 插件,推荐)
 
 npm: [dsh-gitbash-shell](https://www.npmjs.com/package/dsh-gitbash-shell)，

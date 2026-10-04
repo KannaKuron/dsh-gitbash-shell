@@ -1629,16 +1629,62 @@ function cleanupLegacyTrees(presetIds) {
 }
 
 /**
+ * Probe the dsh 0.2.1 host additions for the variant compositions: every
+ * full-tool official preset gained a `time-context` row (durable clock
+ * readings) and a `tool-schedule` row (the reminder tools). A preset row whose
+ * package is absent rejects the WHOLE mount, so the rows ride this probe: each
+ * is added only when its package resolves from the HOST's module base —
+ * `ctx.baseUrl`, the exact base `prepareProfileEntries` mounts preset rows
+ * from, so the probe can never disagree with the mounter. On dsh <= 0.2.0 both
+ * stay false and the row set stays byte-identical to the 0.1.7 mirror. Probed
+ * once per boot; the profile's package set does not change under a running
+ * host. minimal never gains the rows (the official minimal preset has none).
+ * @param {object} ctx - cordis context (any fiber of the running host).
+ * @param {Function} [resolve] - predicate override for tests; receives a
+ *   package specifier, resolves like `require.resolve`, returns boolean.
+ * @returns {Promise<{timeContext: boolean, toolSchedule: boolean}>}
+ */
+export async function probeHostExtras(ctx, resolve) {
+  let ok = resolve
+  if (ok === undefined) {
+    try {
+      const { createRequire } = await import('node:module')
+      const req = createRequire(ctx?.baseUrl ?? import.meta.url)
+      ok = (specifier) => {
+        try { req.resolve(specifier); return true } catch { return false }
+      }
+    } catch {
+      ok = () => false
+    }
+  }
+  const [timeContext, toolSchedule] = await Promise.all([
+    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-time-context')).then(Boolean),
+    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-schedule')).then(Boolean),
+  ])
+  return { timeContext, toolSchedule }
+}
+
+/** Run one probe predicate; ANY failure reads as "absent" (a throwing
+ * resolver must degrade the row away, never reject the boot). */
+function safeProbe(ok, specifier) {
+  try {
+    return ok(specifier)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Register one variant definition; returns the unregister function. Mount
  * failures stay visible through the roster's broken diagnostic instead of
  * failing the boot.
  */
-async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive }) {
+async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive, hostExtras = {} }) {
   const meta = PRESET_META[presetId]
   if (!meta) return undefined
   const plugins = meta.kind === 'minimal'
     ? minimalPluginsFor()
-    : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir, pythonActive })
+    : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir, pythonActive, hostExtras })
   return ctx.agentPresets.register({
     id: presetId,
     name: meta.name,
@@ -1671,6 +1717,10 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
   cleanupLegacyTrees(presetIds)
   const gitBashActive = process.platform === 'win32'
   const skillsDir = await resolveSkillsDir()
+  // The dsh 0.2.1 additions (time-context / tool-schedule rows) probe once per
+  // boot and ride every (re-)registration below — the profile's package set
+  // cannot change under a running host.
+  const hostExtras = await probeHostExtras(ctx)
   /** presetId -> unregister, i.e. exactly what is live right now. */
   const live = new Map()
   let peerGitBash = false
@@ -1715,7 +1765,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
       for (const presetId of want) {
         if (live.has(presetId)) continue
         try {
-          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive: peerPython })
+          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive: peerPython, hostExtras })
           if (unregister) {
             live.set(presetId, unregister)
             console.log(TAG + " preset '" + presetId + "' registered declaratively")
@@ -1732,7 +1782,9 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
   }
 
   await reconcile()
-  console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')')
+  console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')' + (hostExtras.timeContext || hostExtras.toolSchedule
+    ? ' [dsh 0.2.1 additions: ' + (hostExtras.timeContext ? 'time-context' : '') + (hostExtras.timeContext && hostExtras.toolSchedule ? ' + ' : '') + (hostExtras.toolSchedule ? 'tool-schedule (subagents denied)' : '') + ']'
+    : ''))
 
   // The peer's capability: `ctx.inject` makes this independent of row order,
   // and the child scope's disposer runs when the peer unmounts (or its row is
@@ -2443,4 +2495,4 @@ export async function apply(ctx, config = {}) {
 
 }
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim }
+export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim, probeHostExtras }

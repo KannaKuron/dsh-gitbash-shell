@@ -1111,6 +1111,44 @@ test('compositions: full variants mirror the official 0.1.7 row split', async ()
   }
 })
 
+test('compositions: dsh 0.2.1 host additions ride the probe, never the default', async () => {
+  const { pluginsFor, minimalPluginsFor } = await import('../src/compositions.js')
+  const row = (rows, id) => rows.find((r) => r.id === id)
+  const ids = (rows) => rows.map((r) => r.id)
+  const deny = { deny: ['schedule_create', 'schedule_delete', 'schedule_list', 'schedule_update'] }
+  // default (dsh <= 0.2.0): no era rows, no toolFilter — the 0.1.7 mirror stays unchanged
+  for (const kind of ['standard', 'ptc', 'cordis']) {
+    const rows = pluginsFor({ kind, gitBash: true, skillsDir: undefined })
+    assert.ok(!ids(rows).includes('time-context') && !ids(rows).includes('tool-schedule'), kind)
+    const delegation = row(rows, 'delegation').config
+    assert.equal(row(delegation, 'tool-subagent').config.toolFilter, undefined)
+    assert.equal(row(delegation, 'tool-subagent-fork').config.toolFilter, undefined)
+  }
+  // probe on: rows in their official slots, deny on both subagent configs
+  const on = pluginsFor({ kind: 'standard', gitBash: true, skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true } })
+  assert.equal(ids(on).indexOf('time-context'), ids(on).indexOf('agent-instructions') + 1)
+  assert.equal(ids(on).indexOf('tool-schedule'), ids(on).indexOf('tool-jobs') + 1)
+  const delegation = row(on, 'delegation').config
+  assert.deepEqual(row(delegation, 'tool-subagent').config.toolFilter, deny)
+  assert.deepEqual(row(delegation, 'tool-subagent-fork').config.toolFilter, deny)
+  // half-probe: the toolFilter follows toolSchedule alone (denying absent tools is noise)
+  const half = pluginsFor({ kind: 'cordis', gitBash: true, skillsDir: '/s', hostExtras: { timeContext: true } })
+  assert.ok(ids(half).includes('time-context') && !ids(half).includes('tool-schedule'))
+  assert.equal(row(row(half, 'delegation').config, 'tool-subagent').config.toolFilter, undefined)
+  // minimal never gains the rows — the official minimal preset carries none
+  assert.equal(minimalPluginsFor().some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
+})
+
+test('probeHostExtras resolves from the host base and degrades to false', async () => {
+  const { probeHostExtras } = await import('../src/index.js')
+  assert.deepEqual(await probeHostExtras(undefined, () => true), { timeContext: true, toolSchedule: true })
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { timeContext: false, toolSchedule: true })
+  // a throwing resolver reads as "absent" — never rejects the boot
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), { timeContext: false, toolSchedule: false })
+  // default resolver from this test file's base: official host packages absent → both false
+  assert.deepEqual(await probeHostExtras({}), { timeContext: false, toolSchedule: false })
+})
+
 test('host half: lazy Config with volatile probing and the era branch', async () => {
   const mod = await import('../src/index.js')
   assert.equal(typeof mod.Config, 'function')
@@ -1456,9 +1494,9 @@ test('python switch: the host rebuilds variants on the EFFECTIVE backend and ins
   assert.match(src, /const intentPython = peerFact\(coverage, PEER_PYTHON_FIELD\)/)
   // the ROWS change, so live variants are re-registered rather than skipped
   assert.match(src, /registeredPython !== peerPython/)
-  assert.match(src, /pythonActive: peerPython \}\)/)
+  assert.match(src, /pythonActive: peerPython, hostExtras \}\)/)
   const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
-  assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonActive = false \}\)/, 'the composition entry point takes the effective fact')
+  assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonActive = false, hostExtras = \{\} \}\)/, 'the composition entry point takes the effective fact')
   assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonActive !== true/)
   // the runtime row belongs to dsh-ptc-cordis-preset alone: our bundle patch
   // must never target it (two providers would collide)

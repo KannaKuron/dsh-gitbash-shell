@@ -63,11 +63,23 @@ When ready, call exit_plan_mode with the complete plan markdown, starting with a
  *   workflow setting is untouched and returns once it is not.
  * @returns {object[]} the declarative plugins list.
  */
-export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false }) {
+export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hostExtras = {} }) {
   const win = typeof process !== 'undefined' && process.platform === 'win32'
   const bashDisabled = gitBash ? false : win
   const pwshDisabled = gitBash ? true : !win
   const workflowOn = kind !== 'ptc' && pythonActive !== true
+  // dsh 0.2.1 added two rows to every full-tool official preset — time-context
+  // (durable clock readings) and tool-schedule (the reminder tools) — plus a
+  // toolFilter deny of the four schedule_* tools on the subagent/subagent_fork
+  // configs (reminders never reach a subagent). A preset row whose package is
+  // absent rejects the WHOLE mount, so these ride a host probe (index.js
+  // probeHostExtras, resolved from ctx.baseUrl — the base rows mount from);
+  // absent/older hosts keep the byte-identical 0.1.7 row set. The deny list
+  // follows toolSchedule alone: denying tools that do not exist is noise.
+  const { timeContext = false, toolSchedule = false } = hostExtras
+  const subagentDeny = toolSchedule
+    ? { toolFilter: { deny: ['schedule_create', 'schedule_delete', 'schedule_list', 'schedule_update'] } }
+    : {}
   const rows = [
     {
       id: 'persona',
@@ -82,6 +94,7 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false }) {
       name: '@deepseek-ai/dsh-agent-instructions',
       config: { maxBytes: 65536 },
     },
+    ...(timeContext ? [{ id: 'time-context', name: '@deepseek-ai/dsh-time-context' }] : []),
     { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash', ...off(bashDisabled) },
     { id: 'tool-pwsh', name: '@deepseek-ai/dsh-tool-pwsh', ...off(pwshDisabled) },
     { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
@@ -91,6 +104,7 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false }) {
       config: { sampleOverCapGlobResults: false },
     },
     { id: 'tool-jobs', name: '@deepseek-ai/dsh-tool-jobs' },
+    ...(toolSchedule ? [{ id: 'tool-schedule', name: '@deepseek-ai/dsh-tool-schedule' }] : []),
     ...((kind === 'standard' || kind === 'ptc') ? [
       { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem' },
       { id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
@@ -136,12 +150,12 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false }) {
         {
           id: 'tool-subagent',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, backgroundMode: 'continuable' },
+          config: { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, backgroundMode: 'continuable', ...subagentDeny },
         },
         {
           id: 'tool-subagent-fork',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: { provider: 'fork', toolName: 'subagent_fork', backgroundMode: 'continuable' },
+          config: { provider: 'fork', toolName: 'subagent_fork', backgroundMode: 'continuable', ...subagentDeny },
         },
         {
           id: 'tool-subagent-codex',
