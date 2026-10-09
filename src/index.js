@@ -1675,15 +1675,41 @@ function safeProbe(ok, specifier) {
 }
 
 /**
+ * The minimal variant's PTY row (`terminal-bash`) pins the shell binary it
+ * spawns; before issue #15 that was the one hardcoded `DEFAULT_GIT_BASH`
+ * copy left in the tree while every other consumer had moved to the
+ * resolver, so a Git installed outside `C:/Program Files/Git` failed every
+ * PTY spawn with node-pty's "File not found". The row now rides the ONE
+ * resolution chain (explicit config tier first — readConfiguredBashPath,
+ * the same chain the executor runs), read LAZILY per registration
+ * (issue #13: never frozen at apply time). An unresolved chain returns
+ * `undefined` and the composition then pins the historical default: per the
+ * two hard rules a missing Git Bash stays a VISIBLE spawn failure — never a
+ * substitute shell.
+ * @param {() => object} [readResolution] - the lazy resolution reader shared
+ *   with the executor and the capability service.
+ * @returns {string|undefined} the resolved Git Bash path, or `undefined`
+ *   when unresolved (the composition falls back to the visible default).
+ */
+export function minimalPtyBashPath(readResolution) {
+  try {
+    const resolution = readResolution()
+    return resolution && resolution.ok && resolution.path ? resolution.path : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Register one variant definition; returns the unregister function. Mount
  * failures stay visible through the roster's broken diagnostic instead of
  * failing the boot.
  */
-async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive, hostExtras = {} }) {
+async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive, hostExtras = {}, readBashResolution }) {
   const meta = PRESET_META[presetId]
   if (!meta) return undefined
   const plugins = meta.kind === 'minimal'
-    ? minimalPluginsFor()
+    ? minimalPluginsFor({ bashPath: minimalPtyBashPath(readBashResolution) })
     : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir, pythonActive, hostExtras })
   return ctx.agentPresets.register({
     id: presetId,
@@ -1711,9 +1737,12 @@ async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, python
  * @param {object} ctx - the plugin's mounting context.
  * @param {string[]} presetIds - the row's configured variants.
  * @param {() => boolean} readSuppress - live dedupe switch reader.
+ * @param {() => object} readBashResolution - lazy Git Bash resolution reader
+ *   (the chain shared with the executor and the capability); the minimal
+ *   variant's PTY row reads it once per registration (issue #15).
  * @returns {Promise<void>} resolves once the first reconcile finished.
  */
-async function runDeclarativeEra(ctx, presetIds, readSuppress) {
+async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolution) {
   cleanupLegacyTrees(presetIds)
   const gitBashActive = process.platform === 'win32'
   const skillsDir = await resolveSkillsDir()
@@ -1765,7 +1794,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress) {
       for (const presetId of want) {
         if (live.has(presetId)) continue
         try {
-          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive: peerPython, hostExtras })
+          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive: peerPython, hostExtras, readBashResolution })
           if (unregister) {
             live.set(presetId, unregister)
             console.log(TAG + " preset '" + presetId + "' registered declaratively")
@@ -2486,7 +2515,7 @@ export async function apply(ctx, config = {}) {
   // more), so this branch serves the variants and returns.
   if (ctx.agentPresets && typeof ctx.agentPresets.register === 'function') {
     try {
-      await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis())
+      await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis(), readBashResolution)
     } catch (error) {
       console.log(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
     }

@@ -225,9 +225,17 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
  * The minimal variant: the official single-tool preset with the Git Bash
  * delta — bash rows always on (the terminal row pins the Git Bash binary on
  * Windows), pwsh rows always off (pure).
+ * @param {object} [input]
+ * @param {string|undefined} [input.bashPath] - the RESOLVED Git for Windows
+ *   bash (the ONE chain of src/bash-path.js, explicit tier first — the same
+ *   resolver the executor runs; wired in src/index.js and read lazily at
+ *   each registration). `undefined` when the chain failed: the row then
+ *   pins the historical default, so a missing Git stays a VISIBLE spawn
+ *   failure — never a substitute shell (issue #15: the hardcoded default
+ *   broke every PTY spawn where Git lives outside `C:/Program Files/Git`).
  * @returns {object[]} the declarative plugins list.
  */
-export function minimalPluginsFor() {
+export function minimalPluginsFor({ bashPath } = {}) {
   const win = typeof process !== 'undefined' && process.platform === 'win32'
   return [
     {
@@ -252,7 +260,7 @@ export function minimalPluginsFor() {
           disabled: false,
           config: {
             timeoutMs: 300000,
-            shellPath: win ? DEFAULT_GIT_BASH : '/bin/bash',
+            shellPath: win ? (typeof bashPath === 'string' && bashPath !== '' ? bashPath : DEFAULT_GIT_BASH) : '/bin/bash',
           },
         },
         {

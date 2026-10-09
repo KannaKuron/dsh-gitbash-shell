@@ -1164,7 +1164,7 @@ test('host half: lazy Config with volatile probing and the era branch', async ()
   assert.match(resolver, /await import\(pathToFileURL\(entry\)\.href\)/)
   assert.match(hostSource, /export const Config = Schema === null \? undefined : Schema\.object\(/)
   assert.match(hostSource, /typeof ctx\.agentPresets\.register === 'function'/)
-  assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\)\)/)
+  assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution\)/)
 })
 
 test('client half: settings acquisition through configForms only, no dead inject', () => {
@@ -1494,7 +1494,7 @@ test('python switch: the host rebuilds variants on the EFFECTIVE backend and ins
   assert.match(src, /const intentPython = peerFact\(coverage, PEER_PYTHON_FIELD\)/)
   // the ROWS change, so live variants are re-registered rather than skipped
   assert.match(src, /registeredPython !== peerPython/)
-  assert.match(src, /pythonActive: peerPython, hostExtras \}\)/)
+  assert.match(src, /pythonActive: peerPython, hostExtras, readBashResolution \}\)/)
   const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
   assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonActive = false, hostExtras = \{\} \}\)/, 'the composition entry point takes the effective fact')
   assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonActive !== true/)
@@ -1859,6 +1859,43 @@ test('executor row lookup survives the subtree layout change (issue #13, measure
   // no loader / broken entries never throw
   assert.equal(executorConfiguredBashPath({}), '')
   assert.equal(executorConfiguredBashPath({ loader: { resolve: () => row('F:/x/bin/bash.exe'), entries: () => { throw new Error('boom') } } }), 'F:/x/bin/bash.exe')
+})
+
+test('minimal PTY shellPath rides the resolution chain; unresolved keeps the visible default (issue #15)', async () => {
+  const { minimalPluginsFor } = await import('../src/compositions.js')
+  const { minimalPtyBashPath } = await import('../src/index.js')
+  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const shellPathOf = (plugins) => plugins
+    .find((row) => row.id === 'persistent-shell').config
+    .find((row) => row.id === 'terminal-bash').config.shellPath
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+  try {
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    // the reporter's layout: Git on a custom drive — the PTY spawns the
+    // RESOLVED binary (the hardcoded DEFAULT_GIT_BASH was the whole bug)
+    assert.equal(shellPathOf(minimalPluginsFor({ bashPath: 'D:/git/Git/bin/bash.exe' })), 'D:/git/Git/bin/bash.exe')
+    // an unresolved chain (or a blank one) keeps the historical default: a
+    // VISIBLE spawn failure, never a substitute shell (the two hard rules)
+    for (const bashPath of [undefined, '', null]) {
+      assert.equal(shellPathOf(minimalPluginsFor({ bashPath })), 'C:/Program Files/Git/bin/bash.exe', 'unresolved keeps the visible default (' + String(bashPath) + ')')
+    }
+  } finally {
+    Object.defineProperty(process, 'platform', platform)
+  }
+  // off Windows the row never pins a Windows binary — resolved or not
+  assert.equal(shellPathOf(minimalPluginsFor({ bashPath: 'D:/git/Git/bin/bash.exe' })), '/bin/bash')
+  // the reader adapter: only a VERIFIED resolution passes; a failed verdict,
+  // a throwing reader or a missing one degrades to the visible default
+  assert.equal(minimalPtyBashPath(() => ({ ok: true, path: 'D:/git/Git/bin/bash.exe' })), 'D:/git/Git/bin/bash.exe')
+  assert.equal(minimalPtyBashPath(() => ({ ok: true, path: '' })), undefined)
+  assert.equal(minimalPtyBashPath(() => ({ ok: false, path: '', tried: [] })), undefined)
+  assert.equal(minimalPtyBashPath(() => { throw new Error('boom') }), undefined)
+  assert.equal(minimalPtyBashPath(), undefined)
+  // the wiring: the row is fed from the SAME lazy chain the executor uses —
+  // the explicit tier first (not the bare automatic chain), read per
+  // registration, never frozen at apply time
+  assert.match(src, /minimalPluginsFor\(\{ bashPath: minimalPtyBashPath\(readBashResolution\) \}\)/)
+  assert.match(src, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution\)/)
 })
 
 test('bash resolution: ONLY Git for Windows counts — WSL, MSYS2, Cygwin and non-Windows git are refused', async () => {
