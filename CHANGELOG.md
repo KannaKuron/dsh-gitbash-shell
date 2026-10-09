@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.34.2 — 2026-10-09
+
+**类型**:fix([issue #15](https://github.com/KannaKuron/dsh-gitbash-shell/issues/15):极简模式 · Git Bash 的 PTY 终端无法启动,node-pty `File not found`)
+
+- **根因**:`minimalPluginsFor()` 是四个变体里**唯一**给 terminal-bash 行写死 `shellPath: DEFAULT_GIT_BASH`(`C:/Program Files/Git/bin/bash.exe`)的地方——Git 装在自定义路径(Scoop / 便携版 / 其他盘符)的 Windows 机器上,PTY spawn 在进程创建阶段即失败,且本插件撤掉 `pwsh-sandbox` 而 dsh 每进程只允许一个 `ctx.shell`,极简模式 shell 能力完全归零、无备用。其余三个变体(`pluginsFor`)不含 `shellPath`、走 `src/shell.js` → `resolveGitBashCached()` 动态解析,天然正确——与 issue #11 同类残留,这次漏在 PTY 行上。
+- **修法(采纳报告人 @Jingqi05 的「入参传入」变体,`compositions.js` 保持纯数据)**:`minimalPluginsFor({ bashPath })`——win32 下有解析结果用解析结果,否则兜底 `DEFAULT_GIT_BASH`(失败保持可见的 spawn 报错、绝不换成别的 shell,§4h 两条硬边界不变);非 win 恒 `/bin/bash`。
+- **解析来源比报告人裸 `resolveGitBashCached({})` 更完整一层**:`src/index.js` 新增 `minimalPtyBashPath(readBashResolution)`,每次(重)注册时懒读(issue #13 纪律:不在 apply() 期冻结),喂的是**含显式配置层**的 `readConfiguredBashPath` 链(`gitbash-executor` 行 > `gitbash-shell` 行 `bashPath` > 自动链)——与执行器同一条解析链,设置里显式填的路径优先。
+- **测试**:冒烟 +1 用例(win32 平台 stub 三态:解析成功用解析结果 / 失败与空值兜底默认 / 非 win `/bin/bash` + 读取器异常安全 + 接线断言);102 项全绿(基线 101:100 pass + 1 win32-only skip → 101 pass + 同一 skip,纯增量无回归);同步更新 3 处锁源码文本的既有断言(`registerVariant` / `runDeclarativeEra` 调用行、`pluginsFor` 形参)。
+- **真机**:Windows 真机复现与修复 A/B 对照(真实 node-pty:修复前 spawn `File not found: C:/Program Files/Git/bin/bash.exe`,修复后 `D:/git/Git/bin/bash.exe` exit=0)由报告人 @Jingqi05 在 issue 中完成,修复评论已引用;本机(macOS)为逻辑级验证 + 全量测试。
+- **已知边界(已在 issue 评论如实说明)**:极简变体行集是注册时快照,运行中改 `bashPath` 设置需重启 dsh 才进 PTY 行(其余三变体走执行器懒解析、无此限制);热重注册需跟踪 `registeredBashPath` 的 retire/重建模式,超出本次范围。
+
 ## v0.34.1 — 2026-10-05
 
 **类型**:chore(清理 `dsh.client.inject` 里的死引用 `@deepseek-ai/dsh-client-runtime`)
