@@ -1085,7 +1085,10 @@ test('compositions: full variants mirror the official 0.1.7 row split', async ()
     const delegation = row(rows, 'delegation').config
     assert.notEqual(row(delegation, 'workflow-ptc').disabled, true)
     assert.notEqual(row(delegation, 'tool-workflow').disabled, true)
-    assert.equal(row(delegation, 'tool-ralph').disabled, true)
+    // ralph is RETIRED: the official presets dropped the three disabled
+    // placeholder rows (codex / claude-code / ralph) in 0.2.1-alpha.2
+    // (upstream 8ed0b530ed — codex/claude-code moved to on-demand bundles)
+    assert.equal(row(delegation, 'tool-ralph'), undefined)
     assert.equal(row(rows, 'tool-bash').disabled, undefined)
     assert.equal(row(rows, 'tool-pwsh').disabled, true)
     assert.equal(row(rows, 'tool-plugin-manager').disabled, kind === 'standard' ? true : undefined)

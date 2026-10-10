@@ -3,6 +3,18 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.34.3 — 2026-10-11
+
+**类型**:fix([issue #16](https://github.com/KannaKuron/dsh-gitbash-shell/issues/16):Git Bash 预设 persona suffix 引用 `{{cwd}}`,dsh 0.2.1-alpha.1+ 每轮在任何模型请求前抛错)+ dsh 0.2.1-alpha.2 官方组合对齐。
+
+- **根因(issue #16,报告 @tkhs101)**:`compositions.js` 的 persona 行带 `suffix: 'Your working directory is {{cwd}}.'`——上游 **79bd3d8da7**(2026-09-13,session working-directory 集中化)删除了 agent-loop 的 `cwd` 提示词变量注册,而 system-prompt 对未注册变量引用**在任何模型请求之前直接抛错**,整轮失败。0.1.7-rc.2 仍注册该变量所以 desktop 侧无感;0.2.1-alpha.1 起必炸。官方预设同步在 **0.2.1-alpha.2** 删除该子句(**2eb058d887**,"remove retired directory persona templates")。修法即上游 README 明文指令:**从四个变体删除该子句**——工作目录由宿主 working-directory 运行时上下文(WORKING_DIRECTORY,order 100)提供,官方各预设均无 persona suffix。冒烟新增回归锁:组合不得再引用 `{{cwd}}`。
+- **组合对齐(0.2.1-alpha.2 官方漂移,`packages/bundle/web-app/presets/`)**:
+  - 官方删除的三个占位行(`tool-subagent-codex` / `tool-subagent-claude-code` / `tool-ralph`,上游 **8ed0b530ed**,codex/claude-code provider 移交「按需安装」官方组合包)从全部变体删除——三行在各代宿主都是 `disabled: true` 占位,删除零损失;冒烟断言 ralph 不复存在。
+  - `tool-subagent` / `tool-subagent-fork` 的 `backgroundMode: 'continuable'` 改 **hostExtras 双态**(0.2.1-alpha.2 官方删除该字段;≤0.2.0 官方带)。既有 `probeHostExtras` 信号直接复用,零新增探测。
+  - plan-mode section **首句双态**(共享正文):0.2.1-alpha.2 官方把首句改回「until the user approves your plan through exit_plan_mode」(alpha.1 为「until exit_plan_mode succeeds」),跟随同一条 hostExtras 信号;其余段落逐字节不变。
+- **`tests/align-official.mjs`**:PRESET_SHA256 四 pin 重新钉到 0.2.1-alpha.2(standard/cordis/ptc 变更,minimal 逐字节不变);`DSH_HARNESS_SRC` 指向 0.2.1-alpha.2 checkout 全 OK。
+- 测试:smoke 101 过;唯一失败 `minimal PTY shellPath … (issue #15)` 为本机 Git Bash 环境下的既有失败(与 0.34.2 基线一致,stash 验证与本版改动无关,待单独排查)。
+
 ## v0.34.2 — 2026-10-09
 
 **类型**:fix([issue #15](https://github.com/KannaKuron/dsh-gitbash-shell/issues/15):极简模式 · Git Bash 的 PTY 终端无法启动,node-pty `File not found`)

@@ -27,7 +27,13 @@ function off(value) {
   return value === true ? { disabled: true } : {}
 }
 
-const PLAN_SECTION = `You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+// Plan-mode section, shared body with an era-specific FIRST SENTENCE (each
+// byte-exact from its era's official patch.yml): dsh 0.1.7..0.2.1-alpha.1
+// say "until exit_plan_mode succeeds", 0.2.1-alpha.2 rephrased to "until the
+// user approves your plan through exit_plan_mode". The hostExtras probe
+// already splits the eras for the row set, so the wording rides the same
+// signal — no new probe, and each generation mirrors its own official text.
+const PLAN_SECTION_TAIL = `Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
 Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
 
@@ -39,6 +45,10 @@ Make the plan decision-complete: state the goal and success criteria; group impl
 
 When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
 `
+
+const planSectionFor = (hostEra021) => hostEra021
+  ? `You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. ${PLAN_SECTION_TAIL}`
+  : `You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. ${PLAN_SECTION_TAIL}`
 
 /**
  * The shared full-tool rows for standard / ptc / cordis variants (pure).
@@ -86,7 +96,13 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
       name: '@deepseek-ai/dsh-persona',
       config: {
         prefix: 'You are a coding agent powered by the {{model}} model.',
-        suffix: 'Your working directory is {{cwd}}.',
+        // NO suffix: the host dropped the `cwd` prompt variable on 2026-09-13
+        // (upstream 79bd3d8da7 — working directories centralized into the
+        // working-directory service) and removed the persona suffix clause
+        // from every official preset in 0.2.1-alpha.2 (upstream 2eb058d887).
+        // An unregistered variable reference throws BEFORE any model request
+        // and kills the whole turn (issue #16, dsh 0.2.1-alpha.1+). The
+        // host's working-directory runtime context supplies the directory.
       },
     },
     {
@@ -120,7 +136,7 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
         {
           id: 'plan-mode',
           name: '@deepseek-ai/dsh-plan-mode',
-          config: { section: PLAN_SECTION },
+          config: { section: planSectionFor(timeContext) },
         },
       ],
     },
@@ -150,24 +166,12 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
         {
           id: 'tool-subagent',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, backgroundMode: 'continuable', ...subagentDeny },
+          config: { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }), ...subagentDeny },
         },
         {
           id: 'tool-subagent-fork',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: { provider: 'fork', toolName: 'subagent_fork', backgroundMode: 'continuable', ...subagentDeny },
-        },
-        {
-          id: 'tool-subagent-codex',
-          name: '@deepseek-ai/dsh-tool-subagent',
-          disabled: true,
-          config: { provider: 'codex', toolName: 'subagent_codex', backgroundMode: 'one-shot', maxDepth: 'provider-managed' },
-        },
-        {
-          id: 'tool-subagent-claude-code',
-          name: '@deepseek-ai/dsh-tool-subagent',
-          disabled: true,
-          config: { provider: 'claude-code', toolName: 'subagent_claude_code', backgroundMode: 'one-shot', maxDepth: 'provider-managed' },
+          config: { provider: 'fork', toolName: 'subagent_fork', ...(timeContext ? {} : { backgroundMode: 'continuable' }), ...subagentDeny },
         },
         {
           id: 'workflow-ptc',
@@ -176,12 +180,12 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
           config: { provider: 'spawn' },
         },
         { id: 'tool-workflow', name: '@deepseek-ai/dsh-tool-workflow', ...off(!workflowOn) },
-        {
-          id: 'tool-ralph',
-          name: '@deepseek-ai/dsh-tool-ralph',
-          disabled: true,
-          config: { subagentProvider: 'spawn', maxRounds: 64 },
-        },
+        // NO tool-subagent-codex / tool-subagent-claude-code / tool-ralph:
+        // the official presets retired these three disabled placeholder rows
+        // in 0.2.1-alpha.2 (upstream 8ed0b530ed — the codex/claude-code
+        // provider rows moved to on-demand official plugin bundles). They
+        // were `disabled: true` on every host generation, so dropping them
+        // loses nothing and re-aligns with the shipped 0.2.1 row split.
       ],
     },
     { id: 'tool-ask-user', name: '@deepseek-ai/dsh-tool-ask-user' },

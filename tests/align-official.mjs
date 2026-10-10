@@ -10,7 +10,7 @@
  *   node tests/align-official.mjs [/path/to/deepseek-harness]
  *   DSH_HARNESS_SRC=/path/to/deepseek-harness node tests/align-official.mjs
  *
- * The pinned PRESET_SHA256 map records the rc.2 revision this plugin was
+ * The pinned PRESET_SHA256 map records the host revision this plugin was
  * verified against. A mismatch is not automatically a bug — it means the host
  * preset text CHANGED and every variant must be re-diffed by hand before this
  * file's pins are updated (the drift this script exists to catch).
@@ -21,16 +21,20 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { minimalPluginsFor, pluginsFor } from '../src/compositions.js'
 
-/** dsh-v0.2.1-alpha.1, packages/bundle/web-app/presets/*.patch.yml.
- * 0.2.1 added time-context + tool-schedule rows and the subagent schedule_*
- * deny to standard/cordis/ptc (minimal unchanged — its pin is byte-identical
- * across both releases). The plugin mirrors those rows ONLY when the host
- * probe resolves the packages (hostExtras in oursOf below), so the alignment
- * target is the full-probe row set against the 0.2.1 text. */
+/** dsh-v0.2.1-alpha.2, packages/bundle/web-app/presets/*.patch.yml.
+ * 0.2.1-alpha.2 removed the retired persona suffix (`{{cwd}}` variable gone),
+ * the three disabled placeholder rows (codex / claude-code / ralph — the
+ * provider rows moved to on-demand bundles), and the subagent rows'
+ * `backgroundMode: 'continuable'` field, and rephrased the plan-mode first
+ * sentence; 0.2.1's time-context + tool-schedule rows and the schedule_*
+ * subagent deny stay. The plugin mirrors the era-specific shapes ONLY via the
+ * host probe (hostExtras in oursOf below), so the alignment target is the
+ * full-probe row set against the 0.2.1-alpha.2 text (minimal unchanged — its
+ * pin is byte-identical across every release so far). */
 const PRESET_SHA256 = {
-  standard: '961d18e0c2481e926374ca5a14a7be63c023f9c44e6cd300889991738f579390',
-  cordis: '459c0a97f36df0519a5a621bb8c7fa9d249cc84e587743dc8f4c2fb79cfcf859',
-  ptc: '9287485b993c3a7ad47785614bf9239f68467f59e5742c670ff63624b16c9535',
+  standard: '6462f63e24ea865d3931f992584bbc79aa152adf697e861af0b2e4dd7a4d622f',
+  cordis: '0b12c30161ac570face5e310f14f4c2177df20c0ca1c4e5a45ef959a37152434',
+  ptc: '162d1e57cc0ca48a2b54f4659e920264f46c87b3027a73e81429d345d584c566',
   minimal: '71ef887f43d8a37931ba3b014e5b116f79018af873d06625fb22e280a23c1dfc',
 }
 
