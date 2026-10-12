@@ -2618,7 +2618,14 @@ export async function apply(ctx, config = {}) {
           let childCtx
           const fiber = agentCtx.plugin((c) => { childCtx = c })
           return {
-            ctx: childCtx,
+            // cordis plugin() starts the fiber ASYNCHRONOUSLY — the apply
+            // callback that captures childCtx has NOT run when plugin()
+            // returns. The wrapped fiber is a thenable (`fiber.await()`):
+            // awaiting it is the only way to observe childCtx being set
+            // (v0.38.3, real machine: apply(undefined) crashed with
+            // "Cannot read properties of undefined (reading 'shell')").
+            fiber,
+            get ctx() { return childCtx },
             dispose: async () => { try { await fiber?.dispose?.() } catch { /* already gone */ } },
           }
         },

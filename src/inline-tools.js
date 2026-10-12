@@ -279,6 +279,20 @@ export async function activateOfficialBash(agent, resolved, createScopeFn, log) 
     return undefined
   }
   const scope = createScopeFn(agent.ctx)
+  // plugin() starts the fiber asynchronously; awaiting the wrapped thenable
+  // guarantees the apply callback has captured scope.ctx before we hand it
+  // to the official module (v0.38.2-and-earlier passed undefined here and
+  // crashed inside `ctx.shell`).
+  if (scope.fiber) {
+    try { await scope.fiber } catch (error) {
+      log(`official tool-bash scope fiber failed to start: ${error?.message ?? error}`)
+      return undefined
+    }
+  }
+  if (!scope.ctx) {
+    log('official tool-bash scope context did not initialize; activation skipped')
+    return undefined
+  }
   try {
     await mod.apply(scope.ctx, {})
     return scope
@@ -332,12 +346,15 @@ export function mountInlineTools(ctx, deps) {
    * pure ADDITION — it shadows nothing and requires no deny juggling. The
    * scope keeps the registration revertible at agent disposal.
    */
-  const providePwsh = (agent, state) => {
+  const providePwsh = async (agent, state) => {
     if (state.pwshScope) return
     if (typeof spawn !== 'function' || !pwshPath) return
     if (!createScope) return
     try {
       const scope = createScope(agent.ctx)
+      // Same asynchronous-fiber shape as activateOfficialBash: wait for the
+      // apply callback to capture scope.ctx before touching its tools.
+      if (scope.fiber) { try { await scope.fiber } catch { /* disposed */ } }
       const registry = scope.ctx?.tools
       if (!registry || typeof registry.register !== 'function') {
         void scope.dispose().catch(() => {})
@@ -400,7 +417,7 @@ export function mountInlineTools(ctx, deps) {
             log(`fake-pwsh deny failed: ${error?.message ?? error}`)
           }
         }
-        if (deps.pwshEnabled && deps.pwshEnabled() === true) providePwsh(agent, state)
+        if (deps.pwshEnabled && deps.pwshEnabled() === true) void providePwsh(agent, state)
       }
     }
     if (needs.needsBash && !state.scope) {

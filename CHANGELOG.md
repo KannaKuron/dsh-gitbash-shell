@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.38.3 — 2026-10-13
+
+**类型**:fix(补位激活的 scope 上下文时序;用户终端日志一锤定音)。
+
+- **根因(日志 `official tool-bash activation failed: Cannot read properties of undefined (reading 'shell')`)**:cordis 的 `ctx.plugin()` **只创建 Fiber 就返回,插件的 apply 回调是异步启动的**(`vendor/cordis/lib/index.js:1619`,wrapped fiber 是 thenable)——`createScope` 返回时 `childCtx` 还是 `undefined`,`mod.apply(undefined, {})` 在官方模块第一行 `ctx.shell.sandboxMode` 上炸。此前的解析修复(v0.38.1)已生效:模块拿到了,死在最后一步。
+- **修复**:`createScope` 返回 `{ fiber, get ctx(), dispose }`;`activateOfficialBash` 与 `providePwsh`(同款隐患,此前 pwsh7 开了也会静默发不出)在动手前 `await scope.fiber` 等回调跑完,再校验 `scope.ctx` 就绪。
+- **冒烟**:118 项全绿。
+- **真机判据**:升级重启新建会话 → 工具面出现 `bash`;日志出现 `official bash tool activated for this agent`。若再现 activation failed,错误行会指向官方模块内部的真实原因(而非 ctx undefined)。
+
 ## v0.38.2 — 2026-10-13
 
 **类型**:fix(v0.38.0 折叠分区在真机上完全失效;用户截图定位)。
