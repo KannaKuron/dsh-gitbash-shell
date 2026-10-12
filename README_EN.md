@@ -5,8 +5,11 @@
 [简体中文](README.md) | English
 
 > Run **every agent shell command through Git Bash** on Windows with DeepSeek
-> Harness (dsh) — replaces the PowerShell executor and registers Git Bash
-> variants of all four agent presets.
+> Harness (dsh) — replaces the PowerShell executor, gives the four OFFICIAL
+> presets Git Bash through a per-agent inline tool patch (v0.35.0), publishes
+> a real `gitbash_pwsh` (system PowerShell 7) and the `gb_*` FastCtx file
+> tools, and keeps the four `· Git Bash` variant presets behind a switch
+> (`variantPresets`, off by default).
 
 ### Host requirement & preset alignment
 
@@ -40,12 +43,18 @@ The bundle patch (`cordis.patch.yml`):
    `<git-bash.exe> -c <command>` (sandbox policy, denial classification,
    background jobs, and settings behavior all inherited; **one Windows
    exception for confined modes — see the next section**);
-3. mounts `dsh-gitbash-shell`, which registers the four preset variants
-   **declaratively** (`ctx.agentPresets.register`, v0.32.0+) — the row sets
-   are committed, diffable JS data (`src/compositions.js`) and **no directory
-   is ever materialized**; materialized trees left by older versions are
-   cleaned one-way at boot only when the marker proves the user never edited
-   them.
+3. mounts `dsh-gitbash-shell`. **v0.35.0 dual form** — by default
+   (`variantPresets: false`) it registers NO variants: the inline tool patch
+   (`src/inline-tools.js`) activates the OFFICIAL tool-bash module per agent
+   whenever the tool face says "pwsh yes / bash no", denies the fake pwsh,
+   and publishes `gitbash_pwsh` plus the `gb_*` FastCtx tools
+   (`src/fastctx-bridge.js`). With the switch on, it registers the four
+   preset variants **declaratively** (`ctx.agentPresets.register`,
+   v0.32.0+) — the row sets are committed, diffable JS data
+   (`src/compositions.js`) and **no directory is ever materialized**;
+   materialized trees left by older versions are cleaned one-way at boot
+   only when the marker proves the user never edited them (the cleanup
+   ignores the switch).
 
 Environment: `bash.exe` is spawned as a direct child of the host, so it
 inherits the full system environment plus the `DSH_*` snapshot, exactly like

@@ -1167,7 +1167,7 @@ test('host half: lazy Config with volatile probing and the era branch', async ()
   assert.match(resolver, /await import\(pathToFileURL\(entry\)\.href\)/)
   assert.match(hostSource, /export const Config = Schema === null \? undefined : Schema\.object\(/)
   assert.match(hostSource, /typeof ctx\.agentPresets\.register === 'function'/)
-  assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution\)/)
+  assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution, \(\) => liveSettings\.variantPresets\(\)\)/)
 })
 
 test('client half: settings acquisition through configForms only, no dead inject', () => {
@@ -1898,7 +1898,7 @@ test('minimal PTY shellPath rides the resolution chain; unresolved keeps the vis
   // the explicit tier first (not the bare automatic chain), read per
   // registration, never frozen at apply time
   assert.match(src, /minimalPluginsFor\(\{ bashPath: minimalPtyBashPath\(readBashResolution\) \}\)/)
-  assert.match(src, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution\)/)
+  assert.match(src, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution, \(\) => liveSettings\.variantPresets\(\)\)/)
 })
 
 test('bash resolution: ONLY Git for Windows counts — WSL, MSYS2, Cygwin and non-Windows git are refused', async () => {
@@ -2830,4 +2830,189 @@ test('schemastery: both halves resolve through the shared loader, and neither st
   // half reaches the same schema through the executor package.
   assert.match(readFileSync('src/shell.js', 'utf8'), /loadSchemastery\(\{ parentConfig: SandboxBashExecutor\.Config \}\)/)
   assert.match(readFileSync('src/index.js', 'utf8'), /executorConfigSchema\(\)/)
+})
+
+// ── v0.35.0: inline tool patch (official presets get Git Bash) ─────────────
+
+test('inline tools: the face verdict keys on pwsh-without-bash, and dsh-ops is detected', async () => {
+  const { inlineNeeds } = await import('../src/inline-tools.js')
+  // The official win32 composition: pwsh present, bash absent -> patch it in.
+  assert.deepEqual(inlineNeeds(['pwsh', 'read', 'edit']), { needsBash: true, denyPwsh: true, opsPresent: false })
+  // A face that already has bash (variant presets ON, or a future official
+  // change) is left alone — the switch and this patch are exclusive by
+  // observation, with no explicit lock.
+  assert.deepEqual(inlineNeeds(['bash', 'pwsh']), { needsBash: false, denyPwsh: false, opsPresent: false })
+  assert.deepEqual(inlineNeeds(['bash']), { needsBash: false, denyPwsh: false, opsPresent: false })
+  // dsh-ops tools in the face stand our surfaces down.
+  assert.deepEqual(inlineNeeds(['bash', 'ops_grep', 'ops_bash']).opsPresent, true)
+  assert.deepEqual(inlineNeeds(['ops_inspect_local_file']).opsPresent, true)
+  // Garbage in: no crash, no verdict.
+  assert.deepEqual(inlineNeeds(undefined), { needsBash: false, denyPwsh: false, opsPresent: false })
+})
+
+test('inline tools: gitbash_pwsh arguments are STRICT, and argv keeps scripts out of JSON', async () => {
+  const { validatePwshArgs, pwshArgv } = await import('../src/inline-tools.js')
+  assert.equal(validatePwshArgs({ command: 'Get-Date' }), undefined)
+  // The host bash/pwsh tools accept run_in_background; this tool must REFUSE
+  // it loudly instead of silently running foreground.
+  assert.match(validatePwshArgs({ command: 'x', run_in_background: true }), /unknown key/)
+  assert.match(validatePwshArgs({}), /exactly one/)
+  assert.match(validatePwshArgs({ command: 'x', script_path: 'y' }), /exactly one/)
+  assert.match(validatePwshArgs({ command: 'x', timeoutMs: -1 }), /timeoutMs/)
+  assert.match(validatePwshArgs('nope'), /expected an object/)
+  // argv shapes: -Command for short input, -File (never embedded JSON) for scripts.
+  assert.deepEqual(pwshArgv('pwsh.exe', { command: 'Get-Date' }).argv,
+    ['pwsh.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'Get-Date'])
+  const scripted = pwshArgv('pwsh.exe', { script_path: '/c/Users/x/run.ps1' }, { msysToWin: (p) => 'C:/Users/x/run.ps1' })
+  assert.deepEqual(scripted.argv, ['pwsh.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-File', 'C:/Users/x/run.ps1'])
+  assert.match(pwshArgv('pwsh.exe', {}).error, /exactly one/)
+})
+
+test('inline tools: host pwsh 7 resolution — well-known installs first, PATH last, 5.1 never', async () => {
+  const { resolveHostPwsh7 } = await import('../src/inline-tools.js')
+  // Non-Windows hosts publish nothing.
+  assert.equal(resolveHostPwsh7({ platform: 'darwin', exists: () => true, env: {} }), '')
+  const exists = (p) => p === 'P:\\PowerShell\\7\\pwsh.exe' || p === 'D:\\tools\\pwsh.exe'
+  // The well-known install beats the PATH hit.
+  assert.equal(resolveHostPwsh7({ platform: 'win32', exists, env: { ProgramFiles: 'P:', PATH: 'D:\\tools' } }), 'P:\\PowerShell\\7\\pwsh.exe')
+  // A PATH pwsh is still a tool when no install exists.
+  assert.equal(resolveHostPwsh7({ platform: 'win32', exists, env: { ProgramFiles: 'Q:', PATH: 'D:\\tools' } }), 'D:\\tools\\pwsh.exe')
+  // Absent everywhere -> '' (the tool is simply not published).
+  assert.equal(resolveHostPwsh7({ platform: 'win32', exists: () => false, env: {} }), '')
+})
+
+test('inline tools: the routing sentence is present and dialect-split', async () => {
+  const mod = await import('../src/inline-tools.js')
+  assert.match(mod.GITBASH_ROUTE_ADDENDUM, /Prefer this bash tool/)
+  assert.match(mod.GITBASH_ROUTE_ADDENDUM, /never embed `pwsh -Command`/)
+  // The MSYS sentence describes ONLY the dialect world; a delegate with the
+  // dialect off must not be told it lives in /c/.
+  assert.match(mod.GITBASH_MSYS_ADDENDUM, /\/c\/Users/)
+})
+
+test('inline tools: index.js wires the patch, the three switches, and the waterfall addendum', () => {
+  const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(hostSource, /mountInlineTools\(ctx, \{/)
+  assert.match(hostSource, /mountFastctx\(ctx, \{/)
+  assert.match(hostSource, /variantPresets: live\(Schema\.boolean\(\)\.default\(false\)\)/)
+  assert.match(hostSource, /pwshTool: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(hostSource, /fastctxTools: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM/)
+  // The desired set collapses to [] while the switch is off — the cleanup
+  // still runs, but nothing registers.
+  assert.match(hostSource, /readVariants && readVariants\(\) === true\s*\?\s*effectivePresetIds/)
+})
+
+// ── v0.35.0: the FastCtx bridge (gb_* additions) ───────────────────────────
+
+test('fastctx bridge: argument translation covers the fastctx shapes and leaves relative paths alone', async () => {
+  const { translateFastctxArgs } = await import('../src/fastctx-bridge.js')
+  const msysToWin = (p) => (p.startsWith('/') || p.startsWith('~') ? 'W:' + p : p)
+  const out = translateFastctxArgs(
+    { path: '/c/x', file_path: '~/.gitconfig', files: [{ path: '/c/y' }, { path: 'rel.md' }], pattern: '/c/*.md', limit: 5 },
+    msysToWin,
+  )
+  assert.equal(out.path, 'W:/c/x')
+  assert.equal(out.file_path, 'W:~/.gitconfig')
+  assert.equal(out.files[0].path, 'W:/c/y')
+  assert.equal(out.files[1].path, 'rel.md', 'a relative file stays relative')
+  assert.equal(out.pattern, 'W:/c/*.md')
+  assert.equal(out.limit, 5)
+  // No translator -> identity.
+  assert.deepEqual(translateFastctxArgs({ path: '/c/x' }, undefined), { path: '/c/x' })
+})
+
+test('fastctx bridge: rendering names the tool, applies the echo, and keeps the error header out of it', async () => {
+  const { renderFastctxResult } = await import('../src/fastctx-bridge.js')
+  assert.equal(
+    renderFastctxResult('grep', { content: [{ type: 'text', text: 'hit' }] }, (t) => '[' + t + ']'),
+    '[hit]',
+  )
+  assert.match(
+    renderFastctxResult('grep', { content: [{ type: 'text', text: 'boom' }], isError: true }, undefined),
+    /^gb_grep failed: boom$/,
+  )
+  assert.match(
+    renderFastctxResult('glob', { content: [] }, undefined),
+    /returned no content/,
+  )
+})
+
+test('fastctx bridge: payload probing prefers upstream, falls back to the pinned fork, or publishes nothing', async () => {
+  const { resolveFastctx, PAYLOAD_PACKAGES, FASTCTX_FILE_TOOLS, GB_PREFIX } = await import('../src/fastctx-bridge.js')
+  assert.equal(FASTCTX_FILE_TOOLS.length, 4)
+  assert.ok(FASTCTX_FILE_TOOLS.includes('inspect_local_file') && FASTCTX_FILE_TOOLS.includes('replace'))
+  assert.equal(GB_PREFIX, 'gb_')
+  assert.deepEqual(PAYLOAD_PACKAGES.map((p) => p.pkg), ['@fastctx/win32-x64', '@dsh-ops/fastctx-win32-x64'])
+  // An unresolvable profile publishes nothing and says so once.
+  assert.deepEqual(resolveFastctx({}, () => { throw new Error('no resolution') }), { file: '', source: '' })
+  // The pinned fork resolves when present on disk.
+  const seen = []
+  const hit = resolveFastctx({ baseUrl: '/x' }, (base) => {
+    const real = (specifier) => {
+      seen.push(specifier)
+      if (specifier === '@dsh-ops/fastctx-win32-x64/package.json') return '/root/node_modules/@dsh-ops/fastctx-win32-x64/package.json'
+      throw new Error('missing: ' + specifier)
+    }
+    const req = (specifier) => {
+      if (specifier === 'node:path') return { join: (...parts) => parts.join('/'), dirname: (p) => p.split('/package.json')[0] }
+      if (specifier === 'node:fs') return { existsSync: (p) => p.endsWith('bin/fastctx.exe') }
+      return real(specifier)
+    }
+    req.resolve = real
+    return req
+  })
+  assert.equal(hit.source, '@dsh-ops/fastctx-win32-x64')
+  assert.equal(hit.file, '/root/node_modules/@dsh-ops/fastctx-win32-x64/bin/fastctx.exe')
+})
+
+test('v0.35.0 card copy: every shipped dictionary carries all six new keys', () => {
+  const clientSource = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  const keys = ['variant.label', 'variant.hint', 'pwsh.label', 'pwsh.hint', 'fctx.label', 'fctx.hint']
+  for (const key of keys) {
+    // Count KEY shapes only ("key":): bare references like t("key") in the
+    // card UI share the quoted fragment but are not dictionary entries.
+    const count = clientSource.split('"' + key + '":').length - 1
+    assert.equal(count, 21, key + ' must exist in all 21 dictionaries (zh, en, 19 locales), got ' + count)
+  }
+  // The card renders both new sections.
+  assert.match(clientSource, /modeSection/)
+  assert.match(clientSource, /inlineSection/)
+  assert.match(clientSource, /writeField\("variantPresets"/)
+  assert.match(clientSource, /writeField\("pwshTool"/)
+  assert.match(clientSource, /writeField\("fastctxTools"/)
+})
+
+test('v0.35.0 package: the FastCtx payload rides optionalDependencies, pinned', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(pkg.optionalDependencies?.['@dsh-ops/fastctx-win32-x64'], '0.2.1')
+  // Still zero lifecycle scripts: the payload arrives through the normal
+  // dependency resolution, never a download step.
+  assert.equal(pkg.scripts?.postinstall, undefined)
+  assert.equal(pkg.scripts?.preinstall, undefined)
+})
+
+test('v0.35.0 default migration: a variant deployment default follows the switch through the OFFICIAL seam', async () => {
+  const { _internal } = await import('../src/index.js')
+  const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  // The mapping covers all four variants; code-gitbash maps to the RENAMED
+  // official id (ptc), matching what that variant has always described.
+  assert.deepEqual(_internal.VARIANT_DEFAULT_SUCCESSORS, {
+    'standard-gitbash': 'standard',
+    'minimal-gitbash': 'minimal',
+    'code-gitbash': 'ptc',
+    'cordis-gitbash': 'cordis',
+  })
+  // Official settings seam, the same namespace the preset picker writes.
+  assert.match(hostSource, /settings\.update\('agent-preset-registry', \{ selectedDefault: target \}\)/)
+  // Switch contract: keep-old-modes ON means nothing runs.
+  assert.match(hostSource, /if \(liveSettings\.variantPresets\(\) === true\) return/)
+  // Roster check before any write: a missing successor stands down.
+  assert.match(hostSource, /roster\.some\(\(row\) => row && row\.id === target\)/)
+  // Idempotent by observation: only a default still naming OUR variant migrates.
+  assert.match(hostSource, /!PRESET_IDS\.includes\(current\)\) return/)
+  // Read-back verification; a write that did not stick is reported, never claimed.
+  assert.match(hostSource, /default-preset migration did not stick/)
+  // The hard truth about pinned sessions is still told, with the official lock name.
+  assert.match(hostSource, /agent-preset\/locked/)
 })

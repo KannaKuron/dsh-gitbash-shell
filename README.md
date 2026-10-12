@@ -17,18 +17,37 @@
 **Windows 宿主上受限模式有一处重要例外——见下方
 [「安全语义:Windows 上的受限模式」](#安全语义windows-上的受限模式)**。
 
-安装本插件后:
+ 安装本插件后(v0.35.0 起,**默认**):
 
-| 模式 | preset id | 说明 |
-| --- | --- | --- |
-| 标准模式 · Git Bash | `standard-gitbash` | 完整编码 Agent,shell 为 Git Bash |
-| 极简模式 · Git Bash | `minimal-gitbash` | 持久 Git Bash 终端 + str_replace_editor |
-| PTC 模式 · Git Bash | `code-gitbash` | PTC(Code Mode SDK)+ Git Bash |
-| 创造模式 · Git Bash | `cordis-gitbash` | 自引用 Cordis 工具集 + Git Bash |
+- **官方四个模式直接获得 Git Bash**——模式列表保持官方原样,不再新增变体:
+  每个会话创建时,本插件探测该模式的工具面,「有 pwsh 无 bash」(官方 Windows
+  组合的形态)即在该会话内激活**官方原版 tool-bash 模块**(后台任务、审批升级、
+  渲染行为逐字节不变),并遮蔽「假 pwsh」——它的执行器在本机就是 Git Bash,
+  工具名却叫 pwsh,留着只会骗模型。
+- **bash 工具说明附带路由规则**:能用 Git Bash 就用 Git Bash;只有必须用到
+  Windows 原生能力(cmdlet/注册表/服务/WMI)时才用 PowerShell;bash 出错在
+  bash 里修,禁止在 bash 里嵌 `pwsh -Command`(变量展开与输出编码会在那里坏掉)。
+- **`gitbash_pwsh` 工具(默认开)**:一个真正的 PowerShell 7 工具,走宿主
+  `ctx.subprocess` 通道,用**系统安装的** pwsh 7 执行 Windows 原生操作;
+  `command`/`script_path` 二选一、严格拒绝未声明参数、输出强制 UTF-8、
+  超长输出截断并落盘。机器没装 pwsh 7 时不发布;仅完全权限会话可用。
+- **`gb_*` FastCtx 文件工具(默认开)**:`gb_inspect_local_file`/`gb_grep`/
+  `gb_glob`/`gb_replace`(Rust 实现:批量范围读取带 token 预算、grep 截断
+  标注、编码探测)。它们是官方 read/grep/glob/edit 的**补充**——官方工具接
+  文件沙箱,仍是默认推荐;已安装 dsh-ops 时本组自动让位。
 
-原有的 `标准模式`/`极简模式`/`PTC 模式`/`创造模式`(shipped,不可修改)在
-Git Bash host 下会拿到"暗示 PowerShell 语法的工具",请改用上面的变体;
-已装 dsh-ptc-cordis-preset 的话,`PTC 创造模式` 用户 preset 不受影响。
+四个「· Git Bash」**变体 preset 仍保留,默认关闭**(`variantPresets` 开关,
+设置卡可开):开启后注册 `standard-gitbash`/`minimal-gitbash`/`code-gitbash`/
+`cordis-gitbash` 四个变体并停用官方模式的工具补位(两者互斥)。
+
+> ⚠️ **从 0.34.x 升级**:变体默认关闭。**全局默认模式会自动迁移**——若你之前把默认设成
+> 某个变体(`*-gitbash`),升级后首次启动会经官方设置通道切到对应官方模式
+> (`standard-gitbash→standard`、`minimal-gitbash→minimal`、`code-gitbash→ptc`、
+> `cordis-gitbash→cordis`);打开 `variantPresets` 则不迁移、一切照旧。钉在变体上的
+> **旧会话**无法被迁移(官方 `agent-preset/locked` 锁定),请新建会话。
+
+原有 `标准模式`/`极简模式`/`PTC 模式`/`创造模式`(shipped)与
+dsh-ptc-cordis-preset 的 `PTC 创造模式` 用户 preset 均不受影响、自动受益。
 
 ### 宿主要求与 preset 对齐
 
@@ -69,11 +88,15 @@ bundle patch(`cordis.patch.yml`)应用三个改动:
    `<git-bash.exe> -c <command>`。沙箱策略/拒绝分类/后台任务/超时/设置节
    沿用官方实现;full-access 分支单独接 Git Bash(父类那里硬编码裸 `bash`);
    **Windows 上受限分支有一处例外,见下一节**;
-3. 插入 `gitbash-shell`(`dsh-gitbash-shell`):以**声明式注册**
-   (`ctx.agentPresets.register`,v0.32.0 起)提供上表 4 个 preset 变体——
+3. 插入 `gitbash-shell`(`dsh-gitbash-shell`):**v0.35.0 起双形态**——
+   默认(`variantPresets: false`)不注册变体,由**行内工具补位**
+   (`src/inline-tools.js`)在 `agent/created` 时按工具面激活官方
+   tool-bash 模块并遮蔽假 pwsh,另发布 `gitbash_pwsh` 与 `gb_*` 工具
+   (`src/fastctx-bridge.js`);开关打开时按 v0.32.0 起的**声明式注册**
+   (`ctx.agentPresets.register`)提供上表 4 个 preset 变体——
    行集是仓库里已提交、可 diff 的 JS 数据(`src/compositions.js`),**不再物化
    任何目录**;旧版本遗留在磁盘上的物化树,启动时仅当 marker 判定为
-   「未被用户改过」才单向清理,用户改过的绝不碰。
+   「未被用户改过」才单向清理,用户改过的绝不碰(清理不受开关影响)。
 
 **环境变量**:`bash.exe` 是 host 进程的直接子进程(不经 git-bash 登录壳),完整继承
 系统环境变量与 `DSH_*` 快照,和原来 pwsh 拿到的完全一致。

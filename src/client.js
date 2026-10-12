@@ -132,6 +132,12 @@ window.__ModuleLoader__.load({
 			"tools.resultFail": "失败",
 			"tools.installing": "安装中…",
 			"tools.updating": "更新中…",
+			"variant.label": "四个「·Git Bash」变体模式",
+			"variant.hint": "默认关闭:官方四个模式经行内工具补位直接获得 Git Bash,模式列表保持官方原样。开启后注册四个变体(standard/minimal/ptc/cordis · Git Bash)并停用官方模式的工具补位——两者互斥。钉在变体 id 上的旧会话在关闭升级后需重新选择模式;变更对新会话生效。",
+			"pwsh.label": "PowerShell 7 工具(gitbash_pwsh)",
+			"pwsh.hint": "默认开启:宿主 pwsh 工具在本机实际执行 Git Bash(名字是假的),会被自动遮蔽;本开关另发一个真正的 gitbash_pwsh,用系统安装的 PowerShell 7 执行 Windows 原生操作(注册表/服务/WMI),仅完全权限会话可用;机器没装 pwsh 7 时不发布。bash 能做的事一律优先 bash。",
+			"fctx.label": "FastCtx 文件工具(gb_*)",
+			"fctx.hint": "默认开启:发布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 实现:批量读取带 token 预算、编码探测)。它们是官方 read/grep/glob/edit 的补充——官方工具接文件沙箱,仍是默认推荐;检测到 dsh-ops(ops_* 工具)时本组自动让位。",
 		};
 
 		var en = {
@@ -200,6 +206,12 @@ window.__ModuleLoader__.load({
 			"tools.resultFail": "failed",
 			"tools.installing": "Installing…",
 			"tools.updating": "Updating…",
+			"variant.label": "The four \"· Git Bash\" variant presets",
+			"variant.hint": "Off by default: the four OFFICIAL presets get Git Bash through the inline tool patch and the roster stays official. On: register the four variants (standard/minimal/ptc/cordis · Git Bash) and stop patching the official presets — the two are exclusive. A session pinned to a variant id must re-select a preset after upgrading with the switch off. Applies to new sessions.",
+			"pwsh.label": "PowerShell 7 tool (gitbash_pwsh)",
+			"pwsh.hint": "On by default: the host pwsh tool actually runs Git Bash on this machine (a lying name) and is denied automatically; this switch instead publishes a REAL gitbash_pwsh over the system-installed PowerShell 7 for Windows-native work (registry/services/WMI), danger-full-access sessions only. Never published without pwsh 7 on the machine. Prefer bash for everything bash can do.",
+			"fctx.label": "FastCtx file tools (gb_*)",
+			"fctx.hint": "On by default: publishes gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batched reads with a token budget, encoding detection). ADDITIONS to the official read/grep/glob/edit — the official tools keep the file sandbox and stay the default. Stands down automatically when dsh-ops is installed.",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded
@@ -278,6 +290,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "فشل",
 				"tools.installing": "جارٍ التثبيت…",
 				"tools.updating": "جارٍ الترقية…",
+			"variant.label": "الأنماط الأربعة «· Git Bash»",
+			"variant.hint": "معطَّل افتراضيًا: تحصل الأنماط الرسمية الأربعة على Git Bash عبر ترقيع الأدوات داخل العملية وتبقى القائمة رسمية. عند التفعيل تُسجَّل الأنماط الأربعة المتغيّرة وتتوقف ترقيع الأنماط الرسمية — الاثنان حصريان متباددان. الجلسة المثبَّتة على معرّف متغيّر تحتاج إعادة اختيار بعد الترقية مع بقاء المفتاح معطَّلًا.",
+			"pwsh.label": "أداة PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "مُفعَّلة افتراضيًا: أداة pwsh الرسمية تشغّل Git Bash فعليًا على هذا الجهاز (اسم كاذب) فتُحجب تلقائيًا؛ يصدر هذا المفتاح أداة gitbash_pwsh حقيقية عبر PowerShell 7 المثبَّت على النظام لأعمال Windows الأصلية (السجل/الخدمات/WMI)، وللجلسات كاملة الصلاحيات فقط. لا تُنشر دون pwsh 7. فضّل bash لكل ما يستطيع فعله.",
+			"fctx.label": "أدوات ملفات FastCtx (gb_*)",
+			"fctx.hint": "مُفعَّلة افتراضيًا: تنشر gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: قراءات دفعية بميزانية رموز وكشف ترميز). إضافة إلى read/grep/glob/edit الرسمية التي تحتفظ بصندوق الرمل وتبقى الافتراض؛ تتوقف تلقائيًا عند تثبيت dsh-ops.",
 			},
 			/* locale: de */
 			"de": {
@@ -346,6 +364,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "fehlgeschlagen",
 				"tools.installing": "Wird installiert…",
 				"tools.updating": "Wird aktualisiert…",
+			"variant.label": "Die vier „· Git Bash“-Varianten",
+			"variant.hint": "Standardmäßig aus: Die vier OFFIZIELLEN Presets bekommen Git Bash durch den Inline-Tool-Patch, die Liste bleibt offiziell. Ein: Registriert die vier Varianten und stoppt das Patchen der offiziellen Presets — beides schließt sich aus. Eine am Varianten-Id festhängende Sitzung muss nach dem Upgrade neu wählen. Gilt für neue Sitzungen.",
+			"pwsh.label": "PowerShell-7-Werkzeug (gitbash_pwsh)",
+			"pwsh.hint": "Standardmäßig ein: Das pwsh-Werkzeug des Hosts läuft hier tatsächlich als Git Bash (ein täuschender Name) und wird automatisch abgelehnt; dieser Schalter veröffentlicht stattdessen ein ECHTES gitbash_pwsh über das installierte PowerShell 7 für Windows-natives Arbeiten (Registry/Dienste/WMI), nur mit voller Berechtigung. Ohne pwsh 7 wird nichts veröffentlicht. Bevorzuge bash für alles, was bash kann.",
+			"fctx.label": "FastCtx-Dateiwerkzeuge (gb_*)",
+			"fctx.hint": "Standardmäßig ein: Veröffentlicht gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: stapelweise Lesevorgänge mit Token-Budget, Kodierungserkennung). ERGÄNZUNGEN zu read/grep/glob/edit — die offiziellen Werkzeuge behalten die Datei-Sandbox und bleiben Standard. Weicht automatisch zurück, wenn dsh-ops installiert ist.",
 			},
 			/* locale: fr */
 			"fr": {
@@ -414,6 +438,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "échec",
 				"tools.installing": "Installation…",
 				"tools.updating": "Mise à jour…",
+			"variant.label": "Les quatre variantes « · Git Bash »",
+			"variant.hint": "Désactivé par défaut : les quatre presets OFFICIELS obtiennent Git Bash via le correctif d’outils en ligne et la liste reste officielle. Activé : enregistre les quatre variantes et cesse de corriger les presets officiels — les deux s’excluent. Une session attachée à un id de variante doit être rechoisie après mise à niveau. S’applique aux nouvelles sessions.",
+			"pwsh.label": "Outil PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "Activé par défaut : l’outil pwsh de l’hôte exécute en réalité Git Bash ici (un nom mensonger) et est refusé automatiquement ; ce commutateur publie un VRAI gitbash_pwsh via le PowerShell 7 installé pour les opérations natives Windows (registre/services/WMI), sessions en accès complet uniquement. Jamais publié sans pwsh 7. Préférez bash pour tout ce que bash sait faire.",
+			"fctx.label": "Outils de fichiers FastCtx (gb_*)",
+			"fctx.hint": "Activé par défaut : publie gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust : lectures par lots avec budget de tokens, détection d’encodage). COMPLÉMENTS aux outils officiels read/grep/glob/edit — ceux-ci conservent le bac à sable fichiers et restent la valeur par défaut. Se retire automatiquement si dsh-ops est installé.",
 			},
 			/* locale: hi */
 			"hi": {
@@ -482,6 +512,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "विफल",
 				"tools.installing": "इंस्टॉल हो रहा है…",
 				"tools.updating": "अपडेट हो रहा है…",
+			"variant.label": "चार «· Git Bash» वेरिएंट प्रीसेट",
+			"variant.hint": "डिफ़ॉल्ट रूप से बंद: चार आधिकारिक प्रीसेट को इनलाइन टूल पैच से Git Bash मिलता है और सूची आधिकारिक रहती है। चालू: चार वेरिएंट पंजीकृत होते हैं और आधिकारिक प्रीसेट पैचिंग रुक जाती है — दोनों परस्पर अनन्य हैं। वेरिएंट id पर बंधे सत्र को अपग्रेड के बाद दोबारा चुनना पड़ेगा। नए सत्रों पर लागू।",
+			"pwsh.label": "PowerShell 7 उपकरण (gitbash_pwsh)",
+			"pwsh.hint": "डिफ़ॉल्ट रूप से चालू: होस्ट का pwsh उपकरण इस मशीन पर वास्तव में Git Bash चलाता है (झूठा नाम) और स्वतः अवरुद्ध होता है; यह स्विच सिस्टम-इंस्टॉल्ड PowerShell 7 पर असली gitbash_pwsh प्रकाशित करता है — Windows-नेटिव कार्य (रजिस्ट्री/सेवाएँ/WMI) के लिए, केवल पूर्ण-अधिकार सत्रों में। pwsh 7 बिना कभी प्रकाशित नहीं। जो bash कर सकता है उसके लिए bash ही चुनें।",
+			"fctx.label": "FastCtx फ़ाइल उपकरण (gb_*)",
+			"fctx.hint": "डिफ़ॉल्ट रूप से चालू: gb_inspect_local_file / gb_grep / gb_glob / gb_replace प्रकाशित करता है (Rust: टोकन बजट के साथ बैच रीड, एनकोडिंग पहचान)। आधिकारिक read/grep/glob/edit के अतिरिक्त — आधिकारिक उपकरण फ़ाइल सैंडबॉक्स रखते हैं और डिफ़ॉल्ट बने रहते हैं। dsh-ops इंस्टॉल होने पर स्वतः पीछे हट जाता है।",
 			},
 			/* locale: id */
 			"id": {
@@ -550,6 +586,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "gagal",
 				"tools.installing": "Memasang…",
 				"tools.updating": "Memperbarui…",
+			"variant.label": "Empat preset varian «· Git Bash»",
+			"variant.hint": "Nonaktif secara bawaan: empat preset RESMI mendapat Git Bash melalui patch alat inline dan daftar tetap resmi. Aktif: mendaftarkan empat varian dan berhenti mem-patch preset resmi — keduanya saling eksklusif. Sesi yang terikat pada id varian harus memilih ulang setelah peningkatan. Berlaku untuk sesi baru.",
+			"pwsh.label": "Alat PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "Aktif secara bawaan: alat pwsh host sebenarnya menjalankan Git Bash di mesin ini (nama palsu) dan otomatis ditolak; sakelar ini menerbitkan gitbash_pwsh ASLI melalui PowerShell 7 terinstal sistem untuk pekerjaan native Windows (registri/layanan/WMI), hanya sesi akses penuh. Tidak pernah diterbitkan tanpa pwsh 7. Utamakan bash untuk semua yang bisa dilakukan bash.",
+			"fctx.label": "Alat berkas FastCtx (gb_*)",
+			"fctx.hint": "Aktif secara bawaan: menerbitkan gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: pembacaan batch dengan anggaran token, deteksi enkode). TAMBAHAN untuk read/grep/glob/edit resmi — alat resmi tetap memiliki sandbox berkas dan menjadi bawaan. Mundur otomatis saat dsh-ops terinstal.",
 			},
 			/* locale: it */
 			"it": {
@@ -618,6 +660,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "non riuscito",
 				"tools.installing": "Installazione…",
 				"tools.updating": "Aggiornamento…",
+			"variant.label": "Le quattro varianti «· Git Bash»",
+			"variant.hint": "Disattivo per impostazione predefinita: i quattro preset UFFICIALI ottengono Git Bash tramite la patch inline degli strumenti e l’elenco resta ufficiale. Attivo: registra le quattro varianti e smette di correggere i preset ufficiali — i due si escludono. Una sessione legata a un id di variante va riscelta dopo l’aggiornamento. Vale per le nuove sessioni.",
+			"pwsh.label": "Strumento PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "Attivo per impostazione predefinita: lo strumento pwsh dell’host esegue davvero Git Bash su questa macchina (un nome ingannevole) e viene negato automaticamente; questo interruttore pubblica un VERO gitbash_pwsh tramite PowerShell 7 installato per il lavoro nativo Windows (registro/servizi/WMI), solo sessioni ad accesso completo. Mai pubblicato senza pwsh 7. Preferisci bash per tutto ciò che bash sa fare.",
+			"fctx.label": "Strumenti file FastCtx (gb_*)",
+			"fctx.hint": "Attivo per impostazione predefinita: pubblica gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: letture in batch con budget di token, rilevamento della codifica). AGGIUNTE ai read/grep/glob/edit ufficiali — quelli ufficiali mantengono la sandbox dei file e restano la scelta predefinita. Si ritira automaticamente con dsh-ops installato.",
 			},
 			/* locale: ja */
 			"ja": {
@@ -686,6 +734,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "失敗",
 				"tools.installing": "インストール中…",
 				"tools.updating": "更新中…",
+			"variant.label": "4 つの「· Git Bash」バリアント",
+			"variant.hint": "既定はオフ:公式 4 プリセットはインラインツールパッチで Git Bash を得られ、一覧は公式のまま。オンにすると 4 バリアントを登録し、公式プリセットへのパッチを停止(両者は排他)。バリアント id に固定されたセッションはアップグレード後に再選択が必要。新規セッションに適用。",
+			"pwsh.label": "PowerShell 7 ツール(gitbash_pwsh)",
+			"pwsh.hint": "既定はオン:ホストの pwsh ツールはこのマシンでは実際に Git Bash を実行する(偽の名前)ため自動で拒否されます。このスイッチは代わりに、システムの PowerShell 7 で Windows ネイティブ作業(レジストリ/サービス/WMI)を行う本物の gitbash_pwsh を公開します(完全権限セッションのみ)。pwsh 7 が無ければ公開しません。bash でできることは bash を優先。",
+			"fctx.label": "FastCtx ファイルツール(gb_*)",
+			"fctx.hint": "既定はオン:gb_inspect_local_file / gb_grep / gb_glob / gb_replace を公開(Rust:トークン予算付き一括読み取り、エンコーディング検出)。公式 read/grep/glob/edit への追加であり、公式ツールはファイルサンドボックスを保ち既定の推奨のまま。dsh-ops が入ると自動で退きます。",
 			},
 			/* locale: ko */
 			"ko": {
@@ -754,6 +808,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "실패",
 				"tools.installing": "설치 중…",
 				"tools.updating": "업데이트 중…",
+			"variant.label": "네 개의 «· Git Bash» 변형 프리셋",
+			"variant.hint": "기본 꺼짐: 공식 4개 프리셋이 인라인 도구 패치로 Git Bash를 얻으며 목록은 공식 그대로입니다. 켜면 4개 변형을 등록하고 공식 프리셋 패칭을 중단합니다(상호 배타). 변형 id 에 고정된 세션은 업그레이드 후 다시 선택해야 합니다. 새 세션에 적용.",
+			"pwsh.label": "PowerShell 7 도구(gitbash_pwsh)",
+			"pwsh.hint": "기본 켜짐: 호스트의 pwsh 도구는 이 머신에서 실제로 Git Bash를 실행합니다(거짓 이름), 자동으로 거부됩니다. 이 스위치는 시스템에 설치된 PowerShell 7으로 Windows 네이티브 작업(레지스트리/서비스/WMI)을 수행하는 진짜 gitbash_pwsh를 대신 공개합니다(전체 권한 세션 전용). pwsh 7이 없으면 공개하지 않습니다. bash 가 할 수 있는 일은 bash 우선.",
+			"fctx.label": "FastCtx 파일 도구(gb_*)",
+			"fctx.hint": "기본 켜짐: gb_inspect_local_file / gb_grep / gb_glob / gb_replace 를 공개합니다(Rust: 토큰 예산 기반 일괄 읽기, 인코딩 감지). 공식 read/grep/glob/edit 의 추가이며 공식 도구는 파일 샌드박스를 유지하고 기본 권장입니다. dsh-ops 가 설치되면 자동으로 물러납니다.",
 			},
 			/* locale: nl */
 			"nl": {
@@ -822,6 +882,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "mislukt",
 				"tools.installing": "Installeren…",
 				"tools.updating": "Bijwerken…",
+			"variant.label": "De vier «· Git Bash»-varianten",
+			"variant.hint": "Standaard uit: de vier OFFICIËLE presets krijgen Git Bash via de inline-toolpatch en de lijst blijft officieel. Aan: registreert de vier varianten en stopt het patchen van de officiële presets — sluit elkaar uit. Een sessie die aan een variant-id vastzit moet na een upgrade opnieuw kiezen. Geldt voor nieuwe sessies.",
+			"pwsh.label": "PowerShell 7-hulpmiddel (gitbash_pwsh)",
+			"pwsh.hint": "Standaard aan: het pwsh-hulpmiddel van de host draait hier echt Git Bash (een leugenaam) en wordt automatisch geweigerd; deze schakelaar publiceert in plaats daarvan een ECHT gitbash_pwsh via de geïnstalleerde PowerShell 7 voor Windows-natief werk (register/services/WMI), alleen met volledige rechten. Nooit gepubliceerd zonder pwsh 7. Geef bash de voorkeur voor alles wat bash kan.",
+			"fctx.label": "FastCtx-bestandshulpmiddelen (gb_*)",
+			"fctx.hint": "Standaard aan: publiceert gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: gelezen in batches met tokenbudget, coderingsdetectie). AANVULLINGEN op read/grep/glob/edit — de officiële hulpmiddelen houden de bestandssandbox en blijven de standaard. Trekt zich automatisch terug wanneer dsh-ops is geïnstalleerd.",
 			},
 			/* locale: pl */
 			"pl": {
@@ -890,6 +956,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "niepowodzenie",
 				"tools.installing": "Instalowanie…",
 				"tools.updating": "Aktualizowanie…",
+			"variant.label": "Cztery warianty «· Git Bash»",
+			"variant.hint": "Domyślnie wyłączone: cztery OFICJALNE presety dostają Git Bash przez inline-owy patch narzędzi, a lista pozostaje oficjalna. Włączenie rejestruje cztery warianty i zatrzymuje patchowanie oficjalnych presetów — opcje wykluczają się. Sesja przypięta do id wariantu musi zostać wybrana ponownie po aktualizacji. Dotyczy nowych sesji.",
+			"pwsh.label": "Narzędzie PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "Domyślnie włączone: narzędzie pwsh hosta uruchamia tutaj naprawdę Git Bash (okłamująca nazwa) i jest automatycznie odrzucane; ten przełącznik publikuje w zamian PRAWDZIWE gitbash_pwsh przez zainstalowany PowerShell 7 do natywnej pracy Windows (rejestr/usługi/WMI), tylko sesje z pełnymi uprawnieniami. Nigdy bez pwsh 7 na maszynie. Preferuj bash do wszystkiego, co bash potrafi.",
+			"fctx.label": "Narzędzia plików FastCtx (gb_*)",
+			"fctx.hint": "Domyślnie włączone: publikuje gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: odczyty wsadowe z budżetem tokenów, wykrywanie kodowania). DODATKI do oficjalnych read/grep/glob/edit — oficjalne narzędzia zachowują sandbox plików i pozostają domyślne. Wycofuje się automatycznie, gdy zainstalowano dsh-ops.",
 			},
 			/* locale: pt */
 			"pt": {
@@ -958,6 +1030,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "falhou",
 				"tools.installing": "A instalar…",
 				"tools.updating": "A atualizar…",
+			"variant.label": "As quatro variantes «· Git Bash»",
+			"variant.hint": "Desativado por padrão: os quatro presets OFICIAIS recebem Git Bash pelo patch de ferramentas em linha e a lista permanece oficial. Ativado: registra as quatro variantes e deixa de corrigir os presets oficiais — mutuamente exclusivos. Uma sessão presa a um id de variante precisa ser reescolhida após a atualização. Vale para novas sessões.",
+			"pwsh.label": "Ferramenta PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "Ativado por padrão: a ferramenta pwsh do host realmente executa Git Bash nesta máquina (um nome mentiroso) e é negada automaticamente; este interruptor publica um gitbash_pwsh VERDADEIRO via PowerShell 7 instalado no sistema para trabalho nativo do Windows (registro/serviços/WMI), apenas em sessões de acesso total. Nunca publicado sem pwsh 7. Prefira bash para tudo o que o bash faz.",
+			"fctx.label": "Ferramentas de arquivos FastCtx (gb_*)",
+			"fctx.hint": "Ativado por padrão: publica gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: leituras em lote com orçamento de tokens, detecção de codificação). ADIÇÕES aos read/grep/glob/edit oficiais — os oficiais mantêm o sandbox de arquivos e continuam o padrão. Recua automaticamente quando o dsh-ops está instalado.",
 			},
 			/* locale: ru */
 			"ru": {
@@ -1026,6 +1104,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "ошибка",
 				"tools.installing": "Установка…",
 				"tools.updating": "Обновление…",
+			"variant.label": "Четыре варианта «· Git Bash»",
+			"variant.hint": "По умолчанию выключено: четыре ОФИЦИАЛЬНЫХ пресета получают Git Bash через встроенный патч инструментов, список остаётся официальным. Включено — регистрирует четыре варианта и прекращает патчить официальные пресеты (взаимоисключающе). Сессия, привязанная к id варианта, после обновления должна выбрать пресет заново. Действует для новых сессий.",
+			"pwsh.label": "Инструмент PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "По умолчанию включено: инструмент pwsh хоста здесь на самом деле запускает Git Bash (лживое имя) и автоматически отклоняется; этот переключатель вместо него публикует НАСТОЯЩИЙ gitbash_pwsh через установленный PowerShell 7 для нативной работы Windows (реестр/службы/WMI), только в сессиях с полным доступом. Без pwsh 7 не публикуется. Для всего, что умеет bash, предпочитайте bash.",
+			"fctx.label": "Файловые инструменты FastCtx (gb_*)",
+			"fctx.hint": "По умолчанию включено: публикует gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: пакетные чтения с бюджетом токенов, определение кодировки). ДОПОЛНЕНИЯ к официальным read/grep/glob/edit — официальные сохраняют файловую песочницу и остаются выбором по умолчанию. Автоматически отступает при установленном dsh-ops.",
 			},
 			/* locale: sv */
 			"sv": {
@@ -1094,6 +1178,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "misslyckades",
 				"tools.installing": "Installerar…",
 				"tools.updating": "Uppdaterar…",
+			"variant.label": "De fyra «· Git Bash»-varianterna",
+			"variant.hint": "Av som standard: de fyra OFFICIELLA presetten får Git Bash via inline-verktygspatchen och listan förblir officiell. På: registrerar de fyra varianterna och slutar patcha de officiella presetten — ömsesidigt uteslutande. En session fastnåld på ett variant-id måste väljas om efter uppgradering. Gäller nya sessioner.",
+			"pwsh.label": "PowerShell 7-verktyg (gitbash_pwsh)",
+			"pwsh.hint": "På som standard: hostens pwsh-verktyg kör här i verkligheten Git Bash (ett lögnaktigt namn) och nekas automatiskt; denna switch publicerar i stället ett ÄKTA gitbash_pwsh via det installerade PowerShell 7 för Windows-inhemskt arbete (register/tjänster/WMI), endast sessioner med full behörighet. Publiceras aldrig utan pwsh 7. Föredra bash för allt bash kan.",
+			"fctx.label": "FastCtx-filverktyg (gb_*)",
+			"fctx.hint": "På som standard: publicerar gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batchläsningar med tokenbudget, kodningsdetektering). TILLÄGG till de officiella read/grep/glob/edit — de officiella behåller filsandlådan och förblir standard. Drar sig automatiskt tillbaka när dsh-ops är installerat.",
 			},
 			/* locale: th */
 			"th": {
@@ -1162,6 +1252,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "ล้มเหลว",
 				"tools.installing": "กำลังติดตั้ง…",
 				"tools.updating": "กำลังอัปเกรด…",
+			"variant.label": "พรีเซ็ตย่อย «· Git Bash» ทั้งสี่",
+			"variant.hint": "ปิดตามค่าเริ่มต้น: พรีเซ็ตทางการทั้งสี่ได้ Git Bash ผ่านแพตช์เครื่องมือในตัว และรายการยังเป็นทางการ เปิด: ลงทะเบียนสี่ตัวย่อยและหยุดแพตช์พรีเซ็ตทางการ — ทั้งสองไม่ใช้ร่วมกันได้ เซสชันที่ตรึงกับ id ย่อยต้องเลือกใหม่หลังอัปเกรด ใช้กับเซสชันใหม่",
+			"pwsh.label": "เครื่องมือ PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "เปิดตามค่าเริ่มต้น: เครื่องมือ pwsh ของโฮสต์บนเครื่องนี้รัน Git Bash จริง ๆ (ชื่อหลอก) และถูกปฏิเสธอัตโนมัติ; สวิตช์นี้เผยแพร่ gitbash_pwsh ตัวจริงผ่าน PowerShell 7 ที่ติดตั้งในระบบสำหรับงานเนทีฟของ Windows (รีจิสทรี/เซอร์วิส/WMI) เฉพาะเซสชันสิทธิ์เต็ม ไม่เผยแพร่หากไม่มี pwsh 7 ให้ใช้ bash เป็นอันดับแรกกับทุกอย่างที่ bash ทำได้",
+			"fctx.label": "เครื่องมือไฟล์ FastCtx (gb_*)",
+			"fctx.hint": "เปิดตามค่าเริ่มต้น: เผยแพร่ gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: อ่านเป็นชุดพร้อมงบ token, ตรวจจับ encoding) เป็นส่วนเสริมของ read/grep/glob/edit ทางการ — เครื่องมือทางการยังมี sandbox ไฟล์และเป็นค่าเริ่มต้น ถอยอัตโนมัติเมื่อติดตั้ง dsh-ops",
 			},
 			/* locale: tr */
 			"tr": {
@@ -1230,6 +1326,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "başarısız",
 				"tools.installing": "Kuruluyor…",
 				"tools.updating": "Güncelleniyor…",
+			"variant.label": "Dört «· Git Bash» varyantı",
+			"variant.hint": "Varsayılan olarak kapalı: dört RESMİ preset, satır içi araç yamasıyla Git Bash alır; liste resmi kalır. Açık: dört varyantı kaydeder ve resmi presetleri yamalamayı bırakır — ikisi birbirini dışlar. Bir varyant kimliğine bağlı oturum yükseltmeden sonra yeniden seçilmelidir. Yeni oturumlar için geçerlidir.",
+			"pwsh.label": "PowerShell 7 aracı (gitbash_pwsh)",
+			"pwsh.hint": "Varsayılan açık: ana makinenin pwsh aracı bu makinede aslında Git Bash çalıştırır (yalancı bir ad) ve otomatik olarak reddedilir; bu anahtar bunun yerine Windows-yerel işler (kayıt defteri/hizmetler/WMI) için sistemde kurulu PowerShell 7 üzerinden GERÇEK gitbash_pwsh yayımlar, yalnızca tam yetkili oturumlarda. pwsh 7 yoksa asla yayımlanmaz. bash’in yapabildiği her şey için bash’i tercih edin.",
+			"fctx.label": "FastCtx dosya araçları (gb_*)",
+			"fctx.hint": "Varsayılan açık: gb_inspect_local_file / gb_grep / gb_glob / gb_replace yayımlar (Rust: token bütçeli toplu okumalar, kodlama algılama). Resmî read/grep/glob/edit’e EKLER — resmî araçlar dosya kum havuzunu korur ve varsayılan kalır. dsh-ops kurulu olduğunda otomatik olarak geri çekilir.",
 			},
 			/* locale: vi */
 			"vi": {
@@ -1298,6 +1400,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "thất bại",
 				"tools.installing": "Đang cài…",
 				"tools.updating": "Đang nâng cấp…",
+			"variant.label": "Bốn biến thể «· Git Bash»",
+			"variant.hint": "Mặc định tắt: bốn preset CHÍNH THỨC nhận Git Bash qua bản vá công cụ nội tuyến và danh sách vẫn chính thức. Bật: đăng ký bốn biến thể và ngừng vá các preset chính thức — hai bên loại trừ nhau. Phiên đang ghim vào id biến thể cần chọn lại sau nâng cấp. Áp dụng cho phiên mới.",
+			"pwsh.label": "Công cụ PowerShell 7 (gitbash_pwsh)",
+			"pwsh.hint": "Mặc định bật: công cụ pwsh của host trên máy này thực chất chạy Git Bash (tên nói dối) và bị từ chối tự động; công tắc này thay vào đó phát hành gitbash_pwsh THẬT qua PowerShell 7 cài trong hệ thống cho công việc gốc Windows (registry/dịch vụ/WMI), chỉ phiên đầy đủ quyền. Không bao giờ phát hành khi thiếu pwsh 7. Ưu tiên bash cho mọi thứ bash làm được.",
+			"fctx.label": "Công cụ tệp FastCtx (gb_*)",
+			"fctx.hint": "Mặc định bật: phát hành gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: đọc theo lô có ngân sách token, phát hiện mã hóa). BỔ SUNG cho read/grep/glob/edit chính thức — công cụ chính thức giữ sandbox tệp và vẫn là mặc định. Tự rút khi dsh-ops được cài.",
 			},
 			/* locale: zh-hk */
 			"zh-hk": {
@@ -1366,6 +1474,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "失敗",
 				"tools.installing": "安裝緊…",
 				"tools.updating": "升級緊…",
+			"variant.label": "四個「·Git Bash」變體模式",
+			"variant.hint": "預設關閉:官方四個模式經行內工具補位直接獲得 Git Bash,模式列表保持官方原樣。開啟後註冊四個變體並停用官方模式的工具補位——兩者互斥。釘在變體 id 的舊會話在關閉升級後需重新選擇模式;變更對新會話生效。",
+			"pwsh.label": "PowerShell 7 工具(gitbash_pwsh)",
+			"pwsh.hint": "預設開啟:宿主 pwsh 工具在本機實際執行 Git Bash(名字是假的),會被自動遮蔽;本開關另發一個真正的 gitbash_pwsh,用系統安裝的 PowerShell 7 執行 Windows 原生操作(登錄檔/服務/WMI),僅完全權限會話可用;機器沒裝 pwsh 7 時不發布。bash 能做的事一律優先 bash。",
+			"fctx.label": "FastCtx 檔案工具(gb_*)",
+			"fctx.hint": "預設開啟:發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
 			},
 			/* locale: zh-mo */
 			"zh-mo": {
@@ -1434,6 +1548,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "失敗",
 				"tools.installing": "安裝緊…",
 				"tools.updating": "升級緊…",
+			"variant.label": "四個「·Git Bash」變體模式",
+			"variant.hint": "預設關閉:官方四個模式經行內工具補位直接獲得 Git Bash,模式列表保持官方原樣。開啟後註冊四個變體並停用官方模式的工具補位——兩者互斥。釘在變體 id 的舊會話在關閉升級後需重新選擇模式;變更對新會話生效。",
+			"pwsh.label": "PowerShell 7 工具(gitbash_pwsh)",
+			"pwsh.hint": "預設開啟:宿主 pwsh 工具在本機實際執行 Git Bash(名字是假的),會被自動遮蔽;本開關另發一個真正的 gitbash_pwsh,用系統安裝的 PowerShell 7 執行 Windows 原生操作(登錄檔/服務/WMI),僅完全權限會話可用;機器沒裝 pwsh 7 時不發布。bash 能做的事一律優先 bash。",
+			"fctx.label": "FastCtx 檔案工具(gb_*)",
+			"fctx.hint": "預設開啟:發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
 			},
 			/* locale: zh-tw */
 			"zh-tw": {
@@ -1502,6 +1622,12 @@ window.__ModuleLoader__.load({
 				"tools.resultFail": "失敗",
 				"tools.installing": "安裝中…",
 				"tools.updating": "更新中…",
+			"variant.label": "四個「·Git Bash」變體模式",
+			"variant.hint": "預設關閉:官方四個模式經行內工具補位直接獲得 Git Bash,模式列表保持官方原樣。開啟後註冊四個變體並停用官方模式的工具補位——兩者互斥。釘在變體 id 的舊會話在關閉升級後需重新選擇模式;變更對新會話生效。",
+			"pwsh.label": "PowerShell 7 工具(gitbash_pwsh)",
+			"pwsh.hint": "預設開啟:宿主 pwsh 工具在本機實際執行 Git Bash(名字是假的),會被自動遮蔽;本開關另發一個真正的 gitbash_pwsh,用系統安裝的 PowerShell 7 執行 Windows 原生操作(登錄檔/服務/WMI),僅完全權限會話可用;機器沒裝 pwsh 7 時不發布。bash 能做的事一律優先 bash。",
+			"fctx.label": "FastCtx 檔案工具(gb_*)",
+			"fctx.hint": "預設開啟:發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
 			},
 		};
 
@@ -1997,6 +2123,48 @@ window.__ModuleLoader__.load({
 			   its own row. The value stays on THIS row — the peer card binds the
 			   same field through configForms — so the buttons write through
 			   writeField exactly like every other row on this card. */
+			var variantOn = snap.value.variantPresets === true;
+			var pwshOn = snap.value.pwshTool !== false;
+			var fctxOn = snap.value.fastctxTools !== false;
+
+			var modeSection = E("div", { className: "gb-section" },
+				E("div", { className: "gb-sectionTitle" }, t("variant.label")),
+				E("div", { className: "gb-stack" },
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("variant.label") + ":"),
+					E("span", { className: "gb-rowValue" }, variantOn ? t("state.on") : t("state.off")),
+				),
+				E("div", { className: "gb-seg" },
+					E("button", { type: "button", className: "gb-segBtn" + (variantOn ? " gb-segActive" : ""), onClick: function () { if (!variantOn) writeField("variantPresets", true); } }, t("switch.on")),
+					E("button", { type: "button", className: "gb-segBtn" + (!variantOn ? " gb-segActive" : ""), onClick: function () { if (variantOn) writeField("variantPresets", false); } }, t("switch.off")),
+				),
+				E("p", { className: "gb-hint" }, t("variant.hint")),
+				),
+			);
+
+			var inlineSection = E("div", { className: "gb-section" },
+				E("div", { className: "gb-stack" },
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("pwsh.label") + ":"),
+					E("span", { className: "gb-rowValue" }, pwshOn ? t("state.on") : t("state.off")),
+				),
+				E("div", { className: "gb-seg" },
+					E("button", { type: "button", className: "gb-segBtn" + (pwshOn ? " gb-segActive" : ""), onClick: function () { if (!pwshOn) writeField("pwshTool", true); } }, t("switch.on")),
+					E("button", { type: "button", className: "gb-segBtn" + (!pwshOn ? " gb-segActive" : ""), onClick: function () { if (pwshOn) writeField("pwshTool", false); } }, t("switch.off")),
+				),
+				E("p", { className: "gb-hint" }, t("pwsh.hint")),
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("fctx.label") + ":"),
+					E("span", { className: "gb-rowValue" }, fctxOn ? t("state.on") : t("state.off")),
+				),
+				E("div", { className: "gb-seg" },
+					E("button", { type: "button", className: "gb-segBtn" + (fctxOn ? " gb-segActive" : ""), onClick: function () { if (!fctxOn) writeField("fastctxTools", true); } }, t("switch.on")),
+					E("button", { type: "button", className: "gb-segBtn" + (!fctxOn ? " gb-segActive" : ""), onClick: function () { if (fctxOn) writeField("fastctxTools", false); } }, t("switch.off")),
+				),
+				E("p", { className: "gb-hint" }, t("fctx.hint")),
+				),
+			);
+
 			var peerSnap = { status: "unavailable" };
 			try {
 				if (peer && typeof peer.getSnapshot === "function") peerSnap = peer.getSnapshot();
@@ -2269,6 +2437,8 @@ window.__ModuleLoader__.load({
 
 			var bodyContent = E("div", { className: "gb-body" },
 				dialectSection,
+				modeSection,
+				inlineSection,
 				terminalSection,
 				toolsSection,
 				dedupeSection,

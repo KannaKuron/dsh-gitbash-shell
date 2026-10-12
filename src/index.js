@@ -56,6 +56,8 @@ import { fileURLToPath } from 'node:url'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
+import { GITBASH_MSYS_ADDENDUM, GITBASH_ROUTE_ADDENDUM, mountInlineTools, resolveHostPwsh7 } from './inline-tools.js'
+import { mountFastctx } from './fastctx-bridge.js'
 
 /**
  * The executor base class's own Config schema, when this deployment has it.
@@ -118,6 +120,21 @@ const MARKER_FILE = '.plugin-managed.json'
 
 /** Default preset ids this plugin materializes, in roster order (configurable). */
 export const PRESET_IDS = ['standard-gitbash', 'minimal-gitbash', 'code-gitbash', 'cordis-gitbash']
+
+/**
+ * Variant preset id -> the OFFICIAL successor id, for the deployment-default
+ * migration (v0.35.0). Every target is verified against the LIVE roster
+ * before any write — the official ids renamed once already (code→ptc), so a
+ * missing successor stands the migration down instead of writing an unknown
+ * id. `code-gitbash` deliberately maps to `ptc`: that variant has described
+ * the official PTC mode since dsh 0.1.2 renamed it.
+ */
+export const VARIANT_DEFAULT_SUCCESSORS = Object.freeze({
+  'standard-gitbash': 'standard',
+  'minimal-gitbash': 'minimal',
+  'code-gitbash': 'ptc',
+  'cordis-gitbash': 'cordis',
+})
 
 /**
  * The variant dsh-ptc-cordis-preset already covers while cooperating: its
@@ -474,6 +491,30 @@ export const Config = Schema === null ? undefined : Schema.object({
    * changing it on either side changes it here.
    */
   suppressPeerCordis: live(Schema.boolean().default(false)),
+  /**
+   * Serve the four `* · Git Bash` VARIANT presets (v0.34.x behaviour) instead
+   * of relying on the inline tool patch (v0.35.0). Default OFF for every user
+   * — new and existing — per the owner's explicit call: the official presets
+   * carry Git Bash through the per-agent tool patch, the roster stays the
+   * official four, and the variants remain one switch away for anyone who
+   * wants the duplicated roster back. OFF also stops the reconcile from
+   * registering variants; a session pinned to a variant id must re-select an
+   * official preset (the roster flip is announced in the CHANGELOG).
+   */
+  variantPresets: live(Schema.boolean().default(false)),
+  /**
+   * Publish `gitbash_pwsh` — a REAL PowerShell 7 tool over ctx.subprocess —
+   * while the host `pwsh` tool is denied (its executor is Git Bash on this
+   * host). Default ON; requires pwsh 7 on the machine (never a bundled
+   * payload) and danger-full-access per session.
+   */
+  pwshTool: live(Schema.boolean().default(true)),
+  /**
+   * Publish the FastCtx file tools (`gb_*`) through the local MCP bridge.
+   * Default ON; Windows-only payload, stands down entirely when dsh-ops is
+   * present (its ops_* tools already cover the same ground).
+   */
+  fastctxTools: live(Schema.boolean().default(true)),
 })
 
 /** Read one Config value across eras: Volatile ref (>= 0.1.7) or plain value. */
@@ -533,6 +574,13 @@ function makeLiveReader(ctx, config) {
       adoptSidebar: valueOf(config.adoptSidebar) !== false,
       // Default ON (v0.29.0): the official terminal is ours unless opted out.
       autoTerminalShell: valueOf(config.autoTerminalShell) !== false,
+      // Default OFF (v0.35.0): the official presets carry Git Bash through the
+      // inline tool patch; the variant roster is opt-in.
+      variantPresets: valueOf(config.variantPresets) === true,
+      // Default ON (v0.35.0): the pwsh replacement fills the denied host tool.
+      pwshTool: valueOf(config.pwshTool) !== false,
+      // Default ON (v0.35.0): the FastCtx bridge stands down when dsh-ops is present.
+      fastctxTools: valueOf(config.fastctxTools) !== false,
     }
   }
   return {
@@ -540,6 +588,9 @@ function makeLiveReader(ctx, config) {
     posix: () => dialect().posixPaths === true,
     adoptSidebar: () => dialect().adoptSidebar !== false,
     autoTerminalShell: () => dialect().autoTerminalShell !== false,
+    variantPresets: () => (hasConfig ? valueOf(config.variantPresets) === true : false),
+    pwshTool: () => (hasConfig ? valueOf(config.pwshTool) !== false : true),
+    fastctxTools: () => (hasConfig ? valueOf(config.fastctxTools) !== false : true),
     // Default OFF: only an explicit true asks for deduplication.
     suppressPeerCordis: () => (hasConfig ? valueOf(config.suppressPeerCordis) === true : false),
   }
@@ -1742,7 +1793,7 @@ async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, python
  *   variant's PTY row reads it once per registration (issue #15).
  * @returns {Promise<void>} resolves once the first reconcile finished.
  */
-async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolution) {
+async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolution, readVariants) {
   cleanupLegacyTrees(presetIds)
   const gitBashActive = process.platform === 'win32'
   const skillsDir = await resolveSkillsDir()
@@ -1758,7 +1809,12 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   let registeredPython = false
   let serial = Promise.resolve()
 
-  const desired = () => effectivePresetIds(presetIds, { suppress: readSuppress(), peerGitBash })
+  // v0.35.0: the variant roster is opt-in (`variantPresets`, default OFF).
+  // OFF means an EMPTY desired set — the cleanup above still runs, so a
+  // legacy materialized tree never survives just because the switch is off.
+  const desired = () => (readVariants && readVariants() === true
+    ? effectivePresetIds(presetIds, { suppress: readSuppress(), peerGitBash })
+    : [])
 
   const reconcile = () => {
     serial = serial.then(async () => {
@@ -1811,7 +1867,10 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   }
 
   await reconcile()
-  console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')' + (hostExtras.timeContext || hostExtras.toolSchedule
+  console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')'
+    + (live.size === 0 ? ' — variantPresets is off: the official presets carry Git Bash through the inline tool patch (see the CHANGELOG)'
+      : '')
+    + (hostExtras.timeContext || hostExtras.toolSchedule
     ? ' [dsh 0.2.1 additions: ' + (hostExtras.timeContext ? 'time-context' : '') + (hostExtras.timeContext && hostExtras.toolSchedule ? ' + ' : '') + (hostExtras.toolSchedule ? 'tool-schedule (subagents denied)' : '') + ']'
     : ''))
 
@@ -1854,12 +1913,13 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
     console.log(TAG + ' peer capability wiring failed: ' + (error && error.message ? error.message : error))
   }
 
-  // The switch itself: a volatile Config edit on this row lands as a
-  // loader/volatile-update event on this fiber.
+  // The switches themselves: a volatile Config edit on this row lands as a
+  // loader/volatile-update event on this fiber (v0.35.0 adds variantPresets).
   try {
     ctx.on('loader/volatile-update', (paths) => {
       try {
-        if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path) && path[0] === 'suppressPeerCordis')) return
+        if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path)
+          && (path[0] === 'suppressPeerCordis' || path[0] === 'variantPresets'))) return
         void reconcile()
       } catch (error) {
         console.log(TAG + ' dedupe switch handling failed: ' + (error && error.message ? error.message : error))
@@ -1921,6 +1981,11 @@ export async function apply(ctx, config = {}) {
   const readConfiguredBashPath = () => effectiveConfiguredBashPath(executorConfiguredBashPath(ctx), rowBashPath(config))
   const readBashResolution = () => resolveGitBashCached({ configured: readConfiguredBashPath() })
   const gitBashCapability = {
+    // v0.35.0 semantics, unchanged shape: `active` answers "does command
+    // execution run on Git Bash on this host" — TRUE regardless of the
+    // variantPresets switch, because the inline tool patch carries the
+    // official presets too. Peers (dsh-ptc-cordis-preset) key their roster
+    // wording and dedupe on exactly this fact.
     active: process.platform === 'win32',
     // Kept for existing consumers (peer plugins read `bashPath`): the resolved
     // interpreter. When resolution failed we report the explicit value (or the
@@ -2015,6 +2080,21 @@ export async function apply(ctx, config = {}) {
              no run_code hint — so they meet the shell they were composed for. */
           const dialect = liveSettings.dialect()
           const applies = dialectApplies(dialect, assembleContext && assembleContext.agent)
+          // v0.35.0: shell-routing addendum on the `bash` tool's description.
+          // Description is schema-level text, so even the minimal preset's
+          // complete-persona cannot strip it; the ROUTING sentence applies to
+          // every agent (routing is dialect-independent), while the MSYS
+          // sentence only describes the world the dialect switch creates.
+          // Idempotent by marker: assemble may run more than once per agent.
+          if (assembly && typeof assembly === 'object' && Array.isArray(assembly.tools)) {
+            for (const tool of assembly.tools) {
+              if (tool && tool.name === 'bash' && typeof tool.description === 'string'
+                && !tool.description.includes('Prefer this bash tool')) {
+                tool.description += '\n' + GITBASH_ROUTE_ADDENDUM
+                  + (applies && dialect.posixPaths === true ? '\n' + GITBASH_MSYS_ADDENDUM : '')
+              }
+            }
+          }
           if (applies && dialect.posixPaths === true && assembly && typeof assembly === 'object') {
             for (const section of Array.isArray(assembly.sections) ? assembly.sections : []) {
               if (section && typeof section.text === 'string') section.text = windowsToMsys(section.text)
@@ -2509,13 +2589,149 @@ export async function apply(ctx, config = {}) {
     })
   }
 
+  // ── inline tool patch (v0.35.0): Git Bash for the OFFICIAL presets ──────
+  // The official preset rows compose `tool-bash` as win32-disabled, and the
+  // patch layer cannot reach rows nested in a preset declaration (buildMap
+  // only descends into group rows), so the fix runs at the tool layer: per
+  // agent, a face of "pwsh yes / bash no" gets the OFFICIAL tool-bash
+  // activated in an agent-owned scope plus a deny on the fake pwsh (its
+  // executor is ctx.shell, which here IS Git Bash), and the assemble
+  // waterfall carries the bash-first routing sentence. The variantPresets
+  // switch is honored BY OBSERVATION — a variant agent's face already has
+  // bash, so this patch never fires there.
+  if (process.platform === 'win32') {
+    try {
+      mountInlineTools(ctx, {
+        tools: (c) => { try { return c.get('tools') } catch { return undefined } },
+        createScope: (agentCtx) => {
+          let childCtx
+          const fiber = agentCtx.plugin((c) => { childCtx = c })
+          return {
+            ctx: childCtx,
+            dispose: async () => { try { await fiber?.dispose?.() } catch { /* already gone */ } },
+          }
+        },
+        allowed: (session) => {
+          try { return ctx.get('sandboxPolicy')?.resolve({ session })?.mode === 'danger-full-access' } catch { return false }
+        },
+        spawn: (spec) => {
+          const subprocess = ctx.get('subprocess')
+          if (!subprocess || typeof subprocess.spawn !== 'function') throw new Error('the host subprocess service is not available on this deployment')
+          return subprocess.spawn(spec)
+        },
+        pwshPath: resolveHostPwsh7(),
+        pwshEnabled: () => liveSettings.pwshTool(),
+        msysToWin: (p) => translateMsysPath(p, buildTranslateEnv(readConfiguredBashPath())),
+        echo: (text) => (liveSettings.dialect().posixPaths === true ? windowsToMsys(text) : text),
+        log: (m) => console.log(TAG + ' ' + m),
+      })
+      console.log(TAG + ' inline tool patch armed (official presets get Git Bash; bash-first routing enforced)')
+    } catch (error) {
+      console.log(TAG + ' inline tool patch wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
+  // ── default-preset migration (v0.35.0, user request) ─────────────────────
+  // A session records its preset by ID (`agent-preset/selected`), and the
+  // registry resolves EVERY mount through `definitions.get(id)` — a variant
+  // id that is not registered fails `agent-preset/not-found`, and the
+  // official `select` refuses mid-session switches (`agent-preset/locked`),
+  // so PINNED SESSIONS cannot be migrated by any official API. The DEPLOYMENT
+  // DEFAULT, however, is one writable setting: `selectedDefault` on the
+  // `agent-preset-registry` row (volatile; the official preset picker writes
+  // it through `settings.update('agent-preset-registry', ...)`). While
+  // variantPresets is OFF (the user did NOT keep the old modes) and that
+  // default still names one of OUR variants, migrate it to the official
+  // successor once — idempotent (a migrated or user-chosen official default
+  // never matches PRESET_IDS again), roster-checked (the official id renamed
+  // once already: code→ptc — a missing target stands down instead of
+  // guessing), written through the OFFICIAL settings seam, and verified by
+  // read-back (a write that did not stick is reported, never claimed).
+  // With variantPresets ON nothing here runs: the variants stay registered,
+  // so a variant default keeps working as-is.
+  try {
+    if (ctx.agentPresets && typeof ctx.agentPresets.register === 'function') {
+      ctx.inject(['settings'], (settingsCtx) => {
+        void (async () => {
+          try {
+            const settings = settingsCtx.settings
+            if (!settings || typeof settings.update !== 'function') return
+            // The switch is the whole contract: keep-old-modes ON means a
+            // variant default is a legitimate choice and stays untouched.
+            if (liveSettings.variantPresets() === true) return
+            const readDefault = () => { try { return ctx.agentPresets.defaultId } catch { return undefined } }
+            const current = readDefault()
+            if (typeof current !== 'string' || !PRESET_IDS.includes(current)) return
+            const target = VARIANT_DEFAULT_SUCCESSORS[current]
+            if (typeof target !== 'string') return
+            // The successor must exist in the CURRENT roster: official ids
+            // renamed once already (code→ptc), and writing an unknown id
+            // would trade a known failure for a worse one.
+            const roster = await ctx.agentPresets.list()
+            if (!Array.isArray(roster) || !roster.some((row) => row && row.id === target)) {
+              console.warn(TAG + ' default-preset migration stood down: the deployment default is the variant "'
+                + current + '" but the successor "' + target + '" is not registered on this host.'
+                + ' Set the default manually among the OFFICIAL presets, or turn variantPresets on.')
+              return
+            }
+            try {
+              await settings.update('agent-preset-registry', { selectedDefault: target })
+            } catch (error) {
+              console.warn(TAG + ' default-preset migration write failed (' + (error?.message ?? error)
+                + '): the deployment default is still the variant "' + current
+                + '" — NEW sessions would fail with agent-preset/not-found.'
+                + ' Fix: set an OFFICIAL default in the preset picker, or turn variantPresets on.')
+              return
+            }
+            const after = readDefault()
+            if (after === target) {
+              console.log(TAG + ' deployment default migrated: "' + current + '" -> "' + target
+                + '" (variantPresets is off). Old sessions pinned to a variant still need a NEW'
+                + ' session — the official agent-preset/locked rule blocks a mid-session switch.')
+            } else {
+              console.warn(TAG + ' default-preset migration did not stick (read back "'
+                + (after === undefined ? 'unreadable' : after) + '"). Set the default manually in'
+                + ' Settings -> agent preset, or turn variantPresets on.')
+            }
+          } catch (error) {
+            console.log(TAG + ' default-preset migration failed: ' + (error?.message ?? error))
+          }
+        })()
+      })
+    }
+  } catch (error) {
+    console.log(TAG + ' default-preset migration wiring failed: ' + (error?.message ?? error))
+  }
+
+  // ── FastCtx bridge (v0.35.0): the gb_* file tools, default ON ────────────
+  // Additions, never replacements: the official read/grep/glob/edit tools and
+  // their file sandbox stay first choice in every description. The bridge
+  // mounts nothing outside win32, nothing when the payload is absent, and
+  // stands down entirely the moment dsh-ops (ops_* tools) is detected.
+  if (process.platform === 'win32') {
+    try {
+      const { createRequire } = await import('node:module')
+      mountFastctx(ctx, {
+        platform: process.platform,
+        enabled: () => liveSettings.fastctxTools(),
+        createRequireFrom: (base) => createRequire(base ?? import.meta.url),
+        tools: (c) => { try { return c.get('tools') } catch { return undefined } },
+        msysToWin: (p) => translateMsysPath(p, buildTranslateEnv(readConfiguredBashPath())),
+        echo: (text) => (liveSettings.dialect().posixPaths === true ? windowsToMsys(text) : text),
+        log: (m) => console.log(TAG + ' ' + m),
+      })
+    } catch (error) {
+      console.log(TAG + ' FastCtx bridge wiring failed: ' + (error?.message ?? error))
+    }
+  }
+
   // ── era split: declarative registration on dsh >= 0.1.7 ──────────────────
   // The register method IS the era signal. On the new host the whole
   // materialization path below is dead code (nothing reads the directory any
   // more), so this branch serves the variants and returns.
   if (ctx.agentPresets && typeof ctx.agentPresets.register === 'function') {
     try {
-      await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis(), readBashResolution)
+      await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis(), readBashResolution, () => liveSettings.variantPresets())
     } catch (error) {
       console.log(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
     }
@@ -2524,4 +2740,4 @@ export async function apply(ctx, config = {}) {
 
 }
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim, probeHostExtras }
+export const _internal = { PRESET_IDS, VARIANT_DEFAULT_SUCCESSORS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim, probeHostExtras }
