@@ -2006,6 +2006,8 @@ test('bash status route + capability expose the verdict to the client and to pee
   assert.match(src, /const gitBashCapability = \{/)
   assert.match(src, /get ok\(\) \{ return readBashResolution\(\)\.ok \}/)
   assert.match(src, /get tried\(\) \{ return readBashResolution\(\)\.tried \}/)
+  // v0.35.1: peers drop the roster suffix while the inline patch is live.
+  assert.match(src, /get inlinePatched\(\) \{ return process\.platform === 'win32' \}/)
   assert.match(src, /downloadUrl: GIT_BASH_DOWNLOAD_URL,/)
   // ONE resolver for the executor and the translation layer (issue #11's split)
   assert.match(src, /const resolution = resolveGitBashCached\(\{ configured: cacheKey \}\)/)

@@ -1987,6 +1987,11 @@ export async function apply(ctx, config = {}) {
     // official presets too. Peers (dsh-ptc-cordis-preset) key their roster
     // wording and dedupe on exactly this fact.
     active: process.platform === 'win32',
+    // Additive (v0.35.1): the inline tool patch gives EVERY OFFICIAL preset
+    // Git Bash, so a roster suffix like "· Git Bash" no longer distinguishes
+    // anything — peers reading this flag drop the suffix (dsh-ptc-cordis-preset
+    // v0.17.3+); older peers ignore it and keep the v0.34 wording.
+    get inlinePatched() { return process.platform === 'win32' },
     // Kept for existing consumers (peer plugins read `bashPath`): the resolved
     // interpreter. When resolution failed we report the explicit value (or the
     // historical default) so the ENOENT a consumer may hit names a real path —
