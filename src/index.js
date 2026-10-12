@@ -56,7 +56,7 @@ import { fileURLToPath } from 'node:url'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
-import { GITBASH_MSYS_ADDENDUM, GITBASH_ROUTE_ADDENDUM, mountInlineTools, resolveHostPwsh7 } from './inline-tools.js'
+import { GITBASH_MSYS_ADDENDUM, GITBASH_ROUTE_ADDENDUM, GITBASH_ROUTE_ADDENDUM_NO_PWSH, mountInlineTools, resolveHostPwsh7 } from './inline-tools.js'
 import { mountFastctx } from './fastctx-bridge.js'
 
 /**
@@ -503,12 +503,12 @@ export const Config = Schema === null ? undefined : Schema.object({
    */
   variantPresets: live(Schema.boolean().default(false)),
   /**
-   * Publish `gitbash_pwsh` — a REAL PowerShell 7 tool over ctx.subprocess —
+   * Publish `pwsh7` — a REAL PowerShell 7 tool over ctx.subprocess —
    * while the host `pwsh` tool is denied (its executor is Git Bash on this
    * host). Default ON; requires pwsh 7 on the machine (never a bundled
    * payload) and danger-full-access per session.
    */
-  pwshTool: live(Schema.boolean().default(true)),
+  pwshTool: live(Schema.boolean().default(false)),
   /**
    * Publish the FastCtx file tools (`gb_*`) through the local MCP bridge.
    * Default ON; Windows-only payload, stands down entirely when dsh-ops is
@@ -2091,11 +2091,16 @@ export async function apply(ctx, config = {}) {
           // every agent (routing is dialect-independent), while the MSYS
           // sentence only describes the world the dialect switch creates.
           // Idempotent by marker: assemble may run more than once per agent.
+          // The routing sentence follows the pwsh switch (v0.37.0): while the
+          // pwsh7 tool is off (the default) the sentence must NOT name it —
+          // a route to a tool the agent cannot see only teaches the model to
+          // call a denied name.
           if (assembly && typeof assembly === 'object' && Array.isArray(assembly.tools)) {
+            const routeSentence = liveSettings.pwshTool() === true ? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH
             for (const tool of assembly.tools) {
               if (tool && tool.name === 'bash' && typeof tool.description === 'string'
                 && !tool.description.includes('Prefer this bash tool')) {
-                tool.description += '\n' + GITBASH_ROUTE_ADDENDUM
+                tool.description += '\n' + routeSentence
                   + (applies && dialect.posixPaths === true ? '\n' + GITBASH_MSYS_ADDENDUM : '')
               }
             }
@@ -2626,7 +2631,7 @@ export async function apply(ctx, config = {}) {
           return subprocess.spawn(spec)
         },
         pwshPath: resolveHostPwsh7({ exists: existsSync }),
-        pwshEnabled: () => liveSettings.pwshTool(),
+        pwshEnabled: () => liveSettings.pwshTool() === true,
         msysToWin: (p) => translateMsysPath(p, buildTranslateEnv(readConfiguredBashPath())),
         echo: (text) => (liveSettings.dialect().posixPaths === true ? windowsToMsys(text) : text),
         log: (m) => console.log(TAG + ' ' + m),

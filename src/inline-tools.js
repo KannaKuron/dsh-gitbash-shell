@@ -27,7 +27,7 @@
  *      executor is ctx.shell, which on this host IS Git Bash — a pwsh tool
  *      that runs bash is a lie to the model);
  *   2. `ops_*` tools present (dsh-ops installed) -> our FastCtx bridge and
- *      gitbash_pwsh stand down; the official bash activation still runs, the
+ *      pwsh7 stands down; the official bash activation still runs, the
  *      two command surfaces are complements, not duplicates;
  *   3. `bash` already present (variant presets on, or a future official
  *      change) -> touch nothing, so the variantPresets switch and this path
@@ -93,12 +93,22 @@ export function inlineNeeds(names) {
 
 /**
  * The routing addendum appended to the `bash` tool's description through the
- * system-prompt assemble waterfall. ALWAYS applied — it states shell routing,
- * which holds regardless of the path dialect a delegate sees.
+ * system-prompt assemble waterfall. TWO variants (v0.37.0, user decision):
+ * the pwsh tool is OFF by default, and a routing sentence that names a tool
+ * the agent cannot see only teaches the model to call a denied name. The ON
+ * variant names `pwsh` (the real PowerShell 7 tool that shadows the fake
+ * global one); the OFF variant states bash-only routing. Both hold regardless
+ * of the path dialect a delegate sees.
  */
 export const GITBASH_ROUTE_ADDENDUM = [
-  'Prefer this bash tool for ALL commands; use a PowerShell tool ONLY when a Windows-native capability (cmdlets, registry, services, WMI) is truly required.',
+  'Prefer this bash tool for ALL commands; use the pwsh7 tool ONLY when a Windows-native capability (cmdlets, registry, services, WMI) is truly required.',
   'Fix failed bash commands in bash — never switch shells mid-task, never embed `pwsh -Command` inside a bash command (variable expansion and output encoding break there).',
+].join('\n')
+
+/** The bash-only routing variant, used while the pwsh switch is off (the default). */
+export const GITBASH_ROUTE_ADDENDUM_NO_PWSH = [
+  'Prefer this bash tool for ALL commands — it is this host\'s shell.',
+  'Fix failed commands in bash; there is no PowerShell tool on this host.',
 ].join('\n')
 
 /**
@@ -158,7 +168,7 @@ export function resolveHostPwsh7({ env = process.env, exists, platform = process
   return ''
 }
 
-/** Arguments `gitbash_pwsh` accepts — strict: anything else is rejected. */
+/** Arguments `pwsh7` accepts — strict: anything else is rejected. */
 export const PWSH_ARGUMENTS = Object.freeze(['command', 'script_path', 'workdir', 'timeoutMs'])
 
 const PWSH_DEFAULT_TIMEOUT_MS = 120_000
@@ -185,7 +195,7 @@ export function pwshArgv(pwsh, args, { msysToWin } = {}) {
 }
 
 /**
- * Validate one gitbash_pwsh call's arguments. Strict like ops_bash: an
+ * Validate one pwsh7 call's arguments. Strict like ops_bash: an
  * undeclared key is a hard error (the host bash/pwsh tools accept
  * `run_in_background`; this tool does not, and a silent ignore would leave a
  * server occupying the call until timeout). Pure.
@@ -282,10 +292,8 @@ export async function activateOfficialBash(agent, toolBashHref, createScopeFn, l
  */
 export function mountInlineTools(ctx, deps) {
   const { tools, agents, createScope, allowed, spawn, pwshPath, echo, log } = deps
-  /** agent -> { timer, scope, denyPwsh }; named `tracked` because `agents` above is the host service */
+  /** agent -> { timer, scope, denyPwsh, pwshScope }; named `tracked` because `agents` above is the host service */
   const tracked = new Map()
-  let pwshPublished = false
-  let pwshDisposer = undefined
   let toolBashHrefPromise
 
   const faceNames = (agent) => {
@@ -297,27 +305,28 @@ export function mountInlineTools(ctx, deps) {
     }
   }
 
-  const unpublishPwsh = () => {
-    if (pwshDisposer) {
-      try { pwshDisposer() } catch { /* already gone */ }
-      pwshDisposer = undefined
-    }
-    pwshPublished = false
-  }
-
-  const publishPwsh = () => {
-    if (pwshPublished) return
+  /**
+   * Provide the additive `pwsh7` tool inside one agent-owned scope (v0.37.0).
+   * The name never collides with the host's fake global `pwsh`, so this is a
+   * pure ADDITION — it shadows nothing and requires no deny juggling. The
+   * scope keeps the registration revertible at agent disposal.
+   */
+  const providePwsh = (agent, state) => {
+    if (state.pwshScope) return
     if (typeof spawn !== 'function' || !pwshPath) return
-    if (deps.pwshEnabled && deps.pwshEnabled() !== true) return
-    const registry = tools(ctx)
-    if (!registry || typeof registry.register !== 'function') return
+    if (!createScope) return
     try {
-      const disposer = registry.register(gitbashPwshDefinition({ pwsh: pwshPath, spawn, allowed, msysToWin: deps.msysToWin, echo }))
-      pwshDisposer = typeof disposer === 'function' ? disposer : undefined
-      pwshPublished = true
-      log(`pwsh replacement published (pwsh 7 at ${pwshPath}; the host pwsh tool is denied on this host — its executor is Git Bash)`)
+      const scope = createScope(agent.ctx)
+      const registry = scope.ctx?.tools
+      if (!registry || typeof registry.register !== 'function') {
+        void scope.dispose().catch(() => {})
+        return
+      }
+      registry.register(gitbashPwshDefinition({ pwsh: pwshPath, spawn, allowed, msysToWin: deps.msysToWin, echo }))
+      state.pwshScope = scope
+      log(`pwsh7 tool provided for this agent (real PowerShell 7 at ${pwshPath})`)
     } catch (error) {
-      log(`pwsh replacement registration failed: ${error?.message ?? error}`)
+      log(`pwsh7 tool registration failed for this agent: ${error?.message ?? error}`)
     }
   }
 
@@ -340,21 +349,37 @@ export function mountInlineTools(ctx, deps) {
     let state = tracked.get(agent)
     if (state?.timer) { clearTimeout(state.timer); state.timer = undefined }
     if (!state) {
-      state = { timer: undefined, scope: undefined, denyPwsh: undefined }
+      state = { timer: undefined, scope: undefined, denyPwsh: undefined, pwshScope: undefined }
       tracked.set(agent, state)
     }
-    if (needs.denyPwsh && !state.denyPwsh) {
-      // Deny the fake pwsh first: restrict is per-agent and idempotent, and
-      // the lying tool must never be callable, not even for the milliseconds
-      // before the bash tool lands. The call MUST go through the AGENT's
-      // scoped context (`agent.ctx.tools`, the dsh-ops-proven shape): on the
-      // ROOT context the host throws "requires a scoped context" and the
-      // deny silently never exists (issue #18, root cause 3).
-      try {
-        const deny = agent.ctx?.tools?.restrict?.({ deny: ['pwsh'] })
-        if (typeof deny === 'function') state.denyPwsh = deny
-      } catch (error) {
-        log(`fake-pwsh deny failed: ${error?.message ?? error}`)
+    // The pwsh face has three facts (v0.37.0, user decision — the pwsh7 tool
+    // is OFF by default, and its switch lives ONLY on this plugin's row):
+    //   dsh-ops present  -> hands off entirely (their host-pwsh story stands;
+    //                       our pwsh7 and our deny would both be duplicates).
+    //   the fake global `pwsh` (executor = ctx.shell = Git Bash) is DENIED
+    //                       per agent in EVERY case — the lying name is never
+    //                       callable, and `pwsh7` cannot be caught by it.
+    //   switch ON        -> the REAL PowerShell 7 tool is ADDED as `pwsh7` in
+    //                       an agent-owned scope (pure addition, no shadowing).
+    // The row switch is re-read per reconcile, so a flip lands at the next
+    // agent (or on the next event after a hot toggle).
+    if (needs.denyPwsh) {
+      if (needs.opsPresent) {
+        // hands off
+      } else {
+        if (!state.denyPwsh) {
+          // The deny MUST go through the AGENT's scoped context
+          // (`agent.ctx.tools`, the dsh-ops-proven shape): on the ROOT context
+          // the host throws "requires a scoped context" and the deny silently
+          // never exists (issue #18, root cause 3).
+          try {
+            const deny = agent.ctx?.tools?.restrict?.({ deny: ['pwsh'] })
+            if (typeof deny === 'function') state.denyPwsh = deny
+          } catch (error) {
+            log(`fake-pwsh deny failed: ${error?.message ?? error}`)
+          }
+        }
+        if (deps.pwshEnabled && deps.pwshEnabled() === true) providePwsh(agent, state)
       }
     }
     if (needs.needsBash && !state.scope) {
@@ -371,13 +396,6 @@ export function mountInlineTools(ctx, deps) {
         }
       }).catch(() => { /* logged inside activateOfficialBash */ })
     }
-    // The pwsh replacement follows the ops_ presence: dsh-ops already ships a
-    // PowerShell story through the HOST pwsh tool — which our own deny would
-    // otherwise silence — so ours fills that gap instead of duplicating tools.
-    // The row switch is re-read per reconcile too, so a flip lands at the
-    // next agent (or on the next event after a hot toggle).
-    if (needs.opsPresent || (deps.pwshEnabled && deps.pwshEnabled() !== true)) unpublishPwsh()
-    else publishPwsh()
   }
 
   const teardown = (agent) => {
@@ -386,6 +404,7 @@ export function mountInlineTools(ctx, deps) {
     tracked.delete(agent)
     if (state.timer) clearTimeout(state.timer)
     if (state.denyPwsh) { try { state.denyPwsh() } catch { /* already lifted */ } }
+    if (state.pwshScope) { void state.pwshScope.dispose().catch(() => {}) }
     if (state.scope) { void state.scope.dispose().catch(() => {}) }
   }
 
@@ -400,14 +419,15 @@ export function mountInlineTools(ctx, deps) {
     for (const agent of agents?.(ctx)?.list?.() ?? []) {
       try { reconcile(agent) } catch { /* one broken agent never blocks the rest */ }
     }
-    // CALL-LAYER GUARD (v0.35.2, second independent layer): even when the
-    // per-agent visibility restriction loses a race, a `pwsh` call that
-    // reaches its executor runs Git Bash (ctx.shell IS Git Bash on this
-    // host). Deny at dispatch and name the replacements.
+    // CALL-LAYER GUARD (v0.35.2, second independent layer; v0.37.0 wording):
+    // a `pwsh` call ALWAYS reaches the fake global tool (executor = ctx.shell
+    // = Git Bash on this host) — our real tool is `pwsh7`, a different name —
+    // so the fake name is denied at dispatch unconditionally, with the
+    // replacement named.
     ctx.on('tools/pre-execute', (exec, next) => {
       try {
         if (exec?.name === 'pwsh') {
-          return { kind: 'deny', reason: 'the host pwsh tool would run Git Bash on this host (its executor was replaced). Use the bash tool for commands, or gitbash_pwsh for Windows-native work (registry, services, WMI).' }
+          return { kind: 'deny', reason: 'the host pwsh tool would run Git Bash on this host (its executor was replaced). Use the bash tool for commands. If you need Windows-native work (registry, services, WMI), the real PowerShell 7 tool is pwsh7 — enable it on the dsh-gitbash-shell settings card if it is not present.' }
         }
       } catch { /* never block the waterfall */ }
       return next()
@@ -420,7 +440,6 @@ export function mountInlineTools(ctx, deps) {
   ctx.effect(() => () => {
     for (const agent of [...tracked.keys()]) teardown(agent)
     tracked.clear()
-    unpublishPwsh()
   }, 'dsh-gitbash-shell: inline tool patching')
 }
 
@@ -441,7 +460,13 @@ export function mountInlineTools(ctx, deps) {
  */
 export function gitbashPwshDefinition({ pwsh, spawn, allowed, msysToWin, echo }) {
   return {
-    name: 'gitbash_pwsh',
+    // v0.37.0 (user decision): the tool is named `pwsh7` — NOT `pwsh` (that
+    // name belongs to the host's fake global tool, whose executor is
+    // ctx.shell = Git Bash on this host and stays denied) and NOT
+    // `gitbash_pwsh` (which read like a bash/pwsh hybrid). `pwsh7` is purely
+    // additive: it never shadows anything, and it exists only on hosts where
+    // a real PowerShell 7 is installed.
+    name: 'pwsh7',
     description: gitbashPwshDescription(),
     parameters: {
       type: 'object',
@@ -462,7 +487,7 @@ export function gitbashPwshDefinition({ pwsh, spawn, allowed, msysToWin, echo })
       const invalid = validatePwshArgs(args)
       if (invalid) throw new Error(invalid)
       if (!allowed(exec?.agent?.session)) {
-        throw new Error('gitbash_pwsh requires danger-full-access for this session; this channel has no file sandbox.')
+        throw new Error('pwsh7 requires danger-full-access for this session; this channel has no file sandbox.')
       }
       const built = pwshArgv(pwsh, args, { msysToWin })
       if (built.error) throw new Error(built.error)

@@ -43,7 +43,7 @@ export const GB_PREFIX = 'gb_'
 export const gbName = (raw) => GB_PREFIX + raw
 
 // The HOST registry rejects any tool without an `output` contract (issue #18,
-// root cause 2) — the frozen schema + text renderer the gitbash_pwsh
+// root cause 2) — the frozen schema + text renderer the pwsh7
 // definition ships, reused so both families speak one tool-result contract.
 import { TOOL_OUTPUT_SCHEMA, renderTextContent } from './inline-tools.js'
 

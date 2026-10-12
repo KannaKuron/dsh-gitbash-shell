@@ -2897,7 +2897,7 @@ test('inline tools: the face verdict keys on pwsh-without-bash, and dsh-ops is d
   assert.deepEqual(inlineNeeds(undefined), { needsBash: false, denyPwsh: false, opsPresent: false })
 })
 
-test('inline tools: gitbash_pwsh arguments are STRICT, and argv keeps scripts out of JSON', async () => {
+test('inline tools: pwsh7 arguments are STRICT, and argv keeps scripts out of JSON', async () => {
   const { validatePwshArgs, pwshArgv } = await import('../src/inline-tools.js')
   assert.equal(validatePwshArgs({ command: 'Get-Date' }), undefined)
   // The host bash/pwsh tools accept run_in_background; this tool must REFUSE
@@ -2932,6 +2932,13 @@ test('inline tools: the routing sentence is present and dialect-split', async ()
   const mod = await import('../src/inline-tools.js')
   assert.match(mod.GITBASH_ROUTE_ADDENDUM, /Prefer this bash tool/)
   assert.match(mod.GITBASH_ROUTE_ADDENDUM, /never embed `pwsh -Command`/)
+  assert.match(mod.GITBASH_ROUTE_ADDENDUM, /pwsh7 tool/, 'the ON variant names the real pwsh7 tool')
+  assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM, /gitbash_pwsh/, 'the misleading name is gone')
+  // The OFF variant (the default) must NOT name the pwsh7 tool: a route to a
+  // tool the agent cannot see only teaches the model to call a denied name.
+  assert.match(mod.GITBASH_ROUTE_ADDENDUM_NO_PWSH, /Prefer this bash tool/)
+  assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM_NO_PWSH, /pwsh7/)
+  assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM_NO_PWSH, /PowerShell tool on this host.{0,4}pwsh7/)
   // The MSYS sentence describes ONLY the dialect world; a delegate with the
   // dialect off must not be told it lives in /c/.
   assert.match(mod.GITBASH_MSYS_ADDENDUM, /\/c\/Users/)
@@ -2942,9 +2949,13 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   assert.match(hostSource, /mountInlineTools\(ctx, \{/)
   assert.match(hostSource, /mountFastctx\(ctx, \{/)
   assert.match(hostSource, /variantPresets: live\(Schema\.boolean\(\)\.default\(false\)\)/)
-  assert.match(hostSource, /pwshTool: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  // v0.37.0 (user decision): the pwsh7 tool is OFF by default — no special
+  // pwsh surface unless the user asks for one. The routing sentence follows.
+  assert.match(hostSource, /pwshTool: live\(Schema\.boolean\(\)\.default\(false\)\)/)
   assert.match(hostSource, /fastctxTools: live\(Schema\.boolean\(\)\.default\(true\)\)/)
   assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM/)
+  assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM_NO_PWSH/)
+  assert.match(hostSource, /liveSettings\.pwshTool\(\) === true \? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH/)
   // The desired set collapses to [] while the switch is off — the cleanup
   // still runs, but nothing registers.
   assert.match(hostSource, /readVariants && readVariants\(\) === true\s*\?\s*effectivePresetIds/)
@@ -3003,7 +3014,7 @@ test('inline tools: the tool definitions speak the host output contract (issue #
     spawn: () => { throw new Error('not used by this test') },
     allowed: () => false,
   })
-  assert.equal(typeof def.output?.render, 'function', 'gitbash_pwsh carries the output contract')
+  assert.equal(typeof def.output?.render, 'function', 'pwsh7 carries the output contract')
   assert.deepEqual(
     def.output.render({}, { content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }),
     [{ type: 'text', text: 'a\nb' }],

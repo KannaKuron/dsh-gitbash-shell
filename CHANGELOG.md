@@ -3,6 +3,19 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.37.0 — 2026-10-13
+
+**类型**:feat(用户拍板的命名与开关重构;真机反馈驱动)。
+
+- **`gitbash_pwsh` 更名 `pwsh7`(破坏性:工具名变更)**:旧名读起来像「bash/pwsh 二选一的混合工具」,让人误解(用户真机反馈)。新名 `pwsh7` 语义直白(PowerShell 7),且**绝不占用宿主被污染的 `pwsh` 名**(那个名字的全局工具在本机执行 Git Bash,是假 pwsh,恒定拒绝)。真机已装旧版的会话在新版下自然看到 `pwsh7`。
+- **`pwshTool` 开关默认翻转为 `false`(破坏性:默认值变更)**:默认**不提供**专门的 PowerShell 工具——平时全部走 bash 工具,需要 Windows 原生操作的用户在设置卡自己打开。开关只在 gitbash-shell 一侧行上(ptc 创造模式零参与,装了本插件即自动适配,2026-10-13 拍板)。
+- **pwsh7 的提供方式改为 per-agent scope 注册**(原为全局注册):agent 独立 scope 内注册、随 agent 销毁回收;与 dsh-ops 共存时照旧让位(它的宿主 pwsh 故事优先)。
+- **路由提示词按开关分支**:`pwsh7` 关(默认)时 bash 工具的描述**不再提及任何 PowerShell 工具**(给模型指一条到不了的路只会教它调用被拒的名字);开时才出现「pwsh7 仅用于 Windows 原生能力」的路由句。新增 `GITBASH_ROUTE_ADDENDUM_NO_PWSH` 常量,assemble 处按 `pwshTool()` 现场选择。
+- **调用层守卫保持恒定 deny `pwsh`**:`pwsh7` 是纯加法名字,不会误杀;deny 理由句更新为指路 `pwsh7` 与设置卡开关。
+- **词典**:pwsh.label/pwsh.hint × 21 语言重写(名字 pwsh7、默认关、**必须已安装 PowerShell 7** 的提醒与下载地址);工具 description 与错误消息同步更名。
+- **冒烟**:117 项全绿;路由句测试加「OFF 变体不得出现 pwsh7 字样」与「 misleading 名绝迹」断言。
+- **待真机复验**:bash 工具补位仍未在标准模式出现(v0.35.3 观察)——`activateOfficialBash` 链路失败必有日志行("not resolvable"/"import failed"/"activation failed"),等宿主日志定位;与本版无耦合。
+
 ## v0.36.0 — 2026-10-13
 
 **类型**:feat(设置卡分组重排;用户反馈「一排按钮不知道分类」)。
