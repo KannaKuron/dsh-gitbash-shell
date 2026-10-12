@@ -1363,9 +1363,10 @@ test('client card: the dedupe row is peer-gated and writes THIS row\'s field', (
   assert.match(src, /var dedupe = snap\.value\.suppressPeerCordis === true;/)
   assert.match(src, /writeField\("suppressPeerCordis", true\)/)
   assert.match(src, /writeField\("suppressPeerCordis", false\)/)
-  // drawn only while the peer's entry is served (absent peer / old host hide it)
-  assert.match(src, /var dedupeSection = peerSnap\.status === "ready" \? E\("div", \{ className: "gb-section" \}/)
-  assert.match(src, /\n\t\t\t\tdedupeSection,/)
+  // drawn only while the peer's entry is served (absent peer / old host hide it);
+  // v0.36.0 regroup: dedupe and python live under ONE `peerSection` heading
+  assert.match(src, /var peerSection = peerSnap\.status === "ready" \? E\("div", \{ className: "gb-section" \}/)
+  assert.match(src, /\n\t\t\t\tpeerSection,/)
   // the ctx reaches the component: the inject factory carries it as a plain member
   assert.match(src, /return \{ scope: scope, ctx: ctx \};/)
   // hooks stay before the scope's early return (a conditional hook would throw)
@@ -1373,10 +1374,52 @@ test('client card: the dedupe row is peer-gated and writes THIS row\'s field', (
   const earlyReturnAt = src.indexOf('if (snap.status !== "ready") return null;')
   assert.ok(hookAt > 0 && earlyReturnAt > hookAt, 'the peer hooks must run before the early return')
   // all three copy keys exist in every dictionary (the parity test also guards this)
-  for (const key of ['sec.dedupe', 'dedupe.label', 'dedupe.hint']) {
+  for (const key of ['dedupe.label', 'dedupe.hint']) {
     const occurrences = [...src.matchAll(new RegExp('"' + key.replace('.', '\\.') + '":', 'g'))].length
     assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
   }
+})
+
+test('client card: the body groups switches into seven labelled sections (v0.36.0)', () => {
+  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  // Every section title reads its dictionary key; the three new headings exist
+  // in all 21 dictionaries (the parity test cross-checks the key SETS).
+  for (const key of ['sec.dialect', 'sec.inline', 'sec.executor', 'sec.terminal', 'sec.peer']) {
+    const occurrences = [...src.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
+    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
+  }
+  // Sections are DEFINED in display order and the body MOUNTS them in the
+  // same order: mode, inline tools, path dialect, executor, terminal,
+  // toolchain (win32-only block), plugin integrations.
+  const order = [
+    'var modeSection = E("div"',
+    'var inlineSection = E("div"',
+    'var dialectSection = E("div"',
+    'var executorSection = E("div"',
+    'var terminalSection = E("div"',
+    'var peerSection = peerSnap.status === "ready" ? E("div"',
+  ].map((marker) => src.indexOf(marker))
+  for (let i = 0; i < order.length; i++) {
+    assert.ok(order[i] > 0, 'section ' + i + ' is defined')
+  }
+  const bodyAt = src.indexOf('var bodyContent = E("div"')
+  const bodyText = src.slice(bodyAt, src.indexOf('if (pageView)', bodyAt))
+  const sequenceNames = ['modeSection', 'inlineSection', 'dialectSection', 'executorSection', 'terminalSection', 'peerSection']
+  const sequence = sequenceNames.map((name) => bodyText.indexOf(name))
+  for (let i = 0; i < sequence.length; i++) {
+    assert.ok(sequence[i] > 0, sequenceNames[i] + ' rides in the body')
+    if (i > 0) assert.ok(sequence[i] > sequence[i - 1], 'the body mounts sections in display order')
+  }
+  // Regroup invariants: the dialect section no longer swallows the
+  // executor/terminal rows; the inline tools section carries its title.
+  const dialectBlock = src.slice(src.indexOf('var dialectSection = E("div"'), src.indexOf('var executorSection = E("div"'))
+  assert.doesNotMatch(dialectBlock, /autoTerminalShell/)
+  assert.doesNotMatch(dialectBlock, /gitAutocrlf/)
+  assert.doesNotMatch(dialectBlock, /bashPath/)
+  const terminalBlock = src.slice(src.indexOf('var terminalSection = E("div"'), src.indexOf('var peerSection = peerSnap.status === "ready" ? E("div"'))
+  assert.match(terminalBlock, /autoTerminalShell/)
+  assert.match(terminalBlock, /adoptSidebar/)
+  assert.match(src, /var inlineSection = E\("div", \{ className: "gb-section" \},\s*\n\s*E\("div", \{ className: "gb-sectionTitle" \}, t\("sec\.inline"\)\)/)
 })
 
 // ── issue #8: the DISPATCH face (not just the pure helpers) ──────────────────
@@ -1527,18 +1570,20 @@ test("client card: the python row mirrors the PEER's field and is Windows-gated"
   // read the row snapshot, so inventing one would be a second, drifting state.
   // The copy points at the host log instead (asserted below).
   assert.doesNotMatch(src, /pythonRuntimeIssue/)
-  // Windows: the CPython backend refuses to load, so the buttons give way
+  // Windows: the CPython backend refuses to load, so the buttons give way.
+  // v0.36.0 regroup: the row rides INSIDE peerSection, so the gate composes
+  // with the row's own `pythonOffered` condition.
   assert.match(src, /var winHost = winState\[0\]/)
-  assert.match(src, /winHost \? null : E\("div", \{ className: "gb-seg" \}/)
-  assert.match(src, /winHost \? E\("p", \{ className: "gb-error" \}, t\("python\.blocked"\)\) : null/)
+  assert.match(src, /pythonOffered && !winHost \? E\("div", \{ className: "gb-seg" \}/)
+  assert.match(src, /pythonOffered && winHost \? E\("p", \{ className: "gb-error" \}, t\("python\.blocked"\)\) : null/)
   // hooks stay before the scope's early return
   const hookAt = src.indexOf('var winState = useState(false);')
   const earlyReturnAt = src.indexOf('if (snap.status !== "ready") return null;')
   assert.ok(hookAt > 0 && earlyReturnAt > hookAt, 'the windows-host hook must run before the early return')
-  const sectionAt = src.indexOf('var pythonSection = pythonOffered ?')
+  const sectionAt = src.indexOf('var peerSection = peerSnap.status === "ready" ?')
   const bodyAt = src.indexOf('var bodyContent = E("div", { className: "gb-body" }')
   assert.ok(sectionAt > 0 && bodyAt > sectionAt, 'the section is built before the body')
-  assert.match(src, /\n\t\t\t\tpythonSection,/)
+  assert.match(src, /\n\t\t\t\tpeerSection,/)
   for (const key of ['sec.python', 'python.label', 'python.on', 'python.off', 'python.hint', 'python.blocked']) {
     const occurrences = [...src.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
     assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
