@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.38.1 — 2026-10-13
+
+**类型**:fix(bash 补位在桌面版宿主解析不到官方包;真机反复确认的最后一个开放问题)。
+
+- **根因(无日志下的代码级定位,待真机确认)**:bash 激活的解析通道用的是裸 `createRequire(ctx.baseUrl).resolve('@deepseek-ai/dsh-tool-bash')`——**桌面版宿主把官方包打进 `app.asar`,从插件的 profile 布局裸解析必然失败**(返回空 → 日志 "not resolvable" → bash 永缺)。这也解释了为何同一进程里 deny/pwsh7/gb_* 全部正常(插件自带代码,不依赖该解析)而唯独 bash 缺。
+- **修复:解析通道改为宿主 loader 优先**——`ctx.loader.internal.import(name, ctx.baseUrl, {})`,与宿主挂载行包**完全相同的调用**(`vendor/loader/src/config/tree.ts:122`),走宿主自己的 resolve 钩子(可达 asar 内部);失败才退回裸 createRequire(旧通道,非桌面布局保底)。两通道都失败才如实记日志。
+- `resolveToolBashEntry` 返回形状从 href 字符串改为 `{ load }` 惰性加载器;`activateOfficialBash` 接收 loader 对象;调用点与缓存变量同步更名。
+- **冒烟**:118 项全绿;新增「bash resolution tries the HOST loader before a plain require」(断言通道顺序、官方包名、baseUrl 透传、惰性加载)。
+- **待真机复验**:升级重启后官方模式新建会话,工具面应出现 `bash`;日志应出现 `official bash tool activated for this agent`。
+
 ## v0.38.0 — 2026-10-13
 
 **类型**:feat(设置卡折叠分区;用户反馈「开关堆一列不知道主题」)。

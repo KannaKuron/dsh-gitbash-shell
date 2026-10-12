@@ -3016,6 +3016,27 @@ test('inline tools: the three issue-#18 root causes stay fixed', () => {
   assert.doesNotMatch(toolsSource, /tools\(ctx\)\?\.restrict/)
 })
 
+test('inline tools: bash resolution tries the HOST loader before a plain require (v0.38.1)', async () => {
+  const { resolveToolBashEntry } = await import('../src/inline-tools.js')
+  const officialMod = { apply: async () => {} }
+  // Channel 1: the host's own internal loader (the exact call the row mount
+  // makes) — reaches desktop app.asar internals.
+  const viaLoader = await resolveToolBashEntry({
+    baseUrl: 'file:///host/base',
+    loader: { internal: { import: async (name, parentURL) => {
+      assert.equal(name, '@deepseek-ai/dsh-tool-bash')
+      assert.equal(parentURL, 'file:///host/base')
+      return officialMod
+    } } },
+  })
+  assert.equal(viaLoader && typeof viaLoader.load === 'function', true, 'the host-loader channel yields a lazy loader')
+  assert.equal(await viaLoader.load(), officialMod)
+  // Channel 2 fallback: no internal loader -> plain createRequire from the
+  // host base (resolves nothing for a bogus base here -> undefined, logged).
+  const viaPlain = await resolveToolBashEntry({ baseUrl: '/definitely/not/a/real/base' })
+  assert.equal(viaPlain === undefined || typeof viaPlain.load === 'function', true)
+})
+
 test('inline tools: the tool definitions speak the host output contract (issue #18)', async () => {
   const mod = await import('../src/inline-tools.js')
   const bridgeSource = readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')

@@ -221,19 +221,40 @@ export function validatePwshArgs(args) {
   return undefined
 }
 
+/** The official bash-tool package the inline patch activates. */
+const TOOL_BASH_PACKAGE = '@deepseek-ai/dsh-tool-bash'
+
 /**
- * Resolve the OFFICIAL @deepseek-ai/dsh-tool-bash module entry from the
- * host's own resolution base (the same seam probeHostExtras uses). Returns
- * the absolute entry URL, or '' when the host does not ship the package.
+ * Resolve the OFFICIAL @deepseek-ai/dsh-tool-bash module. TWO channels, in
+ * order (v0.38.1, the desktop-host field report):
+ *
+ *   ① THE HOST'S OWN LOADER — `ctx.loader.internal.import(name, baseUrl, {})`,
+ *      the exact call the row mount itself uses
+ *      (vendor/loader/src/config/tree.ts:122). It runs the host's resolve
+ *      hooks, so it reaches packages inside the desktop app.asar that a bare
+ *      Node resolver cannot see from the plugin's profile layout.
+ *   ② A plain createRequire from the host base — the v0.35.0 channel, kept
+ *      for layouts where the internal loader is absent.
+ *
+ * @returns {Promise<{ load: async () => object }|undefined>} a lazy loader for
+ *   the module, or undefined when neither channel resolves it.
  */
 export async function resolveToolBashEntry(ctx) {
+  try {
+    const internal = ctx?.loader?.internal
+    if (internal && typeof internal.import === 'function') {
+      const mod = await internal.import(TOOL_BASH_PACKAGE, ctx?.baseUrl, {})
+      if (mod && typeof mod.apply === 'function') return { load: async () => mod }
+    }
+  } catch { /* fall through to the plain resolution */ }
   try {
     const { createRequire } = await import('node:module')
     const { pathToFileURL } = await import('node:url')
     const req = createRequire(ctx?.baseUrl ?? import.meta.url)
-    return pathToFileURL(req.resolve('@deepseek-ai/dsh-tool-bash')).href
+    const href = pathToFileURL(req.resolve(TOOL_BASH_PACKAGE)).href
+    return { load: async () => import(href) }
   } catch {
-    return ''
+    return undefined
   }
 }
 
@@ -245,10 +266,10 @@ export async function resolveToolBashEntry(ctx) {
  * prescribes for per-agent variants. The official module is loaded ONCE per
  * process; each agent gets a fresh scope and a fresh apply().
  */
-export async function activateOfficialBash(agent, toolBashHref, createScopeFn, log) {
+export async function activateOfficialBash(agent, resolved, createScopeFn, log) {
   let mod
   try {
-    mod = await import(toolBashHref)
+    mod = await resolved.load()
   } catch (error) {
     log(`official tool-bash module import failed: ${error?.message ?? error}`)
     return undefined
@@ -294,7 +315,7 @@ export function mountInlineTools(ctx, deps) {
   const { tools, agents, createScope, allowed, spawn, pwshPath, echo, log } = deps
   /** agent -> { timer, scope, denyPwsh, pwshScope }; named `tracked` because `agents` above is the host service */
   const tracked = new Map()
-  let toolBashHrefPromise
+  let toolBashResolvePromise
 
   const faceNames = (agent) => {
     try {
@@ -383,13 +404,13 @@ export function mountInlineTools(ctx, deps) {
       }
     }
     if (needs.needsBash && !state.scope) {
-      if (toolBashHrefPromise === undefined) toolBashHrefPromise = resolveToolBashEntry(ctx)
-      void toolBashHrefPromise.then(async (href) => {
-        if (href === '') {
-          log('official @deepseek-ai/dsh-tool-bash is not resolvable from the host base; bash stays absent for this agent')
+      if (toolBashResolvePromise === undefined) toolBashResolvePromise = resolveToolBashEntry(ctx)
+      void toolBashResolvePromise.then(async (resolved) => {
+        if (!resolved) {
+          log('official @deepseek-ai/dsh-tool-bash is not resolvable (neither the host loader nor a plain resolution found it); bash stays absent for this agent')
           return
         }
-        const scope = await activateOfficialBash(agent, href, createScope, log)
+        const scope = await activateOfficialBash(agent, resolved, createScope, log)
         if (scope && tracked.get(agent) === state) {
           state.scope = scope
           log('official bash tool activated for this agent (Git Bash host; fake pwsh denied)')
