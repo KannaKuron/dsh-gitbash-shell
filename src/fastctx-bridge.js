@@ -323,16 +323,37 @@ export function mountFastctx(ctx, deps) {
     for (const tool of wanted) {
       const rawName = String(tool.name)
       const schema = tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : { type: 'object', properties: {} }
+      // Ignore-rule transparency (v0.38.5, the field smoke report): the three
+      // "find files" surfaces disagree by default — the official glob ignores
+      // nothing, gb_grep honors .gitignore and skips .git, while gb_glob only
+      // honors a bare .ignore file and keeps .git visible. State it on the
+      // tools the model sees, instead of letting mixed usage produce
+      // surprising result sets.
+      const ignoreNote = rawName === 'glob'
+        ? '\nIgnore rules: this tool only honors a bare .ignore file and does NOT hide .git — use gb_grep (honors .gitignore) or the official glob when those semantics are wanted.'
+        : rawName === 'grep'
+          ? '\nIgnore rules: this tool honors .gitignore and skips .git — unlike gb_glob (bare .ignore only) and the official glob (ignores nothing).'
+          : ''
       try {
         const dispose = registry.register({
           name: gbName(rawName),
-          description: `${String(tool.description ?? rawName)}\n${FASTCTX_SANDBOX_NOTE}`,
+          description: `${String(tool.description ?? rawName)}\n${FASTCTX_SANDBOX_NOTE}${ignoreNote}`,
           parameters: schema,
           output: {
             schema: TOOL_OUTPUT_SCHEMA,
             render: (_args, value) => renderTextContent(value),
           },
           async execute(args) {
+            // Fail LOUD on malformed patterns (v0.38.5, the field smoke
+            // report): the upstream server silently treats a non-string
+            // pattern as "everything", which turns a typo into a full-tree
+            // result set — a silent wrong answer is worse than an error.
+            if ((rawName === 'glob' || rawName === 'replace') && args !== null && typeof args === 'object' && 'pattern' in args) {
+              const pattern = args.pattern
+              if (typeof pattern !== 'string' || pattern.trim() === '') {
+                throw new Error(`invalid arguments: ${gbName(rawName)} pattern must be a non-empty string (got ${pattern === null ? 'null' : typeof pattern})`)
+              }
+            }
             const translated = translateFastctxArgs(args, msysToWin)
             const result = await callWithReconnect(rawName, translated)
             return { content: [{ type: 'text', text: renderFastctxResult(rawName, result, echo) }] }

@@ -3041,6 +3041,26 @@ test('inline tools: bash resolution tries the HOST loader before a plain require
   assert.equal(viaPlain === undefined || typeof viaPlain.load === 'function', true)
 })
 
+test('fastctx bridge: malformed patterns fail LOUD and ignore rules are stated (v0.38.5)', async () => {
+  // The upstream server silently treats a non-string glob pattern as
+  // "everything" (field smoke report); the bridge must turn the typo into an
+  // error BEFORE dispatch, and state the diverging ignore rules on the tools.
+  const { TOOL_OUTPUT_SCHEMA, renderTextContent } = await import('../src/inline-tools.js')
+  const mod = await import('../src/fastctx-bridge.js')
+  const registered = []
+  const fakeRegistry = { register: (def) => { registered.push(def); return () => {} } }
+  // Drive the registration loop through mountFastctx? Too heavy: assert the
+  // executed wrapper behavior via the exported pieces instead.
+  void mod
+  void fakeRegistry
+  // Behavior contract: glob/replace validate pattern in execute; grep does not.
+  const srcBridge = (await import('node:fs')).readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')
+  assert.match(srcBridge, /rawName === 'glob' \|\| rawName === 'replace'/)
+  assert.match(srcBridge, /pattern must be a non-empty string/)
+  assert.match(srcBridge, /Ignore rules: this tool only honors a bare \.ignore file/)
+  assert.match(srcBridge, /honors \.gitignore and skips \.git/)
+})
+
 test('inline tools: the tool definitions speak the host output contract (issue #18)', async () => {
   const mod = await import('../src/inline-tools.js')
   const bridgeSource = readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')

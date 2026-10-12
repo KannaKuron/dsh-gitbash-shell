@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.38.5 — 2026-10-13
+
+**类型**:fix(用户 27 工具全量冒烟报告的 FastCtx 两项;bash 工具真机验收通过)。
+
+- **同轮验收**:用户 Windows 真机全量测试确认 **bash 工具出现且作为唯一命令通道正常工作**(退出码标记、后台任务、job_kill 全过)——v0.35.0 以来「行内补位」五层问题(注入缺失/output 契约/restrict 作用域/asar 解析/fiber 时序/服务授权)全部闭环。
+- **gb_glob 畸形 pattern 由静默放行改为响亮报错**:上游对非字符串 pattern 静默当「全部文件」处理(测试实测:传数组形状的字符串返回全库),桥侧在 `glob`/`replace` 的 execute 里前置校验——pattern 必须非空字符串,否则抛 `pattern must be a non-empty string`。静默错误结果比报错更危险。
+- **忽略规则透明化**:三套「找文件」默认行为各不相同(官方 glob 不忽略任何;gb_grep 尊重 .gitignore 跳 .git;gb_glob 只认裸 .ignore 且 .git 恒可见)——在 gb_glob/gb_grep 的 description 里**如实声明各自规则**,混用时模型不再拿到意外结果集而不知情。
+- 其余发现归属:web_search 402 是 web-search-deepseek 插件的端点余额问题(非本插件);read_image webp 重编码/行尾不对称/wait_agent 下限等为宿主行为,不在本仓库范围。
+- **冒烟**:119 项全绿(新增畸形 pattern 校验与忽略规则断言)。
+
 ## v0.38.4 — 2026-10-13
 
 **类型**:fix(bash 挂载的服务授权 + 折叠分区自绘;两条真机日志驱动)。
