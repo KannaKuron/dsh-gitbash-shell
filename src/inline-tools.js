@@ -266,7 +266,7 @@ export async function resolveToolBashEntry(ctx) {
  * prescribes for per-agent variants. The official module is loaded ONCE per
  * process; each agent gets a fresh scope and a fresh apply().
  */
-export async function activateOfficialBash(agent, resolved, createScopeFn, log) {
+export async function activateOfficialBash(agent, resolved, log) {
   let mod
   try {
     mod = await resolved.load()
@@ -278,28 +278,30 @@ export async function activateOfficialBash(agent, resolved, createScopeFn, log) 
     log('official tool-bash module has no apply(); activation skipped')
     return undefined
   }
-  const scope = createScopeFn(agent.ctx)
-  // plugin() starts the fiber asynchronously; awaiting the wrapped thenable
-  // guarantees the apply callback has captured scope.ctx before we hand it
-  // to the official module (v0.38.2-and-earlier passed undefined here and
-  // crashed inside `ctx.shell`).
-  if (scope.fiber) {
-    try { await scope.fiber } catch (error) {
-      log(`official tool-bash scope fiber failed to start: ${error?.message ?? error}`)
-      return undefined
-    }
-  }
-  if (!scope.ctx) {
-    log('official tool-bash scope context did not initialize; activation skipped')
+  // Mount through cordis's OWN plugin path. The official module object
+  // DECLARES its service needs (`inject: ['tools','shell','systemPrompt',
+  // 'shellEnv','workingDirectory']`); a hand-called mod.apply(ctx) has no
+  // such declaration, so cordis refuses every service read with
+  // `cannot get property "shell" without inject` (v0.38.2 field report).
+  // ctx.plugin(mod) registers a REAL fiber with the declaration honored,
+  // runs apply itself, and the wrapped fiber is a thenable — awaiting it
+  // waits for the activation (and its async fiber start) to finish.
+  let fiber
+  try {
+    fiber = agent.ctx.plugin(mod)
+  } catch (error) {
+    log(`official tool-bash mount failed: ${error?.message ?? error}`)
     return undefined
   }
   try {
-    await mod.apply(scope.ctx, {})
-    return scope
+    await fiber
   } catch (error) {
-    try { await scope.dispose() } catch { /* best effort */ }
-    log(`official tool-bash activation failed: ${error?.message ?? error}`)
+    log(`official tool-bash fiber failed: ${error?.message ?? error}`)
     return undefined
+  }
+  return {
+    fiber,
+    dispose: async () => { try { await fiber?.dispose?.() } catch { /* already gone */ } },
   }
 }
 
@@ -427,7 +429,7 @@ export function mountInlineTools(ctx, deps) {
           log('official @deepseek-ai/dsh-tool-bash is not resolvable (neither the host loader nor a plain resolution found it); bash stays absent for this agent')
           return
         }
-        const scope = await activateOfficialBash(agent, resolved, createScope, log)
+        const scope = await activateOfficialBash(agent, resolved, log)
         if (scope && tracked.get(agent) === state) {
           state.scope = scope
           log('official bash tool activated for this agent (Git Bash host; fake pwsh denied)')

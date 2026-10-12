@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.38.4 — 2026-10-13
+
+**类型**:fix(bash 挂载的服务授权 + 折叠分区自绘;两条真机日志驱动)。
+
+- **bash 挂载改走 cordis 官方插件通道**(`agent.ctx.plugin(mod)`):官方 tool-bash 模块对象自带 `inject: ['tools','shell','systemPrompt','shellEnv','workingDirectory']` 声明;此前手动 `mod.apply(scope.ctx)` 绕过声明,被 cordis 拒读服务(`cannot get property "shell" without inject`——上一版 fiber 时序修复的后续,ctx 已就绪、死在授权)。`ctx.plugin(mod)` 注册**真正的 fiber**(声明生效、cordis 自己跑 apply、Config 走官方 schema),`await fiber` 等激活完成;卸载 = `fiber.dispose()`,回滚语义由 cordis 保证。
+- **折叠分区改为自绘**(按钮头 + 条件体,零外部组件):官方 `DisclosureRow` 在真机的插件受限 require 形状里拿不到(`icon("DisclosureRow")` 为 null),v0.38.0–0.38.3 的每个分区都在静默退化成「静态标题 + 平铺」——正是用户截图里那个"一条线分割的一列"。自绘后:七个带边框卡片、标题行常驻可点、默认全收起。
+- **冒烟**:118 项全绿;断言改锁自绘形态(无外部组件依赖、折叠头、条件体)。
+- **真机判据**:升级重启新建会话 → bash 出现 + 日志 `official bash tool activated for this agent`;设置卡 = 七个可折叠卡片。
+
 ## v0.38.3 — 2026-10-13
 
 **类型**:fix(补位激活的 scope 上下文时序;用户终端日志一锤定音)。

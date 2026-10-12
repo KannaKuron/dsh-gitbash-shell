@@ -1807,6 +1807,11 @@ window.__ModuleLoader__.load({
 			   seven header rows at a glance, switches only visible on expand. */
 			".gb-fold{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:4px 12px 12px;background:var(--dsw-alias-bg-layer-1,transparent)}",
 			".gb-fold .gb-stack{padding-top:10px}",
+			".gb-foldHead{display:flex;align-items:center;gap:8px;width:100%;appearance:none;background:none;border:0;padding:6px 0;font:inherit;font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}",
+			".gb-foldHead:hover{color:var(--dsw-alias-label-primary)}",
+			".gb-foldChevron{flex:none;display:inline-block;color:var(--dsw-alias-label-tertiary);transition:transform .16s}",
+			".gb-foldChevron.gb-foldChevronOpen{transform:rotate(90deg)}",
+			".gb-foldTitle{min-width:0;overflow-wrap:anywhere}",
 			/* Missing-Git-Bash popup (v0.28.0): a root-level modal, because the
 			   user may never be on the settings page when their shell dies. */
 			".gb-modalBackdrop{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)}",
@@ -2100,35 +2105,31 @@ window.__ModuleLoader__.load({
 
 			var Chevron = icon("IconChevronDownOutline14");
 
-			/* v0.38.0: one FOLDABLE section. The header row is the OFFICIAL
-			   `DisclosureRow` from the seed ui-primitives package (required at
-			   the top of this file, same seam as every icon). All sections stay
-			   collapsed by default — the user scans seven labelled header rows
-			   and expands the one theme they recognise. A stripped-down host
-			   without the export degrades to the static title+stack card. */
-			var DisclosureRowComponent = icon("DisclosureRow");
-			/* v0.38.2 BUGFIX: the call sites are `fold("sec.xxx", row, row, ...)`
-			   — one dictionary key followed by the section's rows. The previous
-			   draft parsed (key, titleKey, ...) and ATE the first row into the
-			   title slot (t(<element>) → empty header, nothing folded). */
+			/* v0.38.4: one FOLDABLE section, HAND-DRAWN. The official disclosure
+			   component was tried first (v0.38.0-0.38.3) but never rendered on
+			   the real machine — the ui-primitives module shape the plugin's
+			   restricted require returns does not expose it (the icon lookup
+			   comes back null there), so every section silently degraded to a
+			   static title+stack pile. Self-drawing costs one button + one
+			   conditional: header row visible at all times, body only while
+			   open. All sections stay collapsed by default — seven labelled
+			   header rows to scan. */
 			function fold(titleKey) {
 				var body = [];
 				for (var i = 1; i < arguments.length; i++) body.push(arguments[i]);
-				if (!DisclosureRowComponent || typeof DisclosureRowComponent !== "function") {
-					return E("div", { className: "gb-section" },
-						E("div", { className: "gb-sectionTitle" }, t(titleKey)),
-						E("div", { className: "gb-stack" }, body),
-					);
-				}
-				return E(DisclosureRowComponent, {
-					className: "gb-fold",
-					icon: null,
-					title: t(titleKey),
-					open: folds[titleKey] === true,
-					expandable: true,
-					expandOnRowClick: true,
-					onToggle: function () { toggleFold(titleKey); },
-				}, E("div", { className: "gb-stack" }, body));
+				var open = folds[titleKey] === true;
+				return E("div", { className: "gb-fold" },
+					E("button", {
+						type: "button",
+						className: "gb-foldHead",
+						"aria-expanded": open ? "true" : "false",
+						onClick: function () { toggleFold(titleKey); },
+					},
+						E("span", { className: "gb-foldChevron" + (open ? " gb-foldChevronOpen" : ""), "aria-hidden": "true" }, "▸"),
+						E("span", { className: "gb-foldTitle" }, t(titleKey)),
+					),
+					open ? E("div", { className: "gb-stack" }, body) : null,
+				);
 			}
 
 			// dsh 0.1.6-alpha.2: the Plugins page renders this card through the

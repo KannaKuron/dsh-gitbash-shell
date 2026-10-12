@@ -1422,11 +1422,15 @@ test('client card: the body groups switches into seven labelled sections (v0.36.
   assert.match(terminalBlock, /autoTerminalShell/)
   assert.match(terminalBlock, /adoptSidebar/)
   assert.match(src, /var inlineSection = fold\("sec\.inline"/)
-  // The fold helper rides the OFFICIAL DisclosureRow (seed ui-primitives),
-  // collapses by default, and degrades to a static section without it.
-  assert.match(src, /var DisclosureRowComponent = icon\("DisclosureRow"\)/)
-  assert.match(src, /DisclosureRowComponent, \{\s*\n\s*className: "gb-fold",\s*\n\s*icon: null,\s*\n\s*title: t\(titleKey\),\s*\n\s*open: folds\[titleKey\] === true,/)
-  assert.match(src, /gb-sectionTitle" \}, t\(titleKey\)\)/)
+  // v0.38.4: the fold is HAND-DRAWN (button header + conditional body) —
+  // the official DisclosureRow is not reachable through the plugin's
+  // restricted require on real hosts, and the silent static degradation was
+  // exactly the "one flat pile" the user rejected. No external component.
+  assert.doesNotMatch(src, /DisclosureRowComponent|icon\("DisclosureRow"\)/)
+  assert.match(src, /var open = folds\[titleKey\] === true/)
+  assert.match(src, /className: "gb-foldHead"/)
+  assert.match(src, /onClick: function \(\) \{ toggleFold\(titleKey\); \}/)
+  assert.match(src, /open \? E\("div", \{ className: "gb-stack" \}, body\) : null/)
   // sec.mode exists in every dictionary (the fold header for the mode section).
   {
     const occurrences = [...src.matchAll(new RegExp('"sec\\.mode":', 'g'))].length
