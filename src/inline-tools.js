@@ -223,6 +223,7 @@ export async function activateOfficialBash(agent, toolBashHref, createScopeFn, l
 /**
  * Mount the per-agent reconcile. `deps`:
  *   - tools(ctx)       -> the host tool registry (or undefined)
+ *   - agents(ctx)      -> the host agents service (or undefined)
  *   - createScope(fn)  -> cordis createScope
  *   - allowed(session) -> danger-full-access verdict for the pwsh channel
  *   - echo(text)       -> result dialect echo (Windows -> MSYS), or undefined
@@ -231,15 +232,20 @@ export async function activateOfficialBash(agent, toolBashHref, createScopeFn, l
  *   - pwshEnabled()    -> the row switch for publishing the pwsh tool
  *   - log(message)     -> the plugin's tagged logger
  *
- * Registration decisions re-run on EVERY agent creation: a per-agent tool
- * face is per-agent truth, and the observed state (variant presets on, a
- * future official change, dsh-ops appearing) is absorbed automatically
- * instead of being encoded as a boot-time snapshot.
+ * Registration decisions re-run on EVERY agent creation AND once at mount
+ * time for every ALREADY-LIVE agent (the dsh-ops-proven shape,
+ * `installHostShellDenial`): this row can activate long after agents exist —
+ * a plugin hot-reload, or a host whose sessions resumed before this bundle
+ * row finished mounting — and an agent/created-only listener leaves every
+ * such agent with the fake pwsh and no bash, which is exactly the Windows
+ * field report behind this block. A second, INDEPENDENT layer guards the
+ * call itself through `tools/pre-execute`: visibility restriction can lose a
+ * race, and a lying pwsh that reaches its executor still runs Git Bash.
  */
 export function mountInlineTools(ctx, deps) {
-  const { tools, createScope, allowed, spawn, pwshPath, echo, log } = deps
-  /** agent -> { timer, scope, denyPwsh } */
-  const agents = new Map()
+  const { tools, agents, createScope, allowed, spawn, pwshPath, echo, log } = deps
+  /** agent -> { timer, scope, denyPwsh }; named `tracked` because `agents` above is the host service */
+  const tracked = new Map()
   let pwshPublished = false
   let pwshDisposer = undefined
   let toolBashHrefPromise
@@ -287,17 +293,17 @@ export function mountInlineTools(ctx, deps) {
     if (attempt < 5 && !names.includes('bash') && !names.includes('pwsh')) {
       const timer = setTimeout(() => { try { reconcile(agent, { attempt: attempt + 1 }) } catch { /* never crash on a timer */ } }, 250)
       timer.unref?.()
-      const state = agents.get(agent)
+      const state = tracked.get(agent)
       if (state) state.timer = timer
-      else agents.set(agent, { timer, scope: undefined, denyPwsh: undefined })
+      else tracked.set(agent, { timer, scope: undefined, denyPwsh: undefined })
       return
     }
     const needs = inlineNeeds(names)
-    let state = agents.get(agent)
+    let state = tracked.get(agent)
     if (state?.timer) { clearTimeout(state.timer); state.timer = undefined }
     if (!state) {
       state = { timer: undefined, scope: undefined, denyPwsh: undefined }
-      agents.set(agent, state)
+      tracked.set(agent, state)
     }
     if (needs.denyPwsh && !state.denyPwsh) {
       // Deny the fake pwsh first: restrict is per-agent and idempotent, and
@@ -318,7 +324,7 @@ export function mountInlineTools(ctx, deps) {
           return
         }
         const scope = await activateOfficialBash(agent, href, createScope, log)
-        if (scope && agents.get(agent) === state) {
+        if (scope && tracked.get(agent) === state) {
           state.scope = scope
           log('official bash tool activated for this agent (Git Bash host; fake pwsh denied)')
         }
@@ -334,9 +340,9 @@ export function mountInlineTools(ctx, deps) {
   }
 
   const teardown = (agent) => {
-    const state = agents.get(agent)
+    const state = tracked.get(agent)
     if (!state) return
-    agents.delete(agent)
+    tracked.delete(agent)
     if (state.timer) clearTimeout(state.timer)
     if (state.denyPwsh) { try { state.denyPwsh() } catch { /* already lifted */ } }
     if (state.scope) { void state.scope.dispose().catch(() => {}) }
@@ -345,14 +351,34 @@ export function mountInlineTools(ctx, deps) {
   try {
     ctx.on('agent/created', ({ agent } = {}) => { try { reconcile(agent) } catch { /* never break agent creation */ } })
     ctx.on('agent/disposed', ({ agent } = {}) => { try { teardown(agent) } catch { /* never break disposal */ } })
+    // MOUNT-TIME SWEEP (v0.35.2, the Windows field report): agents that
+    // already exist when this row mounts never fire agent/created — a plugin
+    // hot-reload or a host that resumed sessions before this bundle row
+    // finished mounting would otherwise keep the fake pwsh and no bash on
+    // every live agent. Same shape the proven dsh-ops denial uses.
+    for (const agent of agents?.(ctx)?.list?.() ?? []) {
+      try { reconcile(agent) } catch { /* one broken agent never blocks the rest */ }
+    }
+    // CALL-LAYER GUARD (v0.35.2, second independent layer): even when the
+    // per-agent visibility restriction loses a race, a `pwsh` call that
+    // reaches its executor runs Git Bash (ctx.shell IS Git Bash on this
+    // host). Deny at dispatch and name the replacements.
+    ctx.on('tools/pre-execute', (exec, next) => {
+      try {
+        if (exec?.name === 'pwsh') {
+          return { kind: 'deny', reason: 'the host pwsh tool would run Git Bash on this host (its executor was replaced). Use the bash tool for commands, or gitbash_pwsh for Windows-native work (registry, services, WMI).' }
+        }
+      } catch { /* never block the waterfall */ }
+      return next()
+    })
   } catch (error) {
     log(`agent lifecycle wiring failed: ${error?.message ?? error}`)
     return
   }
 
   ctx.effect(() => () => {
-    for (const agent of [...agents.keys()]) teardown(agent)
-    agents.clear()
+    for (const agent of [...tracked.keys()]) teardown(agent)
+    tracked.clear()
     unpublishPwsh()
   }, 'dsh-gitbash-shell: inline tool patching')
 }

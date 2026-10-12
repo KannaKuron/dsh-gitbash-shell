@@ -2608,6 +2608,7 @@ export async function apply(ctx, config = {}) {
     try {
       mountInlineTools(ctx, {
         tools: (c) => { try { return c.get('tools') } catch { return undefined } },
+        agents: (c) => { try { return c.get('agents') } catch { return undefined } },
         createScope: (agentCtx) => {
           let childCtx
           const fiber = agentCtx.plugin((c) => { childCtx = c })

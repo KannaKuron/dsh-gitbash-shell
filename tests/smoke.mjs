@@ -2903,6 +2903,26 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   // The desired set collapses to [] while the switch is off — the cleanup
   // still runs, but nothing registers.
   assert.match(hostSource, /readVariants && readVariants\(\) === true\s*\?\s*effectivePresetIds/)
+  // v0.35.2 (the Windows field report): mountInlineTools receives the host
+  // agents service so the mount-time sweep can reach ALREADY-LIVE agents.
+  assert.match(hostSource, /agents: \(c\) => \{ try \{ return c\.get\('agents'\) \} catch \{ return undefined \} \}/)
+})
+
+test('inline tools: the mount-time sweep and the call-layer guard exist (v0.35.2)', () => {
+  const source = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
+  // Layer 1 — the sweep: an agent that exists before this row mounts (plugin
+  // hot-reload, host that resumed sessions first) never fires agent/created.
+  assert.match(source, /for \(const agent of agents\?\.\(ctx\)\?\.list\?\.\(\) \?\? \[\]\)/)
+  // Layer 2 — the independent call-layer guard on tools/pre-execute: even if
+  // the per-agent visibility restriction loses a race, a `pwsh` dispatch that
+  // reaches its executor would run Git Bash; deny it and name the replacements.
+  assert.match(source, /tools\/pre-execute/)
+  assert.match(source, /the host pwsh tool would run Git Bash on this host/)
+  // Regression lock: the per-agent state map must NOT be named `agents` —
+  // that identifier is the destructured host service, and a same-named
+  // `const` next to it is a SyntaxError that kills the whole module.
+  assert.match(source, /const tracked = new Map\(\)/)
+  assert.doesNotMatch(source, /const agents = new Map\(\)/)
 })
 
 // ── v0.35.0: the FastCtx bridge (gb_* additions) ───────────────────────────

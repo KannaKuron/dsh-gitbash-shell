@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.35.2 — 2026-10-12
+
+**类型**:fix(Windows 真机报告;行内补位的时序洞 + 调用层兜底)。
+
+- **修复:已存在的 agent 拿不到补位(用户 Windows 真机报告)**。症状:AI 调 `pwsh` 工具收到 `/usr/bin/bash: line 1: Select-String: command not found`——假 pwsh 的执行器在本机就是 `ctx.shell`(Git Bash),PowerShell 命令进了 bash。根因:补位判定此前**只挂在 `agent/created`** 上,本插件行**激活晚于 agent 存在**时(插件热重载、宿主先恢复会话后本 bundle 行才挂完),全部已存在的 agent 保持假 pwsh 且没有 bash,且永不再触发判定。修复为 **dsh-ops 验证过的双重独立层**(`installHostShellDenial` 同款形态):
+  - **层 1 — 挂载时补扫**:`mountInlineTools` 新增 `agents(ctx)` 依赖(index.js 传入 `ctx.get('agents')`),挂载那一刻对 `agents.list()` 里的每个**已存活 agent** 跑一遍 `reconcile`——与 created 事件同一条路径,250ms×5 有界重试等同样生效;
+  - **层 2 — 调用层守卫**:新增 `tools/pre-execute` 监听,凡 `pwsh` 调用到达分发层一律 deny,理由句直接指路替换品(bash 工具 / `gitbash_pwsh`)。两层层层独立:即便 per-agent 的 `restrict({ deny })` 输了竞态,谎工具也到不了执行器。
+- **顺手修复:重名声明 SyntaxError**。v0.35.2 开发中引入的 `agents` 依赖与 `mountInlineTools` 内部的 agent 状态 Map 同名(`const` 重复声明,模块整体加载失败)。内部 Map 改名 `tracked`;冒烟加防回归断言(源码不得再现 `const agents = new Map()`)。
+- **冒烟**:新增「inline tools: the mount-time sweep and the call-layer guard exist (v0.35.2)」;「…wires the patch…」补 `agents` 依赖接线断言。合计 114 项(113 过 + 1 跳)。
+- **Windows 真机复验清单(升级后)**:①官方模式新会话有 bash 工具;②假 pwsh 调用被拒(deny 理由指路);③`gitbash_pwsh` 跑真 pwsh 7;④`gb_grep` 出参 /c/ 方言。v0.35.0 的真机验证项(见该条目)顺延至此版一起验。
+
 ## v0.35.1 — 2026-10-12
 
 **类型**:fix(dsh-ptc-cordis-preset 联动显示;真机反馈)。
