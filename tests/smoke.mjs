@@ -1365,7 +1365,7 @@ test('client card: the dedupe row is peer-gated and writes THIS row\'s field', (
   assert.match(src, /writeField\("suppressPeerCordis", false\)/)
   // drawn only while the peer's entry is served (absent peer / old host hide it);
   // v0.36.0 regroup: dedupe and python live under ONE `peerSection` heading
-  assert.match(src, /var peerSection = peerSnap\.status === "ready" \? E\("div", \{ className: "gb-section" \}/)
+  assert.match(src, /var peerSection = peerSnap\.status === "ready" \? fold\("sec\.peer"/)
   assert.match(src, /\n\t\t\t\tpeerSection,/)
   // the ctx reaches the component: the inject factory carries it as a plain member
   assert.match(src, /return \{ scope: scope, ctx: ctx \};/)
@@ -1391,13 +1391,15 @@ test('client card: the body groups switches into seven labelled sections (v0.36.
   // Sections are DEFINED in display order and the body MOUNTS them in the
   // same order: mode, inline tools, path dialect, executor, terminal,
   // toolchain (win32-only block), plugin integrations.
+  // v0.38.0: every section is a FOLD — one official DisclosureRow per theme,
+  // collapsed by default; the body still mounts them in display order.
   const order = [
-    'var modeSection = E("div"',
-    'var inlineSection = E("div"',
-    'var dialectSection = E("div"',
-    'var executorSection = E("div"',
-    'var terminalSection = E("div"',
-    'var peerSection = peerSnap.status === "ready" ? E("div"',
+    'var modeSection = fold("sec.mode"',
+    'var inlineSection = fold("sec.inline"',
+    'var dialectSection = fold("sec.dialect"',
+    'var executorSection = fold("sec.executor"',
+    'var terminalSection = fold("sec.terminal"',
+    'var peerSection = peerSnap.status === "ready" ? fold("sec.peer"',
   ].map((marker) => src.indexOf(marker))
   for (let i = 0; i < order.length; i++) {
     assert.ok(order[i] > 0, 'section ' + i + ' is defined')
@@ -1416,10 +1418,20 @@ test('client card: the body groups switches into seven labelled sections (v0.36.
   assert.doesNotMatch(dialectBlock, /autoTerminalShell/)
   assert.doesNotMatch(dialectBlock, /gitAutocrlf/)
   assert.doesNotMatch(dialectBlock, /bashPath/)
-  const terminalBlock = src.slice(src.indexOf('var terminalSection = E("div"'), src.indexOf('var peerSection = peerSnap.status === "ready" ? E("div"'))
+  const terminalBlock = src.slice(src.indexOf('var terminalSection = fold("sec.terminal"'), src.indexOf('var peerSection = peerSnap.status === "ready" ? fold("sec.peer"'))
   assert.match(terminalBlock, /autoTerminalShell/)
   assert.match(terminalBlock, /adoptSidebar/)
-  assert.match(src, /var inlineSection = E\("div", \{ className: "gb-section" \},\s*\n\s*E\("div", \{ className: "gb-sectionTitle" \}, t\("sec\.inline"\)\)/)
+  assert.match(src, /var inlineSection = fold\("sec\.inline"/)
+  // The fold helper rides the OFFICIAL DisclosureRow (seed ui-primitives),
+  // collapses by default, and degrades to a static section without it.
+  assert.match(src, /var DisclosureRowComponent = icon\("DisclosureRow"\)/)
+  assert.match(src, /DisclosureRowComponent, \{\s*\n\s*className: "gb-fold",\s*\n\s*icon: null,\s*\n\s*title: t\(titleKey\),\s*\n\s*open: folds\[key\] === true,/)
+  assert.match(src, /gb-sectionTitle" \}, t\(titleKey\)\)/)
+  // sec.mode exists in every dictionary (the fold header for the mode section).
+  {
+    const occurrences = [...src.matchAll(new RegExp('"sec\\.mode":', 'g'))].length
+    assert.ok(occurrences >= 21, 'sec.mode must exist in all 21 dictionaries, saw ' + occurrences)
+  }
 })
 
 // ── issue #8: the DISPATCH face (not just the pure helpers) ──────────────────

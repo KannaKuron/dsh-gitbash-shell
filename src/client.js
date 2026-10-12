@@ -76,6 +76,7 @@ window.__ModuleLoader__.load({
 			"switch.off": "停用",
 			"error": "写入失败",
 			"hint": "启用后:所有工具(bash 命令与 workdir、read/write/edit/read_image/glob/grep 与 present 的路径参数)统一使用 MSYS 盘根 POSIX 路径(/c/Users/...);bash 的原生习惯——~ 家目录、/tmp 临时目录、/dev/null、/usr 等——在所有工具中同样有效(与 Git Bash 挂载表一致),路径参数由宿主自动翻译,模型无感。停用后恢复 dsh 原生行为(文件工具用 Windows 路径)。bash 始终是 Git Bash,不受此开关影响。",
+			"sec.mode": "模式",
 			"sec.inline": "行内工具",
 			"sec.executor": "执行器",
 			"sec.peer": "插件联动",
@@ -153,6 +154,7 @@ window.__ModuleLoader__.load({
 			"switch.off": "Disable",
 			"error": "write failed",
 			"hint": "Enabled: every tool (bash commands and workdir, read/write/edit/read_image/glob/grep and present path arguments) uses MSYS drive-root POSIX paths (/c/Users/...); bash-native habits — the ~ home shorthand, /tmp, /dev/null, /usr — resolve in every tool exactly as bash itself resolves them, and the host translates the path fields automatically. Disabled restores dsh-native behavior (Windows paths for file tools). Bash is always Git Bash while the plugin is installed; this switch only governs the cross-tool path dialect.",
+			"sec.mode": "Mode",
 			"sec.inline": "Inline tools",
 			"sec.executor": "Executor",
 			"sec.peer": "Plugin integrations",
@@ -240,6 +242,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "تعطيل",
 				"error": "فشل الكتابة",
 				"hint": "عند التفعيل: تستخدم كل الأدوات (أوامر bash و workdir، ومعاملات المسار في read/write/edit/read_image/glob/grep و present) مسارات POSIX من جذر قرص MSYS (/c/Users/...)؛ وعادات bash الأصلية — ~ للمجلد الرئيسي و /tmp و /dev/null و /usr — تعمل في كل أداة تمامًا كما تحلّها bash نفسها، ويتولّى المضيف ترجمة حقول المسار تلقائيًا. عند التعطيل يعود السلوك الأصلي لـ dsh (مسارات Windows لأدوات الملفات). يبقى bash دائمًا Git Bash ما دامت الإضافة مثبَّتة؛ هذا المفتاح لا يحكم سوى لهجة المسارات بين الأدوات.",
+				"sec.mode": "الوضع",
 				"sec.inline": "الأدوات المضمنة",
 				"sec.executor": "المنفّذ",
 				"sec.peer": "تكامل الإضافات",
@@ -317,6 +320,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Deaktivieren",
 				"error": "Schreiben fehlgeschlagen",
 				"hint": "Aktiviert: Alle Tools (bash-Befehle und workdir sowie Pfadargumente von read/write/edit/read_image/glob/grep und present) verwenden POSIX-Pfade ab der MSYS-Laufwerkswurzel (/c/Users/...); bash-eigene Gewohnheiten — ~ für das Home-Verzeichnis, /tmp, /dev/null, /usr — funktionieren in jedem Tool genau so, wie bash sie selbst auflöst, und der Host übersetzt die Pfadfelder automatisch. Deaktiviert stellt das dsh-native Verhalten wieder her (Windows-Pfade für Dateitools). Bash ist bei installiertem Plugin immer Git Bash; dieser Schalter steuert nur den Pfaddialekt zwischen den Tools.",
+				"sec.mode": "Modus",
 				"sec.inline": "Inline-Werkzeuge",
 				"sec.executor": "Executor",
 				"sec.peer": "Plugin-Integrationen",
@@ -394,6 +398,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Désactiver",
 				"error": "échec de l'écriture",
 				"hint": "Activé : tous les outils (commandes bash et workdir, arguments de chemin de read/write/edit/read_image/glob/grep et de present) utilisent des chemins POSIX à racine de lecteur MSYS (/c/Users/...) ; les habitudes natives de bash — ~ pour le dossier personnel, /tmp, /dev/null, /usr — fonctionnent dans chaque outil exactement comme bash les résout lui-même, et l'hôte traduit les champs de chemin automatiquement. Désactivé rétablit le comportement natif de dsh (chemins Windows pour les outils de fichiers). Bash reste toujours Git Bash tant que le plugin est installé ; ce commutateur ne régit que le dialecte de chemins entre outils.",
+				"sec.mode": "Mode",
 				"sec.inline": "Outils en ligne",
 				"sec.executor": "Exécuteur",
 				"sec.peer": "Intégrations de plugins",
@@ -471,6 +476,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "अक्षम करें",
 				"error": "लिखना विफल रहा",
 				"hint": "सक्षम होने पर: सभी टूल (bash कमांड और workdir, तथा read/write/edit/read_image/glob/grep और present के पथ तर्क) MSYS ड्राइव-रूट POSIX पथ (/c/Users/...) का उपयोग करते हैं; bash की मूल आदतें — होम के लिए ~, /tmp, /dev/null, /usr — हर टूल में ठीक वैसे काम करती हैं जैसे bash स्वयं उन्हें हल करता है, और होस्ट पथ फ़ील्ड स्वतः अनुवादित करता है। अक्षम करने पर dsh का मूल व्यवहार बहाल होता है (फ़ाइल टूल के लिए Windows पथ)। जब तक प्लगइन इंस्टॉल है bash हमेशा Git Bash रहता है; यह स्विच केवल टूल के बीच पथ शैली नियंत्रित करता है।",
+				"sec.mode": "मोड",
 				"sec.inline": "इनलाइन टूल्स",
 				"sec.executor": "एक्ज़ीक्यूटर",
 				"sec.peer": "प्लगइन एकीकरण",
@@ -548,6 +554,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Nonaktifkan",
 				"error": "gagal menulis",
 				"hint": "Saat aktif: semua alat (perintah bash dan workdir, serta argumen path read/write/edit/read_image/glob/grep dan present) memakai path POSIX berakar drive MSYS (/c/Users/...); kebiasaan asli bash — ~ untuk direktori home, /tmp, /dev/null, /usr — bekerja di setiap alat persis seperti bash sendiri menyelesaikannya, dan host menerjemahkan bidang path secara otomatis. Saat nonaktif, perilaku asli dsh dipulihkan (path Windows untuk alat berkas). Bash selalu Git Bash selama plugin terpasang; sakelar ini hanya mengatur dialek path antaralat.",
+				"sec.mode": "Mode",
 				"sec.inline": "Alat inline",
 				"sec.executor": "Eksekutor",
 				"sec.peer": "Integrasi plugin",
@@ -625,6 +632,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Disattiva",
 				"error": "scrittura non riuscita",
 				"hint": "Attivato: tutti gli strumenti (comandi bash e workdir, argomenti di percorso di read/write/edit/read_image/glob/grep e di present) usano percorsi POSIX con radice di unità MSYS (/c/Users/...); le abitudini native di bash — ~ per la home, /tmp, /dev/null, /usr — funzionano in ogni strumento esattamente come le risolve bash stesso, e l'host traduce automaticamente i campi di percorso. Disattivato ripristina il comportamento nativo di dsh (percorsi Windows per gli strumenti per i file). Bash resta sempre Git Bash finché il plugin è installato; questo interruttore governa solo il dialetto dei percorsi tra gli strumenti.",
+				"sec.mode": "Modalità",
 				"sec.inline": "Strumenti inline",
 				"sec.executor": "Esecutore",
 				"sec.peer": "Integrazioni plugin",
@@ -702,6 +710,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "無効にする",
 				"error": "書き込みに失敗しました",
 				"hint": "有効にすると、すべてのツール(bash コマンドと workdir、read/write/edit/read_image/glob/grep と present のパス引数)が MSYS ドライブルートの POSIX パス(/c/Users/...)を使います。bash のネイティブな習慣——ホームの ~、/tmp、/dev/null、/usr——も、bash 自身が解決するのとまったく同じようにすべてのツールで動作し、パスフィールドはホストが自動的に変換します。無効にすると dsh 本来の動作(ファイルツールは Windows パス)に戻ります。bash はプラグインがインストールされている限り常に Git Bash で、このスイッチの影響を受けません。",
+				"sec.mode": "モード",
 				"sec.inline": "インラインツール",
 				"sec.executor": "実行エンジン",
 				"sec.peer": "プラグイン連携",
@@ -779,6 +788,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "사용 안 함",
 				"error": "쓰기 실패",
 				"hint": "켜면 모든 도구(bash 명령과 workdir, read/write/edit/read_image/glob/grep 및 present의 경로 인수)가 MSYS 드라이브 루트 POSIX 경로(/c/Users/...)를 사용합니다. bash 고유 습관——홈의 ~, /tmp, /dev/null, /usr——도 bash 자신이 해석하는 그대로 모든 도구에서 작동하며 호스트가 경로 필드를 자동 변환합니다. 끄면 dsh 기본 동작(파일 도구에 Windows 경로 사용)으로 돌아갑니다. 플러그인이 설치되어 있는 동안 bash는 항상 Git Bash이며 이 스위치의 영향을 받지 않습니다.",
+				"sec.mode": "모드",
 				"sec.inline": "인라인 도구",
 				"sec.executor": "실행기",
 				"sec.peer": "플러그인 연동",
@@ -856,6 +866,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Uitschakelen",
 				"error": "schrijven mislukt",
 				"hint": "Ingeschakeld: alle tools (bash-opdrachten en workdir, padargumenten van read/write/edit/read_image/glob/grep en present) gebruiken POSIX-paden vanaf de MSYS-schijfwortel (/c/Users/...); bash-eigen gewoonten — ~ voor de home-map, /tmp, /dev/null, /usr — werken in elke tool precies zoals bash ze zelf oplost, en de host vertaalt de padvelden automatisch. Uitgeschakeld herstelt het oorspronkelijke dsh-gedrag (Windows-paden voor bestandstools). Bash is altijd Git Bash zolang de plugin is geïnstalleerd; deze schakelaar bepaalt alleen het paddialect tussen de tools.",
+				"sec.mode": "Modus",
 				"sec.inline": "Inline tools",
 				"sec.executor": "Executor",
 				"sec.peer": "Plug-in-integraties",
@@ -933,6 +944,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Wyłącz",
 				"error": "zapis nie powiódł się",
 				"hint": "Po włączeniu: wszystkie narzędzia (polecenia bash i workdir, argumenty ścieżek w read/write/edit/read_image/glob/grep i w present) używają ścieżek POSIX od korzenia dysku MSYS (/c/Users/...); natywne nawyki basha — ~ dla katalogu domowego, /tmp, /dev/null, /usr — działają w każdym narzędziu dokładnie tak, jak rozwiązuje je sam bash, a host automatycznie tłumaczy pola ścieżek. Wyłączenie przywraca natywne zachowanie dsh (ścieżki Windows dla narzędzi plikowych). Bash jest zawsze Git Bash, dopóki wtyczka jest zainstalowana; ten przełącznik reguluje wyłącznie dialekt ścieżek między narzędziami.",
+				"sec.mode": "Tryb",
 				"sec.inline": "Narzędzia wbudowane",
 				"sec.executor": "Egzekutor",
 				"sec.peer": "Integracje wtyczek",
@@ -1010,6 +1022,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Desativar",
 				"error": "falha ao gravar",
 				"hint": "Ativada: todas as ferramentas (comandos bash e workdir, argumentos de caminho de read/write/edit/read_image/glob/grep e de present) usam caminhos POSIX a partir da raiz da unidade MSYS (/c/Users/...); os hábitos nativos do bash — ~ para a pasta pessoal, /tmp, /dev/null, /usr — funcionam em cada ferramenta exatamente como o próprio bash os resolve, e o host traduz os campos de caminho automaticamente. Desativada restaura o comportamento nativo do dsh (caminhos Windows para as ferramentas de arquivo). O bash é sempre Git Bash enquanto o plugin estiver instalado; este interruptor rege apenas o dialeto de caminhos entre ferramentas.",
+				"sec.mode": "Modo",
 				"sec.inline": "Ferramentas inline",
 				"sec.executor": "Executor",
 				"sec.peer": "Integrações de plugins",
@@ -1087,6 +1100,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Выключить",
 				"error": "не удалось записать",
 				"hint": "Включено: все инструменты (команды bash и workdir, аргументы путей read/write/edit/read_image/glob/grep и present) используют POSIX-пути от корня диска MSYS (/c/Users/...); собственные привычки bash — ~ для домашнего каталога, /tmp, /dev/null, /usr — работают в каждом инструменте ровно так, как их разрешает сам bash, а хост автоматически преобразует поля путей. Выключение возвращает исходное поведение dsh (пути Windows для файловых инструментов). Пока плагин установлен, bash всегда остаётся Git Bash; этот переключатель управляет только диалектом путей между инструментами.",
+				"sec.mode": "Режим",
 				"sec.inline": "Встроенные инструменты",
 				"sec.executor": "Исполнитель",
 				"sec.peer": "Интеграции плагинов",
@@ -1164,6 +1178,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Inaktivera",
 				"error": "skrivning misslyckades",
 				"hint": "Aktiverad: alla verktyg (bash-kommandon och workdir, sökvägsargument för read/write/edit/read_image/glob/grep och present) använder POSIX-sökvägar från MSYS-enhetsroten (/c/Users/...); bash egna vanor — ~ för hemkatalogen, /tmp, /dev/null, /usr — fungerar i varje verktyg exakt som bash själv löser dem, och värden översätter sökvägsfälten automatiskt. Inaktiverad återställer dsh:s ursprungliga beteende (Windows-sökvägar för filverktygen). Bash är alltid Git Bash så länge insticksprogrammet är installerat; den här växeln styr bara sökvägsdialekten mellan verktygen.",
+				"sec.mode": "Läge",
 				"sec.inline": "Inline-verktyg",
 				"sec.executor": "Exekutor",
 				"sec.peer": "Plugin-integrationer",
@@ -1241,6 +1256,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "ปิดใช้งาน",
 				"error": "เขียนไม่สำเร็จ",
 				"hint": "เมื่อเปิดใช้งาน: เครื่องมือทั้งหมด (คำสั่ง bash และ workdir รวมถึงอาร์กิวเมนต์พาธของ read/write/edit/read_image/glob/grep และ present) ใช้พาธ POSIX จากรากไดรฟ์ของ MSYS (/c/Users/...); พฤติกรรมดั้งเดิมของ bash — ~ สำหรับโฮม, /tmp, /dev/null, /usr — ทำงานในทุกเครื่องมือเหมือนที่ bash แก้เองพอดี และโฮสต์แปลฟิลด์พาธให้อัตโนมัติ เมื่อปิดใช้งานจะกลับสู่พฤติกรรมดั้งเดิมของ dsh (เครื่องมือจัดการไฟล์ใช้พาธ Windows) bash เป็น Git Bash เสมอเมื่อติดตั้งปลั๊กอินนี้ สวิตช์นี้ควบคุมเฉพาะรูปแบบพาธระหว่างเครื่องมือเท่านั้น",
+				"sec.mode": "โหมด",
 				"sec.inline": "เครื่องมือแบบ inline",
 				"sec.executor": "ตัวรัน",
 				"sec.peer": "การเชื่อมต่อปลั๊กอิน",
@@ -1318,6 +1334,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Devre dışı bırak",
 				"error": "yazma başarısız",
 				"hint": "Etkinleştirildiğinde: tüm araçlar (bash komutları ve workdir ile read/write/edit/read_image/glob/grep ve present yol bağımsız değişkenleri) MSYS sürücü kökünden POSIX yolları (/c/Users/...) kullanır; bash'e özgü alışkanlıklar — ev için ~, /tmp, /dev/null, /usr — her araçta tam bash'in kendisinin çözdüğü gibi çalışır ve ana süreç yol alanlarını otomatik olarak çevirir. Devre dışı bırakıldığında dsh yerel davranışına döner (dosya araçları için Windows yolları). Eklenti kurulu olduğu sürece bash her zaman Git Bash olarak kalır; bu anahtar yalnızca araçlar arası yol lehçesini yönetir.",
+				"sec.mode": "Mod",
 				"sec.inline": "Satır içi araçlar",
 				"sec.executor": "Yürütücü",
 				"sec.peer": "Eklenti entegrasyonları",
@@ -1395,6 +1412,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "Tắt",
 				"error": "ghi thất bại",
 				"hint": "Khi bật: mọi công cụ (lệnh bash và workdir, tham số đường dẫn của read/write/edit/read_image/glob/grep và present) dùng đường dẫn POSIX từ gốc ổ đĩa MSYS (/c/Users/...); thói quen gốc của bash — ~ cho thư mục home, /tmp, /dev/null, /usr — hoạt động trong mọi công cụ đúng như chính bash giải quyết chúng, và máy chủ tự động chuyển đổi trường đường dẫn. Khi tắt, hành vi gốc của dsh được khôi phục (công cụ tệp dùng đường dẫn Windows). bash luôn là Git Bash khi plugin được cài đặt; công tắc này chỉ điều khiển phương ngữ đường dẫn giữa các công cụ.",
+				"sec.mode": "Chế độ",
 				"sec.inline": "Công cụ nội tuyến",
 				"sec.executor": "Trình thực thi",
 				"sec.peer": "Tích hợp plugin",
@@ -1472,6 +1490,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "停用",
 				"error": "寫入失敗",
 				"hint": "啟用後:所有工具(bash 指令同 workdir、read/write/edit/read_image/glob/grep 同 present 嘅路徑參數)統一使用 MSYS 磁碟根 POSIX 路徑(/c/Users/...);bash 原生習慣——~ 家目錄、/tmp、/dev/null、/usr——喺所有工具一樣有效(同 Git Bash 掛載表一致),路徑參數由宿主自動翻譯,模型無感。停用後回復 dsh 原生行為(檔案工具用 Windows 路徑)。bash 永遠係 Git Bash,唔受呢個開關影響。",
+				"sec.mode": "模式",
 				"sec.inline": "行內工具",
 				"sec.executor": "執行器",
 				"sec.peer": "外掛聯動",
@@ -1549,6 +1568,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "停用",
 				"error": "寫入失敗",
 				"hint": "啟用後:所有工具(bash 指令同 workdir、read/write/edit/read_image/glob/grep 同 present 嘅路徑參數)統一使用 MSYS 磁碟根 POSIX 路徑(/c/Users/...);bash 原生習慣——~ 家目錄、/tmp、/dev/null、/usr——喺所有工具一樣有效(同 Git Bash 掛載表一致),路徑參數由宿主自動翻譯,模型無感。停用後回復 dsh 原生行為(檔案工具用 Windows 路徑)。bash 永遠係 Git Bash,唔受呢個開關影響。",
+				"sec.mode": "模式",
 				"sec.inline": "行內工具",
 				"sec.executor": "執行器",
 				"sec.peer": "外掛聯動",
@@ -1626,6 +1646,7 @@ window.__ModuleLoader__.load({
 				"switch.off": "停用",
 				"error": "寫入失敗",
 				"hint": "啟用後:所有工具(bash 指令與 workdir,以及 read/write/edit/read_image/glob/grep 與 present 的路徑參數)統一使用 MSYS 磁碟根 POSIX 路徑(/c/Users/...);bash 原生習慣——~ 家目錄、/tmp、/dev/null、/usr——在所有工具同樣有效(與 Git Bash 掛載表一致),路徑參數由宿主自動轉譯,模型無感。停用後恢復 dsh 原生行為(檔案工具使用 Windows 路徑)。bash 一律是 Git Bash,不受此開關影響。",
+				"sec.mode": "模式",
 				"sec.inline": "行內工具",
 				"sec.executor": "執行器",
 				"sec.peer": "外掛聯動",
@@ -1782,6 +1803,10 @@ window.__ModuleLoader__.load({
 			".gb-error{margin:0;font-size:12px;color:var(--dsw-alias-status-danger, #e5484d)}",
 			".gb-card{-webkit-backdrop-filter:var(--dsh-any-blur-card-panels,blur(12px) saturate(1.15));backdrop-filter:var(--dsh-any-blur-card-panels,blur(12px) saturate(1.15))}",
 			".gb-section+.gb-section{border-top:1px solid var(--dsw-alias-border-l2)}",
+			/* v0.38.0 foldable sections: each theme is its own bordered card —
+			   seven header rows at a glance, switches only visible on expand. */
+			".gb-fold{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:4px 12px 12px;background:var(--dsw-alias-bg-layer-1,transparent)}",
+			".gb-fold .gb-stack{padding-top:10px}",
 			/* Missing-Git-Bash popup (v0.28.0): a root-level modal, because the
 			   user may never be on the settings page when their shell dies. */
 			".gb-modalBackdrop{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)}",
@@ -2009,6 +2034,23 @@ window.__ModuleLoader__.load({
 			} catch (e) { /* keep empty draft */ }
 		}, []);
 
+			/* v0.38.0: the card's sections are FOLDERS. All seven stay collapsed
+			   by default — the user scans seven labelled header rows, expands the
+			   one theme they recognise, and finds the switch inside it (user
+			   request verbatim: "内部可以折叠,这样我找的时候就只需要去展开我大概
+			   知道的某个设置主题"). State must sit before the early return. */
+			var foldsState = useState({});
+			var folds = foldsState[0];
+			var setFolds = foldsState[1];
+			function toggleFold(key) {
+				setFolds(function (prev) {
+					var next = {};
+					for (var k in prev) next[k] = prev[k];
+					next[key] = !prev[key];
+					return next;
+				});
+			}
+
 			var scope = props.scope;
 
 			var snap = { status: "unavailable" };
@@ -2058,6 +2100,33 @@ window.__ModuleLoader__.load({
 
 			var Chevron = icon("IconChevronDownOutline14");
 
+			/* v0.38.0: one FOLDABLE section. The header row is the OFFICIAL
+			   `DisclosureRow` from the seed ui-primitives package (required at
+			   the top of this file, same seam as every icon). All sections stay
+			   collapsed by default — the user scans seven labelled header rows
+			   and expands the one theme they recognise. A stripped-down host
+			   without the export degrades to the static title+stack card. */
+			var DisclosureRowComponent = icon("DisclosureRow");
+			function fold(key, titleKey) {
+				var body = [];
+				for (var i = 1; i < arguments.length; i++) body.push(arguments[i]);
+				if (!DisclosureRowComponent || typeof DisclosureRowComponent !== "function") {
+					return E("div", { className: "gb-section" },
+						E("div", { className: "gb-sectionTitle" }, t(titleKey)),
+						E("div", { className: "gb-stack" }, body),
+					);
+				}
+				return E(DisclosureRowComponent, {
+					className: "gb-fold",
+					icon: null,
+					title: t(titleKey),
+					open: folds[key] === true,
+					expandable: true,
+					expandOnRowClick: true,
+					onToggle: function () { toggleFold(key); },
+				}, E("div", { className: "gb-stack" }, body));
+			}
+
 			// dsh 0.1.6-alpha.2: the Plugins page renders this card through the
 			// `plugins.bundle.config` slot with view="page" — the page draws the
 			// title itself; the collapsible shell only shows on the popup seat.
@@ -2074,9 +2143,7 @@ window.__ModuleLoader__.load({
 			var eolOn = snap.value.gitAutocrlf !== false;
 			var dedupe = snap.value.suppressPeerCordis === true;
 
-			var dialectSection = E("div", { className: "gb-section" },
-				E("div", { className: "gb-sectionTitle" }, t("sec.dialect")),
-				E("div", { className: "gb-stack" },
+			var dialectSection = fold("sec.dialect",
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("state.label") + ":"),
 					E("span", { className: "gb-rowValue" }, enabled ? t("state.on") : t("state.off")),
@@ -2131,7 +2198,6 @@ window.__ModuleLoader__.load({
 					E("button", { type: "button", className: "gb-segBtn" + (!subagents ? " gb-segActive" : ""), onClick: function () { if (subagents) writeField("subagentDialect", false); } }, t("switch.off")),
 				),
 				E("p", { className: "gb-hint" }, t("sub.hint")),
-				),
 			);
 
 			/* ── executor section (v0.36.0 regroup) ───────────────────────────
@@ -2139,9 +2205,7 @@ window.__ModuleLoader__.load({
 			   the executor injects. Split out of the dialect section — users
 			   hunting "why is my diff all red" or pasting a bash path should
 			   not scroll through six translation switches to find it. */
-			var executorSection = E("div", { className: "gb-section" },
-				E("div", { className: "gb-sectionTitle" }, t("sec.executor")),
-				E("div", { className: "gb-stack" },
+			var executorSection = fold("sec.executor",
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("eol.label") + ":"),
 					E("span", { className: "gb-rowValue" }, eolOn ? t("state.on") : t("state.off")),
@@ -2166,12 +2230,9 @@ window.__ModuleLoader__.load({
 					}, bashSaved ? t("bash.saved") : t("bash.save")),
 				),
 				E("p", { className: "gb-hint" }, t("bash.hint")),
-				),
 			);
 
-			var terminalSection = E("div", { className: "gb-section" },
-				E("div", { className: "gb-sectionTitle" }, t("sec.terminal")),
-				E("div", { className: "gb-stack" },
+			var terminalSection = fold("sec.terminal",
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("term.label") + ":"),
 					E("span", { className: "gb-rowValue" }, winshell ? t("state.on") : t("state.off")),
@@ -2190,7 +2251,6 @@ window.__ModuleLoader__.load({
 					E("button", { type: "button", className: "gb-segBtn" + (!adopt ? " gb-segActive" : ""), onClick: function () { if (adopt) writeField("adoptSidebar", false); } }, t("switch.off")),
 				),
 				E("p", { className: "gb-hint" }, t("adopt.hint")),
-				),
 			);
 
 			/* Peer-gated section: rendered only while dsh-ptc-cordis-preset serves
@@ -2201,9 +2261,7 @@ window.__ModuleLoader__.load({
 			var pwshOn = snap.value.pwshTool !== false;
 			var fctxOn = snap.value.fastctxTools !== false;
 
-			var modeSection = E("div", { className: "gb-section" },
-				E("div", { className: "gb-sectionTitle" }, t("variant.label")),
-				E("div", { className: "gb-stack" },
+			var modeSection = fold("sec.mode",
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("variant.label") + ":"),
 					E("span", { className: "gb-rowValue" }, variantOn ? t("state.on") : t("state.off")),
@@ -2213,12 +2271,9 @@ window.__ModuleLoader__.load({
 					E("button", { type: "button", className: "gb-segBtn" + (!variantOn ? " gb-segActive" : ""), onClick: function () { if (variantOn) writeField("variantPresets", false); } }, t("switch.off")),
 				),
 				E("p", { className: "gb-hint" }, t("variant.hint")),
-				),
 			);
 
-			var inlineSection = E("div", { className: "gb-section" },
-				E("div", { className: "gb-sectionTitle" }, t("sec.inline")),
-				E("div", { className: "gb-stack" },
+			var inlineSection = fold("sec.inline",
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("pwsh.label") + ":"),
 					E("span", { className: "gb-rowValue" }, pwshOn ? t("state.on") : t("state.off")),
@@ -2237,7 +2292,6 @@ window.__ModuleLoader__.load({
 					E("button", { type: "button", className: "gb-segBtn" + (!fctxOn ? " gb-segActive" : ""), onClick: function () { if (fctxOn) writeField("fastctxTools", false); } }, t("switch.off")),
 				),
 				E("p", { className: "gb-hint" }, t("fctx.hint")),
-				),
 			);
 
 			var peerSnap = { status: "unavailable" };
@@ -2293,9 +2347,7 @@ window.__ModuleLoader__.load({
 
 			/* The merged integrations section: dedupe row + python row under one
 			   heading (v0.36.0). Exists only while the peer serves its row. */
-			var peerSection = peerSnap.status === "ready" ? E("div", { className: "gb-section" },
-				E("div", { className: "gb-sectionTitle" }, t("sec.peer")),
-				E("div", { className: "gb-stack" },
+			var peerSection = peerSnap.status === "ready" ? fold("sec.peer",
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("dedupe.label") + ":"),
 					E("span", { className: "gb-rowValue" }, dedupe ? t("state.on") : t("state.off")),
@@ -2318,7 +2370,6 @@ window.__ModuleLoader__.load({
 				pythonOffered ? E("p", { className: "gb-hint" }, t("python.hint")) : null,
 				pythonOffered && winHost ? E("p", { className: "gb-error" }, t("python.blocked")) : null,
 				pythonDegraded ? E("p", { className: "gb-error" }, t("python.degraded")) : null,
-				),
 			) : null;
 
 			/* ── terminal toolchain (v0.30.0) ────────────────────────────────
@@ -2437,9 +2488,7 @@ window.__ModuleLoader__.load({
 				return function () { clearTimeout(timer); };
 			}, [toolJob]);
 
-			var toolsSection = E("div", { className: "gb-section" },
-				E("div", { className: "gb-sectionTitle" }, t("sec.tools")),
-				E("div", { className: "gb-stack" },
+			var toolsSection = fold("sec.tools",
 					toolsData === null && toolErr === "" ? E("p", { className: "gb-hint" }, t("tools.loading")) : null,
 					toolErr !== "" ? E("p", { className: "gb-error" }, toolErr) : null,
 					toolsData !== null && !wingetOk ? E("p", { className: "gb-error" }, t("tools.nowinget")) : null,
@@ -2511,7 +2560,6 @@ window.__ModuleLoader__.load({
 						),
 					) : null,
 					E("p", { className: "gb-hint" }, t("tools.hint")),
-				),
 			);
 
 			var bodyContent = E("div", { className: "gb-body" },
