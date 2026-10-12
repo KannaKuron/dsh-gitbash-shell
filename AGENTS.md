@@ -397,6 +397,14 @@
    **够不到** preset 声明 `config.plugins` 内嵌的行(`vendor/include/src/index.ts`);
    「patch 翻转官方 preset 行」这条路线**永不可行**,除非官方把 preset 行改为 group 载体或
    开放行级 restatement 的非冻结形态——届时重评,当前默认形态是 §4l 的运行时补位。
+   **FastCtx 上游停滞监控(2026-10-12 核实)**:上游 yc-duan/fastctx 最后 commit
+   2026-08-29、release v0.2.6(8-23)后无动静;fork 维护者 T-Auto/dsh-ops 活跃
+   (10-11 仍有 push)。本插件锁 `@dsh-ops/fastctx-win32-x64@0.2.1`(构建自上游
+   0.2.6),上游停滞不改变已安装行为;升级决策**以 fork 为准**(换版本 = 改
+   optionalDependencies 锁 + 跑 provenance 校验 + 重测 gb_* 出参矩阵)。若 fork 也
+   停滞且出现安全通告:`fastctxTools` 开关整体关停 gb_* 即可,插件核心不受影响;
+   或换任意 MCP stdio 文件工具(桥的 tools/list 是动态的,FASTCTX_FILE_TOOLS
+   名单按 rawName 匹配,理论上兼容任何实现同四工具的 server)。
 
 9. **适配新版 dsh 的核对纪律(2026-09-15 立,dsh 0.1.6-alpha.1 教训)**:组合类插件升级 dsh 时,
    **绝不只看 `src/compositions.js` 的自身 diff**——真正的漂移只存在于「本站组合 × 宿主内置 preset」之间。
