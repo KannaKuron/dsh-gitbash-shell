@@ -60,6 +60,18 @@ Environment: `bash.exe` is spawned as a direct child of the host, so it
 inherits the full system environment plus the `DSH_*` snapshot, exactly like
 the pwsh executor did.
 
+### Upgrading from 0.34.x
+
+The variants are OFF by default. **The deployment default preset migrates
+automatically**: if you had set a variant (`*-gitbash`) as the default, the
+first boot after upgrading switches it to the official successor through the
+official settings seam (`standard-gitbash→standard`, `minimal-gitbash→minimal`,
+`code-gitbash→ptc`, `cordis-gitbash→cordis`) — idempotent, roster-checked
+before writing, and verified by read-back; with `variantPresets` ON nothing
+migrates. **Pinned SESSIONS cannot be migrated** (the official
+`agent-preset/locked` rule blocks a mid-session switch) — open a new session;
+to bring old sessions back as-is, turn `variantPresets` on.
+
 ## Security semantics: confined modes on Windows
 
 **POSIX hosts**: the official sandbox semantics are **fully preserved** —
