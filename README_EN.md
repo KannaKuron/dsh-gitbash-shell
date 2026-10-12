@@ -7,7 +7,8 @@
 > Run **every agent shell command through Git Bash** on Windows with DeepSeek
 > Harness (dsh) — replaces the PowerShell executor, gives the four OFFICIAL
 > presets Git Bash through a per-agent inline tool patch (v0.35.0), publishes
-> a real `gitbash_pwsh` (system PowerShell 7) and the `gb_*` FastCtx file
+> a real `pwsh7` (system PowerShell 7, off by default since v0.37.0) and
+> the `gb_*` FastCtx file
 > tools, and keeps the four `· Git Bash` variant presets behind a switch
 > (`variantPresets`, off by default).
 
@@ -47,7 +48,8 @@ The bundle patch (`cordis.patch.yml`):
    (`variantPresets: false`) it registers NO variants: the inline tool patch
    (`src/inline-tools.js`) activates the OFFICIAL tool-bash module per agent
    whenever the tool face says "pwsh yes / bash no", denies the fake pwsh,
-   and publishes `gitbash_pwsh` plus the `gb_*` FastCtx tools
+   and publishes `pwsh7` (off by default since v0.37.0) plus the `gb_*`
+   FastCtx tools
    (`src/fastctx-bridge.js`). With the switch on, it registers the four
    preset variants **declaratively** (`ctx.agentPresets.register`,
    v0.32.0+) — the row sets are committed, diffable JS data

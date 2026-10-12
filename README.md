@@ -27,7 +27,7 @@
 - **bash 工具说明附带路由规则**:能用 Git Bash 就用 Git Bash;只有必须用到
   Windows 原生能力(cmdlet/注册表/服务/WMI)时才用 PowerShell;bash 出错在
   bash 里修,禁止在 bash 里嵌 `pwsh -Command`(变量展开与输出编码会在那里坏掉)。
-- **`gitbash_pwsh` 工具(默认开)**:一个真正的 PowerShell 7 工具,走宿主
+- **`pwsh7` 工具(默认关,v0.37.0 起更名并翻默认)**:一个真正的 PowerShell 7 工具,走宿主
   `ctx.subprocess` 通道,用**系统安装的** pwsh 7 执行 Windows 原生操作;
   `command`/`script_path` 二选一、严格拒绝未声明参数、输出强制 UTF-8、
   超长输出截断并落盘。机器没装 pwsh 7 时不发布;仅完全权限会话可用。
@@ -91,7 +91,7 @@ bundle patch(`cordis.patch.yml`)应用三个改动:
 3. 插入 `gitbash-shell`(`dsh-gitbash-shell`):**v0.35.0 起双形态**——
    默认(`variantPresets: false`)不注册变体,由**行内工具补位**
    (`src/inline-tools.js`)在 `agent/created` 时按工具面激活官方
-   tool-bash 模块并遮蔽假 pwsh,另发布 `gitbash_pwsh` 与 `gb_*` 工具
+   tool-bash 模块并遮蔽假 pwsh,另发布 `pwsh7`(默认关)与 `gb_*` 工具
    (`src/fastctx-bridge.js`);开关打开时按 v0.32.0 起的**声明式注册**
    (`ctx.agentPresets.register`)提供上表 4 个 preset 变体——
    行集是仓库里已提交、可 diff 的 JS 数据(`src/compositions.js`),**不再物化

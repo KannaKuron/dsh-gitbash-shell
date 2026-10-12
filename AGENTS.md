@@ -25,8 +25,8 @@
 `dsh-gitbash-shell`:Windows 上把 dsh 的 `ctx.shell` 换成 Git for Windows bash 的插件。
 1) host 执行器(`src/shell.js`,继承官方 `@deepseek-ai/dsh-bash-sandbox`);
 2) **行内工具补位(v0.35.0 起,默认)**:`src/inline-tools.js` 在 `agent/created` 时按工具面
-   为**官方四个 preset** 激活官方 tool-bash 模块并遮蔽假 pwsh,另发布 `gitbash_pwsh`
-   (系统 pwsh 7)与 `gb_*` FastCtx 文件工具(`src/fastctx-bridge.js`,与 dsh-ops 自动让位);
+   为**官方四个 preset** 激活官方 tool-bash 模块并遮蔽假 pwsh,另发布 `pwsh7`
+   (系统 pwsh 7,默认关)与 `gb_*` FastCtx 文件工具(`src/fastctx-bridge.js`,与 dsh-ops 自动让位);
 3) 声明式 preset 变体(`src/index.js` + `src/compositions.js`,`variantPresets` 开关**默认关**,
    开启时以 `ctx.agentPresets.register` 注册 standard/minimal/ptc/cordis 四个 `* · Git Bash`
    变体;启动时单向清理旧物化残留目录,清理不受开关影响);
@@ -541,6 +541,31 @@
      - 改这一层必须跑冒烟的「inline tools:」五例 + 「fastctx bridge:」三例 + 「v0.35.0 card
        copy/package」两例;Windows 真机验证(补位激活/假 pwsh 遮蔽/pwsh7 路由/gb_* 出参)
        在 CHANGELOG v0.35.0 标注待做。
+     - **v0.37–v0.38.5 演进追记(2026-10-13,Windows 真机连环定位后收敛为当前事实)**:
+       ① **pwsh 工具名为 `pwsh7`、`pwshTool` 默认 false**(v0.37.0,用户拍板)——`gitbash_pwsh`
+       旧名像 bash/pwsh 混合工具易误解;`pwsh` 名属于宿主假工具,恒定拒绝(pre-execute 无条件
+       deny,理由句指路 pwsh7 与设置卡);pwsh7 提供时走 per-agent scope 注册(纯加法,不遮蔽)。
+       路由句分两版:`GITBASH_ROUTE_ADDENDUM`(开,提 pwsh7)/`GITBASH_ROUTE_ADDENDUM_NO_PWSH`
+       (关,不提任何 PowerShell 工具——给模型指一条到不了的路只会教它调用被拒的名字)。
+       ② **官方 tool-bash 的挂载必须走 cordis 官方插件通道** `agent.ctx.plugin(mod)`(v0.38.4
+       终态):模块对象自带 `inject: [tools, shell, systemPrompt, shellEnv, workingDirectory]`,
+       手动 `mod.apply(ctx)` 被拒(`cannot get property "shell" without inject`);且 `ctx.plugin()`
+       **异步启动 fiber**——`createScope` 返回时 childCtx 未赋值,必须 `await fiber`(thenable)再用
+       (v0.38.2/0.38.3 两课)。**解析**走 `ctx.loader.internal.import(name, baseUrl, {})`
+       (宿主挂载行包的同一条调用,tree.ts:122;桌面版 asar/源码树可达),裸 createRequire 仅兜底。
+       ③ **真机验证纪律(高于一切"逻辑自洽")**:这条链此前从未真机验过,v0.35.3→0.38.4 连环翻出
+       五层(exists 注入缺失/output 契约/根 ctx restrict/解析通道/fiber 时序+服务授权)——
+       **win32 门控的链路,真机跑通之前一律标注「待验证」,不得标完成**。
+       ④ **设置卡折叠为自绘**(v0.38.4):官方 DisclosureRow 在插件受限 require 形状下拿不到
+       (icon 查找 null,静默退化平铺——v0.38.0–0.38.3 真机实锤),自绘 button 头 + 条件体,
+       不要再试官方组件;fold 调用约定 = `fold("sec.xxx", 行...)`(签名与调用点必须一致,
+       v0.38.2 曾因吞首行翻车)。四个家族插件(ptc-cordis/agent-lang/better-workspace/ide-git)
+       已跟进同款自绘折叠(v0.18.0/v0.11.0/v0.29.0/v0.17.0)。
+       ⑤ **FastCtx 桥加两道**(v0.38.5):glob/replace 的 pattern 前置校验(上游对非字符串
+       静默当「全部文件」,桥侧响亮报错);gb_glob/gb_grep 的 description 声明各自忽略规则
+       (官方 glob 不忽略任何 / gb_grep 尊重 .gitignore 跳 .git / gb_glob 只认裸 .ignore)。
+       ⑥ 真机复验已由用户完成(bash 全链路 + 27 工具全量冒烟,见 CHANGELOG v0.38.5),
+       v0.35.0 标注的「待做」就此销账。
 
 ## 验证清单(改动后)
 
