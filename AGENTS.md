@@ -524,7 +524,7 @@
        bash description(schema 层,极简 preset 的 complete persona 剥不掉);幂等标记 =
        「Prefer this bash tool」。官方 bash description 本身是干净 bash 方言(v0.35.0 核实),
        我们只增补。
-     - **`gitbash_pwsh`**(`src/inline-tools.js`):走 `ctx.subprocess`(**绝不经 ctx.shell**),
+     - **`pwsh7`**(v0.35.0–0.36.0 间名为 `gitbash_pwsh`;`src/inline-tools.js`):走 `ctx.subprocess`(**绝不经 ctx.shell**),
        spawn **系统 pwsh 7**(`resolveHostPwsh7`:well-known > PATH,绝不 5.1、绝不自带);
        `command/script_path` 严格二选一、未声明键硬拒(学 dsh-ops #10:宿主工具收
        `run_in_background`,本工具必须显式拒绝而非静默前台);输入路径经挂载表 MSYS→Windows,
