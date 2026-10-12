@@ -2625,7 +2625,7 @@ export async function apply(ctx, config = {}) {
           if (!subprocess || typeof subprocess.spawn !== 'function') throw new Error('the host subprocess service is not available on this deployment')
           return subprocess.spawn(spec)
         },
-        pwshPath: resolveHostPwsh7(),
+        pwshPath: resolveHostPwsh7({ exists: existsSync }),
         pwshEnabled: () => liveSettings.pwshTool(),
         msysToWin: (p) => translateMsysPath(p, buildTranslateEnv(readConfiguredBashPath())),
         echo: (text) => (liveSettings.dialect().posixPaths === true ? windowsToMsys(text) : text),

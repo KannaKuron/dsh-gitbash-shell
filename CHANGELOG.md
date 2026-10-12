@@ -3,6 +3,18 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.35.3 — 2026-10-12
+
+**类型**:fix(issue [#18](https://github.com/KannaKuron/dsh-gitbash-shell/issues/18) 三个独立根因;Windows 真机 v0.35.0 四面全灭)。
+
+外部用户(zjh1159086960-crypto / Lntano)的高质量报告:v0.35.0 四个新面(行内补位 bash、假 pwsh 遮蔽、`gitbash_pwsh`、`gb_*`)在 Windows 真机**一个都没生效**,且定位到行。三个根因相互独立,v0.35.2 的挂载时扫描只是让「断得更早的 wiring」多了一次运行机会——**根因仍在,四面依然全灭**。本版逐一修复,修法全部对照 dsh-ops 已在真机验证的实现:
+
+- **根因一:`resolveHostPwsh7()` 零参调用 → 整个行内补位 wiring 流产**(主凶)。`exists` 是必填注入项,win32 下对象字面量求值即抛 `exists is not a function`,被 `mountInlineTools` 外层 catch 吞成一行日志——bash 补位、假 pwsh 遮蔽、`gitbash_pwsh` 三个面同死。修复:调用点注入 `{ exists: existsSync }`(`node:fs`,候选矩阵与 PATH 兜底逻辑本身无恙,报告者已验证)。
+- **根因二:工具定义缺 host 必填的 `output` 契约 → `gitbash_pwsh` 与 `gb_*` 注册全被拒**。host `ToolRuntime.register` 硬校验 `output { schema, render }`(官方工具全部经 `defineTool` 包装补出)。修复:新增冻结的 `TOOL_OUTPUT_SCHEMA` + `renderTextContent`(dsh-ops `lib/tools.js` 的 OUTPUT_SCHEMA 同款形状,两个工具家族共享),`gitbashPwshDefinition` 与 `gb_*` 注册全部补上。
+- **根因三:`restrict()` 从根 ctx 调用必然抛错 → 假 pwsh 的 deny 从未建立**。host 硬校验「requires a scoped context」,根 ctx 无 scope 键,异常被 catch 吞成 `fake-pwsh deny failed` 日志。修复:改走 **`agent.ctx.tools.restrict({ deny: ['pwsh'] })`**(dsh-ops `lib/index.js` `installHostShellDenial` 的同款调用;host 文档原文「Hiding tools from one agent is ctx.tools.restrict() on that agent's context」)。
+- **冒烟**:116 项(115 过 + 1 跳)。新增两个测试:「the three issue-#18 root causes stay fixed」(三个根因的源码防回归锁,含 `doesNotMatch` 禁止零参调用与根 ctx restrict 回潮)与「the tool definitions speak the host output contract」(两家族共享契约 + render 行为:多块拼接、空 content 渲染单个空文本块)。
+- **致谢**:三个根因全部由报告者先行定位,本版修复与其复现脚本逐一对齐;真机验证(四面生效)待报告者与用户复验。
+
 ## v0.35.2 — 2026-10-12
 
 **类型**:fix(Windows 真机报告;行内补位的时序洞 + 调用层兜底)。

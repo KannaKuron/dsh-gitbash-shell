@@ -42,6 +42,11 @@ export const FASTCTX_FILE_TOOLS = Object.freeze(['inspect_local_file', 'grep', '
 export const GB_PREFIX = 'gb_'
 export const gbName = (raw) => GB_PREFIX + raw
 
+// The HOST registry rejects any tool without an `output` contract (issue #18,
+// root cause 2) — the frozen schema + text renderer the gitbash_pwsh
+// definition ships, reused so both families speak one tool-result contract.
+import { TOOL_OUTPUT_SCHEMA, renderTextContent } from './inline-tools.js'
+
 /** Payload packages probed, in order: upstream first, the pinned fork second. */
 export const PAYLOAD_PACKAGES = Object.freeze([
   { pkg: '@fastctx/win32-x64', exe: 'bin/fastctx.exe' },
@@ -323,6 +328,10 @@ export function mountFastctx(ctx, deps) {
           name: gbName(rawName),
           description: `${String(tool.description ?? rawName)}\n${FASTCTX_SANDBOX_NOTE}`,
           parameters: schema,
+          output: {
+            schema: TOOL_OUTPUT_SCHEMA,
+            render: (_args, value) => renderTextContent(value),
+          },
           async execute(args) {
             const translated = translateFastctxArgs(args, msysToWin)
             const result = await callWithReconnect(rawName, translated)

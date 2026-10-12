@@ -2925,6 +2925,51 @@ test('inline tools: the mount-time sweep and the call-layer guard exist (v0.35.2
   assert.doesNotMatch(source, /const agents = new Map\(\)/)
 })
 
+test('inline tools: the three issue-#18 root causes stay fixed', () => {
+  const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const toolsSource = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
+  const bridgeSource = readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')
+  // Root cause 1 — resolveHostPwsh7 is called with the injected `exists`.
+  // A zero-arg call throws `exists is not a function` on win32 and the
+  // surrounding catch swallows the ENTIRE inline-tool wiring, which is how
+  // all four v0.35.0 faces died at once on the reporter's machine.
+  assert.match(hostSource, /resolveHostPwsh7\(\{ exists: existsSync \}\)/)
+  assert.doesNotMatch(hostSource, /resolveHostPwsh7\(\)/)
+  // Root cause 2 — every registered definition carries the host-required
+  // `output { schema, render }` contract; the host throws
+  // `must declare output { schema, render, presentationMeta? }` otherwise.
+  assert.match(toolsSource, /output: \{\s*schema: TOOL_OUTPUT_SCHEMA,\s*render:/)
+  assert.match(bridgeSource, /output: \{\s*schema: TOOL_OUTPUT_SCHEMA,\s*render:/)
+  // Root cause 3 — the fake-pwsh deny goes through the AGENT's scoped
+  // context. On the ROOT context the host throws "requires a scoped
+  // context" and the deny silently never exists (the dsh-ops shape is
+  // `agent.ctx.tools.restrict(...)`).
+  assert.match(toolsSource, /agent\.ctx\?\.tools\?\.restrict\?\.\(\{ deny: \['pwsh'\] \}\)/)
+  assert.doesNotMatch(toolsSource, /tools\(ctx\)\?\.restrict/)
+})
+
+test('inline tools: the tool definitions speak the host output contract (issue #18)', async () => {
+  const mod = await import('../src/inline-tools.js')
+  const bridgeSource = readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')
+  assert.match(bridgeSource, /import \{ TOOL_OUTPUT_SCHEMA, renderTextContent \} from '\.\/inline-tools\.js'/,
+    'the bridge reuses the pwsh family\'s frozen contract instead of a drifting copy')
+  const def = mod.gitbashPwshDefinition({
+    pwsh: 'C:/Program Files/PowerShell/7/pwsh.exe',
+    spawn: () => { throw new Error('not used by this test') },
+    allowed: () => false,
+  })
+  assert.equal(typeof def.output?.render, 'function', 'gitbash_pwsh carries the output contract')
+  assert.deepEqual(
+    def.output.render({}, { content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }),
+    [{ type: 'text', text: 'a\nb' }],
+  )
+  assert.deepEqual(
+    def.output.render({}, { content: [] }),
+    [{ type: 'text', text: '' }],
+    'empty content still renders one text block, never an empty array',
+  )
+})
+
 // ── v0.35.0: the FastCtx bridge (gb_* additions) ───────────────────────────
 
 test('fastctx bridge: argument translation covers the fastctx shapes and leaves relative paths alone', async () => {

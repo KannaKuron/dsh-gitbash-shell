@@ -37,6 +37,44 @@
  * loads but mounts nothing.
  */
 
+/**
+ * The tool-result contract the HOST registry requires from every registered
+ * tool (issue #18, root cause 2): `register()` throws
+ * `must declare output { schema, render, presentationMeta? }` unless the
+ * definition carries an `output` whose `schema` passes
+ * `assertSupportedJsonSchema` and whose `render` is a function. Both of this
+ * plugin's tool families return `{ content: [{ type: 'text', text }] }` from
+ * `execute`, so the schema and the text renderer below are shared verbatim
+ * with the FastCtx bridge — the same frozen shape dsh-ops ships for its own
+ * MCP-backed tools (proven on real Windows hosts).
+ */
+export const TOOL_OUTPUT_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    content: { type: 'array', items: {} },
+    structuredContent: {},
+  },
+  required: ['content'],
+  additionalProperties: false,
+})
+
+/**
+ * Render the `{ content: [...] }` execute value into text blocks. Non-text
+ * blocks and non-string text fields are skipped; empty content renders as one
+ * empty text block rather than an empty array, so the card never loses its
+ * placeholder.
+ * @param {unknown} value - the execute return value.
+ * @returns {Array<{ type: string, text: string }>} content blocks for the host renderer.
+ */
+export function renderTextContent(value) {
+  const blocks = Array.isArray(value?.content) ? value.content : []
+  const text = blocks
+    .map((block) => (typeof block?.text === 'string' ? block.text : ''))
+    .filter((line) => line !== '')
+    .join('\n')
+  return [{ type: 'text', text }]
+}
+
 /** Answer for one observed tool face. Pure. */
 export function inlineNeeds(names) {
   const set = new Set(Array.isArray(names) ? names : [])
@@ -308,9 +346,12 @@ export function mountInlineTools(ctx, deps) {
     if (needs.denyPwsh && !state.denyPwsh) {
       // Deny the fake pwsh first: restrict is per-agent and idempotent, and
       // the lying tool must never be callable, not even for the milliseconds
-      // before the bash tool lands.
+      // before the bash tool lands. The call MUST go through the AGENT's
+      // scoped context (`agent.ctx.tools`, the dsh-ops-proven shape): on the
+      // ROOT context the host throws "requires a scoped context" and the
+      // deny silently never exists (issue #18, root cause 3).
       try {
-        const deny = tools(ctx)?.restrict?.({ deny: ['pwsh'] })
+        const deny = agent.ctx?.tools?.restrict?.({ deny: ['pwsh'] })
         if (typeof deny === 'function') state.denyPwsh = deny
       } catch (error) {
         log(`fake-pwsh deny failed: ${error?.message ?? error}`)
@@ -412,6 +453,10 @@ export function gitbashPwshDefinition({ pwsh, spawn, allowed, msysToWin, echo })
       },
       required: ['command'],
       additionalProperties: false,
+    },
+    output: {
+      schema: TOOL_OUTPUT_SCHEMA,
+      render: (_args, value) => renderTextContent(value),
     },
     async execute(args, exec) {
       const invalid = validatePwshArgs(args)
