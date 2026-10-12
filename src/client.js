@@ -2107,7 +2107,11 @@ window.__ModuleLoader__.load({
 			   and expands the one theme they recognise. A stripped-down host
 			   without the export degrades to the static title+stack card. */
 			var DisclosureRowComponent = icon("DisclosureRow");
-			function fold(key, titleKey) {
+			/* v0.38.2 BUGFIX: the call sites are `fold("sec.xxx", row, row, ...)`
+			   — one dictionary key followed by the section's rows. The previous
+			   draft parsed (key, titleKey, ...) and ATE the first row into the
+			   title slot (t(<element>) → empty header, nothing folded). */
+			function fold(titleKey) {
 				var body = [];
 				for (var i = 1; i < arguments.length; i++) body.push(arguments[i]);
 				if (!DisclosureRowComponent || typeof DisclosureRowComponent !== "function") {
@@ -2120,10 +2124,10 @@ window.__ModuleLoader__.load({
 					className: "gb-fold",
 					icon: null,
 					title: t(titleKey),
-					open: folds[key] === true,
+					open: folds[titleKey] === true,
 					expandable: true,
 					expandOnRowClick: true,
-					onToggle: function () { toggleFold(key); },
+					onToggle: function () { toggleFold(titleKey); },
 				}, E("div", { className: "gb-stack" }, body));
 			}
 

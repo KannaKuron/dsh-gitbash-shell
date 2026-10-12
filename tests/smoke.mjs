@@ -1425,7 +1425,7 @@ test('client card: the body groups switches into seven labelled sections (v0.36.
   // The fold helper rides the OFFICIAL DisclosureRow (seed ui-primitives),
   // collapses by default, and degrades to a static section without it.
   assert.match(src, /var DisclosureRowComponent = icon\("DisclosureRow"\)/)
-  assert.match(src, /DisclosureRowComponent, \{\s*\n\s*className: "gb-fold",\s*\n\s*icon: null,\s*\n\s*title: t\(titleKey\),\s*\n\s*open: folds\[key\] === true,/)
+  assert.match(src, /DisclosureRowComponent, \{\s*\n\s*className: "gb-fold",\s*\n\s*icon: null,\s*\n\s*title: t\(titleKey\),\s*\n\s*open: folds\[titleKey\] === true,/)
   assert.match(src, /gb-sectionTitle" \}, t\(titleKey\)\)/)
   // sec.mode exists in every dictionary (the fold header for the mode section).
   {

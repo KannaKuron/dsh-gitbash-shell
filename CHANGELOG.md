@@ -3,6 +3,14 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.38.2 — 2026-10-13
+
+**类型**:fix(v0.38.0 折叠分区在真机上完全失效;用户截图定位)。
+
+- **`fold()` helper 签名与调用点不匹配(实锤 bug)**:七个调用点是 `fold("sec.xxx", 行, 行, ...)`,实现却按 `(key, titleKey, ...行)` 解析——**每个分区的第一行内容被吞进标题参数**,`t(<React元素>)` 得到空标题,卡片退化成一列无标题的平铺开关(v0.38.0 的折叠在真机从未生效)。修复:实现改为 `(titleKey, ...行)`,折叠状态键直接用词典键,调用点零改动。
+- 官方用法核对(SystemPromptRow/PresentRow):`DisclosureRow` 的 props 形状(icon/title/open/expandable/expandOnRowClick/onToggle/children)与本插件用法一致,问题只在签名错乱。
+- **冒烟**:118 项全绿;断言改锁 `folds[titleKey]`。
+
 ## v0.38.1 — 2026-10-13
 
 **类型**:fix(bash 补位在桌面版宿主解析不到官方包;真机反复确认的最后一个开放问题)。
