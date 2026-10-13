@@ -205,6 +205,8 @@ test('error-content dialect: path diagnostics translated, data never (v0.17.1)',
   assert.equal(ERROR_CONTENT_TOOLS.has('read'), true)
   // the red line: file CONTENT in successful results is never rewritten
   const rd = rewriteResultPaths('read', { path: 'C:' + BS + 'x' + BS + 'f.txt', lines: [{ n: 1, text: 'content mentions C:' + BS + 'Users' + BS + 'kanna inside' }] })
+  assert.equal(rd.lines[0].text, 'content mentions C:' + BS + 'Users' + BS + 'kanna inside')
+})
 
 test('leading variable shorthands + NUL guidance (v0.18.0)', async () => {
   const { _internal } = await import('../src/index.js')
@@ -236,8 +238,6 @@ test('glob patterns may open with a variable shorthand (v0.18.1)', async () => {
   assert.deepEqual(tg({ pattern: D + '{TMPDIR}/t/*.log' }, env), { pattern: '*.log', path: env.tmpDir + '/t' })
   const rel = { pattern: '*.ts' }
   assert.equal(tg(rel, env), rel, 'relative patterns still return the same reference')
-})
-  assert.equal(rd.lines[0].text, 'content mentions C:' + BS + 'Users' + BS + 'kanna inside')
 })
 
 test('client half is a ModuleLoader bundle with baseline requires only', () => {

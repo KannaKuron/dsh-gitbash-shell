@@ -21,6 +21,8 @@
 - **回归**:新增 5 项真实 Cordis 测试,覆盖普通子 scope 冲突、显式隔离后的 Config/inject 与
   根 shell 保留、卸载、构造失败清理/再挂载、缺服务失败与挂载超时清理;不是仅正则源码检查。
   既有 minimal PTY 测试的非 Windows 断言现在显式模拟 Linux,不再在恢复 win32 后误断言 `/bin/bash`。
+  首轮远端 CI 发现两项独立 error-content 测试误嵌套在父测试中,Node 22 会取消未等待的子测试;
+  恢复独立结构并保留全部断言,不跳过测试、不移除 Node 22 矩阵。
 - **验证入口**:`npm test` 合并 smoke 与真实 Cordis 回归;新增 `npm run test:preview`,通过
   显式 `DSH_PREVIEW_HOST_DIR` 只读解析目标宿主包,在新 Context + 临时 cwd 做无头运行时 preview。
   Windows 本机已通过:Core **0.2.1-alpha.2**,宿主 Cordis **4.0.5-alpha.1**,Node **24.13.0**;
