@@ -585,6 +585,11 @@
        `resolveHostModule`(inline-tools 导出)是宿主包解析的唯一通道(loader 优先 +
        createRequire 兜底)。bashPath 显式配置只认 `gitbash-shell` 行(executor 行已不存在,
        `executorConfiguredBashPath` 二段式读取保留作老 profile 兼容层)。
+       **工作目录兼容（issue #27）**：自有 Bash 不得硬 inject `workingDirectory`；
+       统一经 `src/session-workdir.js` 逐调用 `ctx.get()`，有服务用官方 ensure，失败不降级；
+       缺服务使用旧官方 `policy.workspaceRoot ?? session.header.cwd` 接缝。不要补装 alpha.2
+       Core 服务覆盖旧宿主。挂载成功必须同时确认 apply 已执行及 Bash 在工具面可见，
+       await fiber 本身不能证明注册成功；缺服务/无注册必须明确报错并释放 scope。
 
 ## 验证清单(改动后)
 

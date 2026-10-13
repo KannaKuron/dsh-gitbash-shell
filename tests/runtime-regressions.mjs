@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { mountInlineTools } from '../src/inline-tools.js'
 import { createBashToolModule } from '../src/bash-tool.js'
+import { resolveSessionCwd } from '../src/session-workdir.js'
 
 function inlineFixture({ visible = false, names = ['bash', 'pwsh'], externalDeny = [] } = {}) {
   const listeners = new Map()
@@ -176,3 +177,35 @@ test('runtime: missing approval helper still passes the agent\'s standing mode a
   assert.equal(value.sandbox.mode, 'read-only')
   await assert.rejects(() => definition.execute({ command: 'echo ok', description: 'Reject unavailable escalation', sandbox_permissions: 'danger-full-access', justification: 'Need broader mode.' }, exec), /no sandbox helper/)
 })
+
+
+test('cwd compatibility: missing service uses the old policy/header seam and keeps unscoped calls unchanged', async () => {
+  const ctx = { get: () => undefined };
+  const exec = { agent: { session: { header: { cwd: 'D:/session' } } }, signal: new AbortController().signal };
+  assert.equal(await resolveSessionCwd(ctx, exec, { workspaceRoot: 'E:/policy' }), 'E:/policy');
+  assert.equal(await resolveSessionCwd(ctx, exec, {}), 'D:/session');
+  assert.equal(await resolveSessionCwd(ctx, { agent: { session: { header: {} } } }, {}), undefined);
+  assert.equal(await resolveSessionCwd({ get() { throw new Error('unscoped calls do not inspect services'); } }, {}, { workspaceRoot: 'E:/policy' }), undefined);
+});
+
+test('cwd compatibility: a live official service remains authoritative and failures never downgrade', async () => {
+  const agent = { session: { header: { cwd: 'D:/original' } } };
+  const signal = new AbortController().signal;
+  let directory = 'E:/current';
+  const service = { ensure(value, receivedSignal) { assert.equal(value, agent); assert.equal(receivedSignal, signal); return Promise.resolve(directory); } };
+  const ctx = { get: () => service };
+  assert.equal(await resolveSessionCwd(ctx, { agent, signal }, { workspaceRoot: 'F:/policy' }), 'E:/current');
+  directory = 'G:/changed';
+  assert.equal(await resolveSessionCwd(ctx, { agent, signal }, {}), 'G:/changed');
+  const failure = new Error('official directory validation failed');
+  service.ensure = () => Promise.reject(failure);
+  await assert.rejects(resolveSessionCwd(ctx, { agent, signal }, {}), error => error === failure);
+  await assert.rejects(resolveSessionCwd({ get: () => ({}) }, { agent, signal }, {}), /does not expose ensure/);
+});
+
+test('cwd compatibility: pre-cancelled calls do not inspect services', async () => {
+  const control = new AbortController();
+  const reason = new Error('cancelled directory lookup');
+  control.abort(reason);
+  await assert.rejects(resolveSessionCwd({ get() { throw new Error('must not inspect'); } }, { agent: {}, signal: control.signal }, {}), error => error === reason);
+});

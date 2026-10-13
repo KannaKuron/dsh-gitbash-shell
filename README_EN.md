@@ -16,6 +16,13 @@
 
 ### Host requirement & preset alignment
 
+**Working-directory compatibility fix (Unreleased):** when Core `0.2.1-alpha.2`'s
+`workingDirectory` service exists, each Bash call retains official current-directory
+validation and recovery. Hosts without it use the policy workspace root or original
+session directory, resolving relative `workdir` values against that directory.
+No new Core service installation is required; errors from an existing service propagate.
+See [issue #27](https://github.com/KannaKuron/dsh-gitbash-shell/issues/27).
+
 Since v0.32.0 the host floor is **dsh >= 0.1.7-rc** (declared through the
 `@deepseek-ai/dsh` peer, prereleases included; older hosts are no longer
 supported). The four variants are committed JS row sets in

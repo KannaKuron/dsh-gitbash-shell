@@ -282,9 +282,17 @@ export function mountInlineTools(ctx, deps) {
       if (!isLive(agent, state)) return
       const registry = scope.ctx?.get('tools')
       if (!registry || typeof scope.ctx.plugin !== 'function') return
-      const fiber = scope.ctx.plugin(module)
+      let applied = false
+      const fiber = scope.ctx.plugin({ ...module, async apply(toolCtx, config) {
+        await module.apply(toolCtx, config)
+        applied = true
+      } })
       await untilDisposed(fiber, state.controller.signal)
       if (!isLive(agent, state)) return
+      // Cordis can resolve an INACTIVE fiber without ever calling apply().
+      if (!applied || !faceNames(agent).includes('bash')) {
+        throw new Error('bash tool did not register for this agent (module inactive, a required service missing, or tool visibility restricted)')
+      }
       retained = true
       log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {

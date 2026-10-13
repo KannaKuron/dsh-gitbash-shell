@@ -3070,7 +3070,7 @@ test('bash tool: the module refuses a non-executor, declares no shell inject, an
     execute: async () => { throw new Error('not used by this test') },
   }
   const mod = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: undefined, llmModule: undefined, log: () => {} })
-  assert.deepEqual(mod.inject, ['tools', 'systemPrompt', 'shellEnv', 'workingDirectory'],
+  assert.deepEqual(mod.inject, ['tools', 'systemPrompt', 'shellEnv'],
     'ctx.shell must NOT be declared: the official executor owns that service')
   mod.apply(ctx, {})
   assert.equal(registered.length, 1)

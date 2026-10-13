@@ -56,6 +56,11 @@ dsh-ptc-cordis-preset 的 `PTC 创造模式` 用户 preset 均不受影响、自
 
 ### 宿主要求与 preset 对齐
 
+**工作目录兼容修复（Unreleased）**：Core `0.2.1-alpha.2` 的 `workingDirectory` 服务存在时，
+每次 Bash 调用沿用官方当前目录验证与恢复；缺少服务的旧宿主使用策略工作区或会话初始目录，
+相对 `workdir` 按该目录解析。无需补装新 Core 服务；服务自身报错会如实返回，不退回旧目录。
+参见 [issue #27](https://github.com/KannaKuron/dsh-gitbash-shell/issues/27)。
+
 自 v0.32.0 起宿主下限为 **dsh >= 0.1.7-rc**(经 peer `@deepseek-ai/dsh` 声明,
 prerelease 含入求值;旧宿主不再支持)。四个变体的行集是 `src/compositions.js`
 里已提交的 JS 数据,镜像官方 0.1.7 的 standard/minimal/ptc/cordis 行切分并叠加

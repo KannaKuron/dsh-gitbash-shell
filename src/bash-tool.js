@@ -40,6 +40,7 @@
  * @module dsh-gitbash-shell/bash-tool
  */
 
+import { resolveSessionCwd } from './session-workdir.js'
 import {
   ESCALATION_TARGETS,
   parseExitStatus,
@@ -319,7 +320,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
     : (subject) => `The narrowest wider sandbox mode for a one-shot retry of the exact ${subject} the sandbox just denied; the retry asks the user for approval.`
 
   return {
-    inject: ['tools', 'systemPrompt', 'shellEnv', 'workingDirectory'],
+    inject: ['tools', 'systemPrompt', 'shellEnv'],
     apply(ctx, config = {}) {
       const backgroundEnabled = config?.enableRunInBackground ?? true
       const promoteOnTimeout = (config?.promoteOnTimeout ?? true) && backgroundEnabled
@@ -486,7 +487,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           const policy = approvedMode === undefined
             ? standingPolicy
             : { ...standingPolicy, mode: approvedMode }
-          const cwd = exec.agent === undefined ? undefined : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
+          const cwd = await resolveSessionCwd(ctx, exec, policy)
           const workdir = resolveWorkdir(args.workdir, cwd)
           const dshEnv = ctx.shellEnv.collect(exec)
           const request = {

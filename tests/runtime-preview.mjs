@@ -30,7 +30,7 @@ function createScope(parent) {
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
 
-async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime } = {}) {
+async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, workingDirectory = { ensure: async () => process.cwd() }, policyWorkspaceRoot = process.cwd(), sessionCwd, inactiveBashMount = false } = {}) {
   const root = new Context()
   const cleanups = []
   const logs = []
@@ -40,14 +40,14 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
   const failed = deferred()
   const agentScopes = []
   const official = { kind: 'official-pwsh' }
-  const policy = { mode: 'danger-full-access', workspaceRoot: process.cwd() }
+  const policy = { mode: 'danger-full-access', ...(policyWorkspaceRoot === null ? {} : { workspaceRoot: policyWorkspaceRoot }) }
   const readFrom = () => ({ text: 'runtime-preview-ok', nextOffset: 18, lossy: false })
   for (const [name, value] of Object.entries({
     shell: official,
     subprocess: subprocessRuntime ?? { spawn() { return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: { stdout: { readFrom }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } }, terminate() {} } } },
     sandbox: {},
     sandboxPolicy: { defaultMode: policy.mode, resolve: request => request?.session?.header.policy ?? policy },
-    workingDirectory: { ensure: async () => process.cwd() },
+    ...(workingDirectory === null ? {} : { workingDirectory }),
     loader: { internal: { async import(name) {
       if (pauseModules && name === '@deepseek-ai/dsh-tools') { entered.resolve(); await release.promise }
       return import(name)
@@ -67,7 +67,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
       ctx.tools.register(defineTool({ name, description: name, parameters: {}, output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }, execute: () => name }))
     }
   } })
-  const agent = { id: 'runtime-preview-agent', session: { header: {} } }
+  const agent = { id: 'runtime-preview-agent', session: { header: { ...(sessionCwd === undefined ? {} : { cwd: sessionCwd }) } } }
   const agentScope = createAgentScope(agentParent, agent)
   agent.ctx = agentScope.ctx
   cleanups.push(() => agentScope.dispose())
@@ -89,6 +89,12 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
         }
         if (failAgentMount) {
           return { fiber: scope.fiber, get ctx() { return { get: name => scope.ctx.get(name), plugin() { throw new Error('isolated agent plugin mount failure') } } }, dispose: () => scope.dispose() }
+        }
+        if (inactiveBashMount) {
+          return { fiber: scope.fiber, get ctx() { return {
+            get: name => scope.ctx.get(name),
+            plugin: module => scope.ctx.plugin({ ...module, inject: [...module.inject, 'missingBashService'] }),
+          } }, dispose: () => scope.dispose() }
         }
       }
       return scope
@@ -260,3 +266,71 @@ test('runtime preview: private execution retains deadlines, background no-expiry
   await assert.rejects(failed.result(), /isolated provider failure/)
   assert.equal(f.root.get('shell'), f.official)
 })
+
+
+test('runtime preview: missing workingDirectory still mounts Bash and resolves the old session cwd seam', { timeout: 10000 }, async t => {
+  const spawned = [];
+  const f = await fixture(t, { workingDirectory: null, policyWorkspaceRoot: null, sessionCwd: 'D:/session-project',
+    subprocessRuntime: { spawn(spec) { spawned.push(spec); return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: { stdout: { readFrom: () => ({ text: 'ok', nextOffset: 2, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } }, terminate() {} }; } } });
+  await bounded(f.activated.promise, 'Bash on an old host');
+  assert.ok(f.names().includes('bash'));
+  for (const [workdir, expected] of [[undefined, 'D:/session-project'], ['scripts', 'D:/session-project/scripts'], ['E:/explicit', 'E:/explicit']]) {
+    const response = await f.execute('bash', { command: 'memory-only command', description: 'Verify old host cwd', ...(workdir === undefined ? {} : { workdir }) });
+    assert.equal(response.isError, false, JSON.stringify(response));
+    assert.equal(spawned.at(-1).cwd, expected);
+    assert.equal(response.value.cwd, expected);
+  }
+  f.agent.session.header.policy = { mode: 'danger-full-access', workspaceRoot: 'F:/policy-project' };
+  const response = await f.execute('bash', { command: 'memory-only command', description: 'Verify policy precedence', workdir: 'scripts' });
+  assert.equal(response.isError, false, JSON.stringify(response));
+  assert.equal(spawned.at(-1).cwd, 'F:/policy-project/scripts');
+  let background;
+  const removeJobs = f.root.provide('jobs', { start(definition) {
+    background = definition.run();
+    return 'issue27-background';
+  } });
+  try {
+    await new Promise(setImmediate);
+    const response = await f.execute('bash', { command: 'memory-only command', description: 'Verify old host background cwd', workdir: 'scripts', run_in_background: true });
+    assert.equal(response.isError, false, JSON.stringify(response));
+    assert.equal(response.value.kind, 'background');
+    assert.equal(response.value.cwd, 'F:/policy-project/scripts');
+    await bounded(background.done, 'old host background execution');
+    assert.equal(spawned.at(-1).cwd, 'F:/policy-project/scripts');
+  } finally { await removeJobs(); }
+  assert.equal(f.root.get('shell'), f.official);
+  await f.patch.dispose();
+  assert.deepEqual(f.names(), ['pwsh']);
+});
+
+test('runtime preview: inactive Bash fiber reports failure and disposes instead of logging success', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { inactiveBashMount: true });
+  await bounded(f.failed.promise, 'inactive module failure');
+  await new Promise(setImmediate);
+  assert.ok(!f.names().includes('bash'));
+  assert.ok(!f.logs.some(line => line.includes('own bash tool activated')));
+  assert.ok(f.logs.some(line => line.includes('bash tool did not register')));
+  assert.ok(f.agentScopes.every(scope => scope.ctx.fiber.state === 4));
+  assert.equal(f.root.get('shell'), f.official);
+});
+
+
+test('runtime preview: modern directory changes stay live and validation failures never spawn', { timeout: 10000 }, async t => {
+  let directory = 'E:/current-project', reject = false, calls = 0, spawns = 0;
+  const f = await fixture(t, { sessionCwd: 'D:/original-project', workingDirectory: {
+    async ensure(agent, signal) { calls++; assert.equal(agent, f.agent); assert.ok(signal instanceof AbortSignal); if (reject) throw new Error('current directory validation failed'); return directory; },
+  }, subprocessRuntime: { spawn(spec) { spawns++; assert.equal(spec.cwd, directory); return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: { stdout: { readFrom: () => ({ text: 'ok', nextOffset: 2, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } }, terminate() {} }; } } });
+  await bounded(f.activated.promise, 'modern Bash activation');
+  for (directory of ['E:/current-project', 'F:/changed-project']) {
+    const response = await f.execute('bash', { command: 'memory-only command', description: 'Verify current directory' });
+    assert.equal(response.isError, false, JSON.stringify(response));
+    assert.equal(response.value.cwd, directory);
+  }
+  reject = true;
+  const response = await f.execute('bash', { command: 'memory-only command', description: 'Preserve provider refusal' });
+  assert.equal(response.isError, true);
+  assert.match(response.error.message, /current directory validation failed/);
+  assert.equal(calls, 3);
+  assert.equal(spawns, 2);
+  assert.equal(f.root.get('shell'), f.official);
+});

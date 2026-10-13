@@ -3,6 +3,44 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## Unreleased — 2026-10-13
+
+**类型**：fix（旧宿主 Bash 注册与会话 cwd、激活日志） / test / docs。
+
+- 移除自有 Bash 对 workingDirectory 的硬 inject；新增共享目录读取适配器，逐次使用官方 ensure。
+  仅缺服务时沿用旧官方 policy.workspaceRoot 优先于 session.header.cwd 的接缝；相对 workdir
+  按该目录解析，绝对路径保持。现有服务错误/取消原样传播，不降级到旧目录，不补装 Core 服务。
+- 每次挂载同时确认 apply 实际执行且 Bash 在工具面可见，才输出 activated；INACTIVE/未注册
+  明确输出 activation failed，并释放 agent scope。官方 root PowerShell 与既有沙箱行为保持。
+- 新增普通回归覆盖旧接缝、实时目录变化、服务失败、取消；实际 Core preview 覆盖缺服务注册、
+  默认/相对/绝对 cwd、策略优先级、后台工作目录、静默 INACTIVE 清理和现代服务验证失败零 spawn。
+- 验证：普通完整回归 **159/159**、实际 Core 完整 preview **17/17**，exit0、无 skip/cancel；
+  Node 24.13.0 / Windows / Core 0.2.1-alpha.2。旧宿主以缺服务及旧契约形状验证，尚未在
+  Desktop 0.2.0-rc.2 安装本体或生产 GUI 复验；报告者本机补丁证据归属原 issue。
+- 本 PR 独立基于上游 main，不包含开放中的实验 PR；native 仍在实验分支，后续应复用同一适配器。
+- 相关：[issue #27](https://github.com/KannaKuron/dsh-gitbash-shell/issues/27)。
+
+### Issue #27：workingDirectory 修复前核查（复现 / 验证）
+
+- [问题报告](https://github.com/KannaKuron/dsh-gitbash-shell/issues/27)指出旧 Desktop 无 workingDirectory 服务；
+  已核对正式版源码与当前实验分支，两者 Bash 模块都将它列为硬 inject，且 await fiber 后未经工具面回读就打印 activated。
+- 在本机实际 Core 0.2.1-alpha.2 的隔离 Context 中移除该服务，复现：工具 schema 为空，但日志含 activated，
+  没有 activation failed；后续 provide 该服务后 Bash 才注册。没有启动真实命令或修改生产 Profile。
+  这验证了缺服务时的失败链；未在报告者 Desktop 0.2.0-rc.2 安装本体独立复验“服务不存在”。
+- 内存中试验可选 ctx.get 读取与旧接缝回退：缺服务时 policy.workspaceRoot 优先于 session.header.cwd，
+  相对 workdir 按所得会话目录拼接，绝对 workdir 保留；服务存在时沿用 ensure。实际 ToolRuntime + 内存执行器六例通过。
+  仅移除 inject 不够，原 ctx.workingDirectory 属性访问也必须替换。该试验未写入产品源码，不声称生产 GUI 已验收。
+- 现有测试夹具始终提供 workingDirectory，因此此前全绿未覆盖旧宿主缺服务。当前实验 native 模块也硬 inject 同一服务，
+  执行器也直接 ensure，需同步复核。建议兼容修复独立于 PR #26 的实验行为，补无服务注册/cwd/假阳性日志回归。
+- 版本历史复核：该包在 [引入会话工作目录服务的提交](https://github.com/deepseek-ai/deepseek-harness/commit/79bd3d8da7d53adf28042b3a33fbf98e8c0c5ee7)
+  新增，发布标签中仅 0.2.1-alpha.2 包含；0.2.0-rc.2 与 0.2.1-alpha.1 都无该包。
+  其官方模块需要 fs/sessionProjections/systemPrompt，发布包的 Core peers 精确锁 0.2.1-alpha.2，安装依赖本身不注册服务。
+- 直接下放的具体反证：旧 systemPrompt 的 getContextOrder 没有 WORKING_DIRECTORY，返回 undefined，context 拒绝非有限 order。
+  在隔离 Context 中挂官方 alpha.2 WorkingDirectoryService 并使用旧版完整排序表，确定性复现
+  `prompt context "working-directory:current" order must be a finite number`，未执行进程或文件操作。
+  因而直接补装 alpha.2 包不能作为旧宿主兼容保证；需要独立适配及旧版验收。新宿主仍应优先使用其真实 ensure 语义。
+
+
 ## v0.39.2 — 2026-10-13
 
 **类型**:fix(route B 工具/预设生命周期、动态配置与客户端回归) / test。
