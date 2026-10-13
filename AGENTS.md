@@ -585,6 +585,17 @@
        `resolveHostModule`(inline-tools 导出)是宿主包解析的唯一通道(loader 优先 +
        createRequire 兜底)。bashPath 显式配置只认 `gitbash-shell` 行(executor 行已不存在,
        `executorConfiguredBashPath` 二段式读取保留作老 profile 兼容层)。
+       ⑧ **模块 inject 面是兼容契约(issue #27,v0.39.3)**:route B 镜像新版宿主 tool-bash 时把
+       `workingDirectory` 一起抄进了自有模块的硬 `inject`——而兼容矩阵声明兼容的 `0.2.0-rc.2`
+       **没有该服务**,cordis 对无法满足的 inject 让 fiber **永久 INACTIVE**(apply 不执行、零日志),
+       激活日志还照打(「await 一个 INACTIVE fiber 会正常 resolve」)——假阳性成功,用户 bash 全灭
+       且无任何线索。修复(三件套,缺一不可):inject 收敛为服务最小面(`tools/systemPrompt/shellEnv`),
+       宿主可选服务一律**使用点 `ctx.get()` 可选读取**;cwd 接缝双向兼容(有服务走 `ensure()` 与新版
+       官方一致,没有的退回 rc.2 官方 `resolveWorkdir` 的 `policy.workspaceRoot ?? header.cwd`);
+       激活成功必须经 `tools.schemas(agent)` 回读确认在册,不在册打显式失败行。**铁律:镜像宿主模块
+       时,inject/服务消费面必须取兼容矩阵内最老宿主的形状或可选化——「宿主新版本有」不等于
+       「矩阵内都有」;激活/注册类日志必须回读验证,成功日志本身不是证据**(与 §0 静态 import、
+       §4j 硬注入、v0.38.2 fiber 时序同一失败家族的第无数课)。
 
 ## 验证清单(改动后)
 

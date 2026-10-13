@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { rewriteCodePaths, scanCodeLiterals, runCodeHintFor, translateDispatch, dialectApplies, windowsToMsys } from '../src/index.js'
-import { bashDescription } from '../src/bash-tool.js'
+import { bashDescription, createBashToolModule } from '../src/bash-tool.js'
 import { renderResult, renderBackground, renderJobRead, renderPromoted, processOutcome, parseExitStatus } from '../src/bash-render.js'
 
 const env = { home: 'C:/Users/审计', tmpDir: 'C:/Temp', gitRoot: 'C:/Program Files/Git' }
@@ -139,4 +139,68 @@ test('compatibility: unconfined warnings reach initial/background/promoted feedb
   assert.match(renderPromoted({ ...promoted, sandbox: { mode: 'read-only', denied: false, runnerFailed: true } }), /runner itself failed/)
   assert.match(renderPromoted({ ...promoted, output: '' }), /moved to background[\s\S]*unconfined/)
   assert.match(renderJobRead('', true, ['spill'], sandbox, []), /output was dropped[\s\S]*unconfined/)
+})
+
+// ── issue #27: the module must survive hosts without a workingDirectory service ──
+//
+// 0.2.0-rc.2 provides no `workingDirectory` service. A hard inject of it left
+// the whole module fiber permanently INACTIVE (apply() never ran, the tool
+// never registered, cordis logged nothing) — and the activation log lied.
+// The inject list must stay service-minimal; the cwd seam falls back to the
+// rc.2-era official resolveWorkdir order (policy root ?? session header).
+
+function issue27Fixture({ withWorkingDirectory }) {
+  const definitions = new Map()
+  let executed
+  const executor = {
+    sandboxMode: 'workspace-write',
+    resolve: (request) => ({ ...request, timeoutMs: 1000 }),
+    execute: async (spec) => {
+      executed = spec
+      return {
+        result: async () => ({ stdout: { text: 'ok', truncated: false }, stderr: { text: '', truncated: false }, exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, sandbox: { mode: 'workspace-write', denied: false, enforcement: 'unconfined' } }),
+      }
+    },
+  }
+  const services = new Map([
+    ['sandboxPolicy', { resolve: () => ({ mode: 'workspace-write', workspaceRoot: 'D:/work/ws' }) }],
+  ])
+  if (withWorkingDirectory) services.set('workingDirectory', { ensure: async () => 'C:/ensured/session-cwd' })
+  const ctx = {
+    get: (name) => services.get(name),
+    inject: (_names, _fn) => {},
+    systemPrompt: { section() {}, getSectionOrder: () => 100 },
+    shellEnv: { collect: () => ({}) },
+    tools: { register: (definition) => definitions.set(definition.name, definition) },
+  }
+  const logs = []
+  const module = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: undefined, llmModule: undefined, log: (message) => logs.push(message) })
+  const exec = { agent: { session: { header: { cwd: 'D:/work/ws' } } }, signal: new AbortController().signal, callId: 'i27' }
+  return { module, ctx, definitions, executor, getExecuted: () => executed, logs, exec }
+}
+
+test('compatibility: a host WITHOUT workingDirectory still registers bash and falls back to the session cwd (issue #27)', async () => {
+  const { module, ctx, definitions, getExecuted, exec } = issue27Fixture({ withWorkingDirectory: false })
+  assert.deepEqual(module.inject, ['tools', 'systemPrompt', 'shellEnv'], 'the inject list must not name services older hosts lack')
+  module.apply(ctx, {})
+  assert.ok(definitions.has('bash'), 'apply must register bash without workingDirectory present')
+  const value = await definitions.get('bash').execute({ command: 'echo x', description: 'issue 27 cwd fallback' }, exec)
+  assert.equal(value.isError ?? false, false)
+  assert.equal(getExecuted().workdir, 'D:/work/ws', 'cwd falls back to policy root / session header, not the host process directory')
+})
+
+test('compatibility: a host WITH workingDirectory keeps the ensure() seam (issue #27, modern path)', async () => {
+  const { module, ctx, definitions, getExecuted, exec } = issue27Fixture({ withWorkingDirectory: true })
+  module.apply(ctx, {})
+  await definitions.get('bash').execute({ command: 'echo x', description: 'issue 27 modern cwd' }, exec)
+  assert.equal(getExecuted().workdir, 'C:/ensured/session-cwd', 'ensure() stays the primary cwd source on modern hosts')
+})
+
+test('compatibility: activation success requires a registry read-back, never a bare log (issue #27 false positive)', () => {
+  const inlineTools = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
+  const bashTool = readFileSync(new URL('../src/bash-tool.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(bashTool, /inject: \['tools', 'systemPrompt', 'shellEnv', 'workingDirectory'\]/)
+  assert.match(inlineTools, /did NOT register for this agent/)
+  assert.match(inlineTools, /schemas\?\.\(agent\)/, 'the activated log line must be gated on a schemas read-back')
+  assert.match(inlineTools, /includes\('bash'\)/)
 })

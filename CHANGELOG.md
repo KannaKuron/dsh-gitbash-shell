@@ -3,11 +3,32 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## Unreleased — 2026-10-13
+## v0.39.3 — 2026-10-14
 
-**类型**:fix(MSYS 参数/编码提示、源码路径边界与 unconfined 可观测性) / test / docs。
+**类型**:fix(自有 bash 工具的宿主服务兼容 #27、MSYS 参数/编码提示、源码路径边界与 unconfined 可观测性) / test / docs。
 
-### PR #24：超时转后台的独立 sandbox 警示
+### issue #27:自有 bash 工具在无 `workingDirectory` 服务的宿主上永不注册
+
+- **根因(route B 镜像的契约盲区)**:自有 bash 工具镜像的是新版宿主(`0.2.1-alpha.x`)官方 tool-bash
+  的 `inject` 列表(含 `workingDirectory`),而兼容矩阵声明的 `0.2.0-rc.2` 上**没有该服务**——cordis 对
+  无法满足的 inject 让模块 fiber **永久 INACTIVE**:`apply()` 从不执行、工具永不注册、零错误日志,且
+  inline-tools 的激活日志照打(`await` 一个 INACTIVE fiber 会正常 resolve)——**假阳性成功**。
+  与 v0.24.0 settingsScope、v0.24.3 静态 peer import 同一失败类(静默失效、宿主日志全绿)。
+- **修复**:① `inject` 收敛为 `['tools', 'systemPrompt', 'shellEnv']`(服务最小面,`workingDirectory`
+  改为使用点 `ctx.get()` 可选读取);② cwd 接缝双向兼容——有 `workingDirectory` 的宿主走
+  `ensure()`(与新版官方一致),没有的宿主退回 rc.2 时代官方 `resolveWorkdir` 的同一条接缝
+  (`policy.workspaceRoot ?? session.header.cwd`),**不再落到宿主进程目录**;③ 激活日志必须经
+  `tools.schemas(agent)` 回读确认 `bash` 真正在册,不在册打显式失败行(点名 INACTIVE 可能性 +
+  请携带 dsh 版本报告)——**消除假阳性**。
+- **教训(§4l 追记⑧)**:镜像宿主模块时,`inject` 面是**契约面**——必须取兼容矩阵内**最老宿主**的
+  形状,或一律可选读取;「宿主新版本有」不等于「矩阵内都有」。
+- 报告者 largoalladonzella 提供了完整根因链(asar 字节级取证 + cordis `_refresh`/`_setEpoch` 源码 +
+  官方两版 inject 对照)与本机验证补丁;本仓库按其建议实现并补真断言。
+- 新增回归:无 `workingDirectory` 的最小 ctx 上 `apply()` 照常注册 + cwd 回退正确;有服务的宿主
+  `ensure()` 接缝不变;源码断言锁死硬 inject 列表与「回读门控激活日志」。本地全量 **168/168**(+1
+  win32-only skip)。
+
+### PR #24:超时转后台的独立 sandbox 警示
 
 - promoted 返回值显式携带可选 sandbox facts，输出 schema 保持闭合；defineTool 与 JSON-schema 回退共用此契约。
 - `renderPromoted` 自行追加 sandbox notes，不再依赖 output 预先含警示；promotion 输出保留丢失/spill 提示，

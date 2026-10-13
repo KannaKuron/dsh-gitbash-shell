@@ -140,6 +140,13 @@ test('host: disposal attempts every unregister even when one fails', async () =>
   assert.deepEqual(retired, ['standard-gitbash', 'cordis-gitbash'])
 })
 
+test('host: the sidebar settings namespace is the row id, not the npm package name (issue #25 Bug 3)', () => {
+  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(source, /const SIDEBAR_NS = 'better-sidebar'/,
+    'dsh-better-sidebar/cordis.patch.yml declares `- id: better-sidebar`; describe()/update() must use that id')
+  assert.doesNotMatch(source, /const SIDEBAR_NS = 'dsh-better-sidebar'/)
+})
+
 test('host: keyword-led regexes remain data, and ambiguous slash aborts the whole rewrite', () => {
   const re = "/['/c/x']/"
   for (const keyword of ['return', 'throw', 'yield', 'await', 'case', 'delete', 'void', 'typeof']) {
@@ -160,7 +167,7 @@ test('host: keyword-led regexes remain data, and ambiguous slash aborts the whol
 function sidebar(t, enabled = true, initial = 'previous-shell') {
   let value = initial, adopt = enabled
   const listeners = new Map(), effects = [], updates = []
-  const settings = { describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: value } }], async update(_ns, patch) { value = patch.terminalShell; updates.push(value) } }
+  const settings = { describe: () => [{ ns: 'better-sidebar', value: { terminalShell: value } }], async update(_ns, patch) { value = patch.terminalShell; updates.push(value) } }
   const ctx = { get: () => settings, effect(fn) { effects.push(fn()) }, on(name, fn) { listeners.set(name, fn) } }
   x.adoptSidebarShell(ctx, 'Q:/Git/bin/bash.exe', () => adopt)
   let disposed

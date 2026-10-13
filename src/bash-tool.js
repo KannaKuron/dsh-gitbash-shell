@@ -336,7 +336,12 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
     : (subject) => `The narrowest wider sandbox mode for a one-shot retry of the exact ${subject} the sandbox just denied; the retry asks the user for approval.`
 
   return {
-    inject: ['tools', 'systemPrompt', 'shellEnv', 'workingDirectory'],
+    // workingDirectory is NOT a service on every host this plugin claims
+    // compatibility with (0.2.0-rc.2 has none — issue #27). A missing hard
+    // inject leaves the whole module fiber permanently INACTIVE: apply() never
+    // runs, the tool never registers, and cordis logs nothing. Read it
+    // optionally at the use site (below) instead of injecting it.
+    inject: ['tools', 'systemPrompt', 'shellEnv'],
     apply(ctx, config = {}) {
       const backgroundEnabled = config?.enableRunInBackground ?? true
       const promoteOnTimeout = (config?.promoteOnTimeout ?? true) && backgroundEnabled
@@ -506,7 +511,16 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           const policy = approvedMode === undefined
             ? standingPolicy
             : { ...standingPolicy, mode: approvedMode }
-          const cwd = exec.agent === undefined ? undefined : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
+          // Optional read (issue #27): on hosts that provide workingDirectory
+          // this is the same ensure() seam the modern official tool-bash uses;
+          // on hosts without it, fall back to the session cwd exactly the way
+          // the rc.2-era official resolveWorkdir did (policy root ?? header).
+          const workingDirectory = ctx.get !== undefined ? ctx.get('workingDirectory') : undefined
+          const cwd = exec.agent === undefined
+            ? undefined
+            : workingDirectory !== undefined
+              ? await workingDirectory.ensure(exec.agent, exec.signal)
+              : (standingPolicy?.workspaceRoot ?? exec.agent?.session?.header?.cwd)
           const workdir = resolveWorkdir(args.workdir, cwd)
           const dshEnv = ctx.shellEnv.collect(exec)
           const request = {

@@ -1495,7 +1495,12 @@ export function translateGlobArguments(args, env) {
 // captured and restored on disposal (reload/update/uninstall), so removing
 // this plugin returns the sidebar to what it was before.
 
-const SIDEBAR_NS = 'dsh-better-sidebar'
+// The settings namespace is the row id in dsh-better-sidebar's own bundle
+// patch (`- id: better-sidebar`; verified against the published 0.25.0
+// tarball) — NOT the npm package name. Using the package name made
+// settings.describe() never match and every takeover silently no-op with one
+// "unavailable" log line (issue #25, Bug 3).
+const SIDEBAR_NS = 'better-sidebar'
 const SIDEBAR_TRIES = 12
 const SIDEBAR_RETRY_MS = 1500
 

@@ -863,11 +863,11 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
     await new Promise((resolve) => setTimeout(resolve, 0))
     return updates
   }
-  const newEraUpdates = await adopt({ describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: '' } }] })
-  assert.deepEqual(newEraUpdates, [['dsh-better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
+  const newEraUpdates = await adopt({ describe: () => [{ ns: 'better-sidebar', value: { terminalShell: '' } }] })
+  assert.deepEqual(newEraUpdates, [['better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
     'the adoption must still find the sidebar row through describe()')
   // Already adopted: nothing to write.
-  const settled = await adopt({ describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: 'X:/git/bin/bash.exe' } }] })
+  const settled = await adopt({ describe: () => [{ ns: 'better-sidebar', value: { terminalShell: 'X:/git/bin/bash.exe' } }] })
   assert.deepEqual(settled, [], 'an already-adopted sidebar is left alone')
 })
 
@@ -3072,8 +3072,8 @@ test('bash tool: the module refuses a non-executor, declares no shell inject, an
     execute: async () => { throw new Error('not used by this test') },
   }
   const mod = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: undefined, llmModule: undefined, log: () => {} })
-  assert.deepEqual(mod.inject, ['tools', 'systemPrompt', 'shellEnv', 'workingDirectory'],
-    'ctx.shell must NOT be declared: the official executor owns that service')
+  assert.deepEqual(mod.inject, ['tools', 'systemPrompt', 'shellEnv'],
+    'no ctx.shell (the official executor owns that service) and no workingDirectory (hosts without the service would leave the fiber INACTIVE, issue #27)')
   mod.apply(ctx, {})
   assert.equal(registered.length, 1)
   const def = registered[0]
