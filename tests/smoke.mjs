@@ -205,6 +205,8 @@ test('error-content dialect: path diagnostics translated, data never (v0.17.1)',
   assert.equal(ERROR_CONTENT_TOOLS.has('read'), true)
   // the red line: file CONTENT in successful results is never rewritten
   const rd = rewriteResultPaths('read', { path: 'C:' + BS + 'x' + BS + 'f.txt', lines: [{ n: 1, text: 'content mentions C:' + BS + 'Users' + BS + 'kanna inside' }] })
+  assert.equal(rd.lines[0].text, 'content mentions C:' + BS + 'Users' + BS + 'kanna inside')
+})
 
 test('leading variable shorthands + NUL guidance (v0.18.0)', async () => {
   const { _internal } = await import('../src/index.js')
@@ -236,8 +238,6 @@ test('glob patterns may open with a variable shorthand (v0.18.1)', async () => {
   assert.deepEqual(tg({ pattern: D + '{TMPDIR}/t/*.log' }, env), { pattern: '*.log', path: env.tmpDir + '/t' })
   const rel = { pattern: '*.ts' }
   assert.equal(tg(rel, env), rel, 'relative patterns still return the same reference')
-})
-  assert.equal(rd.lines[0].text, 'content mentions C:' + BS + 'Users' + BS + 'kanna inside')
 })
 
 test('client half is a ModuleLoader bundle with baseline requires only', () => {
@@ -1943,11 +1943,12 @@ test('minimal PTY shellPath rides the resolution chain; unresolved keeps the vis
     for (const bashPath of [undefined, '', null]) {
       assert.equal(shellPathOf(minimalPluginsFor({ bashPath })), 'C:/Program Files/Git/bin/bash.exe', 'unresolved keeps the visible default (' + String(bashPath) + ')')
     }
+    // Explicitly simulate the non-Windows branch, even on a Windows runner.
+    Object.defineProperty(process, 'platform', { value: 'linux' })
+    assert.equal(shellPathOf(minimalPluginsFor({ bashPath: 'D:/git/Git/bin/bash.exe' })), '/bin/bash')
   } finally {
     Object.defineProperty(process, 'platform', platform)
   }
-  // off Windows the row never pins a Windows binary — resolved or not
-  assert.equal(shellPathOf(minimalPluginsFor({ bashPath: 'D:/git/Git/bin/bash.exe' })), '/bin/bash')
   // the reader adapter: only a VERIFIED resolution passes; a failed verdict,
   // a throwing reader or a missing one degrades to the visible default
   assert.equal(minimalPtyBashPath(() => ({ ok: true, path: 'D:/git/Git/bin/bash.exe' })), 'D:/git/Git/bin/bash.exe')
@@ -2962,7 +2963,9 @@ test('inline tools: the executor is PRIVATE, and both guard layers exist (route 
   // The executor mounts through cordis's class-plugin path in a PRIVATE
   // scope — never as the root ctx.shell service.
   assert.match(source, /executorScope\.ctx\.plugin\(GitBashSandboxExecutor\)/)
-  assert.match(source, /executorScope\.ctx\.shell/, 'the instance is read out of the private scope')
+  assert.match(source, /createScope\(ctx\.isolate\('shell'\)\)/, 'a child fiber alone does not isolate services')
+  assert.match(source, /executorScope\.ctx\.get\('shell'\)/, 'the empty scope reads the active provider without property-access inject')
+  assert.doesNotMatch(source, /return executorScope\.ctx\.shell/, 'the scope has no shell inject declaration')
   assert.doesNotMatch(source, /ctx\.plugin\('\.\/shell'\)/)
   assert.doesNotMatch(source, /name: 'dsh-gitbash-shell\/shell'/, 'no executor ROW is inserted from the runtime layer')
   // Layer 1 — the mount-time sweep (v0.35.2): an agent that exists before

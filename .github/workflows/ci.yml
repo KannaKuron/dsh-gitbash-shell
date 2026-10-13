@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main, 'fix/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          package-manager-cache: false
+      - name: Install locked test dependencies (no lifecycle scripts or optional payloads)
+        run: npm ci --ignore-scripts --omit=optional
+      - name: Smoke and real Cordis regression tests
+        run: npm test
+      - name: Check published file list without running package scripts
+        run: npm pack --dry-run --ignore-scripts

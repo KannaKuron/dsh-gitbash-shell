@@ -3,6 +3,37 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## Unreleased — 2026-10-13
+
+**类型**:fix(route B 私有执行器的真实服务隔离与读取授权) / test / ci。
+
+- **根因**:普通 `ctx.plugin()` 子 fiber 只隔离副作用所有权,不隔离服务命名空间。
+  `GitBashSandboxExecutor` 仍经 `SandboxBashExecutor → LocalBashExecutor → ShellExecutor → Service`
+  注册 `shell`,与 route B 保留的 `SandboxPwshExecutor` 冲突,报
+  `service "shell" has been registered at <SandboxPwshExecutor>`;bash 工具尚未注册即中断。
+  Git Bash 路径已成功解析时同样发生,不是工具发现或路径探测问题。
+- **修复**:`mountPrivateExecutor` 仅对 `shell` 调用 `ctx.isolate('shell')`,其余宿主依赖原样继承;
+  类插件仍走官方 `plugin()` 通道,Config/volatile/static inject 与生命周期不变。
+  空 scope 通过 `get('shell')` 读取活跃私有实例,工具就绪检查用 `get('tools')`,避免
+  缺少 inject 声明的属性访问再度中断补位。失败时销毁已建 scope,成功/失败均清理挂载计时器。
+- **边界**:不撤官方 PowerShell 执行器、不改 bundle patch、不改 shell 执行/沙箱/后台协议,
+  不抬 Core 兼容下限,不发版、不触发 npm 发布。
+- **回归**:新增 5 项真实 Cordis 测试,覆盖普通子 scope 冲突、显式隔离后的 Config/inject 与
+  根 shell 保留、卸载、构造失败清理/再挂载、缺服务失败与挂载超时清理;不是仅正则源码检查。
+  既有 minimal PTY 测试的非 Windows 断言现在显式模拟 Linux,不再在恢复 win32 后误断言 `/bin/bash`。
+  首轮远端 CI 发现两项独立 error-content 测试误嵌套在父测试中,Node 22 会取消未等待的子测试;
+  恢复独立结构并保留全部断言,不跳过测试、不移除 Node 22 矩阵。
+- **验证入口**:`npm test` 合并 smoke 与真实 Cordis 回归;新增 `npm run test:preview`,通过
+  显式 `DSH_PREVIEW_HOST_DIR` 只读解析目标宿主包,在新 Context + 临时 cwd 做无头运行时 preview。
+  Windows 本机已通过:Core **0.2.1-alpha.2**,宿主 Cordis **4.0.5-alpha.1**,Node **24.13.0**;
+  原路径真实重现服务冲突,修复后 bash 出现在实际 ToolRuntime schema 中并执行
+  `command -v bash`/`uname -s`/sentinel(退出码 0),官方 pwsh 执行 `Get-Process`,
+  `pwshTool` 开/关两态与卸载恢复均通过。**不等同于完整 GUI、PTY、后台任务或受限模式验收**。
+- **CI**:新增非发布 `ci` 工作流(push 修复分支 / PR / 手动触发),Windows/Linux × Node 22/24,
+  锁定依赖、禁止生命周期脚本与可选载荷、完整测试及 `npm pack --dry-run --ignore-scripts`。
+  本机完整测试 **127/127 通过**,打包预检与 `git diff --check` 通过;远端矩阵结果见对应 PR 检查。
+  复验命令和覆盖边界见 `tests/README.md`。
+
 ## v0.39.0 — 2026-10-13
 
 **类型**:feat(架构转向:route B——插件自带 bash 工具,不再替换宿主执行器;DSH STORE 收录合规)。
