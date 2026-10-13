@@ -16,9 +16,9 @@
   native/path绑定自身描述在实际Core生成SDK中可见。未知混编码不猜，decoder失败不盲目重跑副作用。
 - 增加5项路由/可见性矩阵/重组/SDK-only/路径说明回归、2项实际Core普通/PTC提示与SDK送达验证。
   普通全仓 **223/223**、完整实际Corepreview **72/72**，exit0、无skip；不是实际LLM自主选择验收，
-  不承诺每次选对。未新增Config/UI或改变工具执行参数、版本、安装、生产配置；未提交/推送。
+  不承诺每次选对。工具执行参数与Config/UI保持不变。
 
-### 获授权工作区实施（Unreleased，未发布/部署）
+### 实验性实现（Unreleased）
 
 - **策略变化**：Windows 自有 bash 与 native 在 read-only/workspace-write/缺失策略时拒绝，
   实际 Core 返回 SANDBOX_UNAVAILABLE；工作目录准备、Jobs admission/promotion与spawn前不走旧
@@ -33,12 +33,12 @@
 - **托管与输出**：每execution私有scope复用真实executeArgv/provider/Jobs，不另造runner或依赖private
   spawnSpec；decoder错误保真实exit，不诱导重跑。增量UTF8/BOM兼容、独立reader/cursor、raw/decoded产物
   与payload预算；scope属agent，后台/promotion卸载工具后仍可结束、仅清自身资源。
-- **独立Astra反证返工**：实证ownerdispose/direct kill曾错报completed/complete、artifact callback
+- **独立验证发现的问题与修正**：实证ownerdispose/direct kill曾错报completed/complete、artifact callback
   可无限await、facts schema过宽；均修为operation-owned cause、中止/不完整事实、准备阶段abort/deadline
   race与closed schemas。终态enum/callback三参同步；晚产物保留trusted retention，不伪称已清除。
 - **最后全仓结果**：普通回归 **218/218**，实际安装Core 0.2.1-alpha.2完整preview **70/70**，均exit0、
-  无skip/cancel。Astra独立专项复跑unit41/41、preview55/55；它们是全仓结果的重叠证据，不能累加统计。
-  语法、diff检查和npm dry-run源码清单通过；未提交、推送、安装、改生产配置或权限。
+  无skip/cancel。独立专项复跑unit41/41、preview55/55；与全仓结果重叠，不另加总数。
+  语法、diff检查和npm dry-run源码清单通过。
 - **测试整合纠正**：首全仓旧description断言还锁旧unconfined措辞，改为更严格拒绝/禁止绕行护栏。
   首preview缺3项显式证据env；加test-only preview-env，operator目录优先，否则unique host temp。
   路径夹具原硬编码D盘/安装bootstrap，改动态盘符/宿主自身bootstrap；C盘临时目录真实fs读复验通过。
@@ -47,7 +47,7 @@
   8MiB两流raw+decoded/16MiB自有payload不是RSS或跨任务硬quota，无自动purge；生产GUI/完整插件apply、
   真受限token/ACL/IPC/VM负向权限、SSH/PTY与非CRT任意quoting尚未覆盖。未增加Config/UI文案字段。
   公开讨论文档见[实验设计与接口](docs/experimental-native-execution.md)、
-  [验证分级与复现](docs/experimental-native-verification.md)。原始本机日志未作为公开附件，测试可随仓库复现。
+  [验证分级与复现](docs/experimental-native-verification.md)。对应测试可随仓库复现。
 ## v0.39.4 — 2026-10-14
 
 **类型**:feat(dsh-ops 0.3.0 互通:gb_* 退役 + 统一方言桥) / fix(docs)。
@@ -140,6 +140,34 @@ opt-in)与跨平台(win/mac/linux)支持。本版把并存形态收敛为「各�
   ToolRuntime/执行句柄/run_code transport 回归,完整无头 preview **17/17**。旧护栏保留;打包 dry-run、语法和 diff
   检查通过。新增 preview 使用实际宿主 API 与内存 subprocess,已有 preview 保留真实 Git Bash/
   PowerShell 进程验收;不等同于生产 GUI、真实 PTC 引擎或新 confinement 方案验证。
+- **重启后复测(2026-10-13)**:desktop Profile 的本地安装来源为
+  [PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24) 的
+  [`4816cd8`](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/4816cd8848a52f73f5f054f761d3ec862cb87ade)
+  修复构建(包/插件清单0.39.2,不是额外发版);四个关键已安装源码与工作树逐字节一致、bundle开启。
+  当前实例status路由200/ok=true;真实前台、后台、超时转后台均输出预期sentinel,中文输出正常;
+  native `cmd //d //c echo`通过,未设置全局EXCL。原始固定GBK字节仍乱码,显式GBK→UTF-8通过,
+  说明编码边界仍在,没有把警示宣称为底层修复。再次执行普通回归 **166/166**、宿主preview **17/17**。
+  已安装包helper覆盖中文/#路径、EOF注释和tagged-template保护,描述包含参数/编码/安全提示;
+  独立render探针首轮误把stdout/stderr传为字符串,按真实stream DTO修正后通过,未修改产品代码。
+  本次复测未覆盖真实PTC引擎与生产受限会话；unconfined反馈仅由隔离Core/renderer测试核验。
+
+### 未修复问题研究(2026-10-13;不是产品实施或发版)
+
+- **原生参数/编码**:实际安装 Core 0.2.1-alpha.2 的隔离 argv/raw-pipe/私有 facade→executeArgv
+  与固定字节机制断言 **21/21**;可复用托管 provider,不需另造 runner。不同流显式解码可行,
+  已混在同流的未知编码不可可靠猜测;private spawnSpec 不当稳定接口。cmd 的前斜杠 executable
+  是另一个本机失败反例,反斜杠固定 echo 通过不代表任意 cmd/批处理 quoting 已验收。
+- **真实 PTC 补证**:ToolRuntime→真实 NodePtcRuntime→真实 LocalSubprocessRuntime→Node/fs
+  隔离实验 **8/8**，独立复跑 exit0。显式完整值 helper 配合 codePaths OFF 能读对动态路径,
+  并保留 `/c/users` 路由数据;legacy 字面量猜测仍误改。不是完整插件 apply/生产 GUI/受限 OS 证明。
+- **安全因果纠正**:现场 MSYS 3.6.10-5a1665c8 源码的 cygheap 使用 VirtualAlloc,signal pipe
+  显式 sec_user DACL 缺 restricting SID;当前 Core Flags=13 且 TokenDefaultDacl 已补 ACE。
+  因而历史笼统“用户-only cygheap 映射/只补默认 DACL/所有未来版本无解”不再作为当前根因依据。
+  私有 IPC 身份路线仅静态可行,SID 集合模型 **9/9**不是 AccessCheck 或新沙箱实测。
+- **研究提出的方向**：受限模式spawn前fail-closed、显式native typed argv/逐流decoder/path helper；
+  Core加法契约与隔离Windows VM中的IPC/AppContainer/LPAC/guest边界仍需进一步验收。
+  当前实现与验证见[实验设计](docs/experimental-native-execution.md)、
+  [验证矩阵](docs/experimental-native-verification.md)；前置兼容修复见[PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24)。
 
 ## v0.39.2 — 2026-10-13
 

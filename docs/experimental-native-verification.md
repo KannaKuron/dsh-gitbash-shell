@@ -2,13 +2,13 @@
 
 > **这是实验性讨论的验证记录，不是发布或安全放行。**
 > 关联：[设计/接口/待讨论决定](<experimental-native-execution.md>)、[CHANGELOG](<../CHANGELOG.md>)。
-> 记录日期：2026-10-13（Asia/Hong_Kong）；基于当时实际源码与隔离测试，不将本机条件推广为所有宿主保证。
+> 验证日期：2026-10-13。以下结果适用于所列运行环境，不代表所有宿主版本或生产场景均已通过。
 
 ## 1. 验证基准与结果
 
-- 工作区基线：`4816cd8848a52f73f5f054f761d3ec862cb87ade`，此前MSYS兼容边界修复；实验与Agent路由是在此基线之后的工作树改动。
-- 当时实际安装 **DSH Core 0.2.1-alpha.2**，Node 24.13.0，Windows / Git for Windows。
-- Core版本不是CLI、桌面壳或npm管理器版本。包的既有宿主范围不等于新native能力已在所有版本测试；启用依赖真实公开能力。
+- 实验增量基线：`4816cd8848a52f73f5f054f761d3ec862cb87ade`（此前MSYS兼容边界修复）。
+- 测试环境：**DSH Core 0.2.1-alpha.2**、Node 24.13.0、Windows / Git for Windows。
+- 新native功能按公开能力探测启用；既有兼容版本范围之外的实际覆盖情况见后文待验收项。
 - 最终普通全仓：**223 tests / 223 pass / 0 fail / 0 skip / 0 cancel，exit0**。
 - 最终实际Core完整preview：**72 tests / 72 pass / 0 fail / 0 skip / 0 cancel，exit0**。
 - 语法与`git diff --check`通过；npm dry-run确认新源码包含于发布文件集合。Dry-run不是已安装/发布，也不是新增生产版本。
@@ -22,7 +22,7 @@
 | 静态/源码与公开契约 | 配置、SDK/types、实际安装导出、匹配MSYS因果资料 | 实现依赖与约束、提出机制假设 | 新OS沙箱可用或任意版本兼容 |
 | 纯单元/受控注入 | 请求parser、预算、流异常、字段schema、路由矩阵 | 确定性输入输出与拒绝/收尾规则 | 真实磁盘故障或任意producer行为 |
 | 实际Core + 禁止spawn桩 | ToolRuntime/scoped装配/提示组装 | 真Core结构化拒绝、零admission、注册/卸载/隐藏 | 生产GUI或真实native程序跑通 |
-| 实际Core + 受控native程序 | LocalSubprocessRuntime/executeArgv/Jobs、固定bytes/READY/LATE | 本机真实argv、编码、kill/quiet/promotion与owner行为 | 全部原生parser、网络/SSH、真受限token |
+| 实际Core + 受控native程序 | LocalSubprocessRuntime/executeArgv/Jobs、固定bytes/READY/LATE | 所测环境中的真实argv、编码、kill/quiet/promotion与owner行为 | 全部原生parser、网络/SSH、真受限token |
 | 实际PTC + Node/fs | ToolRuntime→NodePtcRuntime→LocalSubprocessRuntime→Node fs读自有输入 | 完整值helper子分发、动态路径、route/tag保持 | 完整插件apply/生产用户policy/模型自主选择 |
 | 实际Core提示/SDK生成 | SystemPrompt.assemble普通/PTC及工具visibility | Agent将收到正确的说明与可见binding | 模型每次一定选对 |
 | 未执行 | 生产GUI/full apply/LLM选择、OS权限、吞吐/RSS/retention | 仅列为待验收 | 不能作为通过项 |
@@ -88,30 +88,30 @@
 
 ## 5. 复现方式（开发测试，不是安装教程）
 
-在工作区已有开发依赖与对应宿主条件下：
+安装开发依赖并准备对应宿主后运行：
 
 ```bash
 npm test
 ```
 
-Windows实际Core测试使用操作者指定的宿主目录：
+Windows实际Core测试通过环境变量指定宿主目录：
 
 ```bash
 DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:preview
 ```
 
-上面的尖括号是占位符，不是可执行路径；目录应来自实际目标宿主，不要从同名CLI推断。
+将占位符替换为待测试宿主的 resources/app 绝对路径。
 
-脚本使用[host loader](<../tests/host-loader.mjs>)只读解析实际安装导出，再预载[test-only evidence env](<../tests/preview-env.mjs>)。无安装、restart、profile修改、ACL/token/registry修改或真实网络/secret探查。
+脚本通过[host loader](<../tests/host-loader.mjs>)解析安装的Core导出，并预载[test-only evidence env](<../tests/preview-env.mjs>)创建测试证据目录。
 
-默认创建unique host temp scratch并保留测试证据；不是无副作用只读测试。每流artifact有预算，但测试目录留存仍归调用方。也可以提前建立自有绝对证据目录后提供：
+测试默认在临时目录下创建独立scratch并保留证据。每流artifact有预算，测试目录不会自动清理；也可提前创建目录并设置以下环境变量：
 
 - DSH_NATIVE_OUTPUT_EVIDENCE_DIR
 - DSH_NATIVE_EVIDENCE_DIR
 - DSH_NATIVE_REVIEW_EVIDENCE_DIR
 - DSH_PATH_EVIDENCE_DIR
 
-单独运行某个preview时须同时预载host-loader和preview-env，或自行提供它要求的已授权证据目录。不要运行package的version脚本来“验收”：它会改文件并git add，不属于测试。
+单独运行preview文件时，同时预载host-loader和preview-env，或设置该测试要求的证据目录环境变量。
 
 ## 6. 失败记录与证据修正
 
@@ -129,7 +129,7 @@ DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:prev
 
 独立审查旧态观察测试即使exit0，只证明缺陷被复现。最终将这些观察转为修复后的硬回归。独立专项复跑41/55与全仓结果重叠，不另加总数。
 
-原始本机日志、失败尝试与artifact保留在操作者本地证据目录；**本文件不是完整日志附件**。公开PR不附个人绝对路径、真实环境、密钥、Cookie或未经审查的raw producer数据。仓库测试提供复现机制；本记录公开的是可审阅断言、计数与限制。
+本文提供断言、结果计数和适用限制；完整日志与artifact由测试运行生成。以上测试文件可用于复现对应场景。
 
 ## 7. 转正式功能前的验收清单
 

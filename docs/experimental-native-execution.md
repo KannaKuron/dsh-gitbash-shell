@@ -1,8 +1,7 @@
 # 实验性讨论：Windows 安全拒绝、typed native argv 与显式路径转换
 
 > **状态：实验性实现讨论 / Draft，Unreleased。**
-> 这是可运行的工作区实现，用来验证接口与讨论工程取舍，不是发布建议，也不是完整安全认证。
-> 尚未部署到生产实例；没有改变宿主安装产物、权限、版本号或发布流程。
+> 本文介绍实验实现的设计、接口和工程取舍。它尚未完成生产验收，不是发布候选或完整安全认证。
 
 关联：[验证矩阵与复现](<experimental-native-verification.md>)、[变更记录](<../CHANGELOG.md>)。
 
@@ -42,7 +41,7 @@ legacy `codePaths` 无法识别 `/c/users` 是路径还是路由数据，也不�
 
 本提案**没有修复 OS 围栏**。匹配研究纠正了旧泛化：现代 MSYS cygheap 使用 VirtualAlloc，signal pipe 使用显式 SD；实际 Core 已补 TokenDefaultDacl。不能据此声称“再补默认 DACL 就解决”或“所有未来方案都无解”。
 
-IPC/Token/AppContainer/VM 路线仍需隔离环境的真实正负权限验证；本 PR 不修改 ACL、token、registry 或宿主 Core。
+IPC/Token/AppContainer/VM 路线仍需隔离环境的真实正负权限验证；这些 OS 隔离机制不属于本提案的实现范围。
 
 ## 3. 原则与体验变化
 
@@ -172,7 +171,7 @@ Native typed path 不支持相对值、变量/home展开；需要时先通过显
 | rawBytes/rawCursor | 原流字节计数/游标 |
 | decodedUtf8Bytes/decodedCursor | normalized UTF8计数/游标 |
 
-Foregound DTO使用closed schemas；去undefined投影不放任unknown字段。无facts/投影失败是显式分支，不通过宽schema吞错。后台最终exit/facts进入现有Jobs文本source，不声称扩展Core Jobs结构化API。
+Foreground DTO使用closed schemas；去undefined投影不放任unknown字段。无facts/投影失败是显式分支，不通过宽schema吞错。后台最终exit/facts进入现有Jobs文本source，不声称扩展Core Jobs结构化API。
 
 ## 9. 生命周期与预算
 
@@ -206,7 +205,7 @@ Windows own-bash agent scope挂两个companions，不覆盖已有同名工具。
 ## 12. 合并讨论 / 未覆盖
 
 - [ ] 是否接受受限模式从旧绕过改为拒绝的breaking体验？
-- [ ] 是否拆分fail-closed、native/path、路由三个PR？本地基线包含此前兼容修复，需确认目标base/依赖。
+- [ ] 是否拆分fail-closed、native/path、路由三个PR？该实现依赖前置兼容修复，需确认目标base及合并顺序。
 - [ ] 是否增加默认关闭的experimental开关？当前没有此开关。
 - [ ] Native argv、逐流encoding、normalized cursor、artifact facts是否应成为Core公开加法契约？
 - [ ] 在哪一层承担跨任务quota、artifact权限/retention/清理？
