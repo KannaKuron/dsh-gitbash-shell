@@ -288,6 +288,56 @@ test('runtime preview: actual ToolRuntime surfaces unconfined foreground and ini
   assert.equal(f.root.get('shell'), f.official)
 })
 
+test('runtime preview: actual promoted DTO renders sandbox notes from handle facts, not output text', { timeout: 10000 }, async t => {
+  for (const mode of ['read-only', 'workspace-write', 'danger-full-access']) {
+    const spawned = deferred()
+    const finished = deferred()
+    const raw = 'promotion-raw-output'
+    const readFrom = () => ({ text: raw, nextOffset: raw.length, lossy: false })
+    const f = await fixture(t, { subprocessRuntime: { spawn() {
+      spawned.resolve()
+      return { done: finished.promise, collected: { stdout: { readFrom }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
+        terminate() { finished.resolve({ exitCode: 1, signal: 'SIGTERM' }) } }
+    } } })
+    await bounded(f.activated.promise, `promotion activation: ${mode}`)
+    f.agent.session.header.policy = { mode, workspaceRoot: process.cwd() }
+    let hooks
+    const off = f.root.provide('jobs', {
+      start(spec) { hooks = spec.run(); return 'compatibility-promoted' },
+      async wait(_id, timeoutMs) {
+        assert.equal(timeoutMs, 5)
+        await bounded(spawned.promise, 'promotion producer admission')
+        await new Promise(resolve => setImmediate(resolve))
+        return { status: 'running' }
+      },
+      read() { return { chunks: [{ channel: 'stdout', text: raw }], lossy: true, job: { output: { spillPaths: ['promotion-spill'] } } } },
+    })
+    try {
+      await new Promise(resolve => setImmediate(resolve))
+      const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify promotion sandbox facts', timeoutMs: 5 })
+      assert.equal(value.isError, false, JSON.stringify(value))
+      assert.equal(value.value.kind, 'promoted')
+      assert.equal(value.value.sandbox.mode, mode)
+      assert.match(value.value.output, /promotion-raw-output[\s\S]*output was dropped[\s\S]*promotion-spill/)
+      assert.doesNotMatch(value.value.output, /unconfined|NOT enforced/, 'the tool must not pre-render sandbox notes into output')
+      const text = value.content[0].text
+      assert.match(text, /moved to background job compatibility-promoted/)
+      if (mode === 'danger-full-access') assert.doesNotMatch(text, /unconfined|NOT enforced/)
+      else {
+        assert.equal(value.value.sandbox.enforcement, 'unconfined')
+        assert.match(text, /moved to background[\s\S]*unconfined.*NOT enforced/)
+        assert.equal((text.match(/NOT enforced/g) ?? []).length, 1)
+        assert.doesNotMatch(text, /escalation available/)
+      }
+      assert.equal(f.root.get('shell'), f.official)
+    } finally {
+      finished.resolve({ exitCode: 0, signal: null })
+      if (hooks) await hooks.done
+      await off()
+    }
+  }
+})
+
 test('runtime preview: actual execution handle carries unconfined facts for live jobs', { timeout: 10000 }, async t => {
   const f = await fixture(t, { existingBash: true })
   const { executor, executorScope } = await mountPrivateExecutor(f.root, GitBashSandboxExecutor, createScope)

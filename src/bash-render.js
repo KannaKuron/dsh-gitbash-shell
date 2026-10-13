@@ -115,16 +115,19 @@ export function renderResult(result, escalationModes = []) {
 /**
  * Shape a foreground call that stopped waiting into the text the model sees.
  * Mirrors the official `renderPromoted` (tool-bash render.ts:77).
- * @param {{ jobId: string, timeoutMs: number, output: string }} promoted
+ * @param {{ jobId: string, timeoutMs: number, output: string, sandbox?: object }} promoted
+ * @param {string[]} [escalationModes]
  * @returns {string}
  */
-export function renderPromoted(promoted) {
+export function renderPromoted(promoted, escalationModes = []) {
   const body = promoted.output.length > 0
     ? (promoted.output.endsWith('\n') ? promoted.output : `${promoted.output}\n`)
     : ''
-  return `${body}[still running after ${promoted.timeoutMs}ms; moved to background job ${promoted.jobId}]\n`
+  const text = `${body}[still running after ${promoted.timeoutMs}ms; moved to background job ${promoted.jobId}]\n`
     + 'The command keeps running in the background. You will be notified when it finishes; '
     + 'read newer output with job_output, stop it with job_kill.'
+  const notes = sandboxNotes(promoted.sandbox, escalationModes)
+  return notes.length > 0 ? `${text}\n${notes.join('\n')}` : text
 }
 
 /**

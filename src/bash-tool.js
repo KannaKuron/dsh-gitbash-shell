@@ -216,6 +216,10 @@ function outputSchemaSpec() {
           jobId: { type: 'string', required: true },
           timeoutMs: { type: 'number', required: true },
           output: { type: 'string', required: true },
+          sandbox: {
+            ...BACKGROUND_OUTPUT_PROPERTIES.sandbox,
+            properties: { ...BACKGROUND_OUTPUT_PROPERTIES.sandbox.properties, runnerFailed: { type: 'boolean' } },
+          },
         },
       },
       {
@@ -437,14 +441,17 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           }
           if (view.status === 'running' || view.status === 'stopping') {
             const read = registry.read(attached.id, owner)
+            const sandbox = attached.process()?.sandbox
             return {
               kind: 'promoted',
               cwd: spec.workdir,
               jobId: attached.id,
               timeoutMs,
+              // Preserve ring/spill notices; sandbox notes belong to the final renderer.
               output: renderJobRead(
-                ringDelta(read.chunks), read.lossy, read.job.output.spillPaths ?? [], attached.process()?.sandbox, escalationModes,
+                ringDelta(read.chunks), read.lossy, read.job.output.spillPaths ?? [], undefined, escalationModes,
               ),
+              ...(sandbox === undefined ? {} : { sandbox }),
             }
           }
           registry.remove(attached.id, owner)
@@ -557,7 +564,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
                 text: value.kind === 'background'
                   ? renderBackground(value.jobId, value.sandbox)
                   : value.kind === 'promoted'
-                    ? renderPromoted(value)
+                    ? renderPromoted(value, escalationModes)
                     : renderResult(value, escalationModes),
               }],
               presentationMeta: (_args, value) => ({ cwd: value.cwd }),
@@ -587,7 +594,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
               text: value.kind === 'background'
                 ? renderBackground(value.jobId, value.sandbox)
                 : value.kind === 'promoted'
-                  ? renderPromoted(value)
+                  ? renderPromoted(value, escalationModes)
                   : renderResult(value, escalationModes),
             }],
             presentationMeta: (_args, value) => ({ cwd: value.cwd }),

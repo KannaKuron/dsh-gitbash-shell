@@ -7,6 +7,17 @@
 
 **类型**:fix(MSYS 参数/编码提示、源码路径边界与 unconfined 可观测性) / test / docs。
 
+### PR #24：超时转后台的独立 sandbox 警示
+
+- promoted 返回值显式携带可选 sandbox facts，输出 schema 保持闭合；defineTool 与 JSON-schema 回退共用此契约。
+- `renderPromoted` 自行追加 sandbox notes，不再依赖 output 预先含警示；promotion 输出保留丢失/spill 提示，
+  避免重复追加 sandbox 警示。无 sandbox/full-access 的原反馈保持不变，denied/runnerFailed 分支继续保留。
+- 纯回归改用不含警示的原始文本，覆盖空输出、full-access、拒绝与 runner failure。
+  新增实际 ToolRuntime→私有执行器→内存 provider 的 promotion 回归（Jobs wait/read 为受控桩），
+  验证 RO/WW 警示各出现一次、full 无警示、DTO 与最终模型文本分离、丢失/spill 提示及 root 服务不变。
+- 验证：普通完整回归 **166/166**、实际安装Core完整preview **18/18**，均exit0，无skip/cancel；
+  语法与diff检查通过。不等同于生产GUI或真实Jobs时钟验收。
+
 ### MSYS 兼容边界尝试修复
 
 - **范围**:从 [`6b26ded`](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/6b26ded6cc3a2a6113579149286047629b433c48)
