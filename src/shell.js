@@ -7,31 +7,27 @@
  * replacing the shell executor IS overriding one). Instead the plugin
  * constructs ONE private instance of this class in a PRIVATE cordis scope
  * (`executorScope.ctx.plugin(GitBashSandboxExecutor)`, src/inline-tools.js)
- * and hands it to the plugin's OWN bash tool (src/bash-tool.js). The class
- * body is unchanged from its executor-row era:
+ * and hands it to the plugin's OWN bash tool (src/bash-tool.js).
  *
  *   - extends @deepseek-ai/dsh-bash-sandbox to inherit policy, denial and
- *     lifecycle semantics EXCEPT the explicit Windows unconfined route below;
+ *     lifecycle semantics; unsupported Windows policy is refused, not weakened;
  *   - overrides `confine` so the inner argv is [git-bash, -c, command];
  *   - overrides run/start ONLY for danger-full-access (the parent's
  *     full-access branch calls LocalBashExecutor.run, which hardcodes the
  *     bare `bash` name), routing through runArgv/startArgv with the same
  *     argv as the confined branch;
- *   - on Windows ALSO overrides the confined branch itself (issue #1):
- *     historical MSYS2/restricted-token tests failed during msys-2.0.dll
- *     cygheap/signal-pipe initialization (Win32 error 5 / 0xC0000142;
- *     restricting-SID object permissions, CHANGELOG v0.13.2). No working
- *     confined Git Bash implementation is provided here; this is not a claim
- *     that every future runtime/isolation design is impossible. Windows calls
- *     retain the explicit UNCONFINED route, labelled on the handle/result and
- *     in model-facing foreground/background text, plus a one-time notice.
- *     Official file-tool write/edit policy remains separate; it does not
- *     constrain shell code and its denials must never be bypassed through shell.
+ *   - on Windows refuses read-only/workspace-write or unresolved policy before
+ *     argv resolution or process start. Historical restricted-token failures
+ *     (Win32 error 5 / 0xC0000142, CHANGELOG v0.13.2) are not proof that every
+ *     future isolation design is impossible. The matched modern MSYS signal
+ *     pipe has an explicit SD; cygheap uses VirtualAlloc, and Core already
+ *     supplements TokenDefaultDacl. No verified confined Git Bash is provided
+ *     here, so the former labelled unconfined bypass is no longer permitted.
+ *     Official file-tool policy is separate and its denials must not be bypassed.
  *
- * Environment inheritance: bash.exe is spawned as a direct child of the host
- * process (never through the git-bash.exe login launcher), so it inherits the
- * full system environment plus the DSH_* snapshot exactly like the pwsh
- * executor did.
+ * Environment inheritance: bash.exe is a direct child (not a login launcher)
+ * of the host's managed, credential-scrubbing subprocess provider. The trusted
+ * DSH_* snapshot does not exempt it from protected environment rules.
  *
  * Constructed as a cordis class plugin (static inject/Config honoured) —
  * inside an explicitly `ctx.isolate('shell')`-isolated scope, so the base
@@ -47,9 +43,6 @@ import { DEFAULT_GIT_BASH, bashResolutionReport, effectiveConfiguredBashPath, re
 export { DEFAULT_GIT_BASH }
 import { loadSchemastery } from './schemastery.js'
 
-
-/** Log prefix, matching src/index.js. */
-const TAG = '[gitbash-shell]'
 
 /**
  * The plugin row's id, which doubles as the settings namespace on <= 0.1.6 and
@@ -212,7 +205,8 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * @returns true when the base class start is an async function.
    */
   static baseStartIsAsync() {
-    return SandboxBashExecutor.prototype.start.constructor.name === 'AsyncFunction'
+    return typeof SandboxBashExecutor.prototype.start === 'function'
+      && SandboxBashExecutor.prototype.start.constructor.name === 'AsyncFunction'
   }
 
   /**
@@ -232,22 +226,31 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     return { result: raw, spawnRequested: true }
   }
 
+  /** Construct the host's structured refusal when its module was resolved. */
+  policyUnavailableError(mode) {
+    const knownMode = mode === 'read-only' || mode === 'workspace-write' ? mode : 'unresolved'
+    const detail = 'dsh-gitbash-shell does not provide verified Windows Git for Windows confinement. '
+      + 'The command was not started; no unconfined fallback is permitted. '
+      + 'Do not bypass this refusal with another tool or change permissions automatically.'
+    if (typeof this.unavailableErrorType === 'function') return new this.unavailableErrorType(knownMode, detail)
+    // Direct/older callers without the optional host error export still refuse.
+    const error = new Error('sandbox mode "' + knownMode + '" cannot execute Git Bash on this Windows host. ' + detail)
+    error.name = 'SandboxUnavailableError'
+    error.code = 'SANDBOX_UNAVAILABLE'
+    return error
+  }
+
   /**
-   * Decide whether one spec takes the Git Bash argv path, and how to label it
-   * (pure). Full access always does — the shipped executor hardcodes the bare
-   * `bash` name there. A Windows confined call does too (issue #1: MSYS2 cannot
-   * start under the restricted-token runner). Everything else inherits the
-   * parent's sandbox path, which already runs Git Bash because `confine` below
-   * substitutes the argv.
-   * @param spec the shell request.
-   * @returns `{ mode, unconfined }`, or undefined to inherit the parent path.
+   * Full access uses explicit Git Bash argv. Windows restricted or unresolved
+   * policy fails BEFORE argv resolution, job admission or spawning; disclosure
+   * of an unconfined route is not permission to weaken the requested policy.
+   * Non-Windows restricted calls retain the parent's actual sandbox path.
+   * @returns `{ mode, unconfined: false }`, or undefined to inherit.
    */
   gitBashRoute(spec) {
-    const policy = spec.sandboxPolicy
-    const mode = policy === undefined ? undefined : policy.mode
-    if (mode === undefined) return undefined
+    const mode = spec.sandboxPolicy?.mode
     if (mode === 'danger-full-access') return { mode, unconfined: false }
-    if (process.platform === 'win32') return { mode, unconfined: true }
+    if (process.platform === 'win32') throw this.policyUnavailableError(mode)
     return undefined
   }
 
@@ -285,16 +288,13 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * @param spec resolved execution settings and caller-owned command metadata.
    * @returns the live execution handle.
    */
-  execute(spec) {
+  async execute(spec) {
     if (typeof super.execute !== 'function') return this.run(spec)
+    const route = this.gitBashRoute(spec)
     const routed = this.withParityEnv(spec)
-    const route = this.gitBashRoute(routed)
     if (route === undefined) return super.execute(routed)
     const argv = [this.requireBashPath(), '-c', routed.command]
-    if (route.unconfined) this.warnConfinedUnconfined(route.mode)
-    const sandbox = route.unconfined
-      ? { mode: route.mode, denied: false, enforcement: 'unconfined' }
-      : { mode: route.mode, denied: false }
+    const sandbox = { mode: route.mode, denied: false }
     // `executeArgv` is the shipped helper for exactly this: run an explicit
     // argv with the executor's own lifecycle, output and deadline semantics.
     return Promise.resolve(this.executeArgv(routed, argv))
@@ -366,48 +366,28 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * old-era entry point.
    */
   async run(spec) {
+    const route = this.gitBashRoute(spec)
     spec = this.withParityEnv(spec)
-    const policy = spec.sandboxPolicy
-    if (policy === undefined) return super.run(spec)
-    const { mode } = policy
-    if (mode === 'danger-full-access') {
-      const { result } = GitBashSandboxExecutor.unwrapRunArgv(
-        await this.runArgv(spec, [this.requireBashPath(), '-c', spec.command]))
-      return { ...result, sandbox: { mode, denied: false } }
-    }
-    if (process.platform === 'win32') {
-      this.warnConfinedUnconfined(mode)
-      const { result, spawnRequested } = GitBashSandboxExecutor.unwrapRunArgv(
-        await this.runArgv(spec, [this.requireBashPath(), '-c', spec.command]))
-      // No spawn means no argv ran, so there is nothing to label as
-      // unconfined; the parent reports the same bare sandbox facts there.
-      return { ...result, sandbox: spawnRequested ? { mode, denied: false, enforcement: 'unconfined' } : { mode, denied: false } }
-    }
-    return super.run(spec)
+    if (route === undefined) return super.run(spec)
+    const { result } = GitBashSandboxExecutor.unwrapRunArgv(
+      await this.runArgv(spec, [this.requireBashPath(), '-c', spec.command]))
+    return { ...result, sandbox: { mode: route.mode, denied: false } }
   }
 
   start(spec) {
-    spec = this.withParityEnv(spec)
-    const policy = spec.sandboxPolicy
-    if (policy === undefined) return super.start(spec)
-    const { mode } = policy
-    const fullAccess = mode === 'danger-full-access'
-    if (fullAccess || process.platform === 'win32') {
-      if (!fullAccess) this.warnConfinedUnconfined(mode)
-      const proc = this.startArgv(spec, [this.requireBashPath(), '-c', spec.command])
-      proc.sandbox = fullAccess ? { mode, denied: false } : { mode, denied: false, enforcement: 'unconfined' }
-      // Match the loaded base contract: the async one (dsh >= 0.1.6) is
-      // awaited by its callers, the synchronous one is consumed directly.
-      return GitBashSandboxExecutor.baseStartIsAsync() ? Promise.resolve(proc) : proc
+    let route
+    try { route = this.gitBashRoute(spec) }
+    catch (error) {
+      if (GitBashSandboxExecutor.baseStartIsAsync()) return Promise.reject(error)
+      throw error
     }
-    return super.start(spec)
-  }
-
-  /** One-per-instance notice that confined Windows calls run unconfined. */
-  warnConfinedUnconfined(mode) {
-    if (this._warnedUnconfined) return
-    this._warnedUnconfined = true
-    console.log(TAG + ' Windows: confined Git Bash is not provided by this restricted-token backend (issue #1). Requested mode ' + mode + ' will use an UNCONFINED Git Bash route: shell file-write restrictions are NOT enforced. Official file-tool write/edit policy is separate; never bypass its denial through shell.')
+    spec = this.withParityEnv(spec)
+    if (route === undefined) return super.start(spec)
+    const proc = this.startArgv(spec, [this.requireBashPath(), '-c', spec.command])
+    const label = (handle) => { handle.sandbox = { mode: route.mode, denied: false }; return handle }
+    // Preserve the old host's synchronous/async start contract, including its
+    // refusal shape; modern execute() callers never enter this legacy method.
+    return GitBashSandboxExecutor.baseStartIsAsync() ? Promise.resolve(proc).then(label) : label(proc)
   }
 }
 

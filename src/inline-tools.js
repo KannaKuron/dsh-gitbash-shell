@@ -101,14 +101,14 @@ export function inlineNeeds(names, { pwshVisible } = {}) {
  * routing. Both hold regardless of the path dialect a delegate sees.
  */
 export const GITBASH_ROUTE_ADDENDUM = [
-  'Prefer this bash tool for ALL commands; use the pwsh tool ONLY when a Windows-native capability (cmdlets, registry, services, WMI) is truly required.',
-  'Fix failed bash commands in bash — never switch shells mid-task, never embed `pwsh -Command` inside a bash command (variable expansion and output encoding break there).',
+  'Prefer this bash tool for shell syntax, scripts, pipelines, redirection, globbing and POSIX utilities; use the pwsh tool ONLY when PowerShell cmdlets, registry, services or WMI are truly required.',
+  'Fix failed bash syntax in bash; never embed `pwsh -Command` inside a bash command as a workaround (variable expansion and output encoding break there). Choose a separately offered native route for its documented purpose before execution, never as a policy-denial retry.',
 ].join('\n')
 
 /** The bash-only routing variant, used while the pwsh switch is off (the default). */
 export const GITBASH_ROUTE_ADDENDUM_NO_PWSH = [
-  'Prefer this bash tool for ALL commands — it is this host\'s shell.',
-  'Fix failed commands in bash; there is no PowerShell tool on this host.',
+  'Prefer this bash tool for shell syntax, scripts, pipelines, redirection, globbing and POSIX utilities — it is this host\'s shell.',
+  'Fix failed bash syntax in bash; no PowerShell tool is offered here. Do not invent a hidden tool or embed another interpreter as a workaround.',
 ].join('\n')
 
 /**
@@ -117,6 +117,38 @@ export const GITBASH_ROUTE_ADDENDUM_NO_PWSH = [
  * the dialect creates.
  */
 export const GITBASH_MSYS_ADDENDUM = 'This bash is Git for Windows (MSYS): paths use drive roots (/c/Users/...), and ~, /tmp, /dev/null and /usr/... resolve exactly as Git Bash resolves them.'
+
+const ROUTING_START = '\n[gitbash tool routing]\n'
+const ROUTING_END = '\n[/gitbash tool routing]'
+const ROUTING_SAFETY = 'Choose the execution route before running. A policy/access denial is a stop condition: never switch tools, shells or permissions to bypass it. A decoding/display failure does not mean the command failed to run; preserve its exit facts and never blindly repeat a side-effecting command. Do not guess unknown or mixed encodings.'
+const PTC_ROUTING = 'Inside run_code, call only bindings actually offered by the current SDK with await tools.<name>(...). Select by their descriptions: shell execution for shell syntax/pipelines; an offered typed native-executable binding for exact Windows argv or explicitly known per-stream encodings; an offered complete-path conversion binding before passing an MSYS value to Node fs/path. These are different operations, not substitutes for permissions. Never pass routes, search text or source code to a path converter. Program strings do not perform shell expansion. If a needed binding is absent, report the missing capability; do not invent its name. ' + ROUTING_SAFETY
+
+/** Model guidance names only tools in this assembly, not a switch's intent. */
+export function toolRoutingHintFor(tools, { pwshVisible = false } = {}) {
+  const names = new Set((Array.isArray(tools) ? tools : []).map(tool => tool?.name))
+  if (!names.has('bash')) return ''
+  const lines = [pwshVisible && names.has('pwsh') ? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH]
+  if (names.has('gitbash_native')) lines.push('Use gitbash_native before execution when a Windows .exe needs exact literal argv such as /all or /c without MSYS conversion, or independently declared stdout/stderr encodings. Supply an absolute executable, mark each argument literal or path, and select only a known encoding (raw for unknown/mixed bytes). It does not implement shell pipelines, expansion or .cmd/.bat wrappers; only resolved danger-full-access can execute it.')
+  if (names.has('gitbash_to_native_path')) lines.push('Use gitbash_to_native_path only for a complete caller-declared MSYS filesystem path that a native Node fs/path API needs, especially a runtime-built value. Read native_path from the result. Never convert routes, search strings or shell/program source. Already-native or cwd-relative Node paths need no conversion; ordinary tool path fields already use their own translation. Conversion grants no access.')
+  lines.push(ROUTING_SAFETY)
+  return lines.join('\n')
+}
+
+/** Add a replaceable, idempotent block; a reused assembly follows visibility. */
+export function applyToolRouting(tools, { pwshVisible = false, msys = false } = {}) {
+  if (!Array.isArray(tools)) return
+  for (const tool of tools) {
+    if (!tool || typeof tool.description !== 'string' || !['bash', 'run_code'].includes(tool.name)) continue
+    let description = tool.description
+    const start = description.indexOf(ROUTING_START)
+    const end = start < 0 ? -1 : description.indexOf(ROUTING_END, start)
+    if (end >= 0) description = description.slice(0, start) + description.slice(end + ROUTING_END.length)
+    const hint = tool.name === 'bash'
+      ? toolRoutingHintFor(tools, { pwshVisible }) + (msys ? '\n' + GITBASH_MSYS_ADDENDUM : '')
+      : PTC_ROUTING
+    tool.description = description + ROUTING_START + hint + ROUTING_END
+  }
+}
 
 /** @deprecated composed form kept for tests: route + MSYS sentences. */
 export const GITBASH_BASH_ADDENDUM = GITBASH_ROUTE_ADDENDUM + '\n' + GITBASH_MSYS_ADDENDUM
@@ -158,7 +190,12 @@ export async function mountPrivateExecutor(ctx, GitBashSandboxExecutor, createSc
         if (executorScope.fiber) await executorScope.fiber
         const fiber = executorScope.ctx.plugin(GitBashSandboxExecutor)
         await fiber
-        return executorScope.ctx.get('shell')
+        const executor = executorScope.ctx.get('shell')
+        const sandboxModule = await resolveHostModule(executorScope.ctx, '@deepseek-ai/dsh-sandbox')
+        if (typeof sandboxModule?.SandboxUnavailableError === 'function') {
+          executor.unavailableErrorType = sandboxModule.SandboxUnavailableError
+        }
+        return executor
       })(),
       mountTimeout,
     ])
@@ -255,7 +292,33 @@ export function mountInlineTools(ctx, deps) {
         }
         const { createBashToolModule } = await untilDisposed(import('./bash-tool.js'), controller.signal)
         const module = createBashToolModule({ executor: mounted.executor, log, ...hostModules })
-        return { executor: mounted.executor, executorScope, module }
+        const extraModules = []
+        if (typeof deps.translatePath === 'function') {
+          const { createPathToolModule, PATH_TOOL_NAME } = await untilDisposed(import('./path-tool.js'), controller.signal)
+          extraModules.push({ name: PATH_TOOL_NAME, module: createPathToolModule({
+            toolsModule: hostModules.toolsModule, translate: deps.translatePath, log,
+          }) })
+          try {
+            const localBashModule = await untilDisposed(resolveHostModule(ctx, '@deepseek-ai/dsh-bash-local'), controller.signal)
+            const outputModule = await untilDisposed(resolveHostModule(ctx, '@deepseek-ai/dsh-subprocess-local/output'), controller.signal)
+            if (typeof localBashModule?.LocalBashExecutor !== 'function'
+              || typeof outputModule?.OutputCollector !== 'function') {
+              throw new Error('public native executor/OutputCollector capability unavailable')
+            }
+            const { createNativeOutputAdapter } = await untilDisposed(import('./native-output.js'), controller.signal)
+            const { createNativeToolModule } = await untilDisposed(import('./native-tool.js'), controller.signal)
+            extraModules.push({ name: 'gitbash_native', module: createNativeToolModule({
+              toolsModule: hostModules.toolsModule, sandboxModule: hostModules.sandboxModule,
+              localBashModule, createScope, translateMsysPath: deps.translatePath,
+              createNativeOutputAdapter, outputOptions: { OutputCollector: outputModule?.OutputCollector },
+              createArtifactDirectory: deps.createArtifactDirectory, log,
+            }) })
+          } catch (error) {
+            if (controller.signal.aborted) throw error
+            log(`native tool capability unavailable; bash/path tools remain available: ${error?.message ?? error}`)
+          }
+        }
+        return { executor: mounted.executor, executorScope, module, extraModules }
       } catch (error) {
         if (executorScope) await executorScope.dispose()
         throw error
@@ -271,7 +334,7 @@ export function mountInlineTools(ctx, deps) {
     let scope
     let retained = false
     try {
-      const { executor, module } = await untilDisposed(bashOncePromise(), state.controller.signal)
+      const { executor, module, extraModules } = await untilDisposed(bashOncePromise(), state.controller.signal)
       if (!isLive(agent, state)) return
       log(`own bash tool ready (private Git Bash executor at ${executor.bashPath || '(unresolved)'}; official pwsh executor untouched)`)
       scope = createScope(agent.ctx)
@@ -297,6 +360,20 @@ export function mountInlineTools(ctx, deps) {
       if (registeredNames.includes('bash') === false) {
         throw new Error('bash tool did not register for this agent (module fiber INACTIVE — this host lacks an injected service the module requires — or the tools read-back is unavailable); bash is NOT available in this session, please report this with your dsh version (issue #27)')
       }
+      for (const extra of extraModules ?? []) {
+        if (faceNames(agent).includes(extra.name)) continue // Never replace another owner.
+        let extraFiber
+        try {
+          extraFiber = scope.ctx.plugin(extra.module)
+          await untilDisposed(extraFiber, state.controller.signal)
+          if (!isLive(agent, state)) return
+          log(`${extra.name} activated in the agent-owned scope`)
+        } catch (error) {
+          if (!isLive(agent, state)) return
+          await extraFiber?.dispose()
+          log(`${extra.name} activation failed; bash remains available: ${error?.message ?? error}`)
+        }
+
       retained = true
       log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {

@@ -3,6 +3,51 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## Unreleased — 2026-10-13
+
+**类型**:feat(显式运行时路径/native typed argv/逐流解码) / fix(受限请求 fail-closed、生命周期与输出事实) / test / docs。
+
+### Agent 选工具指引补齐（Unreleased）
+
+- 移除“ALL commands都优先bash”的歧义；明确shell语法/管道/POSIX脚本、精确native argv/已知逐流
+  编码、完整值Node路径转换、真正PowerShell cmdlet/WMI四类场景。只按实际可见工具名称引导，
+  pwsh同时要求开关允许；缺native/helper不建议虚构名称，不自动换解释器/权限绕拒绝。
+- 路由与方言开关独立，替换幂等文案块随可见性变化；PTC-only run_code得到SDK决策说明，
+  native/path绑定自身描述在实际Core生成SDK中可见。未知混编码不猜，decoder失败不盲目重跑副作用。
+- 增加5项路由/可见性矩阵/重组/SDK-only/路径说明回归、2项实际Core普通/PTC提示与SDK送达验证。
+  普通全仓 **223/223**、完整实际Corepreview **72/72**，exit0、无skip；不是实际LLM自主选择验收，
+  不承诺每次选对。未新增Config/UI或改变工具执行参数、版本、安装、生产配置；未提交/推送。
+
+### 获授权工作区实施（Unreleased，未发布/部署）
+
+- **策略变化**：Windows 自有 bash 与 native 在 read-only/workspace-write/缺失策略时拒绝，
+  实际 Core 返回 SANDBOX_UNAVAILABLE；工作目录准备、Jobs admission/promotion与spawn前不走旧
+  unconfined绕过，不自动换工具/权限。default full不放宽会话policy；root官方provider不变。
+  历史unconfined渲染保留仅为旧记录。不是恢复真实IPC/OS围栏，不覆盖minimal PTY/交互终端。
+- **完整值路径工具**：新增gitbash_to_native_path，参数msys_path、输出native_path，复用每调用
+  fresh共享mount；与自动方言/codePaths独立。未知映射、URL、空值/NUL拒绝，不访问文件或授权限。
+  实际ToolRuntime→NodePtcRuntime→LocalSubprocessRuntime→Node/fs读取自有中文/#输入，route/tag不变。
+- **原生工具**：新增gitbash_native，绝对typed executable/cwd、literal/path argv，逐流utf8/gbk/
+  utf16le/raw与replace/strict；只显式path转换，literal /all、/c、空串/引号保真。
+  拒绝bare command、model env、.cmd/.bat/隐式脚本；已知解释器需明确opt-in，非二进制鉴定或任意parser保证。
+- **托管与输出**：每execution私有scope复用真实executeArgv/provider/Jobs，不另造runner或依赖private
+  spawnSpec；decoder错误保真实exit，不诱导重跑。增量UTF8/BOM兼容、独立reader/cursor、raw/decoded产物
+  与payload预算；scope属agent，后台/promotion卸载工具后仍可结束、仅清自身资源。
+- **独立Astra反证返工**：实证ownerdispose/direct kill曾错报completed/complete、artifact callback
+  可无限await、facts schema过宽；均修为operation-owned cause、中止/不完整事实、准备阶段abort/deadline
+  race与closed schemas。终态enum/callback三参同步；晚产物保留trusted retention，不伪称已清除。
+- **最后全仓结果**：普通回归 **218/218**，实际安装Core 0.2.1-alpha.2完整preview **70/70**，均exit0、
+  无skip/cancel。Astra独立专项复跑unit41/41、preview55/55；它们是全仓结果的重叠证据，不能累加统计。
+  语法、diff检查和npm dry-run源码清单通过；未提交、推送、安装、改生产配置或权限。
+- **测试整合纠正**：首全仓旧description断言还锁旧unconfined措辞，改为更严格拒绝/禁止绕行护栏。
+  首preview缺3项显式证据env；加test-only preview-env，operator目录优先，否则unique host temp。
+  路径夹具原硬编码D盘/安装bootstrap，改动态盘符/宿主自身bootstrap；C盘临时目录真实fs读复验通过。
+  所有失败尝试证据保留，不称失败观察为修复PASS。
+- **边界**：未知同流混编码不可普遍解码；legacy codePaths业务字符串猜测仍在，显式工具不改变其默认。
+  8MiB两流raw+decoded/16MiB自有payload不是RSS或跨任务硬quota，无自动purge；生产GUI/完整插件apply、
+  真受限token/ACL/IPC/VM负向权限、SSH/PTY与非CRT任意quoting尚未覆盖。未增加Config/UI文案字段。
+  公开讨论文档见[实验设计与接口](docs/experimental-native-execution.md)、
+  [验证分级与复现](docs/experimental-native-verification.md)。原始本机日志未作为公开附件，测试可随仓库复现。
 ## v0.39.4 — 2026-10-14
 
 **类型**:feat(dsh-ops 0.3.0 互通:gb_* 退役 + 统一方言桥) / fix(docs)。
@@ -34,7 +79,6 @@ opt-in)与跨平台(win/mac/linux)支持。本版把并存形态收敛为「各�
   功能(boot 层侧栏终端 shell 默认)的前提下去除,README 已说明。
 - **测试**:新增 dsh-ops 互通矩阵(入参 root/operations/protect、出参 items/matches/root、失败 content/message、
   wrapper 门控源码断言、fastctxTools 默认关断言);全量 **172/172**(+1 win32-only skip)。
-
 ## v0.39.3 — 2026-10-14
 
 **类型**:fix(自有 bash 工具的宿主服务兼容 #27、MSYS 参数/编码提示、源码路径边界与 unconfined 可观测性) / test / docs。

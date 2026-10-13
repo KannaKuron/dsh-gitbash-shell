@@ -597,12 +597,11 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
   assert.doesNotMatch(src, /^import .*'@deepseek-ai\/schemastery'/m, 'no static peer import may kill the whole row')
 })
 
-test('executor: Windows confined calls run unconfined and say so (issue #1)', async () => {
+test('executor: Windows restricted and unresolved policies fail before any argv route', async () => {
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
   class FakeBase {
-    constructor() { this.calls = [] }
     async run(spec) { this.calls.push(['super.run', spec]); return { via: 'super.run' } }
     start(spec) { this.calls.push(['super.start', spec]); return { via: 'super.start' } }
     async runArgv(spec, argv) { this.calls.push(['runArgv', argv]); return { exitCode: 0, stdout: {}, stderr: {} } }
@@ -616,45 +615,29 @@ test('executor: Windows confined calls run unconfined and say so (issue #1)', as
     ex.calls = []
     return ex
   }
-  const spec = { command: 'echo hi', sandboxPolicy: { mode: 'workspace-write' } }
-  const byKind = (ex, kind) => ex.calls.filter((c) => c[0] === kind)
-
-  const logs = []
-  const origLog = console.log
-  console.log = (...a) => logs.push(a.join(' '))
-  try {
-    // Windows confined: unconfined argv path, honest label, sandbox stack untouched.
+  const refusal = error => error.code === 'SANDBOX_UNAVAILABLE' && /not started/.test(error.message)
+  for (const mode of ['read-only', 'workspace-write', undefined, 'invalid-mode']) {
+    const spec = { command: 'echo hi', ...(mode === undefined ? {} : { sandboxPolicy: { mode } }) }
     const ex = make('win32')
-    const r = await ex.run(spec)
-    assert.equal(byKind(ex, 'runArgv').length, 1)
-    assert.deepEqual(byKind(ex, 'runArgv')[0][1], ['X:/git/bin/bash.exe', '-c', 'echo hi'])
-    assert.deepEqual(r.sandbox, { mode: 'workspace-write', denied: false, enforcement: 'unconfined' })
-    assert.equal(byKind(ex, 'super.run').length, 0)
-    const p = ex.start(spec)
-    assert.deepEqual(p.sandbox, { mode: 'workspace-write', denied: false, enforcement: 'unconfined' })
-    assert.equal(byKind(ex, 'super.start').length, 0)
-    // One-time notice: the second confined call logs nothing more.
-    await ex.run(spec)
-    assert.equal(logs.length, 1)
-    assert.ok(logs[0].includes('UNCONFINED'))
-    // danger-full-access keeps its exact label (no enforcement key).
-    const exFull = make('win32')
-    const rFull = await exFull.run({ command: 'x', sandboxPolicy: { mode: 'danger-full-access' } })
-    assert.deepEqual(rFull.sandbox, { mode: 'danger-full-access', denied: false })
-    // Non-Windows confined keeps the shipped sandboxed path.
-    const exLinux = make('linux')
-    await exLinux.run(spec)
-    assert.equal(byKind(exLinux, 'super.run').length, 1)
-    assert.equal(byKind(exLinux, 'runArgv').length, 0)
-    exLinux.start(spec)
-    assert.equal(byKind(exLinux, 'super.start').length, 1)
-    // No policy: fully inherited.
-    const exNone = make('win32')
-    await exNone.run({ command: 'x' })
-    assert.equal(byKind(exNone, 'super.run').length, 1)
-  } finally {
-    console.log = origLog
+    ex.requireBashPath = () => { throw new Error('refused calls must not even resolve argv') }
+    await assert.rejects(() => ex.run(spec), refusal)
+    assert.throws(() => ex.start(spec), refusal)
+    assert.throws(() => ex.gitBashRoute(spec), refusal)
+    assert.deepEqual(ex.calls, [], 'no inherited, fallback or explicit argv execution')
   }
+  const exFull = make('win32')
+  const full = { command: 'echo hi', sandboxPolicy: { mode: 'danger-full-access' } }
+  const result = await exFull.run(full)
+  assert.deepEqual(exFull.calls[0][1], ['X:/git/bin/bash.exe', '-c', 'echo hi'])
+  assert.deepEqual(result.sandbox, { mode: 'danger-full-access', denied: false })
+  assert.deepEqual(exFull.start(full).sandbox, result.sandbox)
+  const linux = make('linux')
+  await linux.run({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } })
+  linux.start({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } })
+  assert.deepEqual(linux.calls.map(call => call[0]), ['super.run', 'super.start'])
+  const linuxUnresolved = make('linux')
+  await linuxUnresolved.run({ command: 'echo hi' })
+  assert.equal(linuxUnresolved.calls[0][0], 'super.run')
 })
 
 test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)', async () => {
@@ -683,7 +666,7 @@ test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)',
     async start() { this.calls.push(['super.start']); return { via: 'super.start' } }
   }
 
-  const spec = { command: 'echo hi', sandboxPolicy: { mode: 'workspace-write' } }
+  const spec = { command: 'echo hi', sandboxPolicy: { mode: 'danger-full-access' } }
   const logs = []
   const origLog = console.log
   console.log = (...a) => logs.push(a.join(' '))
@@ -691,7 +674,7 @@ test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)',
     const legacy = build(SyncBase, 'win32')
     const rLegacy = await legacy.run(spec)
     assert.equal(rLegacy.stdout.text, 'hi', 'a bare ShellRunResult reaches the caller unchanged')
-    assert.equal(rLegacy.sandbox.enforcement, 'unconfined')
+    assert.deepEqual(rLegacy.sandbox, { mode: 'danger-full-access', denied: false })
 
     const modern = build(AsyncBase, 'win32')
     modern.runArgvReturns = { result: RESULT, spawnRequested: true }
@@ -699,18 +682,23 @@ test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)',
     assert.equal(rModern.stdout.text, 'hi', 'the { result, spawnRequested } envelope is unwrapped')
     assert.equal(rModern.exitCode, 0)
     assert.equal(rModern.result, undefined, 'no wrapper leaks into the result the host reads')
-    assert.equal(rModern.sandbox.enforcement, 'unconfined')
+    assert.deepEqual(rModern.sandbox, { mode: 'danger-full-access', denied: false })
 
     const cancelled = build(AsyncBase, 'win32')
     cancelled.runArgvReturns = { result: { ...RESULT, exitCode: null, aborted: true }, spawnRequested: false }
     const rCancelled = await cancelled.run(spec)
-    assert.deepEqual(rCancelled.sandbox, { mode: 'workspace-write', denied: false }, 'no spawn means nothing to label as unconfined')
+    assert.deepEqual(rCancelled.sandbox, { mode: 'danger-full-access', denied: false }, 'cancelled full-access execution keeps its resolved mode')
 
     const syncProc = build(SyncBase, 'win32').start(spec)
     assert.equal(typeof syncProc.then, 'undefined', 'a synchronous host gets the handle itself')
     const asyncProc = build(AsyncBase, 'win32').start(spec)
     assert.equal(typeof asyncProc.then, 'function', 'an async host gets a thenable')
-    assert.equal((await asyncProc).sandbox.enforcement, 'unconfined', 'awaiting yields the labelled handle')
+    assert.deepEqual((await asyncProc).sandbox, { mode: 'danger-full-access', denied: false }, 'awaiting yields the labelled handle')
+    const restricted = { ...spec, sandboxPolicy: { mode: 'workspace-write' } }
+    assert.throws(() => build(SyncBase, 'win32').start(restricted), /not started/)
+    const refusedAsync = build(AsyncBase, 'win32').start(restricted)
+    assert.equal(typeof refusedAsync.then, 'function', 'async hosts receive a rejected promise for refusal')
+    await assert.rejects(() => refusedAsync, /not started/)
 
     const forwarded = []
     const owner = build(AsyncBase, 'linux')
@@ -779,18 +767,16 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
     assert.deepEqual(fullArgs[0][1], GIT_BASH_ARGV, 'the Git Bash argv replaces the shipped bare `bash`')
     assert.deepEqual((await fullHandle.result()).sandbox, { mode: 'danger-full-access', denied: false })
 
-    // Windows confined: unconfined argv + the honest label (issue #1), and the
-    // restricted-token provider is never consulted.
-    const confinedEx = build(NewBase, 'win32')
-    confinedEx.ctx = { sandbox: { confine: () => { throw new Error('confine must not run on win32') } } }
-    const confinedHandle = await confinedEx.execute(confined)
-    assert.equal(kindOf(confinedEx, 'super.execute').length, 0)
-    assert.deepEqual(kindOf(confinedEx, 'executeArgv')[0][1], GIT_BASH_ARGV)
-    assert.deepEqual(confinedHandle.sandbox, { mode: 'workspace-write', denied: false, enforcement: 'unconfined' },
-      'background readers see the boundary before result() is awaited')
-    assert.deepEqual((await confinedHandle.result()).sandbox,
-      { mode: 'workspace-write', denied: false, enforcement: 'unconfined' })
-    assert.ok(logs.some((line) => line.includes('UNCONFINED')), 'the one-time notice still fires')
+    // Windows restricted and missing policies are unavailable, not a licence
+    // to route through the unconfined helper or another interpreter.
+    for (const mode of ['read-only', 'workspace-write', undefined]) {
+      const refused = build(NewBase, 'win32')
+      refused.ctx = { sandbox: { confine: () => { throw new Error('unexpected confine') } } }
+      await assert.rejects(() => refused.execute({ ...confined, sandboxPolicy: mode === undefined ? undefined : { mode } }),
+        error => error.code === 'SANDBOX_UNAVAILABLE' && /not started/.test(error.message))
+      assert.deepEqual(refused.calls, [], 'no base execute, argv helper or sandbox launch')
+    }
+    assert.equal(logs.length, 0, 'no announcement of a route that was not allowed to run')
 
     // Non-Windows confined: inherit the parent unchanged (its confine path
     // already runs Git Bash through the subclass override).
@@ -813,9 +799,11 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
 
     // Old-era host (no `execute`): our override hands the call to `run`.
     const oldEx = build(OldBase, 'win32')
-    const oldResult = await oldEx.execute(confined)
+    await assert.rejects(() => oldEx.execute(confined), /not started/)
+    assert.deepEqual(oldEx.calls, [])
+    const oldResult = await oldEx.execute(full)
     assert.equal(kindOf(oldEx, 'runArgv')[0][1][0], 'X:/git/bin/bash.exe')
-    assert.equal(oldResult.sandbox.enforcement, 'unconfined')
+    assert.deepEqual(oldResult.sandbox, { mode: 'danger-full-access', denied: false })
   } finally {
     console.log = origLog
   }
@@ -2963,6 +2951,9 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM/)
   assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM_NO_PWSH/)
   assert.match(hostSource, /liveSettings\.pwshTool\(\) === true \? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH/)
+  assert.match(hostSource, /applyToolRouting\(assembly\.tools,/)
+  assert.match(hostSource, /pwshVisible: liveSettings\.pwshTool\(\) === true/)
+  assert.match(hostSource, /msys: applies && dialect\.posixPaths === true/)
   // The desired set collapses to [] while the switch is off — the cleanup
   // still runs, but nothing registers.
   assert.match(hostSource, /readVariants && readVariants\(\) === true\s*\?\s*effectivePresetIds/)

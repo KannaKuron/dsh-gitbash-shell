@@ -46,6 +46,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -57,7 +58,7 @@ import { fileURLToPath } from 'node:url'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
-import { GITBASH_MSYS_ADDENDUM, GITBASH_ROUTE_ADDENDUM, GITBASH_ROUTE_ADDENDUM_NO_PWSH, mountInlineTools } from './inline-tools.js'
+import { applyToolRouting, mountInlineTools } from './inline-tools.js'
 import { mountFastctx } from './fastctx-bridge.js'
 
 /**
@@ -2219,25 +2220,15 @@ export async function apply(ctx, config = {}) {
              no run_code hint — so they meet the shell they were composed for. */
           const dialect = liveSettings.dialect()
           const applies = dialectApplies(dialect, assembleContext && assembleContext.agent)
-          // v0.35.0: shell-routing addendum on the `bash` tool's description.
-          // Description is schema-level text, so even the minimal preset's
-          // complete-persona cannot strip it; the ROUTING sentence applies to
-          // every agent (routing is dialect-independent), while the MSYS
-          // sentence only describes the world the dialect switch creates.
-          // Idempotent by marker: assemble may run more than once per agent.
-          // The routing sentence follows the pwsh switch (v0.37.0; route B
-          // v0.39.0): while the pwsh tool is hidden (the default) the sentence
-          // must NOT name it — a route to a tool the agent cannot see only
-          // teaches the model to call a hidden name.
-          if (assembly && typeof assembly === 'object' && Array.isArray(assembly.tools)) {
-            const routeSentence = liveSettings.pwshTool() === true ? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH
-            for (const tool of assembly.tools) {
-              if (tool && tool.name === 'bash' && typeof tool.description === 'string'
-                && !tool.description.includes('Prefer this bash tool')) {
-                tool.description += '\n' + routeSentence
-                  + (applies && dialect.posixPaths === true ? '\n' + GITBASH_MSYS_ADDENDUM : '')
-              }
-            }
+          // Routing is dialect-independent and follows actual offered tools.
+          // PTC may expose only run_code here: its generic SDK decision rule
+          // relies on the registered bindings' own descriptions, not guessed
+          // hidden names. Replace our block on reassembly/visibility changes.
+          if (assembly && typeof assembly === 'object') {
+            applyToolRouting(assembly.tools, {
+              pwshVisible: liveSettings.pwshTool() === true,
+              msys: applies && dialect.posixPaths === true,
+            })
           }
           if (applies && dialect.posixPaths === true && assembly && typeof assembly === 'object') {
             for (const section of Array.isArray(assembly.sections) ? assembly.sections : []) {
@@ -2765,6 +2756,17 @@ export async function apply(ctx, config = {}) {
           }
         },
         pwshEnabled: () => liveSettings.pwshTool() === true,
+        // Explicit conversion does not rewrite source or change auto-dialect
+        // settings. The same lazy, verified mount facts are used each call.
+        translatePath: (value) => translateMsysPath(value, buildTranslateEnv(readConfiguredBashPath())),
+        // Trusted host-owned output storage, invoked only after the native
+        // executor's actual policy/argument/capability gate. Never model cwd.
+        // Completed bounded artifacts remain readable like Core spill files;
+        // this does not claim a cross-task quota or automatic retention purge.
+        createArtifactDirectory: (_request, _exec, signal) => {
+          signal?.throwIfAborted()
+          return mkdtempSync(join(tmpdir(), 'dsh-gitbash-native-'))
+        },
         log: (m) => console.log(TAG + ' ' + m),
       })
       console.log(TAG + ' inline tool patch armed (own bash tool over a private Git Bash executor; official pwsh executor untouched)')

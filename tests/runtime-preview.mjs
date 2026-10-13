@@ -9,7 +9,7 @@ import { createScope as createAgentScope } from '@deepseek-ai/dsh-scope'
 import { ToolRuntime, defineTool } from '@deepseek-ai/dsh-tools'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import * as shellEnv from '@deepseek-ai/dsh-shell-env'
-import { mountInlineTools, mountPrivateExecutor } from '../src/inline-tools.js'
+import { applyToolRouting, mountInlineTools, mountPrivateExecutor } from '../src/inline-tools.js'
 import { createBashToolModule } from '../src/bash-tool.js'
 import { GitBashSandboxExecutor } from '../src/shell.js'
 
@@ -32,7 +32,7 @@ function createScope(parent) {
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
 
-async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime } = {}) {
+async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false } = {}) {
   const root = new Context()
   const cleanups = []
   const logs = []
@@ -48,6 +48,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     shell: official,
     subprocess: subprocessRuntime ?? { spawn() { return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: { stdout: { readFrom }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } }, terminate() {} } } },
     sandbox: {},
+    ...(ptc ? { ptcRuntime: { language: 'typescript', executionInstructions: 'Prompt-only fixture; never executes programs', resolve: spec => spec, run() { throw new Error('prompt routing fixture must not execute') } } } : {}),
     sandboxPolicy: { defaultMode: policy.mode, resolve: request => request?.session?.header.policy ?? policy },
     workingDirectory: { ensure: async () => process.cwd() },
     loader: { internal: { async import(name) {
@@ -55,13 +56,13 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
       return import(name)
     } } },
   })) cleanups.push(root.provide(name, value))
-  const mount = async module => {
-    const fiber = root.plugin(module)
+  const mount = async (module, config) => {
+    const fiber = root.plugin(module, config)
     cleanups.push(() => fiber.dispose())
     await fiber
     return fiber
   }
-  for (const module of [SystemPrompt, ToolRuntime, shellEnv]) await mount(module)
+  for (const module of [SystemPrompt, ToolRuntime, shellEnv]) await mount(module, module === ToolRuntime ? { mode: ptc ? 'ptc' : 'native' } : undefined)
   let agentParent
   await mount({ inject: ['tools'], apply(ctx) {
     agentParent = ctx
@@ -76,6 +77,10 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
   const deps = {
     tools: ctx => ctx.get('tools'), agents: () => ({ list: () => [agent] }),
     pwshEnabled: () => pwshVisible,
+    ...(explicitTools ? {
+      translatePath: value => dialectHelpers.translateMsysPath(value, { home: 'D:/compat-home', tmpDir: 'D:/compat-temp', gitRoot: 'C:/Program Files/Git' }),
+      createArtifactDirectory() { throw new Error('registration/refusal fixture must not create artifacts') },
+    } : {}),
     log(message) {
       logs.push(message)
       if (message.includes('own bash tool activated')) activated.resolve()
@@ -263,28 +268,31 @@ test('runtime preview: private execution retains deadlines, background no-expiry
   assert.equal(f.root.get('shell'), f.official)
 })
 
-test('runtime preview: actual ToolRuntime surfaces unconfined foreground and initial background facts', { timeout: 10000 }, async t => {
-  const f = await fixture(t)
-  await bounded(f.activated.promise, 'compatibility bash activation')
+test('runtime preview: actual ToolRuntime refuses unsafe foreground/background admission', { timeout: 10000 }, async t => {
+  let spawns = 0
+  const f = await fixture(t, { subprocessRuntime: { spawn() { spawns++; throw new Error('restricted fixture must not spawn') } } })
+  await bounded(f.activated.promise, 'fail-closed bash activation')
   assert.match(f.tools.get('bash', f.agent).description, /MSYS2_ARG_CONV_EXCL/)
+  assert.match(f.tools.get('bash', f.agent).description, /refused before/)
   for (const mode of ['read-only', 'workspace-write']) {
     f.agent.session.header.policy = { mode, workspaceRoot: process.cwd() }
-    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify unconfined model feedback' })
-    assert.equal(value.isError, false, JSON.stringify(value))
-    assert.equal(value.value.sandbox.enforcement, 'unconfined')
-    assert.match(value.content[0].text, /unconfined.*NOT enforced/)
+    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify structured safe refusal' })
+    assert.equal(value.isError, true, JSON.stringify(value))
+    assert.equal(value.error.info.code, 'SANDBOX_UNAVAILABLE')
+    assert.match(value.content[0].text, /not started/)
   }
   const admitted = []
-  const off = f.root.provide('jobs', { start(spec) { admitted.push(spec); return 'compatibility-background' } })
+  const off = f.root.provide('jobs', { start(spec) { admitted.push(spec); return 'must-not-be-admitted' } })
   try {
     await new Promise(resolve => setImmediate(resolve))
-    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify admission warning', run_in_background: true })
-    assert.equal(value.isError, false, JSON.stringify(value))
-    assert.equal(value.value.kind, 'background')
-    assert.equal(value.value.sandbox.enforcement, 'unconfined')
-    assert.match(value.content[0].text, /started background job compatibility-background[\s\S]*unconfined/)
-    assert.equal(admitted.length, 1)
+    for (const run_in_background of [false, true]) {
+      const value = await f.execute('bash', { command: 'memory-only command', description: 'Reject unsafe job admission', run_in_background })
+      assert.equal(value.isError, true, JSON.stringify(value))
+      assert.equal(value.error.info.code, 'SANDBOX_UNAVAILABLE')
+    }
+    assert.equal(admitted.length, 0)
   } finally { await off() }
+  assert.equal(spawns, 0)
   assert.equal(f.root.get('shell'), f.official)
 })
 
@@ -338,15 +346,91 @@ test('runtime preview: actual promoted DTO renders sandbox notes from handle fac
   }
 })
 
-test('runtime preview: actual execution handle carries unconfined facts for live jobs', { timeout: 10000 }, async t => {
+test('runtime preview: direct resolved restricted execution refuses and full handle stays memoized', { timeout: 10000 }, async t => {
   const f = await fixture(t, { existingBash: true })
   const { executor, executorScope } = await mountPrivateExecutor(f.root, GitBashSandboxExecutor, createScope)
   t.after(() => executorScope.dispose())
   const spec = executor.resolve({ command: 'memory-only command', workdir: process.cwd(), sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd() } })
-  const handle = await executor.execute(spec)
-  assert.equal(handle.sandbox.enforcement, 'unconfined')
+  await assert.rejects(() => executor.execute(spec), error => error.code === 'SANDBOX_UNAVAILABLE')
+  await assert.rejects(() => executor.execute({ ...spec, sandboxPolicy: undefined }), error => error.code === 'SANDBOX_UNAVAILABLE')
+  const full = { ...spec, sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: process.cwd() } }
+  const handle = await executor.execute(full)
+  assert.deepEqual(handle.sandbox, { mode: 'danger-full-access', denied: false })
   assert.equal(handle.result(), handle.result(), 'projection remains memoized')
   assert.deepEqual((await handle.result()).sandbox, handle.sandbox)
+  assert.equal(f.root.get('shell'), f.official)
+})
+
+for (const ptc of [false, true]) test(`runtime preview: routing reaches the actual ${ptc ? 'PTC SDK' : 'native tool'} prompt and respects visibility`, { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true, ptc })
+  await bounded(f.activated.promise, 'routing tools activation')
+  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const start = source.indexOf("ctx.on('system-prompt/assemble',")
+  const end = source.indexOf("      console.log(TAG + ' prompt-assembly path dialect active", start)
+  assert.ok(start >= 0 && end > start)
+  let dialect = { posixPaths: false, codePaths: false, subagentDialect: true }
+  const hook = f.root.plugin(ctx => {
+    new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', source.slice(start, end))(
+      ctx, { dialect: () => dialect, pwshTool: () => f.deps.pwshEnabled() }, dialectHelpers.dialectApplies, dialectHelpers.windowsToMsys, dialectHelpers.runCodeHintFor, applyToolRouting)
+  })
+  t.after(() => hook.dispose())
+  await hook
+  const assemble = () => f.root.get('systemPrompt').assemble({ scope: f.agent, agent: f.agent })
+  const first = await assemble()
+  const sdk = first.sections.find(section => section.name === 'tools:sdk')?.text ?? ''
+  if (ptc) {
+    assert.deepEqual(first.tools.map(tool => tool.name), ['run_code'])
+    assert.match(first.tools[0].description, /call only bindings actually offered/)
+    assert.match(first.tools[0].description, /denial is a stop condition/)
+    assert.match(sdk, /gitbash_native/)
+    assert.match(sdk, /Choose this tool BEFORE execution/)
+    assert.match(sdk, /gitbash_to_native_path/)
+    assert.match(sdk, /runtime-built MSYS paths before direct native Node/)
+    assert.doesNotMatch(sdk, /\bpwsh\b/, 'hidden tools must not be offered as SDK bindings')
+  } else {
+    const text = first.tools.find(tool => tool.name === 'bash').description
+    assert.match(text, /gitbash_native before execution/)
+    assert.match(text, /gitbash_to_native_path only/)
+    assert.doesNotMatch(text, /\bpwsh\b|ALL commands|\/c\/Users/)
+  }
+  f.set(true)
+  const shown = await assemble()
+  if (ptc) assert.match(shown.sections.find(section => section.name === 'tools:sdk').text, /\bpwsh\b/)
+  else assert.match(shown.tools.find(tool => tool.name === 'bash').description, /use the pwsh tool ONLY when/)
+  f.set(false)
+  dialect = { ...dialect, posixPaths: true, subagentDialect: false }
+  f.agent.session.header.origin = 'subagent'
+  const delegated = await assemble()
+  const text = delegated.tools.find(tool => tool.name === (ptc ? 'run_code' : 'bash')).description
+  assert.match(text, /denial is a stop condition/, 'routing is independent of delegated dialect switches')
+  assert.doesNotMatch(text, /\/c\/Users/)
+  assert.equal(f.root.get('shell'), f.official)
+})
+
+test('runtime preview: explicit tools activate in the real per-agent wiring and retire together', { timeout: 10000 }, async t => {
+  let spawns = 0
+  const f = await fixture(t, { explicitTools: true, subprocessRuntime: { spawn() { spawns++; throw new Error('this fixture must not spawn') } } })
+  await bounded(f.activated.promise, 'explicit tools activation')
+  assert.deepEqual(f.names().sort(), ['bash', 'gitbash_native', 'gitbash_to_native_path'])
+  const translated = await f.execute('gitbash_to_native_path', { msys_path: '/d/项目/文件#1.txt' })
+  assert.equal(translated.isError, false, JSON.stringify(translated))
+  assert.deepEqual(translated.value, { native_path: 'D:/项目/文件#1.txt' })
+  for (const mode of ['read-only', 'workspace-write']) {
+    f.agent.session.header.policy = { mode, workspaceRoot: process.cwd() }
+    const denied = await f.execute('gitbash_native', { description: 'Refuse unsupported policy', executable: { kind: 'path', value: 'C:/controlled.exe' }, argv: [] })
+    assert.equal(denied.isError, true, JSON.stringify(denied))
+    assert.equal(denied.error.info.code, 'SANDBOX_UNAVAILABLE')
+  }
+  assert.equal(spawns, 0)
+  assert.equal(f.root.get('shell'), f.official)
+  await f.patch.dispose()
+  assert.deepEqual(f.names(), ['pwsh'], 'all own registrations and visibility masks retire together')
+  const reactivated = deferred()
+  const previousLog = f.deps.log
+  f.deps.log = message => { previousLog(message); if (message.includes('own bash tool activated')) reactivated.resolve() }
+  await f.remount()
+  await bounded(reactivated.promise, 'explicit tools reload activation')
+  assert.deepEqual(f.names().sort(), ['bash', 'gitbash_native', 'gitbash_to_native_path'], 'reload must not duplicate registrations')
   assert.equal(f.root.get('shell'), f.official)
 })
 

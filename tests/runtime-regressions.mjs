@@ -177,12 +177,16 @@ test('runtime: missing approval helper still passes the agent\'s standing mode a
   await assert.rejects(() => definition.execute({ command: 'echo ok', description: 'Reject unavailable escalation', sandbox_permissions: 'danger-full-access', justification: 'Need broader mode.' }, exec), /no sandbox helper/)
 })
 
-test('runtime: background admission exposes its planned unconfined route before any spawn', async t => {
+test('runtime: restricted foreground and background calls fail before Jobs admission', async t => {
   const admitted = []
+  const prepared = []
   const executor = {
     sandboxMode: 'danger-full-access',
-    resolve: request => ({ ...request, timeoutMs: 10 }),
-    gitBashRoute: spec => ({ mode: spec.sandboxPolicy.mode, unconfined: spec.sandboxPolicy.mode !== 'danger-full-access' }),
+    resolve(request) { prepared.push(request); return { ...request, timeoutMs: 10 } },
+    gitBashRoute(spec) {
+      if (spec.sandboxPolicy?.mode !== 'danger-full-access') throw Object.assign(new Error('Git Bash policy unavailable; command not started'), { code: 'SANDBOX_UNAVAILABLE' })
+      return { mode: 'danger-full-access', unconfined: false }
+    },
     execute() { throw new Error('admission fixture must not spawn') },
   }
   const f = await toolFixture(t, { executor, jobs: { start(spec) { admitted.push(spec); return 'admitted-job' } } })
@@ -190,15 +194,19 @@ test('runtime: background admission exposes its planned unconfined route before 
   assertJsonSchema(definition.output.schema)
   const schema = definition.output.schema.oneOf[0]
   assert.deepEqual(schema.properties.sandbox.required, ['mode', 'denied'])
-  for (const mode of ['read-only', 'workspace-write', 'danger-full-access']) {
+  for (const mode of ['read-only', 'workspace-write']) {
     const agent = { session: { header: { mode, cwd: 'D:/child-workspace' } } }
-    const value = await definition.execute({ command: 'memory-only command', description: 'Verify background planned route', run_in_background: true }, { agent, signal: new AbortController().signal })
-    assert.equal(value.kind, 'background')
-    assert.equal(value.sandbox.mode, mode)
-    const text = definition.output.render({}, value)[0].text
-    assert.match(text, /started background job admitted-job/)
-    if (mode === 'danger-full-access') assert.doesNotMatch(text, /unconfined/)
-    else assert.match(text, /unconfined.*NOT enforced/)
+    for (const run_in_background of [false, true]) {
+      await assert.rejects(() => definition.execute({ command: 'memory-only command', description: 'Reject unsafe admission', run_in_background }, { agent, signal: new AbortController().signal }),
+        error => error.code === 'SANDBOX_UNAVAILABLE')
+    }
   }
-  assert.equal(admitted.length, 3)
+  assert.deepEqual(prepared, [], 'refusal precedes execution spec preparation')
+  assert.deepEqual(admitted, [], 'including foreground promotion: no unsafe job is admitted')
+  const agent = { session: { header: { mode: 'danger-full-access', cwd: 'D:/child-workspace' } } }
+  const value = await definition.execute({ command: 'memory-only command', description: 'Admit explicit full access', run_in_background: true }, { agent, signal: new AbortController().signal })
+  assert.equal(value.kind, 'background')
+  assert.equal(value.sandbox.mode, 'danger-full-access')
+  assert.match(definition.output.render({}, value)[0].text, /started background job admitted-job/)
+  assert.equal(admitted.length, 1)
 })
