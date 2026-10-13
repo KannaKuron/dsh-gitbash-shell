@@ -3208,6 +3208,36 @@ test('market gate: the patch can never trip the DSH-Store protected-patch heuris
 
 // ── v0.35.0: the FastCtx bridge (gb_* additions) ───────────────────────────
 
+test('fastctx bridge: the glob guard accepts the upstream PRIMARY array form and names a stringified array (issue #21)', async () => {
+  const { validateFastctxPattern } = await import('../src/fastctx-bridge.js')
+  // glob: string | string[] is the upstream untagged enum; the ARRAY is the
+  // primary form (the tools/list example is an array). v0.38.5 banned it.
+  assert.equal(validateFastctxPattern('glob', '*.js'), undefined)
+  assert.equal(validateFastctxPattern('glob', ['*.js', '*.py']), undefined)
+  assert.equal(validateFastctxPattern('glob', ['**/*.rs', '!tests/**']), undefined)
+  // The v0.38.5 dominant failure path: a JSON-stringified array matches ONE
+  // literal glob upstream and silently returns nothing -> loud, corrective.
+  assert.match(
+    validateFastctxPattern('glob', '["*.txt"]'),
+    /JSON-stringified array[\s\S]*Pass a real array/,
+  )
+  // Genuine malformations stay loud, with the type named.
+  assert.match(validateFastctxPattern('glob', 123), /non-empty string or a non-empty array of non-empty strings \(got number\)/)
+  assert.match(validateFastctxPattern('glob', null), /\(got null\)/)
+  assert.match(validateFastctxPattern('glob', []), /got array/)
+  assert.match(validateFastctxPattern('glob', ['a', '']), /got array/)
+  assert.match(validateFastctxPattern('glob', ['a', 5]), /got array/)
+  // replace keeps its single-regex-string contract (upstream type is string).
+  assert.equal(validateFastctxPattern('replace', 'foo\\.txt$'), undefined)
+  assert.match(validateFastctxPattern('replace', ['a']), /must be a non-empty string \(got array\)/)
+  // Other tools are untouched.
+  assert.equal(validateFastctxPattern('grep', 123), undefined)
+  // The tool DESCRIPTION states the accepted shapes (the model-side fix).
+  const bridgeSource = readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')
+  assert.match(bridgeSource, /pattern accepts one glob string OR an array of glob strings/)
+  assert.match(bridgeSource, /never a JSON-stringified array/)
+})
+
 test('fastctx bridge: argument translation covers the fastctx shapes and leaves relative paths alone', async () => {
   const { translateFastctxArgs } = await import('../src/fastctx-bridge.js')
   const msysToWin = (p) => (p.startsWith('/') || p.startsWith('~') ? 'W:' + p : p)

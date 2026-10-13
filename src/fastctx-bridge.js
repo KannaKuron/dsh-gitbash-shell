@@ -209,6 +209,42 @@ export class McpStdio {
  * the fastctx shapes: `path`, `file_path`, `files[].path`, and an absolute
  * glob `pattern`. Pure.
  */
+/**
+ * Validate one pattern argument BEFORE dispatch (v0.38.5 guard, reshaped in
+ * v0.39.1 around the upstream SCHEMA — issue #21). glob's `pattern` is an
+ * untagged enum of string | string[] in tools/list (the array is the PRIMARY
+ * form — the schema's own example is an array), so a string-only check bans
+ * the main usage; and a JSON-stringified array ("[\"*.txt\"]") is matched by
+ * the upstream as ONE literal glob and silently returns nothing — the exact
+ * silent-wrong-answer this guard exists to prevent. replace's pattern is a
+ * single regex string. Pure; returns an error message or undefined.
+ * @param {string} rawName - upstream tool name ('glob' | 'replace' | ...).
+ * @param {unknown} pattern - the raw pattern argument.
+ * @returns {string|undefined}
+ */
+export function validateFastctxPattern(rawName, pattern) {
+  if (rawName !== 'glob' && rawName !== 'replace') return undefined
+  const describe = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v)
+  if (rawName === 'replace') {
+    if (typeof pattern !== 'string' || pattern.trim() === '') {
+      return `invalid arguments: ${gbName(rawName)} pattern must be a non-empty string (got ${describe(pattern)})`
+    }
+    return undefined
+  }
+  // A stringified array would match as one literal glob and return an empty
+  // set: name the mistake, never guess the intent (un-serializing on the
+  // model's behalf would hide the error this guard is here to surface).
+  if (typeof pattern === 'string' && pattern.length >= 2 && pattern.startsWith('[') && pattern.endsWith(']')) {
+    return `invalid arguments: ${gbName(rawName)} pattern looks like a JSON-stringified array (${String(pattern).slice(0, 60)}). Pass a real array of strings (e.g. ["*.js","*.py"]) or one plain glob string — a stringified array matches nothing.`
+  }
+  const ok = (typeof pattern === 'string' && pattern.trim() !== '')
+    || (Array.isArray(pattern) && pattern.length > 0 && pattern.every((p) => typeof p === 'string' && p.trim() !== ''))
+  if (!ok) {
+    return `invalid arguments: ${gbName(rawName)} pattern must be a non-empty string or a non-empty array of non-empty strings (got ${describe(pattern)})`
+  }
+  return undefined
+}
+
 export function translateFastctxArgs(args, msysToWin) {
   if (!msysToWin || !args || typeof args !== 'object') return args
   const translate = (value) => (typeof value === 'string' ? msysToWin(value) : value)
@@ -334,25 +370,28 @@ export function mountFastctx(ctx, deps) {
         : rawName === 'grep'
           ? '\nIgnore rules: this tool honors .gitignore and skips .git — unlike gb_glob (bare .ignore only) and the official glob (ignores nothing).'
           : ''
+      // Pattern-shape transparency (v0.39.1, issue #21): models keep
+      // JSON-stringifying the glob array (24 of 25 measured calls), which the
+      // upstream matches as one literal glob -> silent empty. State the
+      // accepted shapes on the tool.
+      const patternNote = rawName === 'glob'
+        ? '\npattern accepts one glob string OR an array of glob strings (e.g. ["**/*.rs", "!tests/**"]). Pass a real array — never a JSON-stringified array.'
+        : ''
       try {
         const dispose = registry.register({
           name: gbName(rawName),
-          description: `${String(tool.description ?? rawName)}\n${FASTCTX_SANDBOX_NOTE}${ignoreNote}`,
+          description: `${String(tool.description ?? rawName)}\n${FASTCTX_SANDBOX_NOTE}${ignoreNote}${patternNote}`,
           parameters: schema,
           output: {
             schema: TOOL_OUTPUT_SCHEMA,
             render: (_args, value) => renderTextContent(value),
           },
           async execute(args) {
-            // Fail LOUD on malformed patterns (v0.38.5, the field smoke
-            // report): the upstream server silently treats a non-string
-            // pattern as "everything", which turns a typo into a full-tree
-            // result set — a silent wrong answer is worse than an error.
-            if ((rawName === 'glob' || rawName === 'replace') && args !== null && typeof args === 'object' && 'pattern' in args) {
-              const pattern = args.pattern
-              if (typeof pattern !== 'string' || pattern.trim() === '') {
-                throw new Error(`invalid arguments: ${gbName(rawName)} pattern must be a non-empty string (got ${pattern === null ? 'null' : typeof pattern})`)
-              }
+            // Fail LOUD on malformed patterns (v0.38.5; reshaped v0.39.1,
+            // issue #21 — see validateFastctxPattern).
+            if (args !== null && typeof args === 'object' && 'pattern' in args) {
+              const invalid = validateFastctxPattern(rawName, args.pattern)
+              if (invalid) throw new Error(invalid)
             }
             const translated = translateFastctxArgs(args, msysToWin)
             const result = await callWithReconnect(rawName, translated)
