@@ -285,19 +285,20 @@ export function mountInlineTools(ctx, deps) {
       const fiber = scope.ctx.plugin(module)
       await untilDisposed(fiber, state.controller.signal)
       if (!isLive(agent, state)) return
-      retained = true
       // An INACTIVE fiber resolves its await() without ever running apply()
       // (issue #27): awaiting the plugin proves nothing, so read the registry
-      // back before claiming success. A miss gets an explicit failure line —
-      // never a silent no-tool session behind a success-shaped log.
+      // back before claiming success. A miss THROWS — the catch below logs the
+      // explicit activation failure and the finally disposes this half-mounted
+      // scope instead of leaking it for the agent's lifetime (shape credit:
+      // KouzakiUmi's PR #28).
       const registeredNames = scope.ctx.get !== undefined
         ? ((scope.ctx.get('tools')?.schemas?.(agent) ?? []).map((schema) => schema && typeof schema.name === 'string' ? schema.name : ''))
         : []
-      if (registeredNames.includes('bash')) {
-        log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
-      } else {
-        log('own bash tool did NOT register for this agent: the module fiber likely went INACTIVE (this host lacks an injected service the module requires) or the tools read-back is unavailable — bash is NOT available in this session; please report this with your dsh version (issue #27 pattern)')
+      if (registeredNames.includes('bash') === false) {
+        throw new Error('bash tool did not register for this agent (module fiber INACTIVE — this host lacks an injected service the module requires — or the tools read-back is unavailable); bash is NOT available in this session, please report this with your dsh version (issue #27)')
       }
+      retained = true
+      log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {
       if (isLive(agent, state)) log(`own bash tool activation failed for this agent: ${error?.message ?? error}`)
     } finally {
