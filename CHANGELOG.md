@@ -7,13 +7,15 @@
 
 ### PR #26：维护者裁决与运行时开关（fix / feat / docs / test）
 
+- docs：PR 描述和实验文档的提交引用使用可点击链接及说明性标签，避免明文提交 ID。
+
 - 行 Config 新增 volatile 布尔 `experimentalNative`，默认 true，旧配置缺键亦开启；设置卡即时编辑。
   开启时 Windows 受限/未确定 Bash 拒绝；关闭恢复明确标注 `unconfined` 的旧版 Bash 与实例级日志，不提供真实 shell 写入围栏。
 - 两个新工具随开关实时注销/注册，既有会话无需重启；旧 SDK 引用关闭后拒绝。路径工具在翻译前检查；
   native 在准备入口、异步准备后、执行入口和最终 spawn 重验。已启动后台 producer 保留生命周期。
 - 拒绝错误与 Bash 描述说明设置卡关闭路径，以及由用户在会话访问模式控件选择 danger-full-access 的路径。
   21 份词典键齐备，中文/英文先行，其余 19 份暂用英文，合并前补本地化。
-- 实验已 rebase 到 #24 最新 c79332e，保留其 promotion sandbox 警示回归，显式 OFF 验证旧行为。
+- 实验已 rebase 到 [前置 PR 的最新修复提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/c79332ea2fb6da38042063f7b55046115de8e530)，保留其 promotion sandbox 警示回归，显式 OFF 验证旧行为。
   #24 仍 OPEN，合并后到 main 的 rebase 尚待；建议两步 review（fail-closed + 开关/UI；native/path/输出/路由），保留 Draft/RFC。
 - 长期跟踪：Core 开放对应 native/encoding/closed DTO API 后优先整体迁移并退役私有实现；artifact 自管，controller 缺失保持拒绝。
   正式门槛仍为真实 Agent 选路、生产 GUI、维护者 win32 全量验证及非 CRT 矩阵抽测。
@@ -216,7 +218,7 @@ opt-in)与跨平台(win/mac/linux)支持。本版把并存形态收敛为「各�
   暂态失败后重试,卸载或失效时取消,不因单次请求失败永久卡在忙碌状态。
 - **回归入口**:新增可移植客户端/桥/运行时/宿主回归与实际 Core preview 集成用例,接入现有
   `npm test`/`npm run test:preview`;不新增依赖、不跳过旧断言或 Node 22 矩阵。对齐上游 v0.39.1
-  (`521be01`)后完整测试 **156/156**、实际 Core 无头 preview **14/14**、打包 dry-run 和 diff 检查
+  ([私有执行器隔离发布提交](https://github.com/KannaKuron/dsh-gitbash-shell/commit/521be01ee803f289236800ebfb36fab8dd690535))后完整测试 **156/156**、实际 Core 无头 preview **14/14**、打包 dry-run 和 diff 检查
   通过。新增执行级回归保留 #21 的 real-array glob 契约与 stringified-array 响亮拒绝;不改已发布
   版本号、历史记录或 npm 发布流程。Grok 对修复 diff 的只读反证未发现确定遗漏。
   首轮全量检查发现三条旧源码正则仍锁旧实现,改为对应新保护条件并补同值/手选行为测试,没有删掉

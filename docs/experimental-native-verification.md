@@ -6,7 +6,7 @@
 
 ## 1. 验证基准与结果
 
-- 实验增量基线：`4816cd8848a52f73f5f054f761d3ec862cb87ade`（此前MSYS兼容边界修复）。
+- 实验增量基线：[此前 MSYS 兼容边界修复提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/4816cd8848a52f73f5f054f761d3ec862cb87ade)（此前MSYS兼容边界修复）。
 - 测试环境：**DSH Core 0.2.1-alpha.2**、Node 24.13.0、Windows / Git for Windows。
 - 新native功能按公开能力探测启用；既有兼容版本范围之外的实际覆盖情况见后文待验收项。
 - 最终普通全仓：**223 tests / 223 pass / 0 fail / 0 skip / 0 cancel，exit0**。

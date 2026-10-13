@@ -212,7 +212,7 @@ Windows own-bash agent scope挂两个companions，不覆盖已有同名工具。
 - [x] Controller 缺失保持明确拒绝，不静默改前台重复执行。
 - [x] Artifact ownership/quota/retention 由插件层自管；跨调用 quota/purge 尚未实现，不宣称已验收。
 - [ ] **长期跟踪（不阻塞本 PR）**：Core 将来开放 native typed argv、逐流 encoding、closed DTO 等对应公开 API 时，遵循官方优先纪律整体切换并退役插件私有实现。
-- [ ] **stack / 拆分评估**：#24 尚未合并，当前实验已接在其最新 `c79332e` 后；#24 合并后必须 rebase 到上游 main，保持 RFC。建议两步 review：① Bash fail-closed + 行 Config/UI/拒绝引导及旧行为回退；② native/path、逐流输出与可见性路由。统一开关应在第一步建立，第二步接同一字段。当前 PR 保留完整 RFC 供跨层契约核验，没有另开 PR。
+- [ ] **stack / 拆分评估**：#24 尚未合并，当前实验已接在[前置 PR 的最新修复提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/c79332ea2fb6da38042063f7b55046115de8e530) 后；#24 合并后必须 rebase 到上游 main，保持 RFC。建议两步 review：① Bash fail-closed + 行 Config/UI/拒绝引导及旧行为回退；② native/path、逐流输出与可见性路由。统一开关应在第一步建立，第二步接同一字段。当前 PR 保留完整 RFC 供跨层契约核验，没有另开 PR。
 - [ ] **转正式的四项门槛**：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 Windows 真机全量验证、非 CRT 解释器矩阵抽测。四项齐后才谈 ready for review → release。
 - [ ] 真实Agent选工具评测、生产GUI/full apply、会话replay尚未验收。
 - [ ] 真restricted-token/ACL/IPC/VM正负权限、PTY/SSH、任意非CRT/解释器quoting尚未验收。
