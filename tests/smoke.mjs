@@ -390,8 +390,13 @@ test('sidebar adoption is switchable, default on, and never clobbers manual pick
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   assert.match(text, /adoptSidebar: live\(Schema\.boolean\(\)\.default\(true\)\)/)
   assert.match(text, /adoptSidebar: \(\) => dialect\(\)\.adoptSidebar !== false/, 'host reads the switch through the live Config reader')
-  // OFF restores only while the current value is still ours
-  assert.match(text, /if \(!desired && adopted && current === bashPath\)/)
+  // OFF enters the owned restore path; that path writes ONLY while the
+  // current value is still ours. A startup same-value is not our takeover.
+  const start = text.indexOf('function adoptSidebarShell(')
+  const body = text.slice(start, text.indexOf('\n// ── plugin', start))
+  assert.match(body, /if \(!desired\) \{ await restore\(\); return true \}/)
+  assert.match(body, /const restore = async \(\) => \{\s*if \(!adopted\) return[\s\S]*const now = readShell\(\)[\s\S]*if \(now === bashPath\) \{\s*await ctx\.get\('settings'\)\.update\(SIDEBAR_NS, \{ terminalShell: previous \}\)/)
+  assert.match(body, /if \(adopted \|\| current === bashPath\) return true\s*previous = current[\s\S]*await ctx\.get\('settings'\)\.update\(SIDEBAR_NS, \{ terminalShell: bashPath \}\)\s*adopted = true/)
 })
 
 test('host gates the path dialect behind the posixPaths setting', async () => {
@@ -1089,8 +1094,8 @@ test('compositions: full variants mirror the official 0.1.7 row split', async ()
     // placeholder rows (codex / claude-code / ralph) in 0.2.1-alpha.2
     // (upstream 8ed0b530ed — codex/claude-code moved to on-demand bundles)
     assert.equal(row(delegation, 'tool-ralph'), undefined)
-    assert.equal(row(rows, 'tool-bash').disabled, undefined)
-    assert.equal(row(rows, 'tool-pwsh').disabled, true)
+    assert.equal(row(rows, 'tool-bash').disabled, process.platform === 'win32' ? true : undefined)
+    assert.equal(row(rows, 'tool-pwsh').disabled, process.platform === 'win32' ? undefined : true)
     assert.equal(row(rows, 'tool-plugin-manager').disabled, kind === 'standard' ? true : undefined)
   }
   const ptc = pluginsFor({ kind: 'ptc', gitBash: true, skillsDir: undefined })
@@ -1554,9 +1559,12 @@ test('python switch: the host rebuilds variants on the EFFECTIVE backend and ins
   // and act on the EFFECTIVE backend rather than the bare intent (v0.26.1)
   assert.match(src, /const nextPython = pythonBackendActive\(coverage\)/)
   assert.match(src, /const intentPython = peerFact\(coverage, PEER_PYTHON_FIELD\)/)
-  // the ROWS change, so live variants are re-registered rather than skipped
-  assert.match(src, /registeredPython !== peerPython/)
-  assert.match(src, /pythonActive: peerPython, hostExtras, readBashResolution \}\)/)
+  // The ROWS change, so compare/build/commit the SAME immutable round fact.
+  // Reading peerPython again after an await could leave a mixed generation.
+  assert.match(src, /const pythonActive = peerPython/)
+  assert.match(src, /registeredPython !== pythonActive/)
+  assert.match(src, /await registerVariant\(ctx, presetId, \{ gitBashActive, skillsDir, pythonActive, hostExtras, readBashResolution \}\)/)
+  assert.match(src, /registeredPython = pythonActive/)
   const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
   assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonActive = false, hostExtras = \{\} \}\)/, 'the composition entry point takes the effective fact')
   assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonActive !== true/)
@@ -2034,9 +2042,12 @@ test('no-fallback guards: the plugin never swaps in another shell (patch + execu
   assert.match(shell, /requireBashPath\(\)/, 'every argv goes through the resolved-path guard')
   // the guard THROWS on an unresolved bash instead of returning something runnable
   assert.match(shell, /if \(!resolution\.ok\) \{\s*throw new Error\('dsh-gitbash-shell: no Git for Windows bash found/)
-  // the composition still pins pwsh rows off in every Git Bash variant
+  // Full variants preserve official platform gates. On Windows that pwsh-only
+  // face receives the private Git Bash tool; keeping PowerShell is NOT a
+  // fallback for an unresolved bash, which still throws through the guard above.
   const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
-  assert.match(compositions, /const pwshDisabled = gitBash \? true : !win/)
+  assert.match(compositions, /const bashDisabled = win/)
+  assert.match(compositions, /const pwshDisabled = !win/)
 })
 
 test('missing-bash popup: registered globally, win32-only, once per boot, with both actions', () => {
@@ -3342,7 +3353,7 @@ test('v0.35.0 default migration: a variant deployment default follows the switch
   // Official settings seam, the same namespace the preset picker writes.
   assert.match(hostSource, /settings\.update\('agent-preset-registry', \{ selectedDefault: target \}\)/)
   // Switch contract: keep-old-modes ON means nothing runs.
-  assert.match(hostSource, /if \(liveSettings\.variantPresets\(\) === true\) return/)
+  assert.match(hostSource, /if \(readVariants\(\) === true\) return true/)
   // Roster check before any write: a missing successor stands down.
   assert.match(hostSource, /roster\.some\(\(row\) => row && row\.id === target\)/)
   // Idempotent by observation: only a default still naming OUR variant migrates.

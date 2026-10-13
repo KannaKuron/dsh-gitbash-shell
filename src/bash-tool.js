@@ -248,20 +248,29 @@ function outputSchemaSpec() {
   }
 }
 
+/** Convert key-level spec flags at every depth, including union branches. */
+function schemaSpecToJson(spec) {
+  const { required: marker, ...out } = spec
+  if (Array.isArray(marker)) out.required = [...marker]
+  if (spec.properties !== undefined) {
+    const required = Array.isArray(marker) ? [...marker] : []
+    out.properties = {}
+    for (const [key, value] of Object.entries(spec.properties)) {
+      if (value.required === true && !required.includes(key)) required.push(key)
+      out.properties[key] = schemaSpecToJson(value)
+    }
+    if (required.length > 0) out.required = required
+  }
+  for (const key of ['oneOf', 'anyOf', 'allOf']) {
+    if (Array.isArray(spec[key])) out[key] = spec[key].map(schemaSpecToJson)
+  }
+  if (spec.items !== undefined) out.items = schemaSpecToJson(spec.items)
+  return out
+}
+
 /** Plain JSON-schema variant of the same union (fallback when defineTool is absent). */
 function outputSchemaJson() {
-  const convert = (item) => {
-    const out = { type: item.type, additionalProperties: item.additionalProperties, properties: {} }
-    const required = []
-    for (const [key, value] of Object.entries(item.properties)) {
-      if (value.required === true) { required.push(key) }
-      const { required: _drop, ...rest } = value
-      if (rest.oneOf !== undefined) delete rest.required
-      out.properties[key] = rest
-    }
-    return required.length > 0 ? { ...out, required } : out
-  }
-  return { oneOf: outputSchemaSpec().oneOf.map(convert) }
+  return schemaSpecToJson(outputSchemaSpec())
 }
 
 /** The official args validation (index.ts:73). */
@@ -320,8 +329,9 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
       const defaultMode = executor.sandboxMode
       const escalationReady = defaultMode !== undefined && typeof approveEscalation === 'function'
       const escalationModes = escalationReady ? ESCALATION_TARGETS : []
+      // Missing approval helpers narrow escalation, not the session's standing policy.
       const resolveSandboxPolicy = (exec) => {
-        if (!escalationReady) return undefined
+        if (defaultMode === undefined) return undefined
         const policy = ctx.get('sandboxPolicy')
         return policy ? policy.resolve(exec?.agent === undefined ? {} : { session: exec.agent.session }) : undefined
       }
@@ -548,7 +558,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           // keys reach execute too, where enableRunInBackground enforces them
           // ("Undeclared keys are allowed, so schema omission also needs
           // enforcement", index.ts:498).
-          parameters: { type: 'object', properties: parametersSpec(), required: ['description', 'command'] },
+          parameters: schemaSpecToJson({ type: 'object', properties: parametersSpec() }),
           output: {
             schema: outputSchemaJson(),
             render: (_args, value) => [{
@@ -580,7 +590,8 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
         jobCtx.effect(() => () => {
           unregister()
           try {
-            if (ctx.fiber?.state === 'active') foregroundOnly = ctx.tools.register(bashTool(undefined))
+            // Cordis FiberState.ACTIVE is the numeric enum member 2.
+            if (ctx.fiber?.state === 2) foregroundOnly = ctx.tools.register(bashTool(undefined))
           } catch { /* the scope is going away */ }
         })
       })

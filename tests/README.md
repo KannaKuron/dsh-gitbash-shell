@@ -8,17 +8,32 @@ npm test
 npm pack --dry-run --ignore-scripts
 ```
 
-The `ci` workflow runs the smoke suite and real Cordis lifecycle regressions on
-Windows/Linux with Node 22/24. The lockfile supplies Cordis 4.0.4; the new tests
-use its real `Context`, `Service`, `plugin`, `isolate`, inject, Config and disposal
-contracts, not a mocked service registry. Optional FastCtx payloads and all npm
-lifecycle scripts are deliberately excluded from the test dependency install.
+The `ci` workflow runs all portable suites on Windows/Linux with Node 22/24.
+The lockfile supplies Cordis 4.0.4: executor/lifecycle cases exercise its real
+`Context`, `Service`, `plugin`, `isolate`, inject, Config and disposal contracts.
+Client, MCP and host-helper cases also use deterministic fixtures; those are not
+production end-to-end tests. Actual ToolRuntime integration is checked separately
+by the installed-host preview. Optional FastCtx payloads and all npm lifecycle
+scripts are deliberately excluded from the test dependency install.
+
+Additional portable regressions cover snapshot-dependent Hook ordering, retry
+and cancellation of client polling, MCP spawn failure/error propagation, dynamic
+pwsh visibility, pending tool/preset disposal, jobs withdrawal, fallback schemas,
+standing session policy, deployment-default migration, regex data preservation,
+sidebar switch updates and the shared dialect gates. No live winget installation
+or FastCtx payload is needed.
 
 ## Installed-host preview (Windows, Node >= 22.15)
 
 Select the **actual host directory** that contains its `package.json` and
 `node_modules`; do not substitute a global CLI installation for Desktop's Core.
-In PowerShell:
+In Git Bash:
+
+```sh
+DSH_PREVIEW_HOST_DIR='<actual installed host directory>' npm run test:preview
+```
+
+Or in PowerShell:
 
 ```powershell
 $env:DSH_PREVIEW_HOST_DIR = '<actual installed host directory>'

@@ -38,9 +38,9 @@ const PRESET_SHA256 = {
   minimal: '71ef887f43d8a37931ba3b014e5b116f79018af873d06625fb22e280a23c1dfc',
 }
 
-/** The documented Git Bash delta: these rows are pinned regardless of platform. */
+/** Only minimal's persistent terminal differs from the official shell rows.
+ * Full variants retain the official platform gates for inline patching. */
 const GIT_BASH_ROWS = new Map([
-  ['tool-bash', false], ['tool-pwsh', true],
   ['terminal-bash', false], ['persistent-bash', false],
   ['terminal-pwsh', true], ['persistent-pwsh', true],
 ])
@@ -132,17 +132,21 @@ export function flatten(rows, depth = 0) {
 /** Our rows for one variant id, with the Git Bash delta applied.
  * The full host probe (dsh 0.2.1 additions) is ON: the alignment target is
  * the 0.2.1 text, and the 0.1.7-era row set stays locked by smoke.mjs. */
-function oursOf(variant) {
+function oursOf(variant, platform) {
   const kind = KINDS[variant]
   if (kind === 'minimal') return flatten(minimalPluginsFor())
-  return flatten(pluginsFor({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true } }))
+  // Exercise BOTH host branches, independently of the machine running this
+  // audit. This pure composition module has no imports or runtime effects.
+  const source = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8').replace(/^export /gm, '')
+  const compose = new Function('process', source + '\nreturn pluginsFor')({ platform: platform === 'win32' ? 'win32' : 'linux' })
+  return flatten(compose({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true } }))
 }
 
 const reported = []
 
 /** Compare one variant; pushes human-readable failure lines. */
 function compareVariant(variant, officialRows, platform) {
-  const ours = oursOf(variant)
+  const ours = oursOf(variant, platform)
   const label = variant + ' [official ' + platform + ' branch]'
   if (officialRows.length !== ours.length) {
     reported.push(`${label}: row count ${ours.length} != official ${officialRows.length}`)
@@ -167,8 +171,8 @@ function compareVariant(variant, officialRows, platform) {
       continue
     }
     if (platform === 'win32' && GIT_BASH_ROWS.has(mine.id)) {
-      // The documented Git Bash delta: bash rows always on, pwsh rows always
-      // off, on both platforms.
+      // Exact, row-local exceptions only: full variants receive their private
+      // bash at agent creation; minimal owns a separate persistent terminal.
       const expected = GIT_BASH_ROWS.get(mine.id)
       if (mine.disabled !== expected) reported.push(`${where} (${mine.id}): Git Bash delta lost (disabled ${mine.disabled})`)
       continue

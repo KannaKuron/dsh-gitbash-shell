@@ -3,6 +3,44 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## Unreleased — 2026-10-13
+
+**类型**:fix(route B 工具/预设生命周期、动态配置与客户端回归) / test。
+
+- **复现与裁定**:两名 Sol 分区审查、Grok 交叉反证与主代理隔离复验确认了工具面、生命周期、
+  组合、代码扫描和客户端状态转换的问题;普通子 scope 的原始冲突仍由 v0.39.1 的 `shell` 隔离修复。
+  FastCtx 全文路径回显是既定策略,不误当文件工具替换问题;minimal 的 persistent PTY 不与全工具
+  变体的执行器来源混为一谈。只修既有功能,不新增功能、改 root shell 或市场 patch。
+- **变体接线**:Windows 全工具 Git Bash 变体不再启用依赖 root PowerShell 的官方 `tool-bash`;
+  保留官方 pwsh 面,经同一行内补位通道接入私有 Git Bash 工具。minimal 的 persistent 通道保持。
+- **工具生命周期**:存活 agent 的 `pwshTool` 双向翻转同步解除/重建自身的 restrict;异步导入/
+  挂载在插件或 agent 退役后不再迟到注册;jobs 服务卸载按真实 Cordis 活跃状态恢复前台 bash。
+- **降级分支**:plain definition 的 required 标志递归转换为合法 JSON Schema;升级助手不可用
+  时仍解析并传递每会话 standing policy,不错误回退部署默认。两项为模块解析降级的受控复现,
+  不宣称本机生产已发生导入失败,也不改变 Windows 受限模式明示 unconfined 的既定取舍。
+- **预设与默认值**:串行 reconcile 退役时关闭新任务、清理晚到 register 并等待 unregister;
+  动态关闭变体在退役前迁回部署默认,避免后续新会话引用不存在的 preset。既有钉住会话不迁移。
+- **路径与终端**:run_code 扫描辨认关键字后的正则并在不确定时整份 no-op,不改正则数据;
+  FastCtx 入/出参获得 execution 上下文并服从总方言、委托与虚拟挂载开关;better-sidebar 的
+  adoptSidebar 动态翻转恢复接管前值并保护接管后的用户手选,不改变官方 autoTerminalShell
+  关后只停止未来写入的独立语义。
+- **FastCtx 错误**:子进程/写管道 error 进入初始化 Promise,失败清理 pending 计时器与连接;
+  MCP `isError:true` 按官方桥约定抛错,不再把失败包装成宿主成功 value。
+  发现与连接启动采用 single-flight,拥有在途连接并在卸载时取消/等待,不让并发 agent 的发现流程
+  覆盖已在使用的 lazy client。该丢失所有权链已用受控 MCP 传输复现,并新增关闭/晚注册回归。
+- **客户端**:设置卡所有 Hooks 在 readiness early-return 前调用;工具链进度轮询在网络/HTTP
+  暂态失败后重试,卸载或失效时取消,不因单次请求失败永久卡在忙碌状态。
+- **回归入口**:新增可移植客户端/桥/运行时/宿主回归与实际 Core preview 集成用例,接入现有
+  `npm test`/`npm run test:preview`;不新增依赖、不跳过旧断言或 Node 22 矩阵。对齐上游 v0.39.1
+  (`521be01`)后完整测试 **156/156**、实际 Core 无头 preview **14/14**、打包 dry-run 和 diff 检查
+  通过。新增执行级回归保留 #21 的 real-array glob 契约与 stringified-array 响亮拒绝;不改已发布
+  版本号、历史记录或 npm 发布流程。Grok 对修复 diff 的只读反证未发现确定遗漏。
+  首轮全量检查发现三条旧源码正则仍锁旧实现,改为对应新保护条件并补同值/手选行为测试,没有删掉
+  保护断言。原 [Issue #19](https://github.com/KannaKuron/dsh-gitbash-shell/issues/19) 和
+  [PR #20](https://github.com/KannaKuron/dsh-gitbash-shell/pull/20) 已完成;这些后续修复由新 PR 承载,
+  Windows/Linux × Node 22/24 的远端结果见其检查。preview 不等同于完整 Electron GUI 或真 MCP
+  exe 并发验收,模块解析降级使用受控夹具复现。
+
 ## v0.39.1 — 2026-10-13
 
 **类型**:fix(route B 私有执行器的真实服务隔离与读取授权) / test / ci。

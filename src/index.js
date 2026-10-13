@@ -1168,7 +1168,13 @@ const CODE_LITERAL_SAFE = /^[A-Za-z0-9._@+~\-/ ]+$/
 /** Previous significant character that lets a '/' start a regex literal. */
 function regexCanStart(previous) {
   if (previous === '') return true
-  return '(,=:[!&|?{};+-*%<>~^'.indexOf(previous) >= 0
+  if (['return', 'throw', 'yield', 'await', 'case', 'delete', 'void', 'typeof', 'in', 'instanceof', 'of', 'else', 'do', 'break', 'continue', 'debugger'].includes(previous)) return true
+  return previous.length === 1 && '(,=:[!&|?{;+-*%<>~^'.includes(previous)
+}
+
+/** Read an identifier as ONE token: keyword-led regexes are not division. */
+function codeWordAt(code, index) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(code.slice(index))?.[0]
 }
 
 /** Index after the closing quote of the literal at `index`, or -1. */
@@ -1237,6 +1243,15 @@ function skipBracedExpression(code, index) {
       if (inner === null) return -1
       i = inner.end
       last = 'x'
+      continue
+    }
+    // A slash after a closing group may start a statement regex OR division.
+    // Without a parser that distinction is uncertain: abort the WHOLE scan.
+    if (c === '/' && (last === ')' || last === '}')) return -1
+    const word = codeWordAt(code, i)
+    if (word) {
+      last = last === '.' ? 'x' : word
+      i += word.length
       continue
     }
     if (c === '/' && regexCanStart(last)) {
@@ -1320,6 +1335,15 @@ export function scanCodeLiterals(code) {
       last = 'x'
       continue
     }
+    // A slash after a closing group may start a statement regex OR division.
+    // Without a parser that distinction is uncertain: abort the WHOLE scan.
+    if (c === '/' && (last === ')' || last === '}')) return null
+    const word = codeWordAt(code, i)
+    if (word) {
+      last = last === '.' ? 'x' : word
+      i += word.length
+      continue
+    }
     if (c === '/' && regexCanStart(last)) {
       const end = skipRegexLiteral(code, i)
       if (end === -1) return null
@@ -1380,8 +1404,8 @@ export function rewriteCodePaths(code, env) {
     // is written into, and a quote inside it (a home directory with an
     // apostrophe) would end that literal early — refuse rather than corrupt.
     const quote = code[span.start - 1]
-    if (translated.indexOf(quote) >= 0) continue
-    if (quote === '`' && translated.indexOf('${') >= 0) continue
+    if (translated.indexOf(quote) >= 0) return code
+    if (quote === '`' && translated.indexOf('${') >= 0) return code
     const source = translated.replace(/\\/g, '\\\\')
     out += code.slice(cursor, span.start) + source
     cursor = span.end
@@ -1469,9 +1493,6 @@ const SIDEBAR_NS = 'dsh-better-sidebar'
 const SIDEBAR_TRIES = 12
 const SIDEBAR_RETRY_MS = 1500
 
-// Reconciler installed by adoptSidebarShell; a no-op until then.
-let reconcileSidebar = () => {}
-
 /**
  * Reconcile the better-sidebar `terminalShell` takeover with the adoptSidebar
  * setting (v0.15.0, default ON). ON writes our bashPath (remembering what was
@@ -1491,95 +1512,69 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
   let previous = ''
   let tried = 0
   let timer = null
-  ctx.effect(() => () => { if (timer) clearTimeout(timer) }, 'dsh-gitbash-shell: sidebar adoption polling')
-
+  let closed = false
+  let serial = Promise.resolve()
   const readShell = () => {
     const settings = ctx.get('settings')
     if (!settings || typeof settings.update !== 'function') return null
     try {
-      // The sidebar's value lives in ITS row Config, projected into the
-      // settings describe() list; the service exposes describe/update only
-      // (the old `get(ns)` reader died with dsh 0.1.6).
-      if (typeof settings.describe === 'function') {
-        const entry = settings.describe().find((row) => row !== null && typeof row === 'object' && row.ns === SIDEBAR_NS)
-        const value = entry === undefined ? undefined : entry.value
-        return value && typeof value === 'object' && typeof value.terminalShell === 'string' ? value.terminalShell : ''
-      }
-      return null
-    } catch {
-      return null // namespace not registered yet / sidebar absent
-    }
+      if (typeof settings.describe !== 'function') return null
+      const entry = settings.describe().find((row) => row && row.ns === SIDEBAR_NS)
+      const value = entry?.value
+      return value && typeof value.terminalShell === 'string' ? value.terminalShell : ''
+    } catch { return null }
   }
-
-  reconcileSidebar = (desired) => {
+  const restore = async () => {
+    if (!adopted) return
+    const now = readShell()
+    if (now === null) return
+    // The user may have selected another shell since our takeover.
+    if (now === bashPath) {
+      await ctx.get('settings').update(SIDEBAR_NS, { terminalShell: previous })
+      console.log(TAG + " better-sidebar shell restored ('" + previous + "')")
+    }
+    adopted = false
+  }
+  const reconcileSidebar = async (desired) => {
     const current = readShell()
     if (current === null) return false
-    const settings = ctx.get('settings')
-    if (desired && current !== bashPath) {
-      const was = current
-      settings.update(SIDEBAR_NS, { terminalShell: bashPath })
-        .then(() => {
-          previous = was
-          adopted = true
-          console.log(
-            `${TAG} dsh-better-sidebar terminal shell -> Git Bash (${bashPath})` +
-              (was ? ` (took over from '${was}')` : ''),
-          )
-        })
-        .catch((error) => {
-          console.log(`${TAG} better-sidebar shell adoption unavailable: ${error?.message ?? error}`)
-        })
-      return true
-    }
-    if (desired && current === bashPath) {
-      adopted = true
-      return true
-    }
-    if (!desired && adopted && current === bashPath) {
-      settings.update(SIDEBAR_NS, { terminalShell: previous })
-        .then(() => {
-          adopted = false
-          console.log(`${TAG} dsh-better-sidebar terminal shell restored ('${previous || 'sidebar default'}') — adoptSidebar off`)
-        })
-        .catch(() => {})
-      return true
-    }
+    if (!desired) { await restore(); return true }
+    if (adopted || current === bashPath) return true
+    previous = current
+    await ctx.get('settings').update(SIDEBAR_NS, { terminalShell: bashPath })
+    adopted = true
+    console.log(TAG + ' dsh-better-sidebar terminal shell -> Git Bash (' + bashPath + ')')
     return true
   }
-
   const run = () => {
-    tried += 1
-    const ok = reconcileSidebar(readAdopt())
-    if (ok) return
-    if (tried < SIDEBAR_TRIES) {
-      timer = setTimeout(run, SIDEBAR_RETRY_MS)
-      return
-    }
-    console.log(`${TAG} better-sidebar shell adoption skipped: settings service unavailable after ${tried} tries`)
+    if (closed) return serial
+    if (timer) { clearTimeout(timer); timer = null }
+    serial = serial.then(async () => {
+      if (closed) return
+      tried += 1
+      const ok = await reconcileSidebar(readAdopt())
+      if (ok || closed) return
+      if (tried < SIDEBAR_TRIES) timer = setTimeout(run, SIDEBAR_RETRY_MS)
+      else console.log(TAG + ' better-sidebar shell adoption skipped: settings unavailable')
+    }).catch((error) => {
+      console.log(TAG + ' better-sidebar shell adoption unavailable: ' + (error?.message ?? error))
+    })
+    return serial
   }
-  run.watched = false
-  void run()
-
-  // Dispose: while we still hold the value, restore what was there before.
-  let reverted = false
-  ctx.effect(
-    () => () => {
-      if (reverted || !adopted) return
-      reverted = true
-      const s = ctx.get('settings')
-      if (!s || typeof s.update !== 'function') return
-      // Era-aware read (v0.25.1): `settings.get(ns)` is gone on dsh >= 0.1.7, so
-      // the old call threw straight into the catch and the takeover was NEVER
-      // reverted when this plugin unloaded — same missed-era-read class as
-      // issue #8 (readShell above carries both branches).
-      const now = readShell()
-      if (now === null) return
-      if (String(now) === bashPath) {
-        s.update(SIDEBAR_NS, { terminalShell: previous }).catch(() => {})
-      }
-    },
-    'dsh-gitbash-shell: sidebar shell revert',
-  )
+  try {
+    ctx.on('loader/volatile-update', (paths) => {
+      if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path) && path[0] === 'adoptSidebar')) return
+      tried = 0
+      void run()
+    })
+  } catch { /* a diagnostic context may have no event service */ }
+  ctx.effect(() => async () => {
+    closed = true
+    if (timer) clearTimeout(timer)
+    await serial
+    await restore()
+  }, 'dsh-gitbash-shell: sidebar shell revert')
+  return run()
 }
 
 // ── plugin ──────────────────────────────────────────────────────────────────
@@ -1759,6 +1754,38 @@ export function minimalPtyBashPath(readResolution) {
  * failures stay visible through the roster's broken diagnostic instead of
  * failing the boot.
  */
+async function migrateVariantDefault(ctx, readVariants) {
+  if (readVariants() === true) return true
+  const readDefault = () => { try { return ctx.agentPresets.defaultId } catch { return undefined } }
+  const current = readDefault()
+  if (typeof current !== 'string' || !PRESET_IDS.includes(current)) return true
+  const target = VARIANT_DEFAULT_SUCCESSORS[current]
+  try {
+    const settings = ctx.get('settings')
+    if (!settings || typeof settings.update !== 'function') return false
+    const roster = await ctx.agentPresets.list()
+    if (!Array.isArray(roster) || !roster.some((row) => row && row.id === target)) {
+      console.warn(TAG + ' default-preset migration stood down: successor "' + target + '" is not registered. Set an OFFICIAL default or turn variantPresets on.')
+      return false
+    }
+    // A roster read is asynchronous: never overwrite a newer user selection.
+    if (readVariants() === true || readDefault() !== current) return true
+    await settings.update('agent-preset-registry', { selectedDefault: target })
+    const after = readDefault()
+    if (after !== target) {
+      console.warn(TAG + ' default-preset migration did not stick (read back "' + after + '"). Set an OFFICIAL default or turn variantPresets on.')
+      return false
+    }
+    console.log(TAG + ' deployment default migrated: "' + current + '" -> "' + target
+      + '" (variantPresets is off). Pinned sessions are unchanged; agent-preset/locked still requires a NEW session.')
+    return true
+  } catch (error) {
+    console.warn(TAG + ' default-preset migration failed: ' + (error?.message ?? error)
+      + '. Set an OFFICIAL default or turn variantPresets on; variants were not retired.')
+    return false
+  }
+}
+
 async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive, hostExtras = {}, readBashResolution }) {
   const meta = PRESET_META[presetId]
   if (!meta) return undefined
@@ -1811,6 +1838,17 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   /** The CPython fact the LIVE registrations were built with. */
   let registeredPython = false
   let serial = Promise.resolve()
+  let closed = false
+  ctx.effect(() => async () => {
+    closed = true
+    await serial
+    const failures = []
+    for (const [presetId, off] of [...live]) {
+      live.delete(presetId)
+      try { await off() } catch (error) { failures.push(error) }
+    }
+    if (failures.length) throw new AggregateError(failures, 'Git Bash preset cleanup failed')
+  }, 'dsh-gitbash-shell: declarative preset registrations')
 
   // v0.35.0: the variant roster is opt-in (`variantPresets`, default OFF).
   // OFF means an EMPTY desired set — the cleanup above still runs, so a
@@ -1820,8 +1858,16 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
     : [])
 
   const reconcile = () => {
+    if (closed) return serial
     serial = serial.then(async () => {
+      if (closed) return
       const want = desired()
+      const pythonActive = peerPython
+      // Dynamic OFF repairs the deployment default BEFORE retiring its id.
+      // Keep registrations if the official migration cannot be verified.
+      if (live.size > 0 && readVariants() !== true
+        && !await migrateVariantDefault(ctx, readVariants)) return
+      if (closed) return
       // The peer's EFFECTIVE CPython backend rewrites the workflow rows of
       // EVERY variant (the official Python composition disables them, and
       // workflow-ptc refuses a non-TypeScript backend), so a flip re-registers
@@ -1829,14 +1875,16 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
       // as the backend swap itself: the peer's patch is evaluated at boot. A
       // bare INTENT without the effective backend changes nothing here — the
       // composition still runs Node, so the workflow rows must stay live.
-      if (live.size > 0 && registeredPython !== peerPython) {
+      if (live.size > 0 && registeredPython !== pythonActive) {
         for (const [presetId, off] of [...live]) {
           live.delete(presetId)
           try {
             await off()
             console.log(TAG + " preset '" + presetId + "' retired (peer CPython backend changed; rows are rebuilt)")
           } catch (error) {
+            live.set(presetId, off)
             console.log(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
+            return // never register replacements after an unverified retirement
           }
         }
       }
@@ -1847,14 +1895,18 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
           await off()
           console.log(TAG + " preset '" + presetId + "' retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)")
         } catch (error) {
+          live.set(presetId, off)
           console.log(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
+          return
         }
       }
       for (const presetId of want) {
+        if (closed) break
         if (live.has(presetId)) continue
         try {
-          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive: peerPython, hostExtras, readBashResolution })
+          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive, hostExtras, readBashResolution })
           if (unregister) {
+            if (closed) { await unregister(); break }
             live.set(presetId, unregister)
             console.log(TAG + " preset '" + presetId + "' registered declaratively")
           }
@@ -1862,7 +1914,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
           console.log(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
         }
       }
-      registeredPython = peerPython
+      registeredPython = pythonActive
     }).catch((error) => {
       console.log(TAG + ' preset reconcile failed: ' + (error && error.message ? error.message : error))
     })
@@ -1870,6 +1922,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   }
 
   await reconcile()
+  if (closed) return
   console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')'
     + (live.size === 0 ? ' — variantPresets is off: the official presets carry Git Bash through the inline tool patch (see the CHANGELOG)'
       : '')
@@ -1932,7 +1985,8 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
     console.log(TAG + ' dedupe switch wiring failed: ' + (error && error.message ? error.message : error))
   }
 
-  ctx.effect(() => () => { for (const off of live.values()) void off() }, 'dsh-gitbash-shell: declarative preset registrations')
+  // If settings appears after an OFF transition failed closed, retry it.
+  ctx.inject(['settings'], () => { void reconcile() })
 }
 
 export async function apply(ctx, config = {}) {
@@ -2611,8 +2665,8 @@ export async function apply(ctx, config = {}) {
   // official tool surface mirrored call-for-call) plus a HIDE on the real pwsh
   // tool while the pwsh switch is off (route B: the official executor stays in
   // place, so pwsh is real PowerShell and hiding it is a product choice). The
-  // variantPresets switch is honored BY OBSERVATION — a variant agent's face
-  // already has bash, so this patch never fires there.
+  // Full Windows variants keep the same pwsh-only face as official presets,
+  // so they receive this same private-executor patch. Minimal stays persistent.
   if (process.platform === 'win32') {
     try {
       mountInlineTools(ctx, {
@@ -2661,55 +2715,10 @@ export async function apply(ctx, config = {}) {
   // With variantPresets ON nothing here runs: the variants stay registered,
   // so a variant default keeps working as-is.
   try {
-    if (ctx.agentPresets && typeof ctx.agentPresets.register === 'function') {
-      ctx.inject(['settings'], (settingsCtx) => {
-        void (async () => {
-          try {
-            const settings = settingsCtx.settings
-            if (!settings || typeof settings.update !== 'function') return
-            // The switch is the whole contract: keep-old-modes ON means a
-            // variant default is a legitimate choice and stays untouched.
-            if (liveSettings.variantPresets() === true) return
-            const readDefault = () => { try { return ctx.agentPresets.defaultId } catch { return undefined } }
-            const current = readDefault()
-            if (typeof current !== 'string' || !PRESET_IDS.includes(current)) return
-            const target = VARIANT_DEFAULT_SUCCESSORS[current]
-            if (typeof target !== 'string') return
-            // The successor must exist in the CURRENT roster: official ids
-            // renamed once already (code→ptc), and writing an unknown id
-            // would trade a known failure for a worse one.
-            const roster = await ctx.agentPresets.list()
-            if (!Array.isArray(roster) || !roster.some((row) => row && row.id === target)) {
-              console.warn(TAG + ' default-preset migration stood down: the deployment default is the variant "'
-                + current + '" but the successor "' + target + '" is not registered on this host.'
-                + ' Set the default manually among the OFFICIAL presets, or turn variantPresets on.')
-              return
-            }
-            try {
-              await settings.update('agent-preset-registry', { selectedDefault: target })
-            } catch (error) {
-              console.warn(TAG + ' default-preset migration write failed (' + (error?.message ?? error)
-                + '): the deployment default is still the variant "' + current
-                + '" — NEW sessions would fail with agent-preset/not-found.'
-                + ' Fix: set an OFFICIAL default in the preset picker, or turn variantPresets on.')
-              return
-            }
-            const after = readDefault()
-            if (after === target) {
-              console.log(TAG + ' deployment default migrated: "' + current + '" -> "' + target
-                + '" (variantPresets is off). Old sessions pinned to a variant still need a NEW'
-                + ' session — the official agent-preset/locked rule blocks a mid-session switch.')
-            } else {
-              console.warn(TAG + ' default-preset migration did not stick (read back "'
-                + (after === undefined ? 'unreadable' : after) + '"). Set the default manually in'
-                + ' Settings -> agent preset, or turn variantPresets on.')
-            }
-          } catch (error) {
-            console.log(TAG + ' default-preset migration failed: ' + (error?.message ?? error))
-          }
-        })()
-      })
-    }
+    ctx.inject(['settings'], () => {
+      // Boot migration is detached: registry.list() may await the Loader boot.
+      void migrateVariantDefault(ctx, () => liveSettings.variantPresets())
+    })
   } catch (error) {
     console.log(TAG + ' default-preset migration wiring failed: ' + (error?.message ?? error))
   }
@@ -2727,8 +2736,21 @@ export async function apply(ctx, config = {}) {
         enabled: () => liveSettings.fastctxTools(),
         createRequireFrom: (base) => createRequire(base ?? import.meta.url),
         tools: (c) => { try { return c.get('tools') } catch { return undefined } },
-        msysToWin: (p) => translateMsysPath(p, buildTranslateEnv(readConfiguredBashPath())),
-        echo: (text) => (liveSettings.dialect().posixPaths === true ? windowsToMsys(text) : text),
+        msysToWin: (p, execution) => {
+          const dialect = liveSettings.dialect()
+          if (dialect.posixPaths !== true || !dialectApplies(dialect, execution?.agent)) return p
+          if (!dialect.virtualMounts) {
+            return typeof p === 'string' && (MSYS_DRIVE_ROOT.test(p) || MSYS_BARE_DRIVE.test(p))
+              ? translateMsysPath(p, null) : p
+          }
+          return translateMsysPath(p, buildTranslateEnv(readConfiguredBashPath()))
+        },
+        echo: (text, execution) => {
+          const dialect = liveSettings.dialect()
+          if (dialect.posixPaths !== true || !dialectApplies(dialect, execution?.agent)) return text
+          const env = dialect.virtualMounts ? buildTranslateEnv(readConfiguredBashPath()) : null
+          return env ? msysEcho(text, env) : windowsToMsys(text)
+        },
         log: (m) => console.log(TAG + ' ' + m),
       })
     } catch (error) {

@@ -106,20 +106,21 @@ export class McpStdio {
     this.child.stderr.on('data', (chunk) => {
       this.stderrTail = (this.stderrTail + chunk).slice(-2000)
     })
-    this.child.on('exit', (code) => {
-      this.dead = true
-      for (const [, { reject }] of [...this.pending]) {
-        reject(new Error(`the FastCtx server exited (code ${code ?? 'null'})`))
-      }
-      this.pending.clear()
-    })
-    await this.#request('initialize', {
-      protocolVersion: '2024-11-05',
-      capabilities: {},
-      clientInfo: { name: 'dsh-gitbash-shell', version: '0.35.0' },
-    })
-    this.#notify('notifications/initialized')
-    return this
+    this.child.on('error', (error) => this.#fail(error))
+    this.child.stdin.on('error', (error) => this.#fail(error))
+    this.child.on('exit', (code) => this.#fail(new Error(`the FastCtx server exited (code ${code ?? 'null'})`)))
+    try {
+      await this.#request('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'dsh-gitbash-shell', version: '0.35.0' },
+      })
+      this.#notify('notifications/initialized')
+      return this
+    } catch (error) {
+      await this.close()
+      throw error
+    }
   }
 
   /** List the server's tools: [{ name, description, inputSchema }]. */
@@ -140,13 +141,19 @@ export class McpStdio {
     this.dead = true
     const child = this.child
     this.child = undefined
-    for (const [, { reject }] of [...this.pending]) {
-      reject(new Error('the FastCtx bridge was stopped'))
-    }
-    this.pending.clear()
+    this.#fail(new Error('the FastCtx bridge was stopped'))
     if (child && child.exitCode === null && !child.killed) {
       try { child.kill() } catch { /* already gone */ }
     }
+  }
+
+  #fail(error) {
+    this.dead = true
+    for (const { reject, timer } of this.pending.values()) {
+      clearTimeout(timer)
+      reject(error)
+    }
+    this.pending.clear()
   }
 
   #onChunk(chunk) {
@@ -310,6 +317,10 @@ export function mountFastctx(ctx, deps) {
   let client = undefined
   let decided = false
   let withdrawnByOps = false
+  let closed = false
+  let publishing
+  let connecting
+  const starting = new Set()
 
   const unpublish = (reason) => {
     if (disposer) {
@@ -320,16 +331,34 @@ export function mountFastctx(ctx, deps) {
   }
 
   const callWithReconnect = async (rawName, args) => {
+    if (closed || withdrawnByOps) throw new Error('the FastCtx bridge was stopped')
     if (client === undefined || client.isDead) {
-      const { file } = resolveFastctx(ctx, createRequireFrom)
-      if (file === '') throw new Error('the FastCtx payload is not installed; repair the profile dependencies (frozen install) and retry')
-      client = await new McpStdio({ file, log }).start()
+      if (!connecting) {
+        connecting = (async () => {
+          const { file } = resolveFastctx(ctx, createRequireFrom)
+          if (file === '') throw new Error('the FastCtx payload is not installed; repair the profile dependencies (frozen install) and retry')
+          const fresh = new McpStdio({ file, log })
+          starting.add(fresh)
+          try {
+            await fresh.start()
+            if (closed || withdrawnByOps) throw new Error('the FastCtx bridge was stopped')
+            client = fresh
+          } catch (error) {
+            await fresh.close()
+            throw error
+          } finally {
+            starting.delete(fresh)
+          }
+        })().finally(() => { connecting = undefined })
+      }
+      await connecting
     }
+    if (closed || withdrawnByOps) throw new Error('the FastCtx bridge was stopped')
     return client.callTool(rawName, args)
   }
 
-  const publish = async () => {
-    if (disposer || decided && withdrawnByOps) return
+  const publishOnce = async () => {
+    if (closed || disposer || decided && withdrawnByOps) return
     const registry = tools(ctx)
     if (!registry || typeof registry.register !== 'function') return
     const { file, source } = resolveFastctx(ctx, createRequireFrom)
@@ -340,6 +369,7 @@ export function mountFastctx(ctx, deps) {
       return
     }
     const fresh = new McpStdio({ file, log })
+    starting.add(fresh)
     let toolList
     try {
       await fresh.start()
@@ -350,9 +380,12 @@ export function mountFastctx(ctx, deps) {
       decided = true
       withdrawnByOps = true
       return
+    } finally {
+      starting.delete(fresh)
     }
     await fresh.close()
-    client = undefined // the first call re-launches lazily; boot stays cheap
+    if (closed || withdrawnByOps) return
+    // Discovery never overwrites the independently owned lazy call client.
     const wanted = toolList.filter((tool) => FASTCTX_FILE_TOOLS.includes(String(tool?.name)))
     const registered = []
     const registeredNames = []
@@ -386,16 +419,20 @@ export function mountFastctx(ctx, deps) {
             schema: TOOL_OUTPUT_SCHEMA,
             render: (_args, value) => renderTextContent(value),
           },
-          async execute(args) {
-            // Fail LOUD on malformed patterns (v0.38.5; reshaped v0.39.1,
-            // issue #21 — see validateFastctxPattern).
+          async execute(args, execution) {
+            // Preserve v0.39.1 / #21: glob accepts real string arrays,
+            // while stringified arrays and malformed patterns fail loudly.
             if (args !== null && typeof args === 'object' && 'pattern' in args) {
               const invalid = validateFastctxPattern(rawName, args.pattern)
               if (invalid) throw new Error(invalid)
             }
-            const translated = translateFastctxArgs(args, msysToWin)
+            const translated = translateFastctxArgs(args, msysToWin ? (path) => msysToWin(path, execution) : undefined)
             const result = await callWithReconnect(rawName, translated)
-            return { content: [{ type: 'text', text: renderFastctxResult(rawName, result, echo) }] }
+            const text = renderFastctxResult(rawName, result, echo ? (value) => echo(value, execution) : undefined)
+            // The host treats a returned value as success; MCP failures must
+            // throw, just as its official MCP client does.
+            if (result?.isError === true) throw new Error(text)
+            return { content: [{ type: 'text', text }] }
           },
         })
         if (typeof dispose === 'function') {
@@ -416,7 +453,13 @@ export function mountFastctx(ctx, deps) {
     log(`FastCtx bridge active (${source}): ${registeredNames.join(', ')}`)
   }
 
+  const publish = () => {
+    if (!publishing) publishing = publishOnce().finally(() => { publishing = undefined })
+    return publishing
+  }
+
   const reconcile = (agent) => {
+    if (closed) return
     if (!enabled()) { unpublish('FastCtx bridge disabled by the fastctxTools switch'); decided = true; withdrawnByOps = true; return }
     if (decided && withdrawnByOps) return
     let names = []
@@ -440,8 +483,12 @@ export function mountFastctx(ctx, deps) {
     log(`FastCtx bridge wiring failed: ${error?.message ?? error}`)
     return
   }
-  ctx.effect(() => () => {
+  ctx.effect(() => async () => {
+    closed = true
     unpublish()
-    if (client) { void client.close().catch(() => {}) }
+    const owned = new Set([...starting, client].filter(Boolean))
+    await Promise.allSettled([...owned].map((connection) => connection.close()))
+    await Promise.allSettled([publishing, connecting].filter(Boolean))
+    client = undefined
   }, 'dsh-gitbash-shell: FastCtx bridge')
 }
