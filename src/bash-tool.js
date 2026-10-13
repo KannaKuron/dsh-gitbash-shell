@@ -11,8 +11,8 @@
  * instead ships an OWN tool:
  *
  *   - the executor is a private `GitBashSandboxExecutor` instance constructed
- *     through cordis's own plugin path in a PRIVATE scope (never registered as
- *     `ctx.shell`, which stays the official PowerShell executor); it inherits
+ *     through cordis's own plugin path in a `shell`-isolated scope (never
+ *     registered as the ROOT `ctx.shell`, which stays PowerShell); it inherits
  *     the shipped bash-sandbox semantics (deadline, output capture, argv
  *     execution) and points them at Git for Windows' bash.exe;
  *   - the tool definition mirrors `@deepseek-ai/dsh-tool-bash` call-for-call

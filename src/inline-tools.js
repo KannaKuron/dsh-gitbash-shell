@@ -26,7 +26,7 @@
  *   1. `pwsh` present + `bash` absent  -> register the plugin's OWN `bash`
  *      tool (src/bash-tool.js) in an agent-owned scope. It executes through a
  *      PRIVATE GitBashSandboxExecutor instance (constructed once per process
- *      in a private cordis scope, never registered as a service), and mirrors
+ *      in a shell-isolated cordis scope, never registered as the ROOT shell), and mirrors
  *      the official tool's schema, background jobs, escalation and rendering
  *      call-for-call.
  *   2. `ops_*` tools present (dsh-ops installed) -> our FastCtx bridge stands
@@ -138,6 +138,43 @@ const HOST_MODULES = [
 ]
 
 /**
+ * Mount the executor through the host class-plugin path. A plugin fiber owns
+ * effects, but does NOT create a service namespace: ShellExecutor's constructor
+ * still provides `shell`. Isolate ONLY that service, retaining the host's
+ * subprocess/sandbox/policy dependencies and leaving the official shell intact.
+ *
+ * The empty scope does not inject shell, so read its active provider through
+ * get(), not the property-access path that requires an inject declaration.
+ */
+export async function mountPrivateExecutor(ctx, GitBashSandboxExecutor, createScope, { timeoutMs = 8000 } = {}) {
+  const executorScope = createScope(ctx.isolate('shell'))
+  let timer
+  try {
+    const mountTimeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('executor scope mount timed out (a required service may be absent in this composition)')), timeoutMs)
+    })
+    const executor = await Promise.race([
+      (async () => {
+        if (executorScope.fiber) await executorScope.fiber
+        const fiber = executorScope.ctx.plugin(GitBashSandboxExecutor)
+        await fiber
+        return executorScope.ctx.get('shell')
+      })(),
+      mountTimeout,
+    ])
+    if (!executor || typeof executor.resolve !== 'function' || typeof executor.execute !== 'function') {
+      throw new Error('executor instance did not expose resolve()/execute()')
+    }
+    return { executor, executorScope }
+  } catch (error) {
+    await executorScope.dispose()
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Mount the per-agent reconcile. `deps`:
  *   - tools(ctx)       -> the host tool registry (or undefined)
  *   - agents(ctx)      -> the host agents service (or undefined)
@@ -188,20 +225,7 @@ export function mountInlineTools(ctx, deps) {
         throw new Error('executor Config unavailable (schemastery unresolved; see the schemastery log lines above)')
       }
       if (typeof createScope !== 'function') throw new Error('no createScope seam')
-      const executorScope = createScope(ctx)
-      if (executorScope.fiber) { try { await executorScope.fiber } catch { /* disposed */ } }
-      const mountTimeout = new Promise((_, reject) => {
-        const timer = setTimeout(() => reject(new Error('executor scope mount timed out (a required service may be absent in this composition)')), 8000)
-        timer.unref?.()
-      })
-      const fiber = executorScope.ctx.plugin(GitBashSandboxExecutor)
-      const executor = await Promise.race([
-        (async () => { await fiber; return executorScope.ctx.shell })(),
-        mountTimeout,
-      ])
-      if (!executor || typeof executor.resolve !== 'function' || typeof executor.execute !== 'function') {
-        throw new Error('executor instance did not expose resolve()/execute()')
-      }
+      const { executor, executorScope } = await mountPrivateExecutor(ctx, GitBashSandboxExecutor, createScope)
       const hostModules = {}
       for (const [key, name] of HOST_MODULES) {
         try {
@@ -226,7 +250,7 @@ export function mountInlineTools(ctx, deps) {
       // Same asynchronous-fiber shape the official module needed: wait for
       // the apply callback to capture scope.ctx before touching its tools.
       if (scope.fiber) { try { await scope.fiber } catch { /* disposed */ } }
-      const registry = scope.ctx?.tools
+      const registry = scope.ctx?.get('tools')
       if (!registry || typeof scope.ctx.plugin !== 'function') {
         void scope.dispose().catch(() => {})
         return

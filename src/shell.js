@@ -1,7 +1,7 @@
 /**
  * dsh-gitbash-shell/shell — the Git Bash executor INSTANCE (route B, v0.39.0).
  *
- * Since route B this class is NOT mounted as the host `ctx.shell` service:
+ * Since route B this class is NOT mounted as the ROOT `ctx.shell` service:
  * the official PowerShell executor keeps that slot untouched (the DSH-Store
  * catalog gate forbids bundle patches that disable official components, and
  * replacing the shell executor IS overriding one). Instead the plugin
@@ -36,8 +36,9 @@
  * executor did.
  *
  * Constructed as a cordis class plugin (static inject/Config honoured) —
- * inside the PRIVATE scope only, so the base class's service registration
- * lands there and never touches the root `ctx.shell` slot.
+ * inside an explicitly `ctx.isolate('shell')`-isolated scope, so the base
+ * class's service registration never touches the root `ctx.shell` slot.
+ * A plain child plugin fiber is NOT a service isolation boundary.
  */
 
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'

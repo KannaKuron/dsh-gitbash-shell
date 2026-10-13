@@ -577,8 +577,8 @@
        契约本质冲突,用户裁决改造架构而非钻字面。新事实:**patch 纯新增**(不再撤
        `pwsh-sandbox`、不再插执行器行;冒烟有「市场门禁自检」断言锁死);**自有 bash 工具**
        (`src/bash-tool.js`,对官方 tool-bash 逐调用镜像)执行在**私有执行器实例**上
-       (inline-tools 在私有 scope `executorScope.ctx.plugin(GitBashSandboxExecutor)` 构造,
-       `static inject` 走 cordis 官方链,§4k schemastery 语义自动满足,**永不注册为
+       (inline-tools 经 `mountPrivateExecutor` 在 `ctx.isolate('shell')` 隔离后的 scope 构造,
+       `static inject` 走 cordis 官方链,§4k schemastery 语义自动满足,**永不注册为根
        `ctx.shell`**);官方 `pwsh` 重新为真(官方解析器自动优先 PowerShell 7),`pwshTool`
        开关语义 = 「显示 pwsh 工具」(默认关 = `tools.restrict` 隐藏 + pre-execute 兜底拒,
        理由句 `hiddenPwshDenyReason()` 指路设置卡),`pwsh7` 旁路整体退役;
