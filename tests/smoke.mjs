@@ -1301,7 +1301,7 @@ test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async
     // already latent in v0.32.1 on win32.
     get: (name) => (name === 'settings'
       ? {
-          describe: () => [{ ns: 'dsh-better-sidebar', value: { terminalShell: '' } }],
+          describe: () => [{ ns: 'better-sidebar', value: { terminalShell: '' } }],
           update: async (ns, patch) => { updates.push([ns, patch]) },
         }
       : undefined),
@@ -1310,7 +1310,7 @@ test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async
   await assert.doesNotReject(() => apply(ctx, {}), 'apply() must not throw on mount')
   if (process.platform === 'win32') {
     assert.ok(
-      updates.some(([ns, patch]) => ns === 'dsh-better-sidebar' && patch && typeof patch.terminalShell === 'string'),
+      updates.some(([ns, patch]) => ns === 'better-sidebar' && patch && typeof patch.terminalShell === 'string'),
       'the sidebar adoption must hand Git Bash to the settings seam',
     )
   }
