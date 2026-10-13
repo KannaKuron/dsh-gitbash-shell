@@ -7,7 +7,7 @@
  * here). Instead the plugin ships its OWN bash tool whose executor is a private
  * `GitBashSandboxExecutor` instance (never registered as a service), and this
  * file mirrors the official tool's rendering contract call-for-call so the
- * model sees byte-identical output shapes:
+ * model sees the official output shapes, with an explicit unconfined warning:
  *
  *   - `render.ts` of `@deepseek-ai/dsh-tool-bash` (result / promoted / job-read
  *     text shaping), and
@@ -26,6 +26,17 @@
 /** The official sandbox-denial marker (escalation.ts:71). */
 export function sandboxDenialMarker(mode) {
   return `[sandbox: file access denied under ${mode} mode]`
+}
+
+/** A capability warning, not a denial or permission to bypass another denial. */
+export function sandboxUnconfinedMarker(mode) {
+  return `[sandbox: Git Bash is unconfined on Windows — shell file-write restrictions are NOT enforced (requested mode: ${mode}); official file-tool write/edit policy still applies; never bypass its denial through shell]`
+}
+
+/** Include the planned execution boundary even before the job has spawned. */
+export function renderBackground(jobId, sandbox) {
+  const notes = sandboxNotes(sandbox, [])
+  return `started background job ${jobId}${notes.length ? '\n' + notes.join('\n') : ''}`
 }
 
 /** The official same-turn escalation hint (escalation.ts:84). */
@@ -84,6 +95,7 @@ export function renderResult(result, escalationModes = []) {
     markers.push(sandboxDenialMarker(result.sandbox.mode))
     if (escalationModes.length > 0) markers.push(escalationHintMarker('command'))
   }
+  if (result.sandbox?.enforcement === 'unconfined') markers.push(sandboxUnconfinedMarker(result.sandbox.mode))
   // A command may trap SIGTERM and exit 0 after timeout; still report interruption.
   if (result.timedOut) markers.push(`[timed out after ${result.timeoutMs}ms]`)
   // A kill from outside the call (the human stopping its job) is not a
@@ -129,6 +141,7 @@ function sandboxNotes(sandbox, escalationModes) {
     if (escalationModes.length > 0) notes.push(escalationHintMarker('command'))
     return notes
   }
+  if (sandbox?.enforcement === 'unconfined') return [sandboxUnconfinedMarker(sandbox.mode)]
   return []
 }
 
@@ -192,12 +205,7 @@ export function renderJobRead(delta, lossy, spillPaths, sandbox, escalationModes
     const paths = Array.isArray(spillPaths) ? spillPaths : []
     notices.push(`[some output was dropped from memory; full output: ${paths.length > 0 ? paths.join(', ') : '(unavailable)'}]`)
   }
-  if (sandbox && sandbox.runnerFailed) {
-    notices.push(`[sandbox: the sandbox runner itself failed under ${sandbox.mode} mode — the command did not run; this is a sandbox problem, not a command failure]`)
-  } else if (sandbox && sandbox.denied) {
-    notices.push(sandboxDenialMarker(sandbox.mode))
-    if (escalationModes.length > 0) notices.push(escalationHintMarker('command'))
-  }
+  notices.push(...sandboxNotes(sandbox, escalationModes))
   if (notices.length === 0) return delta
   return `${delta}${delta.length > 0 && !delta.endsWith('\n') ? '\n' : ''}${notices.join('\n')}`
 }

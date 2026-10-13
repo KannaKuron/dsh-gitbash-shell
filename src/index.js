@@ -612,15 +612,15 @@ const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: 
  * write paths into, so the sentence would be pure noise there. Cheap and
  * honest: the tool list of the very assembly being rendered decides.
  */
-const RUN_CODE_DIRECTIVE_TEXT = ' Path literals written inside a run_code program are translated the same way before the program runs; shell expansion is not available there, so spell paths out instead of relying on $VARS.'
-const RUN_CODE_DIRECTIVE_STRICT_TEXT = ' Path literals written inside a run_code program are translated before the program runs.'
+const RUN_CODE_DIRECTIVE_TEXT = ' In a run_code program, compatible plain MSYS path literals are translated on a best-effort basis; interpolated or tagged templates and uncertain syntax are not rewritten. For direct native Node fs/path APIs, prefer explicit Windows drive-letter or cwd-relative paths. Do not rely on literal rewriting for dynamic paths, shell command strings, routes or search data; tool path arguments are translated separately. Shell expansion is unavailable in program strings, so do not rely on $VARS.'
+const RUN_CODE_DIRECTIVE_OFF_TEXT = ' In a run_code program, automatic path-literal rewriting is OFF. Direct native Node fs/path APIs require Windows drive-letter or cwd-relative paths, not MSYS /c/... strings. Tool path arguments are still translated separately; program strings do not perform shell expansion.'
 
 /** The run_code sentence for this assembly, or '' when the tool is not offered. */
-export function runCodeHintFor(tools) {
+export function runCodeHintFor(tools, codePaths = true) {
   if (!Array.isArray(tools)) return ''
   for (const tool of tools) {
     const name = tool && typeof tool.name === 'string' ? tool.name : ''
-    if (name === 'run_code') return RUN_CODE_DIRECTIVE_TEXT
+    if (name === 'run_code') return codePaths === true ? RUN_CODE_DIRECTIVE_TEXT : RUN_CODE_DIRECTIVE_OFF_TEXT
   }
   return ''
 }
@@ -1155,15 +1155,15 @@ export function translatePathArguments(args, env) {
 // sees it (see AGENTS.md 4c). The same mount table is therefore applied to the
 // program's string literals — but ONLY when the whole program scans cleanly and
 // a literal's ENTIRE content is an absolute MSYS path. Anything unclear — an
-// unterminated literal, a template with ${} interpolation, a regex we cannot
-// place — turns the whole rewrite into a no-op: a half-rewritten program would
+// unterminated literal or a regex we cannot place — turns the whole rewrite
+// into a no-op. Interpolated/tagged templates are skipped as data. A partial guess would
 // be far worse than an untranslated one, and this layer never guesses.
 //
 // Deliberately NOT translated: shell-style '$VAR/x' (a JS literal is data, not
 // a shell word) and anything carrying a scheme ('http://...').
 
 /** Source text allowed inside a rewritten literal: no escapes, no dollar sign. */
-const CODE_LITERAL_SAFE = /^[A-Za-z0-9._@+~\-/ ]+$/
+const CODE_LITERAL_SAFE = /^[\p{L}\p{M}\p{N}._@+~#\-/ ]+$/u
 
 /** Previous significant character that lets a '/' start a regex literal. */
 function regexCanStart(previous) {
@@ -1309,7 +1309,8 @@ export function scanCodeLiterals(code) {
     const next = code[i + 1]
     if (c === '/' && next === '/') {
       const nl = code.indexOf('\n', i)
-      if (nl === -1) return null
+      // A line comment may legally terminate at EOF (outside interpolation).
+      if (nl === -1) break
       i = nl
       continue
     }
@@ -1330,7 +1331,12 @@ export function scanCodeLiterals(code) {
     if (c === '`') {
       const template = skipTemplateLiteral(code, i)
       if (template === null) return null
-      if (template.plain) spans.push({ start: i + 1, end: template.end - 1 })
+      // A preceding expression can be a tag (String.raw, fn(), obj[key], ...).
+      // Tags own raw/cooked semantics: never rewrite their template data.
+      // Contextual words can also be identifiers/tags; skip rather than guess.
+      if (template.plain && regexCanStart(last) && !['of', 'await', 'yield'].includes(last)) {
+        spans.push({ start: i + 1, end: template.end - 1 })
+      }
       i = template.end
       last = 'x'
       continue
@@ -2179,7 +2185,7 @@ export async function apply(ctx, config = {}) {
             // v0.20.1: the run_code sentence rides the SAME context entry, but
             // only when this assembly actually offers the tool (see
             // runCodeHintFor) — every other mode stays quiet.
-            const hint = runCodeHintFor(assembly.tools)
+            const hint = runCodeHintFor(assembly.tools, dialect.codePaths === true)
             if (hint !== '') {
               for (const assembled of Array.isArray(assembly.contexts) ? assembly.contexts : []) {
                 if (assembled && assembled.name === 'gitbash-shell:posix-paths' && typeof assembled.text === 'string') {

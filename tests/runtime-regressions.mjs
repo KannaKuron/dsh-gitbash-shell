@@ -176,3 +176,29 @@ test('runtime: missing approval helper still passes the agent\'s standing mode a
   assert.equal(value.sandbox.mode, 'read-only')
   await assert.rejects(() => definition.execute({ command: 'echo ok', description: 'Reject unavailable escalation', sandbox_permissions: 'danger-full-access', justification: 'Need broader mode.' }, exec), /no sandbox helper/)
 })
+
+test('runtime: background admission exposes its planned unconfined route before any spawn', async t => {
+  const admitted = []
+  const executor = {
+    sandboxMode: 'danger-full-access',
+    resolve: request => ({ ...request, timeoutMs: 10 }),
+    gitBashRoute: spec => ({ mode: spec.sandboxPolicy.mode, unconfined: spec.sandboxPolicy.mode !== 'danger-full-access' }),
+    execute() { throw new Error('admission fixture must not spawn') },
+  }
+  const f = await toolFixture(t, { executor, jobs: { start(spec) { admitted.push(spec); return 'admitted-job' } } })
+  const definition = f.definitions.get('bash')
+  assertJsonSchema(definition.output.schema)
+  const schema = definition.output.schema.oneOf[0]
+  assert.deepEqual(schema.properties.sandbox.required, ['mode', 'denied'])
+  for (const mode of ['read-only', 'workspace-write', 'danger-full-access']) {
+    const agent = { session: { header: { mode, cwd: 'D:/child-workspace' } } }
+    const value = await definition.execute({ command: 'memory-only command', description: 'Verify background planned route', run_in_background: true }, { agent, signal: new AbortController().signal })
+    assert.equal(value.kind, 'background')
+    assert.equal(value.sandbox.mode, mode)
+    const text = definition.output.render({}, value)[0].text
+    assert.match(text, /started background job admitted-job/)
+    if (mode === 'danger-full-access') assert.doesNotMatch(text, /unconfined/)
+    else assert.match(text, /unconfined.*NOT enforced/)
+  }
+  assert.equal(admitted.length, 3)
+})

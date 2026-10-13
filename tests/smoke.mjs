@@ -786,6 +786,8 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
     const confinedHandle = await confinedEx.execute(confined)
     assert.equal(kindOf(confinedEx, 'super.execute').length, 0)
     assert.deepEqual(kindOf(confinedEx, 'executeArgv')[0][1], GIT_BASH_ARGV)
+    assert.deepEqual(confinedHandle.sandbox, { mode: 'workspace-write', denied: false, enforcement: 'unconfined' },
+      'background readers see the boundary before result() is awaited')
     assert.deepEqual((await confinedHandle.result()).sandbox,
       { mode: 'workspace-write', denied: false, enforcement: 'unconfined' })
     assert.ok(logs.some((line) => line.includes('UNCONFINED')), 'the one-time notice still fires')
@@ -925,7 +927,7 @@ test('the run_code literal rewrite has its own switch (codePaths)', async () => 
   assert.ok(strict !== null, 'strict directive text is gone')
   assert.doesNotMatch(strict[1], /run_code/, 'the strict directive must not talk about run_code either')
   assert.match(text, /const RUN_CODE_DIRECTIVE_TEXT = '/, 'the conditional run_code sentence is gone')
-  assert.match(text, /runCodeHintFor\(assembly\.tools\)/, 'the assembly hook must gate the sentence on the tool list')
+  assert.match(text, /runCodeHintFor\(assembly\.tools, dialect\.codePaths === true\)/, 'the assembly hook must gate on the tool list and live codePaths state')
 })
 
 test('the run_code sentence is injected only where the tool exists (v0.20.1)', async () => {

@@ -52,7 +52,7 @@
     "icon.svg"
   ],
   "scripts": {
-    "test": "node --test tests/smoke.mjs tests/private-executor.mjs tests/client-regressions.mjs tests/bridge-regressions.mjs tests/runtime-regressions.mjs tests/host-regressions.mjs",
+    "test": "node --test tests/smoke.mjs tests/private-executor.mjs tests/client-regressions.mjs tests/bridge-regressions.mjs tests/runtime-regressions.mjs tests/host-regressions.mjs tests/compatibility-regressions.mjs",
     "test:preview": "node --import ./tests/host-loader.mjs --test tests/preview.mjs tests/bridge-preview.mjs tests/runtime-preview.mjs tests/host-preview.mjs",
     "version": "node -e \"const fs=require('fs');const m=JSON.parse(fs.readFileSync('dsh.plugin.json','utf8'));const v=JSON.parse(fs.readFileSync('package.json','utf8')).version;m.version=v;fs.writeFileSync('dsh.plugin.json',JSON.stringify(m,null,2)+'\\n')\" && git add dsh.plugin.json"
   },
