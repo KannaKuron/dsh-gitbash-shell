@@ -9,10 +9,10 @@
  *
  * Every variant mirrors the official 0.1.7 preset it replaces (packages/
  * bundle/web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the
- * one Git Bash delta: the bash rows are always on and the pwsh rows are
- * always off (the plugin ships its OWN bash tool over a private executor —
- * on non-Windows hosts the official stack is native anyway, which is exactly
- * what the old materialized variants encoded). A second, conditional delta exists while
+ * Git Bash routing: full variants keep the official platform-gated shell
+ * rows, and the inline patch adds OUR bash over a private executor on Windows.
+ * The minimal variant instead keeps its persistent Git Bash terminal rows.
+ * On non-Windows hosts the official stack stays native. A conditional delta exists while
  * dsh-ptc-cordis-preset reports its experimental-CPython backend ACTIVE: the
  * two workflow rows follow the official Python composition and go off (see
  * `pythonActive` below). While that backend is off — the default, and also
@@ -56,7 +56,8 @@ const planSectionFor = (hostEra021) => hostEra021
  * @param {'standard'|'ptc'|'cordis'} input.kind - which official preset this
  *   variant mirrors (workflow rows follow it: enabled on standard/cordis,
  *   disabled on ptc).
- * @param {boolean} input.gitBash - bash rows always on, pwsh rows always off.
+ * @param {boolean} input.gitBash - retained for composition-call compatibility;
+ *   full variants obtain Git Bash from the per-agent inline patch on Windows.
  * @param {string|undefined} input.skillsDir - Creation authoring skills
  *   directory (cordis variant only; resolved beside the agent-preset package).
  * @param {boolean} [input.pythonActive] - whether the experimental CPython
@@ -75,8 +76,11 @@ const planSectionFor = (hostEra021) => hostEra021
  */
 export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hostExtras = {} }) {
   const win = typeof process !== 'undefined' && process.platform === 'win32'
-  const bashDisabled = gitBash ? false : win
-  const pwshDisabled = gitBash ? true : !win
+  // Route B preserves the root PowerShell executor. On Windows the official
+  // tool-bash would execute through that executor, so full variants retain the
+  // official pwsh face and let the same per-agent inline patch add OUR bash.
+  const bashDisabled = win
+  const pwshDisabled = !win
   const workflowOn = kind !== 'ptc' && pythonActive !== true
   // dsh 0.2.1 added two rows to every full-tool official preset — time-context
   // (durable clock readings) and tool-schedule (the reminder tools) — plus a

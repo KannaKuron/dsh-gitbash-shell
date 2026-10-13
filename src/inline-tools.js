@@ -191,8 +191,25 @@ export async function mountPrivateExecutor(ctx, GitBashSandboxExecutor, createSc
  */
 export function mountInlineTools(ctx, deps) {
   const { tools, agents, createScope, pwshEnabled, log } = deps
-  /** agent -> { timer, scope, denyPwsh }; named `tracked` because `agents` above is the host service */
+  /** Per-agent mounts, masks and cancellation; `agents` above is the host service. */
   const tracked = new Map()
+  const pending = new Set()
+  const controller = new AbortController()
+  let closed = false
+  const isLive = (agent, state) => !closed && tracked.get(agent) === state && !state.controller.signal.aborted
+  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, pending: undefined, controller: new AbortController() })
+  // Loader imports cannot be cancelled, but no continuation may outlive its
+  // owner. Join our cancelled continuations without waiting on a stuck loader.
+  const untilDisposed = async (promise, signal) => {
+    signal.throwIfAborted()
+    let abort
+    const cancelled = new Promise((_, reject) => {
+      abort = () => reject(signal.reason)
+      signal.addEventListener('abort', abort, { once: true })
+    })
+    try { return await Promise.race([promise, cancelled]) }
+    finally { signal.removeEventListener('abort', abort) }
+  }
   /** Resolved once per process: { executor, executorScope, module }. */
   let bashOnce
   /** Set as soon as any face shows ops_* tools (the call-layer guard reads it). */
@@ -214,58 +231,90 @@ export function mountInlineTools(ctx, deps) {
    * declarations — the §4k schemastery semantics come for free), so it never
    * touches the root `ctx.shell` service slot the official pwsh executor
    * owns. The executor scope lives for the plugin's lifetime and is disposed
-   * by the effect registered at the bottom of this function.
+   * by the ownership effect registered before lifecycle wiring.
    */
   const bashOncePromise = async () => {
+    controller.signal.throwIfAborted()
     if (bashOnce) return bashOnce
-    bashOnce = (async () => {
-      const { GitBashSandboxExecutor } = await import('./shell.js')
-      if (!GitBashSandboxExecutor) throw new Error('executor class unavailable')
-      if (!GitBashSandboxExecutor.Config) {
-        throw new Error('executor Config unavailable (schemastery unresolved; see the schemastery log lines above)')
+    const mounting = (async () => {
+      let executorScope
+      try {
+        const { GitBashSandboxExecutor } = await untilDisposed(import('./shell.js'), controller.signal)
+        if (!GitBashSandboxExecutor) throw new Error('executor class unavailable')
+        if (!GitBashSandboxExecutor.Config) {
+          throw new Error('executor Config unavailable (schemastery unresolved; see the schemastery log lines above)')
+        }
+        if (typeof createScope !== 'function') throw new Error('no createScope seam')
+        controller.signal.throwIfAborted()
+        const mounted = await mountPrivateExecutor(ctx, GitBashSandboxExecutor, createScope)
+        executorScope = mounted.executorScope
+        controller.signal.throwIfAborted()
+        const hostModules = {}
+        for (const [key, name] of HOST_MODULES) {
+          hostModules[key] = await untilDisposed(resolveHostModule(ctx, name), controller.signal)
+        }
+        const { createBashToolModule } = await untilDisposed(import('./bash-tool.js'), controller.signal)
+        const module = createBashToolModule({ executor: mounted.executor, log, ...hostModules })
+        return { executor: mounted.executor, executorScope, module }
+      } catch (error) {
+        if (executorScope) await executorScope.dispose()
+        throw error
       }
-      if (typeof createScope !== 'function') throw new Error('no createScope seam')
-      const { executor, executorScope } = await mountPrivateExecutor(ctx, GitBashSandboxExecutor, createScope)
-      const hostModules = {}
-      for (const [key, name] of HOST_MODULES) {
-        try {
-          hostModules[key] = await resolveHostModule(ctx, name)
-        } catch { hostModules[key] = undefined }
-      }
-      const { createBashToolModule } = await import('./bash-tool.js')
-      const module = createBashToolModule({ executor, log, ...hostModules })
-      return { executor, executorScope, module }
     })()
-    bashOnce.catch(() => { bashOnce = undefined })
-    return bashOnce
+    bashOnce = mounting
+    mounting.catch(() => { if (bashOnce === mounting) bashOnce = undefined })
+    return mounting
   }
 
   /** Register the own bash tool inside one agent-owned scope. */
   const provideBash = async (agent, state) => {
-    if (state.scope) return
+    let scope
+    let retained = false
     try {
-      const { executor, module } = await bashOncePromise()
+      const { executor, module } = await untilDisposed(bashOncePromise(), state.controller.signal)
+      if (!isLive(agent, state)) return
       log(`own bash tool ready (private Git Bash executor at ${executor.bashPath || '(unresolved)'}; official pwsh executor untouched)`)
-      const scope = createScope(agent.ctx)
+      scope = createScope(agent.ctx)
+      state.scope = scope // Own the scope BEFORE either asynchronous mount.
       // Same asynchronous-fiber shape the official module needed: wait for
       // the apply callback to capture scope.ctx before touching its tools.
-      if (scope.fiber) { try { await scope.fiber } catch { /* disposed */ } }
+      if (scope.fiber) await untilDisposed(scope.fiber, state.controller.signal)
+      if (!isLive(agent, state)) return
       const registry = scope.ctx?.get('tools')
-      if (!registry || typeof scope.ctx.plugin !== 'function') {
-        void scope.dispose().catch(() => {})
-        return
-      }
+      if (!registry || typeof scope.ctx.plugin !== 'function') return
       const fiber = scope.ctx.plugin(module)
-      await fiber
-      state.scope = scope
+      await untilDisposed(fiber, state.controller.signal)
+      if (!isLive(agent, state)) return
+      retained = true
       log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {
-      log(`own bash tool activation failed for this agent: ${error?.message ?? error}`)
+      if (isLive(agent, state)) log(`own bash tool activation failed for this agent: ${error?.message ?? error}`)
+    } finally {
+      if (scope && !retained) {
+        if (state.scope === scope) state.scope = undefined
+        await scope.dispose()
+      }
     }
   }
 
+  const startBash = (agent, state) => {
+    if (state.scope || state.pending || !isLive(agent, state)) return
+    const task = provideBash(agent, state)
+    state.pending = task
+    pending.add(task)
+    void task.finally(() => {
+      pending.delete(task)
+      if (state.pending === task) state.pending = undefined
+    }).catch((error) => log(`own bash tool cleanup failed: ${error?.message ?? error}`))
+  }
+
   const reconcile = (agent, { attempt = 0 } = {}) => {
-    if (!agent?.ctx) return
+    if (closed || !agent?.ctx) return
+    // Undo ONLY our mask before observing the face. schemas() filters a
+    // restricted-away pwsh, so it cannot tell us what an ON flip must restore.
+    const previous = tracked.get(agent)
+    if (previous?.timer) { clearTimeout(previous.timer); previous.timer = undefined }
+    if (previous?.denyPwsh) { previous.denyPwsh(); previous.denyPwsh = undefined }
     const names = faceNames(agent)
     // The composed face may not be wired yet at created-time. Retry bounded:
     // a face with NEITHER tool carries no verdict. Five tries at 250ms, then
@@ -275,7 +324,7 @@ export function mountInlineTools(ctx, deps) {
       timer.unref?.()
       const state = tracked.get(agent)
       if (state) state.timer = timer
-      else tracked.set(agent, { timer, scope: undefined, denyPwsh: undefined })
+      else tracked.set(agent, { ...newState(), timer })
       return
     }
     const pwshVisible = deps.pwshEnabled?.() === true
@@ -284,7 +333,7 @@ export function mountInlineTools(ctx, deps) {
     let state = tracked.get(agent)
     if (state?.timer) { clearTimeout(state.timer); state.timer = undefined }
     if (!state) {
-      state = { timer: undefined, scope: undefined, denyPwsh: undefined }
+      state = newState()
       tracked.set(agent, state)
     }
     // The pwsh face (route B): the host tool is REAL PowerShell now, so the
@@ -307,22 +356,46 @@ export function mountInlineTools(ctx, deps) {
       }
     }
     if (needs.needsBash && !state.scope) {
-      void provideBash(agent, state)
+      startBash(agent, state)
     }
   }
 
-  const teardown = (agent) => {
+  const teardown = async (agent) => {
     const state = tracked.get(agent)
     if (!state) return
     tracked.delete(agent)
+    state.controller.abort(new Error('inline bash agent disposed'))
     if (state.timer) clearTimeout(state.timer)
-    if (state.denyPwsh) { try { state.denyPwsh() } catch { /* already lifted */ } }
-    if (state.scope) { void state.scope.dispose().catch(() => {}) }
+    if (state.denyPwsh) { state.denyPwsh(); state.denyPwsh = undefined }
+    await Promise.all([state.scope?.dispose(), state.pending])
   }
+
+  // Register ownership before the sweep starts asynchronous work. A cancelled
+  // loader continuation and every per-agent mount must settle before disposal.
+  ctx.effect(() => async () => {
+    closed = true
+    const mounting = bashOnce
+    controller.abort(new Error('inline bash plugin disposed'))
+    await Promise.all([
+      ...[...tracked.keys()].map(teardown),
+      ...pending,
+      mounting?.then(({ executorScope }) => executorScope.dispose(), () => {}),
+    ])
+    tracked.clear()
+    bashOnce = undefined
+  }, 'dsh-gitbash-shell: inline tool patching')
 
   try {
     ctx.on('agent/created', ({ agent } = {}) => { try { reconcile(agent) } catch { /* never break agent creation */ } })
-    ctx.on('agent/disposed', ({ agent } = {}) => { try { teardown(agent) } catch { /* never break disposal */ } })
+    ctx.on('agent/disposed', ({ agent } = {}) => teardown(agent).catch((error) => {
+      log(`agent bash tool cleanup failed: ${error?.message ?? error}`)
+    }))
+    ctx.on('loader/volatile-update', (paths) => {
+      if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path) && path[0] === 'pwshTool')) return
+      for (const agent of tracked.keys()) {
+        try { reconcile(agent) } catch (error) { log(`pwsh switch update failed: ${error?.message ?? error}`) }
+      }
+    })
     // MOUNT-TIME SWEEP (v0.35.2): agents that already exist when this row
     // mounts never fire agent/created. Same shape the proven dsh-ops denial
     // uses.
@@ -346,16 +419,6 @@ export function mountInlineTools(ctx, deps) {
     return
   }
 
-  ctx.effect(() => () => {
-    for (const agent of [...tracked.keys()]) teardown(agent)
-    tracked.clear()
-    if (bashOnce) {
-      void Promise.resolve(bashOnce).then(({ executorScope } = {}) => {
-        try { executorScope?.dispose?.() } catch { /* already gone */ }
-      }).catch(() => {})
-      bashOnce = undefined
-    }
-  }, 'dsh-gitbash-shell: inline tool patching')
 }
 
 // The host-package resolution channel lives in bash-tool.js; import it for

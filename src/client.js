@@ -2063,6 +2063,42 @@ window.__ModuleLoader__.load({
 				if (scope && typeof scope.getSnapshot === "function") snap = scope.getSnapshot();
 			} catch (error_) { /* keep unavailable */ }
 
+			var pageView = props.view === "page";
+
+			// Hooks run for every snapshot state; readiness only gates their work.
+			useEffect(function () {
+				if (snap.status !== "ready" || (!open && !pageView)) return undefined;
+				if (toolsLoaded || toolBusy) return undefined;
+				loadTools();
+				return undefined;
+			}, [open, pageView, snap.status]);
+
+			/* Poll ONLY while a job is unfinished, and through the cheap ?job=1
+			   form. A transient failure retries without discarding progress. */
+			useEffect(function () {
+				if (snap.status !== "ready" || toolJob === null || toolJob.finished) return undefined;
+				var alive = true;
+				var timer;
+				function schedule() {
+					timer = setTimeout(function () {
+						fetch(TOOLS_URL + "?job=1", { headers: { accept: "application/json" } })
+							.then(function (res) {
+								if (!res.ok) throw new Error("HTTP " + res.status);
+								return res.json();
+							})
+							.then(function (data) {
+								if (!alive) return;
+								var next = data !== null && typeof data === "object" && data.job ? data.job : null;
+								setToolJob(next);
+								if (next !== null && next.finished) loadTools();
+							})
+							.catch(function () { if (alive) schedule(); });
+					}, 1200);
+				}
+				schedule();
+				return function () { alive = false; clearTimeout(timer); };
+			}, [toolJob, snap.status]);
+
 			if (snap.status !== "ready") return null;
 
 			var value = snap.value || {};
@@ -2135,7 +2171,6 @@ window.__ModuleLoader__.load({
 			// dsh 0.1.6-alpha.2: the Plugins page renders this card through the
 			// `plugins.bundle.config` slot with view="page" — the page draws the
 			// title itself; the collapsible shell only shows on the popup seat.
-			var pageView = props.view === "page";
 
 			var mounts = snap.value.virtualMounts !== false;
 			var errs = snap.value.errorDialect !== false;
@@ -2468,30 +2503,6 @@ window.__ModuleLoader__.load({
 					.catch(function (err) { setToolErr(String((err && err.message) || err)); })
 					.then(function () { setToolBusy(false); });
 			}
-
-			useEffect(function () {
-				if (!open && !pageView) return undefined;
-				if (toolsLoaded || toolBusy) return undefined;
-				loadTools();
-				return undefined;
-			}, [open]);
-
-			/* Poll ONLY while a job is unfinished, and through the cheap ?job=1
-			   form: a full probe re-runs three winget commands per second. */
-			useEffect(function () {
-				if (toolJob === null || toolJob.finished) return undefined;
-				var timer = setTimeout(function () {
-					fetch(TOOLS_URL + "?job=1", { headers: { accept: "application/json" } })
-						.then(function (res) { return res.json(); })
-						.then(function (data) {
-							var next = data !== null && typeof data === "object" && data.job ? data.job : null;
-							setToolJob(next);
-							if (next !== null && next.finished) loadTools();
-						})
-						.catch(function () { /* keep the last known progress */ });
-				}, 1200);
-				return function () { clearTimeout(timer); };
-			}, [toolJob]);
 
 			var toolsSection = fold("sec.tools",
 					toolsData === null && toolErr === "" ? E("p", { className: "gb-hint" }, t("tools.loading")) : null,
