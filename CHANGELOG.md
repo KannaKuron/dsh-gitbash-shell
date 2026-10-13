@@ -3,6 +3,47 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## Unreleased — 2026-10-13
+
+**类型**:fix(MSYS 参数/编码提示、源码路径边界与 unconfined 可观测性) / test / docs。
+
+### PR #24：超时转后台的独立 sandbox 警示
+
+- promoted 返回值显式携带可选 sandbox facts，输出 schema 保持闭合；defineTool 与 JSON-schema 回退共用此契约。
+- `renderPromoted` 自行追加 sandbox notes，不再依赖 output 预先含警示；promotion 输出保留丢失/spill 提示，
+  避免重复追加 sandbox 警示。无 sandbox/full-access 的原反馈保持不变，denied/runnerFailed 分支继续保留。
+- 纯回归改用不含警示的原始文本，覆盖空输出、full-access、拒绝与 runner failure。
+  新增实际 ToolRuntime→私有执行器→内存 provider 的 promotion 回归（Jobs wait/read 为受控桩），
+  验证 RO/WW 警示各出现一次、full 无警示、DTO 与最终模型文本分离、丢失/spill 提示及 root 服务不变。
+- 验证：普通完整回归 **166/166**、实际安装Core完整preview **18/18**，均exit0，无skip/cancel；
+  语法与diff检查通过。不等同于生产GUI或真实Jobs时钟验收。
+
+### MSYS 兼容边界尝试修复
+
+- **范围**:从 [`6b26ded`](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/6b26ded6cc3a2a6113579149286047629b433c48)
+  开出 `fix/msys-compatibility-boundaries`;不改 root PowerShell、market patch、生产 Profile、
+  安全默认或版本号。原生参数转换/混合编码/Windows shell confinement 不能在这层安全地普遍修好,
+  因此修工具提示与可观测性,不全局 EXCL=*、不猜码、不将警示冒充沙箱修复。
+- **源码路径**:run_code 的完整 Unicode 字母/组合字符/数字和含 `#` 文件名字面量走共享挂载表;
+  合法 EOF 行注释不再让整份重写弃权;tagged templates(含 String.raw、调用/索引 tag)保持原样,
+  避免 raw 设备路径被错误转义;of/await/yield 等上下文词可作 tag 时保守不改。
+  未闭合/不确定正则与除法仍整份 no-op,未扩展插值或动态表达式猜测。
+  词法层仍无法识别非路径数据的业务用途,提示明确建议直接 Node fs/path 用 native/cwd-relative 路径。
+- **提示门控**:真实 prompt listener 读取 live codePaths;OFF 不再承诺程序字符串会被翻译,
+  ON 改为 best-effort 并指出模板、动态/非路径数据限制。关闭 codePaths 不改变工具路径字段翻译。
+- **原生互操作**:登记的 bash 描述无条件说明 `/all`/`/c` 转换、双斜杠/单命令 EXCL 前缀及其
+  对 `/c/...` 的影响;检查预期效果而非只看 exit0。说明 UTF-8 捕获与 CP936/GBK 不匹配,
+  显式转码须在字节捕获前且保持退出状态;locale 与全流猜码不是普遍修复。
+- **unconfined 可见性**:执行句柄在等待 result() 前带 sandbox facts;前台正文、后台 outcome/
+  增量嵌入与超时转后台显示警示。后台登记输出联合新增可选 sandbox facts,指出计划执行边界,
+  不把未启动的 job 宣称为已经执行。保留原请求 mode,不把 unconfined 当 denial/escalation,
+  并明确不得通过 shell 绕过文件工具策略拒绝。双语说明区分文件读能力与 write/edit 围栏,
+  删除“所有未来版本都无解”的过度结论。
+- **验证**:新增9项兼容回归和1项后台登记回归,普通全量 **166/166**;新增3项实际 Core
+  ToolRuntime/执行句柄/run_code transport 回归,完整无头 preview **17/17**。旧护栏保留;打包 dry-run、语法和 diff
+  检查通过。新增 preview 使用实际宿主 API 与内存 subprocess,已有 preview 保留真实 Git Bash/
+  PowerShell 进程验收;不等同于生产 GUI、真实 PTC 引擎或新 confinement 方案验证。
+
 ## v0.39.2 — 2026-10-13
 
 **类型**:fix(route B 工具/预设生命周期、动态配置与客户端回归) / test。

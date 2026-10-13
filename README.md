@@ -118,20 +118,19 @@ bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件
 **Windows 宿主上的事实**:`read-only` / `workspace-write` 权限预设下的 **shell 命令**,
 实际以**不受限(unconfined)方式执行**:
 
-- **为什么**:MSYS2 运行时无法在 restricted-token 沙箱下启动——`msys-2.0.dll`
-  初始化时创建的 cygheap 映射与信号管道,DACL 只含用户 SID;而 WRITE_RESTRICTED
-  令牌的二次写检查要求 restricting-SID ACE → 初始化即死于 Win32 error 5 /
-  0xC0000142,**任何版本、任何参数都无解**(cmd/pwsh 走匿名管道不受影响)。
-  这是 OS 层冲突,插件内没有真正的修法,只有两个选择:**如实标注的绕过**(本插件,
-  v0.13.0 起)或**直接拒绝执行**。选了前者,是因为装这个插件的目的就是用 Git Bash——
-  静默换 pwsh 顶上、或让每条命令都失败,都不如把真相摆在结果里。
-- **如何标注(绝不静默)**:每条此类结果的元数据携带
-  `sandbox: { mode: "<请求的模式>", denied: false, enforcement: "unconfined" }`,
-  并在每个进程首次受限调用时打印一行说明日志(`File sandbox enforcement is
-  partial on this host.`)。
-- **文件工具不受影响**:read / write / edit / glob / grep 的沙箱是**另一层**
-  (fs-tool policy),照常拦截工作区外访问——也就是说 `workspace-write` 下
-  shell 能写出工作区、文件工具不能,**两者的边界并不一致**。
+- **为什么**:已验证的 Git Bash/MSYS 组合在现有 restricted-token 后端下初始化失败,
+  历史复现为 `msys-2.0.dll` 的 cygheap/signal-pipe 对象权限与 restricting-SID
+  二次写检查不兼容(Win32 error 5 / 0xC0000142)。当前没有提供可用的受限 Git Bash
+  实现,不声称所有未来运行时或隔离方案都无解。本插件保留**如实标注的绕过**;
+  没有静默回退 pwsh/cmd/WSL,本次兼容修复也没有恢复 shell 写入围栏。
+- **如何标注**:结果元数据保留
+  `sandbox: { mode: "<请求的模式>", denied: false, enforcement: "unconfined" }`;
+  工具描述、前台正文、后台登记及结果摘要、超时转后台反馈都明确警示 shell 写限制未生效。
+  后台登记标明的是计划采用的执行边界,不代表命令已经运行;实例首次调用另有日志。
+- **文件工具是另一层**:官方 fs-tool policy 对 write/edit 保留策略检查:
+  `read-only` 拒绝修改,`workspace-write` 只允许声明的工作区和平台临时可写根。
+  read/glob/grep 等读取并非一律限制在工作区内。shell 进程不受这些工具检查约束,
+  **两者的边界并不一致**;绝不能用 shell 绕过文件工具已返回的策略拒绝。
 - **可观察的对照**(相对 pwsh-sandbox 时代):会话进程的完整性级别不再被压低
   (Low → Medium);`$env:TEMP` 不再被重定向到 per-session 隔离目录。
 
@@ -395,6 +394,31 @@ PTC/创造及用户自建模式一律覆盖。
 关闭后回到 dsh 原生行为:指示文本为空(组装期直接丢弃,零提示噪声),路径参数与结果元数据
 都不再改写,文件工具收 Windows 路径。**bash 始终是 Git Bash,不受此开关影响**——它只决定
 跨工具的路径方言。
+
+## 原生 Windows 程序与 run_code 的兼容边界
+
+工具描述始终警示下面的参数、编码和安全限制;这些限制不随路径方言关闭而消失。
+插件**不会自动改写 command、全局关闭 MSYS 参数转换或猜测输出编码**。
+
+- **斜杠开关**:MSYS 在启动原生 Windows 程序时可能把 `/all`、`/c` 当路径。
+  本机已验证 `ipconfig //all`、`cmd //c` 或单命令
+  `MSYS2_ARG_CONV_EXCL='/all' ipconfig /all` 可保留开关。
+  排除值是前缀:排除 `/c` 也会影响真正的 `/c/...` 路径,该次原生调用应明确用
+  Windows drive-letter 路径。不要全局设置 `MSYS2_ARG_CONV_EXCL='*'`。
+  `cmd /c` 被转换后可能 exit0 却没有执行所需命令,应检查预期效果而非只看退出码。
+- **输出编码**:宿主按 UTF-8 解码;原生 Windows 程序可能输出 CP936/GBK 或其他代码页。
+  先使用程序自己的 UTF-8 输出选项,或在捕获前按已知编码显式转换字节,保持原退出状态。
+  `LANG/LC_ALL` 不保证改变原生程序的代码页。不要全流默认 GBK 或依替换字符数自动猜码:
+  同一 Bash 调用可能混合 UTF-8/GBK,已有乱码字符串也不能可靠恢复原字节。
+- **run_code**:`codePaths` 默认开,与 `posixPaths`/委托 gate 同时生效时,完整、可判定的
+  普通路径字面量按共享挂载表尽力转换,包括中文/组合字符/空格/`#` 文件名。
+  EOF 行注释不再阻止转换;tagged template(包括 String.raw)保持原样,避免破坏 raw/tag 语义。
+  插值模板、转义路径、不确定的正则/除法语法仍可能不改;不确定时整份 no-op。
+  直接调用 Node fs/path 时优先明确的 Windows drive-letter 或 cwd-relative 路径;
+  工具 path/file_path 字段仍走工具参数翻译。词法扫描不能识别路由、搜索数据或 shell
+  command 的用途;此类字符串不要依赖自动重写,必要时关闭 `codePaths`(提示同步标为 OFF)。
+- **沙箱**:参见上方安全章节。警示可见性得到修复,但 Windows shell 的 unconfined
+  取舍未改变,文件工具的策略拒绝绝不授权 shell 重试。
 
 ## 与 dsh-better-sidebar 联动
 

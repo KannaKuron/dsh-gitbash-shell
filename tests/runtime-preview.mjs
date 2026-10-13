@@ -2,6 +2,8 @@
 // subprocesses. No production profile, filesystem writes, or model requests.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import * as dialectHelpers from '../src/index.js'
 import { Context } from '@deepseek-ai/cordis'
 import { createScope as createAgentScope } from '@deepseek-ai/dsh-scope'
 import { ToolRuntime, defineTool } from '@deepseek-ai/dsh-tools'
@@ -259,4 +261,132 @@ test('runtime preview: private execution retains deadlines, background no-expiry
   await failed.done
   await assert.rejects(failed.result(), /isolated provider failure/)
   assert.equal(f.root.get('shell'), f.official)
+})
+
+test('runtime preview: actual ToolRuntime surfaces unconfined foreground and initial background facts', { timeout: 10000 }, async t => {
+  const f = await fixture(t)
+  await bounded(f.activated.promise, 'compatibility bash activation')
+  assert.match(f.tools.get('bash', f.agent).description, /MSYS2_ARG_CONV_EXCL/)
+  for (const mode of ['read-only', 'workspace-write']) {
+    f.agent.session.header.policy = { mode, workspaceRoot: process.cwd() }
+    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify unconfined model feedback' })
+    assert.equal(value.isError, false, JSON.stringify(value))
+    assert.equal(value.value.sandbox.enforcement, 'unconfined')
+    assert.match(value.content[0].text, /unconfined.*NOT enforced/)
+  }
+  const admitted = []
+  const off = f.root.provide('jobs', { start(spec) { admitted.push(spec); return 'compatibility-background' } })
+  try {
+    await new Promise(resolve => setImmediate(resolve))
+    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify admission warning', run_in_background: true })
+    assert.equal(value.isError, false, JSON.stringify(value))
+    assert.equal(value.value.kind, 'background')
+    assert.equal(value.value.sandbox.enforcement, 'unconfined')
+    assert.match(value.content[0].text, /started background job compatibility-background[\s\S]*unconfined/)
+    assert.equal(admitted.length, 1)
+  } finally { await off() }
+  assert.equal(f.root.get('shell'), f.official)
+})
+
+test('runtime preview: actual promoted DTO renders sandbox notes from handle facts, not output text', { timeout: 10000 }, async t => {
+  for (const mode of ['read-only', 'workspace-write', 'danger-full-access']) {
+    const spawned = deferred()
+    const finished = deferred()
+    const raw = 'promotion-raw-output'
+    const readFrom = () => ({ text: raw, nextOffset: raw.length, lossy: false })
+    const f = await fixture(t, { subprocessRuntime: { spawn() {
+      spawned.resolve()
+      return { done: finished.promise, collected: { stdout: { readFrom }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
+        terminate() { finished.resolve({ exitCode: 1, signal: 'SIGTERM' }) } }
+    } } })
+    await bounded(f.activated.promise, `promotion activation: ${mode}`)
+    f.agent.session.header.policy = { mode, workspaceRoot: process.cwd() }
+    let hooks
+    const off = f.root.provide('jobs', {
+      start(spec) { hooks = spec.run(); return 'compatibility-promoted' },
+      async wait(_id, timeoutMs) {
+        assert.equal(timeoutMs, 5)
+        await bounded(spawned.promise, 'promotion producer admission')
+        await new Promise(resolve => setImmediate(resolve))
+        return { status: 'running' }
+      },
+      read() { return { chunks: [{ channel: 'stdout', text: raw }], lossy: true, job: { output: { spillPaths: ['promotion-spill'] } } } },
+    })
+    try {
+      await new Promise(resolve => setImmediate(resolve))
+      const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify promotion sandbox facts', timeoutMs: 5 })
+      assert.equal(value.isError, false, JSON.stringify(value))
+      assert.equal(value.value.kind, 'promoted')
+      assert.equal(value.value.sandbox.mode, mode)
+      assert.match(value.value.output, /promotion-raw-output[\s\S]*output was dropped[\s\S]*promotion-spill/)
+      assert.doesNotMatch(value.value.output, /unconfined|NOT enforced/, 'the tool must not pre-render sandbox notes into output')
+      const text = value.content[0].text
+      assert.match(text, /moved to background job compatibility-promoted/)
+      if (mode === 'danger-full-access') assert.doesNotMatch(text, /unconfined|NOT enforced/)
+      else {
+        assert.equal(value.value.sandbox.enforcement, 'unconfined')
+        assert.match(text, /moved to background[\s\S]*unconfined.*NOT enforced/)
+        assert.equal((text.match(/NOT enforced/g) ?? []).length, 1)
+        assert.doesNotMatch(text, /escalation available/)
+      }
+      assert.equal(f.root.get('shell'), f.official)
+    } finally {
+      finished.resolve({ exitCode: 0, signal: null })
+      if (hooks) await hooks.done
+      await off()
+    }
+  }
+})
+
+test('runtime preview: actual execution handle carries unconfined facts for live jobs', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { existingBash: true })
+  const { executor, executorScope } = await mountPrivateExecutor(f.root, GitBashSandboxExecutor, createScope)
+  t.after(() => executorScope.dispose())
+  const spec = executor.resolve({ command: 'memory-only command', workdir: process.cwd(), sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd() } })
+  const handle = await executor.execute(spec)
+  assert.equal(handle.sandbox.enforcement, 'unconfined')
+  assert.equal(handle.result(), handle.result(), 'projection remains memoized')
+  assert.deepEqual((await handle.result()).sandbox, handle.sandbox)
+  assert.equal(f.root.get('shell'), f.official)
+})
+
+// The real run_code transport captures rewritten source in a mock PTC runtime;
+// it does NOT evaluate the program or claim real PTC-engine/filesystem coverage.
+test('runtime preview: actual run_code transport receives Unicode/EOF fixes and preserves tagged data', async t => {
+  const root = new Context()
+  const cleanup = []
+  const captured = []
+  const env = { tmpDir: 'C:/compatibility-temp', home: 'C:/compatibility-home', gitRoot: 'C:/Program Files/Git' }
+  let dialect = { posixPaths: true, codePaths: true, virtualMounts: true, subagentDialect: true }
+  for (const [name, value] of Object.entries({
+    workingDirectory: { ensure: async () => process.cwd() },
+    ptcRuntime: { language: 'typescript', executionInstructions: 'Memory-only source capture', resolve: spec => spec,
+      async run(spec) { captured.push(spec.program); return { logs: [], value: spec.program } } },
+  })) cleanup.push(root.provide(name, value))
+  const mount = async (module, config) => { const fiber = root.plugin(module, config); cleanup.push(() => fiber.dispose()); await fiber }
+  t.after(async () => { for (const off of cleanup.reverse()) await off() })
+  await mount(SystemPrompt)
+  await mount(ToolRuntime, { mode: 'ptc' })
+  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const start = source.indexOf("ctx.on('tools/execute',")
+  const end = source.indexOf("      console.log(TAG + ' MSYS path translation active", start)
+  assert.ok(start >= 0 && end > start)
+  await mount(ctx => {
+    new Function('ctx', 'liveSettings', 'dialectApplies', 'buildTranslateEnv', 'readConfiguredBashPath', 'translateDispatch', 'rewriteResultPaths', source.slice(start, end))(
+      ctx, { dialect: () => dialect }, dialectHelpers.dialectApplies, () => env, () => '', dialectHelpers.translateDispatch, dialectHelpers.rewriteResultPaths)
+  })
+  const run = async code => {
+    const args = { description: 'Capture compatible program without executing it', code }
+    const value = await root.get('tools').execute({ name: 'run_code', callId: 'compat-code-' + captured.length, arguments: args, signal: new AbortController().signal })
+    assert.equal(value.isError, false, JSON.stringify(value))
+    assert.equal(args.code, code, 'caller source stays unchanged')
+    return captured.at(-1)
+  }
+  const sourceOn = 'const p="/c/工作/文件#1.txt"; return [p, String.raw`/dev/null`]; // EOF'
+  assert.equal(await run(sourceOn), dialectHelpers.programPrelude(env) + 'const p="C:/工作/文件#1.txt"; return [p, String.raw`/dev/null`]; // EOF')
+  dialect = { ...dialect, codePaths: false }
+  assert.equal(await run(sourceOn), sourceOn)
+  dialect = { ...dialect, codePaths: true }
+  const uncertain = "const p='/c/工作/a'; return (4+2) / 2"
+  assert.equal(await run(uncertain), dialectHelpers.programPrelude(env) + uncertain)
 })

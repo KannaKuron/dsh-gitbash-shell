@@ -43,6 +43,7 @@
 import {
   ESCALATION_TARGETS,
   parseExitStatus,
+  renderBackground,
   renderJobRead,
   renderPromoted,
   renderResult,
@@ -86,7 +87,7 @@ export async function resolveHostModule(ctx, name) {
 }
 
 /**
- * The official bash description (tool-bash index.ts:90), verbatim.
+ * The official bash description plus unavoidable Git for Windows boundaries.
  * @returns {string}
  */
 export function bashDescription() {
@@ -97,7 +98,11 @@ export function bashDescription() {
     + 'Provide `description` before `command` in the arguments. '
     + 'Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. '
     + 'An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. '
-    + 'Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.'
+    + 'Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way. '
+    + 'Git for Windows (MSYS) converts path-looking arguments when invoking native Windows programs: ipconfig /all and cmd /c may break; use ipconfig //all or cmd //c, or a per-command MSYS2_ARG_CONV_EXCL prefix. '
+    + 'Exclusions are prefixes: excluding /c also excludes /c/... paths, so use native drive-letter paths for those arguments; do not disable conversion globally. Verify the expected effect as well as the exit code. '
+    + 'Output is decoded as UTF-8; native Windows programs may emit OEM/ANSI bytes (for example CP936/GBK) and display garbled text. Use a program UTF-8 option or explicit known-encoding conversion before capture; locale variables alone do not fix native output, and mixed streams cannot safely be guessed or decoded globally as GBK. '
+    + 'On Windows, this Git Bash route does NOT enforce shell file-write restrictions in read-only/workspace-write mode (unconfined). Official file-tool write/edit policy is separate; never use shell to bypass its denial.'
 }
 
 /** The official foreground/present call view (index.ts:108). */
@@ -187,9 +192,17 @@ const BACKGROUND_OUTPUT_PROPERTIES = {
   kind: { type: 'string', required: true, const: 'background' },
   jobId: { type: 'string', required: true },
   cwd: { type: 'string', required: true },
+  sandbox: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      mode: { type: 'string', required: true },
+      denied: { type: 'boolean', required: true },
+      enforcement: { type: 'string' },
+    },
+  },
 }
 
-/** The official output union in the spec dialect defineTool consumes (index.ts:402). */
+/** The official output union, with optional background sandbox facts. */
 function outputSchemaSpec() {
   return {
     oneOf: [
@@ -203,6 +216,10 @@ function outputSchemaSpec() {
           jobId: { type: 'string', required: true },
           timeoutMs: { type: 'number', required: true },
           output: { type: 'string', required: true },
+          sandbox: {
+            ...BACKGROUND_OUTPUT_PROPERTIES.sandbox,
+            properties: { ...BACKGROUND_OUTPUT_PROPERTIES.sandbox.properties, runnerFailed: { type: 'boolean' } },
+          },
         },
       },
       {
@@ -424,14 +441,17 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           }
           if (view.status === 'running' || view.status === 'stopping') {
             const read = registry.read(attached.id, owner)
+            const sandbox = attached.process()?.sandbox
             return {
               kind: 'promoted',
               cwd: spec.workdir,
               jobId: attached.id,
               timeoutMs,
+              // Preserve ring/spill notices; sandbox notes belong to the final renderer.
               output: renderJobRead(
-                ringDelta(read.chunks), read.lossy, read.job.output.spillPaths ?? [], attached.process()?.sandbox, escalationModes,
+                ringDelta(read.chunks), read.lossy, read.job.output.spillPaths ?? [], undefined, escalationModes,
               ),
+              ...(sandbox === undefined ? {} : { sandbox }),
             }
           }
           registry.remove(attached.id, owner)
@@ -505,7 +525,15 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
             }
             if (exec.signal.aborted) throw toolAborted(llmModule?.HarnessError)
             const spec = executor.resolve({ ...request, onExpiry: 'none' })
-            return { kind: 'background', jobId: startJob(jobs, args, exec, spec).id, cwd: spec.workdir }
+            // The job may still be preparing: expose the planned route, not a
+            // claim that the command has already run or been confined.
+            const route = typeof executor.gitBashRoute === 'function' ? executor.gitBashRoute(spec) : undefined
+            const sandbox = route === undefined ? undefined : {
+              mode: route.mode, denied: false,
+              ...(route.unconfined ? { enforcement: 'unconfined' } : {}),
+            }
+            return { kind: 'background', jobId: startJob(jobs, args, exec, spec).id, cwd: spec.workdir,
+              ...(sandbox === undefined ? {} : { sandbox }) }
           }
           if (jobs !== undefined && promote) {
             const spec = executor.resolve({ ...request, onExpiry: 'none' })
@@ -534,9 +562,9 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
               render: (_args, value) => [{
                 type: 'text',
                 text: value.kind === 'background'
-                  ? `started background job ${value.jobId}`
+                  ? renderBackground(value.jobId, value.sandbox)
                   : value.kind === 'promoted'
-                    ? renderPromoted(value)
+                    ? renderPromoted(value, escalationModes)
                     : renderResult(value, escalationModes),
               }],
               presentationMeta: (_args, value) => ({ cwd: value.cwd }),
@@ -564,9 +592,9 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
             render: (_args, value) => [{
               type: 'text',
               text: value.kind === 'background'
-                ? `started background job ${value.jobId}`
+                ? renderBackground(value.jobId, value.sandbox)
                 : value.kind === 'promoted'
-                  ? renderPromoted(value)
+                  ? renderPromoted(value, escalationModes)
                   : renderResult(value, escalationModes),
             }],
             presentationMeta: (_args, value) => ({ cwd: value.cwd }),

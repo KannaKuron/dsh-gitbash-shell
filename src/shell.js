@@ -10,25 +10,23 @@
  * and hands it to the plugin's OWN bash tool (src/bash-tool.js). The class
  * body is unchanged from its executor-row era:
  *
- *   - extends @deepseek-ai/dsh-bash-sandbox so every confined-mode
- *     (read-only / workspace-write) call keeps the exact sandbox policy,
- *     denial, and runner-failure semantics of the shipped stack;
+ *   - extends @deepseek-ai/dsh-bash-sandbox to inherit policy, denial and
+ *     lifecycle semantics EXCEPT the explicit Windows unconfined route below;
  *   - overrides `confine` so the inner argv is [git-bash, -c, command];
  *   - overrides run/start ONLY for danger-full-access (the parent's
  *     full-access branch calls LocalBashExecutor.run, which hardcodes the
  *     bare `bash` name), routing through runArgv/startArgv with the same
  *     argv as the confined branch;
  *   - on Windows ALSO overrides the confined branch itself (issue #1):
- *     MSYS2 cannot start under the restricted-token sandbox — msys-2.0.dll
- *     init creates its cygheap mapping and signal pipe with DACLs naming
- *     only the user SID, a WRITE_RESTRICTED token's pass-2 write check
- *     demands a restricting-SID ACE, so init dies with Win32 error 5 /
- *     0xC0000142 before argv ever runs (silent fake-success or a hard
- *     crash, every version since 0.6.0; cmd/pwsh are unaffected —
- *     anonymous pipes). OS-level conflict with no in-plugin cure, so
- *     confined Windows calls run Git Bash UNCONFINED, labelled as such in
- *     the result (sandbox.enforcement === 'unconfined') plus a one-time
- *     notice. The fs-tool sandbox policy still applies to file tools.
+ *     historical MSYS2/restricted-token tests failed during msys-2.0.dll
+ *     cygheap/signal-pipe initialization (Win32 error 5 / 0xC0000142;
+ *     restricting-SID object permissions, CHANGELOG v0.13.2). No working
+ *     confined Git Bash implementation is provided here; this is not a claim
+ *     that every future runtime/isolation design is impossible. Windows calls
+ *     retain the explicit UNCONFINED route, labelled on the handle/result and
+ *     in model-facing foreground/background text, plus a one-time notice.
+ *     Official file-tool write/edit policy remains separate; it does not
+ *     constrain shell code and its denials must never be bypassed through shell.
  *
  * Environment inheritance: bash.exe is spawned as a direct child of the host
  * process (never through the git-bash.exe login launcher), so it inherits the
@@ -262,6 +260,8 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    * @returns the same handle, with `result()` mapped.
    */
   static decorateExecution(ex, sandbox) {
+    // Background reads/outcomes inspect the handle before result() settles.
+    ex.sandbox = sandbox
     const base = ex.result.bind(ex)
     let decorated
     ex.result = () => {
@@ -407,7 +407,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   warnConfinedUnconfined(mode) {
     if (this._warnedUnconfined) return
     this._warnedUnconfined = true
-    console.log(TAG + ' Windows: MSYS2 cannot start under the restricted-token sandbox (msys-2.0.dll init: cygheap/signal-pipe DACLs carry no restricting-SID ACE -> Win32 error 5 / 0xC0000142; issue #1). Confined call (' + mode + ') ran Git Bash UNCONFINED; the fs-tool sandbox policy still applies.')
+    console.log(TAG + ' Windows: confined Git Bash is not provided by this restricted-token backend (issue #1). Requested mode ' + mode + ' will use an UNCONFINED Git Bash route: shell file-write restrictions are NOT enforced. Official file-tool write/edit policy is separate; never bypass its denial through shell.')
   }
 }
 

@@ -93,24 +93,26 @@ restricted tokens, workspace fencing, denial classification, identical to
 **On Windows**, shell commands under the `read-only` / `workspace-write`
 permission presets actually run **UNCONFINED**:
 
-- **Why**: the MSYS2 runtime cannot start under the restricted-token sandbox —
-  `msys-2.0.dll` creates its cygheap mapping and signal pipe with DACLs naming
-  only the user SID, while a WRITE_RESTRICTED token's pass-2 write check
-  demands a restricting-SID ACE, so init dies with Win32 error 5 / 0xC0000142
-  before argv ever runs — **every version, no workaround** (cmd/pwsh use
-  anonymous pipes and are unaffected). This is an OS-level conflict with no
-  in-plugin cure; the two options are **a labelled bypass** (this plugin,
-  since v0.13.0) or **refusing to run at all**. The former was chosen because
-  installing this plugin means wanting Git Bash — silently falling back to
-  pwsh, or failing every command, is worse than putting the truth in the result.
-- **How it is labelled (never silent)**: every such result carries
-  `sandbox: { mode: "<requested mode>", denied: false, enforcement: "unconfined" }`,
-  plus a one-time notice per process (`File sandbox enforcement is partial on
-  this host.`).
-- **File tools are NOT affected**: the read / write / edit / glob / grep
-  sandbox is a **separate layer** (the fs-tool policy) and still fences
-  out-of-workspace access. Under `workspace-write` the shell can write outside
-  the workspace while file tools cannot — **the two boundaries differ**.
+- **Why**: tested Git Bash/MSYS combinations failed to initialize under the
+  existing restricted-token backend. Historical reproduction found cygheap/
+  signal-pipe object permissions incompatible with the restricting-SID write
+  check (Win32 error 5 / 0xC0000142). No working confined Git Bash implementation
+  is provided here; this is not a claim that every future runtime or isolation
+  design is impossible. The plugin retains its **labelled bypass**, with no
+  silent fallback to pwsh/cmd/WSL. Compatibility fixes do not restore confinement.
+- **How it is labelled**: results retain
+  `sandbox: { mode: "<requested mode>", denied: false, enforcement: "unconfined" }`.
+  The tool description, foreground text, initial background registration,
+  background outcome and timeout-promotion feedback warn that shell write
+  restrictions are not enforced. Initial registration describes the planned
+  boundary, not a claim that the command has already run; there is also a
+  one-time notice per executor instance.
+- **Official file tools have a separate policy**: write/edit still reject
+  mutations under `read-only`; `workspace-write` checks the declared workspace
+  and platform writable temp roots. Reads such as read/glob/grep are not all
+  limited to the workspace. Shell processes are not governed by these tool
+  checks — **the two boundaries differ**. Never bypass a file-tool policy
+  denial through shell.
 - **Observable differences** vs the pwsh-sandbox era: the session process's
   integrity level is no longer lowered (Low → Medium), and `$env:TEMP` is no
   longer redirected to a per-session directory.
@@ -124,6 +126,40 @@ official PowerShell executor was never touched by this plugin. The
 
 > The full analysis (the 0.6.0–0.13.1 failure history and the community's two
 > camps) is in the CHANGELOG under v0.13.2 and in the `src/shell.js` header.
+
+## Native Windows and run_code compatibility boundaries
+
+The tool description always warns about these argument, encoding and security
+boundaries, independently of the path-dialect switch. The plugin does not
+silently rewrite command source, globally disable argument conversion or guess
+output encodings.
+
+- **Slash options**: MSYS can treat native Windows `/all` and `/c` as paths.
+  Tested alternatives are `ipconfig //all`, `cmd //c`, or a per-command
+  `MSYS2_ARG_CONV_EXCL='/all' ipconfig /all`. Exclusions match prefixes: excluding
+  `/c` also excludes `/c/...` file paths, so explicitly use native drive-letter
+  paths for those arguments. Do not set `MSYS2_ARG_CONV_EXCL='*'` globally.
+  A converted `cmd /c` may exit0 without performing the intended action; verify
+  the expected effect, not only the exit code.
+- **Output encodings**: the host decodes UTF-8. Native programs may emit CP936/GBK
+  or another code page. Prefer a program's UTF-8 option, or explicitly convert
+  known-encoding bytes before capture while preserving the original exit state.
+  Locale variables do not guarantee native UTF-8. Do not decode all Bash output
+  as GBK or infer encoding from replacement-character counts: one call can mix
+  UTF-8 and GBK, and an already-corrupted string cannot recover the original bytes.
+- **run_code**: `codePaths` defaults ON and follows the total/delegate dialect
+  gates. Complete compatible plain path literals are rewritten best-effort with
+  the shared mount table, including Unicode letters/marks, spaces and `#` names.
+  Legal EOF line comments no longer prevent rewriting; tagged templates (such
+  as String.raw) retain their data and raw semantics. Interpolation, escapes,
+  uncertain regex/division syntax may remain unchanged; uncertainty abandons the
+  entire rewrite. Prefer native drive-letter or cwd-relative paths for direct
+  Node fs/path APIs; typed tool path arguments remain translated separately.
+  Lexical scanning cannot distinguish routes/search data/shell command strings
+  from paths. Do not rely on rewriting those values; disable `codePaths` when
+  needed (the model hint now accurately states OFF).
+- **Security**: warnings are now visible, but Windows unconfined behavior is
+  unchanged. A file-tool policy denial never authorizes a shell retry.
 
 ## Config
 
