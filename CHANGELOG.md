@@ -3,7 +3,7 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## Unreleased — 2026-10-13
+## v0.39.1 — 2026-10-13
 
 **类型**:fix(route B 私有执行器的真实服务隔离与读取授权) / test / ci。
 
@@ -33,6 +33,15 @@
   锁定依赖、禁止生命周期脚本与可选载荷、完整测试及 `npm pack --dry-run --ignore-scripts`。
   本机完整测试 **127/127 通过**,打包预检与 `git diff --check` 通过;远端矩阵结果见对应 PR 检查。
   复验命令和覆盖边界见 `tests/README.md`。
+- **gb_glob 守卫封杀了上游主用法([#21](https://github.com/KannaKuron/dsh-gitbash-shell/issues/21),同日报告)**:
+  上游 `tools/list` 的 glob `pattern` 是 `string | string[]` 的 untagged enum——**数组才是主形态**
+  (schema 示例本身就是数组),v0.38.5 的只认字符串守卫把它一并拒绝;且模型常把数组 JSON 序列化后
+  传入(实测 25 次调用 24 次为 `["*.txt"]` 字符串),上游按**一个字面 glob** 匹配 → 静默返回空
+  ——恰好是守卫要防的「静默错误答案」。修法(`validateFastctxPattern`,提取为纯导出函数):
+  glob 接受非空字符串或非空字符串数组;**字符串化数组响亮报错并给出正确形状**(绝不代模型反序列化
+  ——那会掩盖错误);replace 维持单正则字符串契约;其他类型报错带类型名。gb_glob 的 description
+  增补 pattern 形状声明(模型侧修正源)。**教训**:给上游加防御守卫必须从 `tools/list` 的
+  `inputSchema` 原文出发,单一探针会误判(v0.38.5 的「静默当全部文件」实测即单一探针结论)。
 
 ## v0.39.0 — 2026-10-13
 
