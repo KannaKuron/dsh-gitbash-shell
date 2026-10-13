@@ -243,6 +243,7 @@ test('path-tool: the module owns its registration and reverts it on disposal', (
       },
     },
     effect(callback) { effects.push(callback()) },
+    on() {},
   }
   const logs = []
   const module = createPathToolModule({
@@ -285,3 +286,15 @@ test('path-tool: the real shared buildTranslateEnv feeds the same helper (compos
   assert.equal(translateMsysPath('/c/x', env), 'C:/x')
   assert.equal(convertMsysToNative('/c/x', { translate: (v) => translateMsysPath(v, env), env }).native_path, 'C:/x')
 })
+
+ test('path switch: stale definitions reject before translation and recover live', () => {
+  let enabled = false, translated = 0;
+  const definition = buildPathToolDefinition({ experimentalEnabled: () => enabled, translate: () => { translated++; return 'C:/test'; } });
+  assert.throws(() => definition.execute({ msys_path: '/c/test' }), /disabled by experimentalNative/);
+  assert.equal(translated, 0);
+  enabled = true;
+  assert.equal(definition.execute({ msys_path: '/c/test' }).native_path, 'C:/test');
+  enabled = false;
+  assert.throws(() => definition.execute({ msys_path: '/c/test' }), /disabled/);
+  assert.equal(translated, 1);
+ });

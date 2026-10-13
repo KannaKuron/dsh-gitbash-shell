@@ -5,6 +5,24 @@
 
 ## Unreleased — 2026-10-13
 
+### PR #26：维护者裁决与运行时开关（fix / feat / docs / test）
+
+- 行 Config 新增 volatile 布尔 `experimentalNative`，默认 true，旧配置缺键亦开启；设置卡即时编辑。
+  开启时 Windows 受限/未确定 Bash 拒绝；关闭恢复明确标注 `unconfined` 的旧版 Bash 与实例级日志，不提供真实 shell 写入围栏。
+- 两个新工具随开关实时注销/注册，既有会话无需重启；旧 SDK 引用关闭后拒绝。路径工具在翻译前检查；
+  native 在准备入口、异步准备后、执行入口和最终 spawn 重验。已启动后台 producer 保留生命周期。
+- 拒绝错误与 Bash 描述说明设置卡关闭路径，以及由用户在会话访问模式控件选择 danger-full-access 的路径。
+  21 份词典键齐备，中文/英文先行，其余 19 份暂用英文，合并前补本地化。
+- 实验已 rebase 到 #24 最新 c79332e，保留其 promotion sandbox 警示回归，显式 OFF 验证旧行为。
+  #24 仍 OPEN，合并后到 main 的 rebase 尚待；建议两步 review（fail-closed + 开关/UI；native/path/输出/路由），保留 Draft/RFC。
+- 长期跟踪：Core 开放对应 native/encoding/closed DTO API 后优先整体迁移并退役私有实现；artifact 自管，controller 缺失保持拒绝。
+  正式门槛仍为真实 Agent 选路、生产 GUI、维护者 win32 全量验证及非 CRT 矩阵抽测。
+- 本轮纠正：实际 Core 的 tools.restrict 只认全局工具，初版 agent-local mask 失败；改为拥有者动态注销/注册。
+  artifact 准备期间关闭的负例推动增加准备后检查，避免把拒绝落成 providerFailure；零 spawn、scope 释放及再次开启通过。
+- 验证：Windows / Node 24.13.0 / Core 0.2.1-alpha.2，普通完整回归 **226/226**、实际 Core 完整 preview **75/75**，
+  exit0、无 skip/cancel；syntax、diff、npm pack dry-run 通过。不等同于上述四项正式验收。
+- 相关：[PR #26 裁决](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6146363513)、[前置 PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24)。
+
 **类型**:feat(显式运行时路径/native typed argv/逐流解码) / fix(受限请求 fail-closed、生命周期与输出事实) / test / docs。
 
 ### Agent 选工具指引补齐（Unreleased）

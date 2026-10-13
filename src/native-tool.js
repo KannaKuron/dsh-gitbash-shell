@@ -1,3 +1,4 @@
+import { registerExperimentalTool } from './experimental-tools.js'
 import { createNativeExecutor } from './native-executor.js'
 import { processJob, processSources, ringDelta } from './bash-render.js'
 
@@ -178,15 +179,15 @@ export function createNativeToolModule(deps) {
           presentCall: args => ({ card: 'generic', title: args.description, kind: 'execute', content: [{ type: 'text', text: args.executable.value }] }),
         })
       }
-      if (!enabled) { ctx.tools.register(definition(undefined)); return }
-      let foregroundOnly = ctx.get('jobs') === undefined ? ctx.tools.register(definition(undefined)) : undefined
+      let currentJobs
+      const refresh = registerExperimentalTool(ctx, () => definition(currentJobs), deps.experimentalEnabled)
+      if (!enabled) return
       ctx.inject(['jobs'], jobCtx => {
-        foregroundOnly?.()
-        foregroundOnly = undefined
-        const unregister = ctx.tools.register(definition(jobCtx.jobs))
+        currentJobs = jobCtx.jobs
+        refresh()
         jobCtx.effect(() => () => {
-          unregister()
-          if (ctx.fiber?.state === 2) foregroundOnly = ctx.tools.register(definition(undefined))
+          currentJobs = undefined
+          if (ctx.fiber?.state === 2) refresh()
         })
       })
     },

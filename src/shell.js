@@ -22,7 +22,8 @@
  *     future isolation design is impossible. The matched modern MSYS signal
  *     pipe has an explicit SD; cygheap uses VirtualAlloc, and Core already
  *     supplements TokenDefaultDacl. No verified confined Git Bash is provided
- *     here, so the former labelled unconfined bypass is no longer permitted.
+ *     here. experimentalNative defaults ON (refusal); an explicit user opt-out
+ *     restores the labelled legacy unconfined route, with truthful facts.
  *     Official file-tool policy is separate and its denials must not be bypassed.
  *
  * Environment inheritance: bash.exe is a direct child (not a login launcher)
@@ -232,6 +233,9 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     const detail = 'dsh-gitbash-shell does not provide verified Windows Git for Windows confinement. '
       + 'The command was not started; no unconfined fallback is permitted. '
       + 'Do not bypass this refusal with another tool or change permissions automatically.'
+      + ' The user can open Settings > Plugins > dsh-gitbash-shell and turn off '
+      + '"Experimental native execution / fail-closed" (experimentalNative) to restore the legacy '
+      + 'explicitly UNCONFINED Bash behavior, or select danger-full-access in the session access-mode control.'
     if (typeof this.unavailableErrorType === 'function') return new this.unavailableErrorType(knownMode, detail)
     // Direct/older callers without the optional host error export still refuse.
     const error = new Error('sandbox mode "' + knownMode + '" cannot execute Git Bash on this Windows host. ' + detail)
@@ -250,8 +254,25 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   gitBashRoute(spec) {
     const mode = spec.sandboxPolicy?.mode
     if (mode === 'danger-full-access') return { mode, unconfined: false }
-    if (process.platform === 'win32') throw this.policyUnavailableError(mode)
+    if (process.platform === 'win32') {
+      if (this.experimentalEnabled?.() !== false) throw this.policyUnavailableError(mode)
+      // Exact legacy opt-out: unresolved policy still delegates to the host.
+      if (mode !== undefined) return { mode, unconfined: true }
+    }
     return undefined
+  }
+
+  warnConfinedUnconfined(mode) {
+    if (this._warnedUnconfined) return
+    this._warnedUnconfined = true
+    console.log('dsh-gitbash-shell: experimentalNative is OFF. Requested mode ' + mode
+      + ' uses an UNCONFINED Git Bash route: shell file-write restrictions are NOT enforced. '
+      + 'Official file-tool policy is separate; never bypass its denial through shell.')
+  }
+
+  routeSandbox(route) {
+    if (route.unconfined) this.warnConfinedUnconfined(route.mode)
+    return { mode: route.mode, denied: false, ...(route.unconfined ? { enforcement: 'unconfined' } : {}) }
   }
 
   /**
@@ -294,7 +315,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     const routed = this.withParityEnv(spec)
     if (route === undefined) return super.execute(routed)
     const argv = [this.requireBashPath(), '-c', routed.command]
-    const sandbox = { mode: route.mode, denied: false }
+    const sandbox = this.routeSandbox(route)
     // `executeArgv` is the shipped helper for exactly this: run an explicit
     // argv with the executor's own lifecycle, output and deadline semantics.
     return Promise.resolve(this.executeArgv(routed, argv))
@@ -369,9 +390,10 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     const route = this.gitBashRoute(spec)
     spec = this.withParityEnv(spec)
     if (route === undefined) return super.run(spec)
-    const { result } = GitBashSandboxExecutor.unwrapRunArgv(
+    if (route.unconfined) this.warnConfinedUnconfined(route.mode)
+    const { result, spawnRequested } = GitBashSandboxExecutor.unwrapRunArgv(
       await this.runArgv(spec, [this.requireBashPath(), '-c', spec.command]))
-    return { ...result, sandbox: { mode: route.mode, denied: false } }
+    return { ...result, sandbox: this.routeSandbox({ ...route, unconfined: route.unconfined && spawnRequested }) }
   }
 
   start(spec) {
@@ -384,7 +406,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
     spec = this.withParityEnv(spec)
     if (route === undefined) return super.start(spec)
     const proc = this.startArgv(spec, [this.requireBashPath(), '-c', spec.command])
-    const label = (handle) => { handle.sandbox = { mode: route.mode, denied: false }; return handle }
+    const label = (handle) => { handle.sandbox = this.routeSandbox(route); return handle }
     // Preserve the old host's synchronous/async start contract, including its
     // refusal shape; modern execute() callers never enter this legacy method.
     return GitBashSandboxExecutor.baseStartIsAsync() ? Promise.resolve(proc).then(label) : label(proc)

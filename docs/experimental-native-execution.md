@@ -15,7 +15,7 @@
 
 另补 Agent 路由指引，让上述机制不是仅存在于 README 中的“需要用户手动教模型”的能力。
 
-**维护者需要确认的是取舍，不是只看测试绿色：** 是否接受拒绝行为变化、是否需要真正的 opt-in 开关、哪些契约应移入 Core，以及缺少哪些验收才能从实验转为正式功能。
+维护者已在 [PR #26 裁决](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6146363513)接受 fail-closed 方向，要求默认开启且可实时关闭的行 Config 开关。正式验收门槛仍未完成。
 
 ## 2. 问题与非目标
 
@@ -53,9 +53,13 @@ IPC/Token/AppContainer/VM 路线仍需隔离环境的真实正负权限验证；
 | 原生参数 | 通过 Bash/MSYS，可能转换 | typed native 入口只转换标明的路径 |
 | Node 路径 | 字面量尽力重写 | 可显式转换运行时完整值；legacy 默认未改 |
 | 编码 | 原有 UTF-8 捕获边界 | 新入口逐流显式编码，默认 utf8/replace |
-| 设置/界面 | 现有 Config/UI | 不增字段；没有独立 experimental enable 开关 |
+| 设置/界面 | 现有 Config/UI | `experimentalNative` volatile 布尔，默认 true，同卡实时编辑 |
 
-**重要：Draft 标签不等于运行时 opt-in。** 当前源码被安装后，Windows own-bash scope 会挂载可用 companion；拒绝行为也会生效。这是否应该增加默认关闭的 feature flag，是待讨论项，而不是已经实现的保护。
+**运行时开关：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」，权威值是 `gitbash-shell` 行 Config 的 `experimentalNative`，默认 true（包括旧配置缺键）。开启时受限/未确定 Windows Bash 拒绝，两个 companions 在能力可用且不冲突时注册。关闭时实时注销两个工具（旧 SDK 引用也拒绝），Bash 恢复旧版明确标注 `enforcement: 'unconfined'` 的受限执行并一次性日志告知；未确定策略保持旧版宿主委派。关闭不提供真实围栏，shell 文件写入限制不执行；官方文件工具策略始终独立。
+
+变更作用于现有会话后续调用，无需重启，不终止已开始的后台 producer。native 在准备入口、异步准备后、执行入口及最终 spawn 重读开关；已关闭则不得开始新进程。重新开启恢复工具注册与拒绝机制。`posixPaths`、`codePaths`、`subagentDialect` 独立，不改变安全开关。拒绝错误说明设置关闭路径及用户在会话访问模式控件选择 `danger-full-access` 的路径，Agent 不得自行调整。
+
+21 份词典键已对齐；中文/英文文案先行，其余 19 份暂用明确的英文文案，合并前与维护者补本地化。
 
 ## 4. Agent 应如何选择
 
@@ -204,12 +208,12 @@ Windows own-bash agent scope挂两个companions，不覆盖已有同名工具。
 
 ## 12. 合并讨论 / 未覆盖
 
-- [ ] 是否接受受限模式从旧绕过改为拒绝的breaking体验？
-- [ ] 是否拆分fail-closed、native/path、路由三个PR？该实现依赖前置兼容修复，需确认目标base及合并顺序。
-- [ ] 是否增加默认关闭的experimental开关？当前没有此开关。
-- [ ] Native argv、逐流encoding、normalized cursor、artifact facts是否应成为Core公开加法契约？
-- [ ] 在哪一层承担跨任务quota、artifact权限/retention/清理？
-- [ ] Controller缺失/Jobs promotion如何形成一致的前台体验？
+- [x] 接受 fail-closed，新增默认 true 的 volatile 开关，关闭恢复旧行为。
+- [x] Controller 缺失保持明确拒绝，不静默改前台重复执行。
+- [x] Artifact ownership/quota/retention 由插件层自管；跨调用 quota/purge 尚未实现，不宣称已验收。
+- [ ] **长期跟踪（不阻塞本 PR）**：Core 将来开放 native typed argv、逐流 encoding、closed DTO 等对应公开 API 时，遵循官方优先纪律整体切换并退役插件私有实现。
+- [ ] **stack / 拆分评估**：#24 尚未合并，当前实验已接在其最新 `c79332e` 后；#24 合并后必须 rebase 到上游 main，保持 RFC。建议两步 review：① Bash fail-closed + 行 Config/UI/拒绝引导及旧行为回退；② native/path、逐流输出与可见性路由。统一开关应在第一步建立，第二步接同一字段。当前 PR 保留完整 RFC 供跨层契约核验，没有另开 PR。
+- [ ] **转正式的四项门槛**：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 Windows 真机全量验证、非 CRT 解释器矩阵抽测。四项齐后才谈 ready for review → release。
 - [ ] 真实Agent选工具评测、生产GUI/full apply、会话replay尚未验收。
 - [ ] 真restricted-token/ACL/IPC/VM正负权限、PTY/SSH、任意非CRT/解释器quoting尚未验收。
 - [ ] 真实disk exhaustion、吞吐/RSS峰值、跨任务DOS/自动purge尚未验收。

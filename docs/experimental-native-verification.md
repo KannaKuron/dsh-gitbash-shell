@@ -143,3 +143,16 @@ DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:prev
 - [ ] 决定哪些接口应该成为Core公开加法契约。
 
 在这些项完成前，保持Draft/实验讨论定位，不称普遍编码修复或新沙箱实现。
+
+## PR #26 运行时开关裁决后的验证
+
+本轮普通完整回归 **226/226**，实际安装 Core 完整 preview **75/75**，均 exit0、无 skip/cancel。环境仍为 Windows、Node 24.13.0、Core 0.2.1-alpha.2。新增覆盖：
+
+- 卡片缺键默认 ON、两向写同一行 Config 字段、21 字典键对齐（其余 19 语言暂用英文）。
+- 实际 ToolRuntime 中现有会话 ON/OFF 反复切换、初始 OFF 后启用、工具 schema 注销/注册、受限 Bash 拒绝/旧 unconfined 结果；root shell 不变。
+- 旧路径定义关闭后零翻译；native 已准备请求关闭后零 scope/adapter；artifact 异步准备期间关闭后零 spawn、scope 释放，重新开启后真实 Node producer 运行一次。
+- #24 actual promotion DTO 测试以显式 OFF 验证旧 sandbox facts 提示，full-access 无警示。
+
+初版 tools.restrict agent-local mask 被实际 Core 拒绝；改为动态拥有者注册。artifact 负例初版检查仅在 spawn facade 内，被 Core 转为失败 handle；增加准备后检查后以明确错误拒绝，未放宽零 spawn 断言。
+
+仍待正式四项验收：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 win32 真机全量验证、非 CRT 解释器矩阵抽测。#24 未合并，合并后到上游 main 的 rebase 尚待。

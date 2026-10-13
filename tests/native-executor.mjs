@@ -130,3 +130,20 @@ test('native schema authoring: implicit property-map, required markers and capab
   assert.equal(parameters.run_in_background, undefined)
   assert.equal(nativeParameters({ background: true }).run_in_background.type, 'boolean')
 })
+
+ test('native switch: disabled preparation and stale prepared request have no side effects', async () => {
+  let enabled = false, ensure = 0;
+  const ctx = { get: () => ({ resolve: () => ({ mode: 'danger-full-access' }) }),
+    workingDirectory: { ensure: async () => { ensure++; return 'C:/Native Sentinel'; } }, shellEnv: { collect: () => ({}) } };
+  const executor = createNativeExecutor(ctx, { platform: 'win32', experimentalEnabled: () => enabled,
+    localBashModule: { LocalBashExecutor: class {} }, translateMsysPath,
+    createScope() { throw new Error('MUST_NOT_CREATE_SCOPE'); }, createNativeOutputAdapter() { throw new Error('MUST_NOT_CREATE_ADAPTER'); } });
+  const exec = { agent: {}, signal: new AbortController().signal };
+  await assert.rejects(executor.prepare(request(), exec), /disabled by experimentalNative/);
+  assert.equal(ensure, 0);
+  enabled = true;
+  const prepared = await executor.prepare(request(), exec);
+  enabled = false;
+  await assert.rejects(executor.execute(prepared, exec), /disabled by experimentalNative/);
+  assert.equal(ensure, 1);
+ });

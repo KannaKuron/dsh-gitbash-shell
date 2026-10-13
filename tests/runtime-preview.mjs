@@ -32,7 +32,7 @@ function createScope(parent) {
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
 
-async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false } = {}) {
+async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true } = {}) {
   const root = new Context()
   const cleanups = []
   const logs = []
@@ -77,6 +77,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
   const deps = {
     tools: ctx => ctx.get('tools'), agents: () => ({ list: () => [agent] }),
     pwshEnabled: () => pwshVisible,
+    experimentalEnabled: () => experimental,
     ...(explicitTools ? {
       translatePath: value => dialectHelpers.translateMsysPath(value, { home: 'D:/compat-home', tmpDir: 'D:/compat-temp', gitRoot: 'C:/Program Files/Git' }),
       createArtifactDirectory() { throw new Error('registration/refusal fixture must not create artifacts') },
@@ -111,6 +112,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     root, agent, tools, patch, official, logs, entered, release, activated, failed, agentScopes, deps,
     names: () => tools.schemas(agent).map(schema => schema.name),
     set: value => { pwshVisible = value; root.emit('loader/volatile-update', [['pwshTool']]) },
+    setExperimental: value => { experimental = value; root.emit('loader/volatile-update', [['experimentalNative']]) },
     allowAgentMount: () => { failAgentMount = false },
     execute: (name, args = {}) => tools.execute({ agent, name, callId: `${name}-runtime-preview`, arguments: args, signal: new AbortController().signal }),
     remount: () => mount(ctx => mountInlineTools(ctx, deps)),
@@ -131,6 +133,32 @@ test('runtime preview: live pwsh schema and dispatch follow both switch directio
   assert.equal(f.root.get('shell'), f.official)
   await f.patch.dispose()
   assert.ok(f.names().includes('pwsh'))
+})
+
+test('runtime preview: experimental switch changes existing schemas and restricted Bash without restart', { timeout: 15000 }, async t => {
+  for (const initial of [true, false]) {
+    const f = await fixture(t, { explicitTools: true, experimental: initial })
+    await bounded(f.activated.promise, 'experimental tools activation')
+    f.agent.session.header.policy = { mode: 'workspace-write', workspaceRoot: process.cwd() }
+    const args = { command: 'memory-only command', description: 'Verify live opt-out' }
+    for (const enabled of [initial, !initial, initial, !initial]) {
+      f.setExperimental(enabled)
+      for (const name of ['gitbash_native', 'gitbash_to_native_path']) assert.equal(f.names().includes(name), enabled, JSON.stringify({ name, initial, enabled, logs: f.logs }))
+      const result = await f.execute('bash', args)
+      assert.equal(result.isError, enabled, JSON.stringify(result))
+      if (enabled) {
+        assert.equal(result.error.info.code, 'SANDBOX_UNAVAILABLE')
+        assert.match(result.error.message, /Settings.*experimentalNative.*session access-mode/)
+      } else {
+        assert.equal(result.value.sandbox.enforcement, 'unconfined')
+        assert.equal(result.value.sandbox.mode, 'workspace-write')
+        assert.equal((await f.execute('gitbash_to_native_path', { msys_path: '/c/test' })).isError, true)
+      }
+      assert.equal(f.root.get('shell'), f.official)
+    }
+    await f.patch.dispose()
+    assert.deepEqual(f.names(), ['pwsh'])
+  }
 })
 
 test('runtime preview: plugin disposal cancels a delayed host import and cannot leave a ghost bash', { timeout: 10000 }, async t => {
@@ -302,7 +330,7 @@ test('runtime preview: actual promoted DTO renders sandbox notes from handle fac
     const finished = deferred()
     const raw = 'promotion-raw-output'
     const readFrom = () => ({ text: raw, nextOffset: raw.length, lossy: false })
-    const f = await fixture(t, { subprocessRuntime: { spawn() {
+    const f = await fixture(t, { experimental: false, subprocessRuntime: { spawn() {
       spawned.resolve()
       return { done: finished.promise, collected: { stdout: { readFrom }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
         terminate() { finished.resolve({ exitCode: 1, signal: 'SIGTERM' }) } }

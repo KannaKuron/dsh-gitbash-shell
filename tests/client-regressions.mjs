@@ -3,17 +3,21 @@ import assert from 'node:assert/strict'
 import vm from 'node:vm'
 import { readFileSync } from 'node:fs'
 
-function cardFixture() {
+function cardFixture({ expanded = false } = {}) {
   let declaration, hooks = [], effects = [], setters = [], stateIndex = 0
   let status = 'pending', overrides = new Map(), fetchMode = 'none', pollingCalls = 0
   const timers = new Map()
   let timerId = 0
+  let values = {}
+  const writes = []
   const React = {
     Component: function () {},
     createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
     useState(value) {
       hooks.push('state')
       const index = stateIndex++
+      if (expanded && index === 0) value = true
+      if (expanded && value && typeof value === 'object' && !Array.isArray(value)) value = { ...value, 'sec.inline': true }
       return [overrides.has(index) ? overrides.get(index) : (typeof value === 'function' ? value() : value), (next) => setters.push({ index, value: next })]
     },
     useEffect(callback) { hooks.push('effect'); effects.push(callback) },
@@ -36,7 +40,7 @@ function cardFixture() {
   vm.runInNewContext(readFileSync(new URL('../src/client.js', import.meta.url), 'utf8'), sandbox)
   const mod = declaration.factory((name) => name === 'react' ? React : {})
   const registrations = []
-  const form = { getSnapshot: () => ({ status, value: {} }), subscribe: () => () => {}, set: () => Promise.resolve(true) }
+  const form = { getSnapshot: () => ({ status, value: values }), subscribe: () => () => {}, set: (key, value) => { writes.push({ key, value }); return Promise.resolve(true) } }
   const forms = { get: () => form }
   const ctx = {
     locale: { register: () => () => {} }, configForms: forms,
@@ -54,12 +58,14 @@ function cardFixture() {
   const card = locale.type(locale.props).children[0]
   return {
     setStatus: (value) => { status = value },
+    setValues: value => { values = value },
+    writes,
     setJob: (job) => { overrides = new Map([[6, job]]) },
     setFetchMode: (mode) => { fetchMode = mode },
     render() {
       hooks = []; effects = []; setters = []; stateIndex = 0
-      card.type(card.props)
-      return { hooks: [...hooks], effects: [...effects] }
+      const tree = card.type(card.props)
+      return { hooks: [...hooks], effects: [...effects], tree }
     },
     async runTimer() {
       const [id, callback] = timers.entries().next().value
@@ -122,3 +128,25 @@ test('client: cleanup prevents a failed in-flight poll from scheduling a retry',
   assert.equal(fixture.timers.size, 0)
   assert.equal(fixture.setters.filter((row) => row.index === 6).length, 0)
 })
+
+test('client: experimental switch defaults ON and writes the authoritative field both ways', async () => {
+  const f = cardFixture({ expanded: true });
+  f.setStatus('ready');
+  const walk = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flat(Infinity).flatMap(walk)];
+  const buttons = () => walk(f.render().tree).filter(node => node.type === 'button' && String(node.props.onClick).includes('experimentalNative'));
+  let controls = buttons();
+  assert.equal(controls.length, 2);
+  assert.ok(controls[0].props.className.includes('gb-segActive'));
+  controls[1].props.onClick();
+  await new Promise(setImmediate);
+  assert.equal(f.writes.at(-1).key, 'experimentalNative');
+  assert.equal(f.writes.at(-1).value, false);
+  f.setValues({ experimentalNative: false });
+  controls = buttons();
+  assert.ok(controls[1].props.className.includes('gb-segActive'));
+  controls[0].props.onClick();
+  await new Promise(setImmediate);
+  assert.equal(f.writes.at(-1).value, true);
+  const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
+  for (const key of ['experimental.label', 'experimental.hint']) assert.equal(source.split('"' + key + '":').length - 1, 21);
+});

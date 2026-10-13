@@ -72,7 +72,7 @@ export function requireNativePolicy(ctx, exec, sandboxModule) {
   const service = ctx.get('sandboxPolicy')
   const policy = service?.resolve(exec?.agent === undefined ? {} : { session: exec.agent.session })
   if (!policy || policy.mode !== 'danger-full-access') {
-    const detail = 'gitbash_native has no confined backend adapter. This entry refuses read-only, workspace-write and missing policy before spawn or artifact creation; do not bypass a denied operation.'
+    const detail = 'gitbash_native has no confined backend adapter. This entry refuses read-only, workspace-write and missing policy before spawn or artifact creation; do not bypass a denied operation. The user can select danger-full-access in the session access-mode control, or turn off Experimental native execution / fail-closed (experimentalNative) in Settings > Plugins > dsh-gitbash-shell to disable native/path tools and restore explicitly UNCONFINED legacy Bash.'
     if (typeof sandboxModule?.SandboxUnavailableError === 'function') throw new sandboxModule.SandboxUnavailableError(policy?.mode ?? 'unknown', detail)
     throw Object.assign(new Error(detail), { code: 'SANDBOX_UNAVAILABLE' })
   }
@@ -128,10 +128,14 @@ export function createNativeExecutor(ctx, deps) {
   const LocalBashExecutor = localBashModule?.LocalBashExecutor
   if (typeof LocalBashExecutor !== 'function' || typeof createScope !== 'function' || typeof createNativeOutputAdapter !== 'function') throw new Error('gitbash_native: required host executor/output/scope capability is unavailable')
   const prepared = new WeakMap()
+  const requireEnabled = () => {
+    if (deps.experimentalEnabled?.() === false) throw new Error('gitbash_native is disabled by experimentalNative. Enable Experimental native execution / fail-closed in Settings > Plugins > dsh-gitbash-shell.')
+  }
   const remaining = request => request.timeoutMs - (Date.now() - prepared.get(request))
   return {
     waitBudget: request => Math.max(1, remaining(request)),
     async prepare(args, exec) {
+      requireEnabled()
       requireNativePolicy(ctx, exec, sandboxModule)
       exec.signal?.throwIfAborted()
       if (args?.timeoutMs !== undefined && (!Number.isFinite(args.timeoutMs) || args.timeoutMs <= 0)) throw new TypeError('timeoutMs: expected a positive finite number')
@@ -140,6 +144,7 @@ export function createNativeExecutor(ctx, deps) {
       const preparation = cancellation(exec.signal, timeoutMs)
       try {
         const sessionCwd = exec.agent === undefined ? undefined : await whileActive(() => ctx.workingDirectory.ensure(exec.agent, preparation.signal), preparation.signal)
+        requireEnabled()
         preparation.signal.throwIfAborted()
         const request = parseNativeRequest(args, { translateMsysPath, sessionCwd, platform: deps.platform ?? process.platform })
         const value = Object.freeze({ ...request, dshEnv: checkedDshEnv(ctx.shellEnv.collect(exec)) })
@@ -148,6 +153,7 @@ export function createNativeExecutor(ctx, deps) {
       } finally { preparation.dispose() }
     },
     async execute(request, exec, { signal = exec.signal, onExpiry = 'kill' } = {}) {
+      requireEnabled()
       const policy = requireNativePolicy(ctx, exec, sandboxModule)
       if (!prepared.has(request)) throw new TypeError('gitbash_native: request must be prepared by this executor')
       if (!['kill', 'none'].includes(onExpiry)) throw new TypeError('invalid native expiry mode')
@@ -193,12 +199,14 @@ export function createNativeExecutor(ctx, deps) {
           handle.terminate()
           if (typeof handle.waitForExit === 'function') await handle.waitForExit(AbortSignal.timeout(5000))
         })
+        requireEnabled()
         requireNativePolicy(ctx, exec, sandboxModule)
         const outputConfig = { ...outputOptions, ...request.output, artifactPolicyValidated: true }
         // Capability/encoding validation is pure and precedes directory creation.
         createNativeOutputAdapter(provider, { ...outputConfig, artifactDirectory: undefined })
         if (outputConfig.artifactDirectory === undefined) {
           if (typeof deps.createArtifactDirectory !== 'function') throw new Error('gitbash_native: no trusted artifact directory owner is configured')
+          requireEnabled()
           requireNativePolicy(ctx, exec, sandboxModule)
           operation.signal.throwIfAborted()
           outputConfig.artifactDirectory = await whileActive(async () => {
@@ -215,8 +223,10 @@ export function createNativeExecutor(ctx, deps) {
         }
         requireNativePolicy(ctx, exec, sandboxModule)
         operation.signal.throwIfAborted()
+        requireEnabled()
         const adapter = createNativeOutputAdapter(provider, outputConfig)
         const facade = { spawn(spec) {
+          requireEnabled()
           requireNativePolicy(ctx, exec, sandboxModule)
           spec.signal?.throwIfAborted()
           handle = adapter.spawn(spec)
@@ -225,6 +235,7 @@ export function createNativeExecutor(ctx, deps) {
         scope.ctx.provide('subprocess', facade)
         const mounted = scope.ctx.plugin(LocalBashExecutor)
         await whileActive(() => mounted, operation.signal)
+        requireEnabled()
         operation.signal.throwIfAborted()
         const executor = scope.ctx.get('shell')
         if (typeof executor?.executeArgv !== 'function') throw new Error('gitbash_native: host executeArgv contract is unavailable')

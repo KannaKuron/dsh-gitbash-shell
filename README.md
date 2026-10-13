@@ -120,10 +120,10 @@ bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件
 
 **POSIX 宿主**：自有执行器的受限路径仍继承官方后端与拒绝分类。本节只讲 Windows。
 
-**Unreleased 的 Windows 自有 bash/native 工具采用 fail-closed**：`read-only`、
+**Unreleased 的 Windows 自有 bash/native 工具在 experimentalNative 开启时（默认）采用 fail-closed**：`read-only`、
 `workspace-write` 或缺失/未解析的策略在执行前拒绝；仅真实解析为
 `danger-full-access` 的调用可以执行。受限请求不会登记/启动无围栏进程，也不会自动
-回退 pwsh/cmd/WSL、切模式或绕过文件工具拒绝。此为明确行为变化，不再保留旧版标注后绕过。
+回退 pwsh/cmd/WSL、切模式或绕过文件工具拒绝。用户可在设置中关闭 experimentalNative，恢复明确标注 unconfined 的旧版 Bash 行为。
 
 - **拒绝不是沙箱修复**：当前仍无已验证的受限 Git Bash。历史失败为 Win32 error 5 /
   0xC0000142；匹配本机 MSYS 源码后发现 signal pipe 显式 SD 缺 restricting SID，
@@ -394,6 +394,9 @@ PTC/创造及用户自建模式一律覆盖。
 
 ## 显式工具（Unreleased）
 
+**运行时开关 `experimentalNative`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」。开启时 Windows 受限/未确定模式拒绝 Bash，提供可用的两个显式工具；关闭立即注销并禁用两个工具，恢复明确标注 `unconfined` 的旧版 Bash（不执行 shell 文件写入限制）。修改作用于现有会话后续调用，无需重启，不终止已启动的任务。拒绝时用户也可在会话访问模式控件选择 `danger-full-access`；Agent 不得自行放宽权限。与路径方言及 codePaths 开关独立。
+
+
 两个工具随 Windows 的自有 bash 工具挂入同一 agent-owned scope；不替换官方工具或 root
 provider，已有同名工具不覆盖。旧 Core 缺少公开 native executor/OutputCollector 能力时不
 注册 native 工具，bash/path 不受影响；minimal 的持久终端不通过此补位通道。
@@ -455,7 +458,7 @@ return await fs.readFile(resolved.native_path, 'utf8');
   直接调用 Node fs/path 时优先明确的 Windows drive-letter 或 cwd-relative 路径;
   工具 path/file_path 字段仍走工具参数翻译。词法扫描不能识别路由、搜索数据或 shell
   command 的用途;此类字符串不要依赖自动重写,必要时关闭 `codePaths`(提示同步标为 OFF)。
-- **沙箱**：参见上方安全章节。Unreleased 已改为受限请求执行前拒绝，不是恢复了真实围栏；文件工具拒绝不授权 shell/native 重试。
+- **沙箱**：参见上方安全章节。Unreleased 在 experimentalNative 开启时改为受限请求执行前拒绝，不是恢复了真实围栏；文件工具拒绝不授权 shell/native 重试。
 
 ## 与 dsh-better-sidebar 联动
 

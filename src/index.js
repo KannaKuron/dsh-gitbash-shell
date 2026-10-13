@@ -513,6 +513,8 @@ export const Config = Schema === null ? undefined : Schema.object({
    * now controls the real thing.
    */
   pwshTool: live(Schema.boolean().default(false)),
+  // Maintainer PR #26 decision: one live opt-out for refusal and companions.
+  experimentalNative: live(Schema.boolean().default(true)),
   /**
    * Publish the FastCtx file tools (`gb_*`) through the local MCP bridge.
    * Default ON; Windows-only payload, stands down entirely when dsh-ops is
@@ -594,6 +596,7 @@ function makeLiveReader(ctx, config) {
     autoTerminalShell: () => dialect().autoTerminalShell !== false,
     variantPresets: () => (hasConfig ? valueOf(config.variantPresets) === true : false),
     pwshTool: () => (hasConfig ? valueOf(config.pwshTool) !== false : true),
+    experimentalNative: () => (hasConfig ? valueOf(config.experimentalNative) !== false : true),
     fastctxTools: () => (hasConfig ? valueOf(config.fastctxTools) === true : false),
     // Default OFF: only an explicit true asks for deduplication.
     suppressPeerCordis: () => (hasConfig ? valueOf(config.suppressPeerCordis) === true : false),
@@ -2756,6 +2759,7 @@ export async function apply(ctx, config = {}) {
           }
         },
         pwshEnabled: () => liveSettings.pwshTool() === true,
+        experimentalEnabled: () => liveSettings.experimentalNative(),
         // Explicit conversion does not rewrite source or change auto-dialect
         // settings. The same lazy, verified mount facts are used each call.
         translatePath: (value) => translateMsysPath(value, buildTranslateEnv(readConfiguredBashPath())),

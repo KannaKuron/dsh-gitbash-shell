@@ -39,6 +39,7 @@ async function fixture(t, { jobs = false, promote = false, controller = true, ar
   const spawned = []
   const scopes = []
   let mode = 'danger-full-access'
+  let experimental = true
   let adapterConstructions = 0
   const policy = { defaultMode: 'danger-full-access', resolve: () => mode === undefined ? undefined : { mode, workspaceRoot: DIR } }
   const official = { name: 'official-preserved' }
@@ -65,7 +66,7 @@ async function fixture(t, { jobs = false, promote = false, controller = true, ar
     await mount(LocalJobRegistry, { pumpPollMs: 5 })
     if (controller) await mount({ inject: ['jobs'], apply(ctx) { ctx.jobs.attachController('native-preview-controller') } })
   }
-  const deps = { toolsModule, sandboxModule, localBashModule,
+  const deps = { toolsModule, sandboxModule, localBashModule, experimentalEnabled: () => experimental,
     createScope(parent) { const scope = createScope(parent); scopes.push(scope); return scope },
     translateMsysPath: value => /^\/[a-z]\//i.test(value) ? `${value[1].toUpperCase()}:/${value.slice(3)}` : value,
     outputOptions: { OutputCollector, ...(artifactFactory ? {} : { artifactDirectory: DIR }), drainTimeoutMs: 200 },
@@ -91,7 +92,9 @@ async function fixture(t, { jobs = false, promote = false, controller = true, ar
     return directExecutor.execute(await directExecutor.prepare(args, exec), exec)
   }
   return { root, agent, agentScope, toolFiber, spawned, scopes, run, direct,
-    jobs: root.get('jobs'), setMode(value) { mode = value }, get adapterConstructions() { return adapterConstructions },
+    jobs: root.get('jobs'), setMode(value) { mode = value },
+    setExperimental(value) { experimental = value; root.emit('loader/volatile-update', [['experimentalNative']]) },
+    get adapterConstructions() { return adapterConstructions },
     preserved() { assert.equal(root.reflect.store[root[Context.isolate].subprocess], rootProvider); assert.equal(root.reflect.store[root[Context.isolate].shell], rootShell) },
   }
 }
@@ -147,6 +150,28 @@ test('installed Core native: ToolRuntime exact argv, translated paths, root prov
   assert.ok(f.scopes.every(scope => scope.ctx.fiber.state === 4))
   f.preserved()
   rows.push({ name: t.name, status: 'PASS', producerExitCode: response.value.exitCode, outputFacts: response.value.outputFacts })
+})
+
+test('installed Core native: opt-out during artifact preparation refuses at final spawn, then re-enables', { timeout: 15000 }, async t => {
+  let signalEntered
+  const entered = new Promise(resolve => { signalEntered = resolve })
+  let finish
+  const artifact = new Promise(resolve => { finish = resolve })
+  const f = await fixture(t, { artifactFactory: () => { signalEntered(); return artifact } })
+  const pending = f.direct(request('console.log("MUST_NOT_RUN")'))
+  await entered
+  f.setExperimental(false)
+  assert.ok(!f.root.get('tools').schemas(f.agent).some(tool => tool.name === 'gitbash_native'))
+  finish(DIR)
+  await assert.rejects(pending, /disabled by experimentalNative/)
+  assert.equal(f.spawned.length, 0)
+  assert.ok(f.scopes.every(scope => scope.ctx.fiber.state === 4))
+  f.setExperimental(true)
+  const response = await f.run(request('console.log("REENABLED")'))
+  assert.equal(response.isError, false, JSON.stringify(response))
+  assert.equal(response.value.stdout.text.trim(), 'REENABLED')
+  assert.equal(f.spawned.length, 1)
+  f.preserved()
 })
 
 test('installed Core native: typed path actually opens the fixed sentinel file', { timeout: 15000 }, async t => {

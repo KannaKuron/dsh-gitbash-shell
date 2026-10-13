@@ -43,7 +43,9 @@
 1. **执行器替换 full-access argv；Windows 未验证受限能力必须 fail-closed（Unreleased）**:
    沙箱/生命周期基础设施沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 必须显式 Git for Windows
    argv（裸 bash 会命中 WSL 占位）。Windows read-only/workspace-write/缺失策略在工作目录准备、
-   Jobs admission 与 spawn 前拒绝；不得恢复旧 unconfined 绕过，不得自动换工具/模式。
+   Jobs admission 与 spawn 前拒绝（`experimentalNative` 默认 true）；不得自动换工具/模式。
+   按 PR #26 维护者裁决，用户可实时关闭该 volatile 行 Config 开关，恢复明确标注 unconfined
+   的旧 Bash 行为并注销 native/path 两工具；旧 SDK 引用必须拒绝，新 native spawn 必须重验开关。
    拒绝使用实际宿主 SandboxUnavailableError，导出缺失仍必须拒绝；官方 root provider 不变。
    **拒绝不是恢复真围栏**。匹配的现代 MSYS signal pipe 有显式 SD 且缺 restricting SID，
    cygheap 为 VirtualAlloc；实际 Core 已补 TokenDefaultDacl。不得再用“只补默认DACL/所有未来版本

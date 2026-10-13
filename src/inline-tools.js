@@ -235,6 +235,7 @@ export function mountInlineTools(ctx, deps) {
   let closed = false
   const isLive = (agent, state) => !closed && tracked.get(agent) === state && !state.controller.signal.aborted
   const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, pending: undefined, controller: new AbortController() })
+  const experimentalEnabled = () => deps.experimentalEnabled?.() !== false
   // Loader imports cannot be cancelled, but no continuation may outlive its
   // owner. Join our cancelled continuations without waiting on a stuck loader.
   const untilDisposed = async (promise, signal) => {
@@ -284,6 +285,7 @@ export function mountInlineTools(ctx, deps) {
         if (typeof createScope !== 'function') throw new Error('no createScope seam')
         controller.signal.throwIfAborted()
         const mounted = await mountPrivateExecutor(ctx, GitBashSandboxExecutor, createScope)
+        mounted.executor.experimentalEnabled = experimentalEnabled
         executorScope = mounted.executorScope
         controller.signal.throwIfAborted()
         const hostModules = {}
@@ -296,7 +298,7 @@ export function mountInlineTools(ctx, deps) {
         if (typeof deps.translatePath === 'function') {
           const { createPathToolModule, PATH_TOOL_NAME } = await untilDisposed(import('./path-tool.js'), controller.signal)
           extraModules.push({ name: PATH_TOOL_NAME, module: createPathToolModule({
-            toolsModule: hostModules.toolsModule, translate: deps.translatePath, log,
+            toolsModule: hostModules.toolsModule, translate: deps.translatePath, experimentalEnabled, log,
           }) })
           try {
             const localBashModule = await untilDisposed(resolveHostModule(ctx, '@deepseek-ai/dsh-bash-local'), controller.signal)
@@ -311,7 +313,7 @@ export function mountInlineTools(ctx, deps) {
               toolsModule: hostModules.toolsModule, sandboxModule: hostModules.sandboxModule,
               localBashModule, createScope, translateMsysPath: deps.translatePath,
               createNativeOutputAdapter, outputOptions: { OutputCollector: outputModule?.OutputCollector },
-              createArtifactDirectory: deps.createArtifactDirectory, log,
+              createArtifactDirectory: deps.createArtifactDirectory, experimentalEnabled, log,
             }) })
           } catch (error) {
             if (controller.signal.aborted) throw error
@@ -480,7 +482,7 @@ export function mountInlineTools(ctx, deps) {
       log(`agent bash tool cleanup failed: ${error?.message ?? error}`)
     }))
     ctx.on('loader/volatile-update', (paths) => {
-      if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path) && path[0] === 'pwshTool')) return
+      if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path) && ['pwshTool', 'experimentalNative'].includes(path[0]))) return
       for (const agent of tracked.keys()) {
         try { reconcile(agent) } catch (error) { log(`pwsh switch update failed: ${error?.message ?? error}`) }
       }

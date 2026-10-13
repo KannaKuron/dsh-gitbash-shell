@@ -1,3 +1,5 @@
+import { registerExperimentalTool } from './experimental-tools.js'
+
 /**
  * dsh-gitbash-shell/path-tool — the EXPLICIT full-value MSYS→native converter
  * (`gitbash_to_native_path`, 2026-10-13, compat-implementation task
@@ -200,7 +202,7 @@ const MSYS_PATH_PARAM_DESCRIPTION = 'The complete value to convert, as one singl
  * @param {(message: string) => void} [deps.log]
  * @returns {object} a registry-ready definition.
  */
-export function buildPathToolDefinition({ toolsModule, translate, translateMsysPath, buildEnv, log = () => {} } = {}) {
+export function buildPathToolDefinition({ toolsModule, translate, translateMsysPath, buildEnv, experimentalEnabled, log = () => {} } = {}) {
   const convertValue = typeof translate === 'function'
     ? (value, env) => translate(value, env)
     : typeof translateMsysPath === 'function'
@@ -210,6 +212,7 @@ export function buildPathToolDefinition({ toolsModule, translate, translateMsysP
     throw new Error('path-tool: a shared translator is required — pass translate (fresh composed) or translateMsysPath; the tool never copies the mount table')
   }
   const execute = (args) => {
+    if (experimentalEnabled?.() === false) throw new Error('gitbash_to_native_path is disabled by experimentalNative. Enable Experimental native execution / fail-closed in Settings > Plugins > dsh-gitbash-shell.')
     // Fresh facts per call: the same lazy discipline as every other
     // translation consumer (a settings bashPath change must be visible on
     // the next call without a re-mount).
@@ -288,14 +291,7 @@ export function createPathToolModule(deps = {}) {
       if (typeof ctx?.tools?.register !== 'function') {
         throw new Error('path-tool: ctx.tools.register is unavailable; cannot own the tool registration')
       }
-      const unregister = ctx.tools.register(definition)
-      if (typeof unregister === 'function') {
-        ctx.effect?.(() => () => {
-          try {
-            unregister()
-          } catch { /* the scope is already rolling back */ }
-        })
-      }
+      registerExperimentalTool(ctx, () => definition, deps.experimentalEnabled)
       ;(typeof deps.log === 'function' ? deps.log : () => {})(
         `${PATH_TOOL_NAME} registered (explicit full-value MSYS→native conversion, no I/O)`,
       )

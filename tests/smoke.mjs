@@ -631,6 +631,18 @@ test('executor: Windows restricted and unresolved policies fail before any argv 
   assert.deepEqual(exFull.calls[0][1], ['X:/git/bin/bash.exe', '-c', 'echo hi'])
   assert.deepEqual(result.sandbox, { mode: 'danger-full-access', denied: false })
   assert.deepEqual(exFull.start(full).sandbox, result.sandbox)
+  const legacy = make('win32')
+  legacy.experimentalEnabled = () => false
+  for (const mode of ['read-only', 'workspace-write']) {
+    const spec = { command: 'echo hi', sandboxPolicy: { mode } }
+    const facts = { mode, denied: false, enforcement: 'unconfined' }
+    assert.deepEqual((await legacy.run(spec)).sandbox, facts)
+    assert.deepEqual(legacy.start(spec).sandbox, facts)
+  }
+  await legacy.run({ command: 'echo hi' })
+  assert.equal(legacy.calls.at(-1)[0], 'super.run', 'unresolved opt-out keeps legacy delegation')
+  legacy.experimentalEnabled = () => true
+  await assert.rejects(() => legacy.run({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } }), refusal)
   const linux = make('linux')
   await linux.run({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } })
   linux.start({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } })
