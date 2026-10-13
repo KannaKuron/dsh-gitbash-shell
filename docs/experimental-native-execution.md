@@ -59,7 +59,7 @@ IPC/Token/AppContainer/VM 路线仍需隔离环境的真实正负权限验证；
 
 变更作用于现有会话后续调用，无需重启，不终止已开始的后台 producer。native 在准备入口、异步准备后、执行入口及最终 spawn 重读开关；已关闭则不得开始新进程。重新开启恢复工具注册与拒绝机制。`posixPaths`、`codePaths`、`subagentDialect` 独立，不改变安全开关。拒绝错误说明设置关闭路径及用户在会话访问模式控件选择 `danger-full-access` 的路径，Agent 不得自行调整。
 
-21 份词典键已对齐；中文/英文文案先行，其余 19 份暂用明确的英文文案，合并前与维护者补本地化。
+21 份词典均已补齐开关本地化，保留工具名、UNCONFINED 和 danger-full-access 的事实，维护者可继续审阅译文。
 
 ## 4. Agent 应如何选择
 
@@ -195,7 +195,7 @@ trusted owner在真实policy/校验后创建自有临时目录，不从model cwd
 
 没有controller时明确拒绝，不以“admission失败后再运行前台”冒二次副作用风险。没有Jobs时为前台kill deadline；有Jobs时可timeout promotion。该差异需在正式用户体验验收中检查。
 
-Windows own-bash agent scope挂两个companions，不覆盖已有同名工具。缺native executor/OutputCollector公开能力不撤bash/path。新工具不加入minimal持久终端通道，不改变root PowerShell、market patch或preset id。
+Windows own-bash agent scope挂两个companions，不覆盖已有同名工具。两工具必须确认 apply 已执行及当前开启状态下工具面可见；关闭状态仅报告 scope 就绪。Bash/native 共用可选目录读取，有服务走官方 ensure（错误不降级），无服务走旧 policy.workspaceRoot ?? session.header.cwd 接缝。缺native executor/OutputCollector公开能力不撤bash/path。新工具不加入minimal持久终端通道，不改变root PowerShell、market patch或preset id。
 
 ## 11. 已发生的反证与修正
 
@@ -212,7 +212,8 @@ Windows own-bash agent scope挂两个companions，不覆盖已有同名工具。
 - [x] Controller 缺失保持明确拒绝，不静默改前台重复执行。
 - [x] Artifact ownership/quota/retention 由插件层自管；跨调用 quota/purge 尚未实现，不宣称已验收。
 - [ ] **长期跟踪（不阻塞本 PR）**：Core 将来开放 native typed argv、逐流 encoding、closed DTO 等对应公开 API 时，遵循官方优先纪律整体切换并退役插件私有实现。
-- [ ] **stack / 拆分评估**：#24 尚未合并，当前实验已接在[前置 PR 的最新修复提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/c79332ea2fb6da38042063f7b55046115de8e530) 后；#24 合并后必须 rebase 到上游 main，保持 RFC。建议两步 review：① Bash fail-closed + 行 Config/UI/拒绝引导及旧行为回退；② native/path、逐流输出与可见性路由。统一开关应在第一步建立，第二步接同一字段。当前 PR 保留完整 RFC 供跨层契约核验，没有另开 PR。
+- [x] **同步上游**：前置 PR #24 已合并；实验已 rebase 到[上游吸收 PR #28 改进后的 main](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)，继承正式 v0.39.3 的兼容与激活验证。
+- [ ] **拆分评估**：建议两步 review：① Bash fail-closed + 行 Config/UI/拒绝引导/回退；② native/path、逐流输出与可见性路由。唯一开关在第一步建立，第二步复用同一字段。当前保留完整 Draft/RFC，尚未另开子 PR。
 - [ ] **转正式的四项门槛**：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 Windows 真机全量验证、非 CRT 解释器矩阵抽测。四项齐后才谈 ready for review → release。
 - [ ] 真实Agent选工具评测、生产GUI/full apply、会话replay尚未验收。
 - [ ] 真restricted-token/ACL/IPC/VM正负权限、PTY/SSH、任意非CRT/解释器quoting尚未验收。

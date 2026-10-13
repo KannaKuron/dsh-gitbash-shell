@@ -366,16 +366,25 @@ export function mountInlineTools(ctx, deps) {
         if (faceNames(agent).includes(extra.name)) continue // Never replace another owner.
         let extraFiber
         try {
-          extraFiber = scope.ctx.plugin(extra.module)
+          let applied = false
+          extraFiber = scope.ctx.plugin({ ...extra.module, async apply(extraCtx, config) {
+            await extra.module.apply(extraCtx, config)
+            applied = true
+          } })
           await untilDisposed(extraFiber, state.controller.signal)
           if (!isLive(agent, state)) return
-          log(`${extra.name} activated in the agent-owned scope`)
+          if (!applied || (experimentalEnabled() && !faceNames(agent).includes(extra.name))) {
+            throw new Error(`${extra.name} did not register (module inactive or tool not visible)`)
+          }
+          log(experimentalEnabled()
+            ? `${extra.name} activated in the agent-owned scope`
+            : `${extra.name} scope ready; tool disabled by experimentalNative`)
         } catch (error) {
           if (!isLive(agent, state)) return
           await extraFiber?.dispose()
           log(`${extra.name} activation failed; bash remains available: ${error?.message ?? error}`)
         }
-
+      }
       retained = true
       log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {

@@ -3,7 +3,18 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## Unreleased — 2026-10-13
+## Unreleased — 2026-10-14
+
+### PR #26：同步 v0.39.3 与旧宿主兼容（fix / docs / test）
+
+- 已 rebase 到[上游吸收 PR #28 改进后的 main](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)，前置 PR #24 已合并；正式 v0.39.3 的记录完整保留。
+- Bash/native 共享可选 workingDirectory 读取：有服务保留官方 ensure 及其失败，缺服务使用 policy.workspaceRoot ?? session.header.cwd。native 不再硬 inject 缺失服务。
+- 两个 companion 的成功日志同样要求 apply 已执行及工具面回读；OFF 只报告 scope 就绪且工具关闭，避免 INACTIVE/关闭状态假阳性。
+- 设置开关的 21 份字典均完成本地化，新增文案护栏保留工具名、UNCONFINED 与 danger-full-access 事实；人工译文审阅仍欢迎维护者补充。
+- 新增旧宿主形状下的三工具挂载、双向开关与 cwd；native policy/header/服务失败；真实 cmd 字面 /c 和 PowerShell EncodedCommand + UTF16 输出。真实 Git Bash RO/WW 开关双向切换、未确定策略拒绝亦通过。
+- 当前普通完整回归 **231/231**、实际 Core 完整 preview **79/79**，均 exit0、无 skip/cancel；Windows / Node 24.13.0 / Core 0.2.1-alpha.2。语法、diff 和 npm pack dry-run 通过。
+- 已安装实验构建的[三入口实机报告](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6149607594)作为外部证据引用；报告未记录精确提交，不作为当前 rebase 构建的生产 GUI 验收。真实 LLM 自主选路、维护者 Windows 全量验证与完整非 CRT quoting 矩阵仍待。
+
 
 ### PR #26：维护者裁决与运行时开关（fix / feat / docs / test）
 
@@ -16,7 +27,7 @@
 - 拒绝错误与 Bash 描述说明设置卡关闭路径，以及由用户在会话访问模式控件选择 danger-full-access 的路径。
   21 份词典键齐备，中文/英文先行，其余 19 份暂用英文，合并前补本地化。
 - 实验已 rebase 到 [前置 PR 的最新修复提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/c79332ea2fb6da38042063f7b55046115de8e530)，保留其 promotion sandbox 警示回归，显式 OFF 验证旧行为。
-  #24 仍 OPEN，合并后到 main 的 rebase 尚待；建议两步 review（fail-closed + 开关/UI；native/path/输出/路由），保留 Draft/RFC。
+  当时 #24 仍 OPEN，到 main 的 rebase 尚待（已于本轮完成）；建议两步 review（fail-closed + 开关/UI；native/path/输出/路由），保留 Draft/RFC。
 - 长期跟踪：Core 开放对应 native/encoding/closed DTO API 后优先整体迁移并退役私有实现；artifact 自管，controller 缺失保持拒绝。
   正式门槛仍为真实 Agent 选路、生产 GUI、维护者 win32 全量验证及非 CRT 矩阵抽测。
 - 本轮纠正：实际 Core 的 tools.restrict 只认全局工具，初版 agent-local mask 失败；改为拥有者动态注销/注册。
@@ -68,6 +79,38 @@
   真受限token/ACL/IPC/VM负向权限、SSH/PTY与非CRT任意quoting尚未覆盖。未增加Config/UI文案字段。
   公开讨论文档见[实验设计与接口](docs/experimental-native-execution.md)、
   [验证分级与复现](docs/experimental-native-verification.md)。对应测试可随仓库复现。
+
+### 前置修复的历史验证（首次记录时未发布）
+
+- **重启后复测(2026-10-13)**:desktop Profile 的本地安装来源为
+  [PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24) 的
+  [`4816cd8`](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/4816cd8848a52f73f5f054f761d3ec862cb87ade)
+  修复构建(包/插件清单0.39.2,不是额外发版);四个关键已安装源码与工作树逐字节一致、bundle开启。
+  当前实例status路由200/ok=true;真实前台、后台、超时转后台均输出预期sentinel,中文输出正常;
+  native `cmd //d //c echo`通过,未设置全局EXCL。原始固定GBK字节仍乱码,显式GBK→UTF-8通过,
+  说明编码边界仍在,没有把警示宣称为底层修复。再次执行普通回归 **166/166**、宿主preview **17/17**。
+  已安装包helper覆盖中文/#路径、EOF注释和tagged-template保护,描述包含参数/编码/安全提示;
+  独立render探针首轮误把stdout/stderr传为字符串,按真实stream DTO修正后通过,未修改产品代码。
+  本次复测未覆盖真实PTC引擎与生产受限会话；unconfined反馈仅由隔离Core/renderer测试核验。
+
+### 未修复问题研究(2026-10-13;不是产品实施或发版)
+
+- **原生参数/编码**:实际安装 Core 0.2.1-alpha.2 的隔离 argv/raw-pipe/私有 facade→executeArgv
+  与固定字节机制断言 **21/21**;可复用托管 provider,不需另造 runner。不同流显式解码可行,
+  已混在同流的未知编码不可可靠猜测;private spawnSpec 不当稳定接口。cmd 的前斜杠 executable
+  是另一个本机失败反例,反斜杠固定 echo 通过不代表任意 cmd/批处理 quoting 已验收。
+- **真实 PTC 补证**:ToolRuntime→真实 NodePtcRuntime→真实 LocalSubprocessRuntime→Node/fs
+  隔离实验 **8/8**，独立复跑 exit0。显式完整值 helper 配合 codePaths OFF 能读对动态路径,
+  并保留 `/c/users` 路由数据;legacy 字面量猜测仍误改。不是完整插件 apply/生产 GUI/受限 OS 证明。
+- **安全因果纠正**:现场 MSYS 3.6.10-5a1665c8 源码的 cygheap 使用 VirtualAlloc,signal pipe
+  显式 sec_user DACL 缺 restricting SID;当前 Core Flags=13 且 TokenDefaultDacl 已补 ACE。
+  因而历史笼统“用户-only cygheap 映射/只补默认 DACL/所有未来版本无解”不再作为当前根因依据。
+  私有 IPC 身份路线仅静态可行,SID 集合模型 **9/9**不是 AccessCheck 或新沙箱实测。
+- **研究提出的方向**：受限模式spawn前fail-closed、显式native typed argv/逐流decoder/path helper；
+  Core加法契约与隔离Windows VM中的IPC/AppContainer/LPAC/guest边界仍需进一步验收。
+  当前实现与验证见[实验设计](docs/experimental-native-execution.md)、
+  [验证矩阵](docs/experimental-native-verification.md)；前置兼容修复见[PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24)。
+
 ## v0.39.4 — 2026-10-14
 
 **类型**:feat(dsh-ops 0.3.0 互通:gb_* 退役 + 统一方言桥) / fix(docs)。
@@ -160,34 +203,6 @@ opt-in)与跨平台(win/mac/linux)支持。本版把并存形态收敛为「各�
   ToolRuntime/执行句柄/run_code transport 回归,完整无头 preview **17/17**。旧护栏保留;打包 dry-run、语法和 diff
   检查通过。新增 preview 使用实际宿主 API 与内存 subprocess,已有 preview 保留真实 Git Bash/
   PowerShell 进程验收;不等同于生产 GUI、真实 PTC 引擎或新 confinement 方案验证。
-- **重启后复测(2026-10-13)**:desktop Profile 的本地安装来源为
-  [PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24) 的
-  [`4816cd8`](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/4816cd8848a52f73f5f054f761d3ec862cb87ade)
-  修复构建(包/插件清单0.39.2,不是额外发版);四个关键已安装源码与工作树逐字节一致、bundle开启。
-  当前实例status路由200/ok=true;真实前台、后台、超时转后台均输出预期sentinel,中文输出正常;
-  native `cmd //d //c echo`通过,未设置全局EXCL。原始固定GBK字节仍乱码,显式GBK→UTF-8通过,
-  说明编码边界仍在,没有把警示宣称为底层修复。再次执行普通回归 **166/166**、宿主preview **17/17**。
-  已安装包helper覆盖中文/#路径、EOF注释和tagged-template保护,描述包含参数/编码/安全提示;
-  独立render探针首轮误把stdout/stderr传为字符串,按真实stream DTO修正后通过,未修改产品代码。
-  本次复测未覆盖真实PTC引擎与生产受限会话；unconfined反馈仅由隔离Core/renderer测试核验。
-
-### 未修复问题研究(2026-10-13;不是产品实施或发版)
-
-- **原生参数/编码**:实际安装 Core 0.2.1-alpha.2 的隔离 argv/raw-pipe/私有 facade→executeArgv
-  与固定字节机制断言 **21/21**;可复用托管 provider,不需另造 runner。不同流显式解码可行,
-  已混在同流的未知编码不可可靠猜测;private spawnSpec 不当稳定接口。cmd 的前斜杠 executable
-  是另一个本机失败反例,反斜杠固定 echo 通过不代表任意 cmd/批处理 quoting 已验收。
-- **真实 PTC 补证**:ToolRuntime→真实 NodePtcRuntime→真实 LocalSubprocessRuntime→Node/fs
-  隔离实验 **8/8**，独立复跑 exit0。显式完整值 helper 配合 codePaths OFF 能读对动态路径,
-  并保留 `/c/users` 路由数据;legacy 字面量猜测仍误改。不是完整插件 apply/生产 GUI/受限 OS 证明。
-- **安全因果纠正**:现场 MSYS 3.6.10-5a1665c8 源码的 cygheap 使用 VirtualAlloc,signal pipe
-  显式 sec_user DACL 缺 restricting SID;当前 Core Flags=13 且 TokenDefaultDacl 已补 ACE。
-  因而历史笼统“用户-only cygheap 映射/只补默认 DACL/所有未来版本无解”不再作为当前根因依据。
-  私有 IPC 身份路线仅静态可行,SID 集合模型 **9/9**不是 AccessCheck 或新沙箱实测。
-- **研究提出的方向**：受限模式spawn前fail-closed、显式native typed argv/逐流decoder/path helper；
-  Core加法契约与隔离Windows VM中的IPC/AppContainer/LPAC/guest边界仍需进一步验收。
-  当前实现与验证见[实验设计](docs/experimental-native-execution.md)、
-  [验证矩阵](docs/experimental-native-verification.md)；前置兼容修复见[PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24)。
 
 ## v0.39.2 — 2026-10-13
 
@@ -218,7 +233,7 @@ opt-in)与跨平台(win/mac/linux)支持。本版把并存形态收敛为「各�
   暂态失败后重试,卸载或失效时取消,不因单次请求失败永久卡在忙碌状态。
 - **回归入口**:新增可移植客户端/桥/运行时/宿主回归与实际 Core preview 集成用例,接入现有
   `npm test`/`npm run test:preview`;不新增依赖、不跳过旧断言或 Node 22 矩阵。对齐上游 v0.39.1
-  ([私有执行器隔离发布提交](https://github.com/KannaKuron/dsh-gitbash-shell/commit/521be01ee803f289236800ebfb36fab8dd690535))后完整测试 **156/156**、实际 Core 无头 preview **14/14**、打包 dry-run 和 diff 检查
+  (`521be01`)后完整测试 **156/156**、实际 Core 无头 preview **14/14**、打包 dry-run 和 diff 检查
   通过。新增执行级回归保留 #21 的 real-array glob 契约与 stringified-array 响亮拒绝;不改已发布
   版本号、历史记录或 npm 发布流程。Grok 对修复 diff 的只读反证未发现确定遗漏。
   首轮全量检查发现三条旧源码正则仍锁旧实现,改为对应新保护条件并补同值/手选行为测试,没有删掉

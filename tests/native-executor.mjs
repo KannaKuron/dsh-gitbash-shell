@@ -79,7 +79,7 @@ test('native policy: all denied paths precede workspace, scope, adapter and spaw
 test('native cancellation: cancellation during workspace preparation cannot hand off a job', async () => {
   const abort = new AbortController()
   let envCollected = false
-  const ctx = { get: () => ({ resolve: () => ({ mode: 'danger-full-access' }) }),
+  const ctx = { get: key => key === 'workingDirectory' ? ctx.workingDirectory : { resolve: () => ({ mode: 'danger-full-access' }) },
     workingDirectory: { async ensure() { abort.abort(new Error('fixed preparation cancel')); return 'C:/Native Sentinel' } },
     shellEnv: { collect() { envCollected = true; return {} } } }
   const executor = createNativeExecutor(ctx, { localBashModule: { LocalBashExecutor: class {} },
@@ -93,7 +93,7 @@ test('native preparation: a non-settling scope mount is bounded and disposed bef
   let artifactCreated = false
   const owner = { isolate() { return this } }
   const ctx = {
-    get: key => key === 'sandboxPolicy' ? { resolve: () => ({ mode: 'danger-full-access' }) } : { spawn() { throw new Error('MUST_NOT_SPAWN') } },
+    get: key => key === 'workingDirectory' ? ctx.workingDirectory : key === 'sandboxPolicy' ? { resolve: () => ({ mode: 'danger-full-access' }) } : { spawn() { throw new Error('MUST_NOT_SPAWN') } },
     workingDirectory: { ensure: async () => 'C:/Native Sentinel' }, shellEnv: { collect: () => ({}) },
   }
   const executor = createNativeExecutor(ctx, { platform: 'win32', localBashModule: { LocalBashExecutor: class {} },
@@ -133,7 +133,7 @@ test('native schema authoring: implicit property-map, required markers and capab
 
  test('native switch: disabled preparation and stale prepared request have no side effects', async () => {
   let enabled = false, ensure = 0;
-  const ctx = { get: () => ({ resolve: () => ({ mode: 'danger-full-access' }) }),
+  const ctx = { get: key => key === 'workingDirectory' ? ctx.workingDirectory : { resolve: () => ({ mode: 'danger-full-access' }) },
     workingDirectory: { ensure: async () => { ensure++; return 'C:/Native Sentinel'; } }, shellEnv: { collect: () => ({}) } };
   const executor = createNativeExecutor(ctx, { platform: 'win32', experimentalEnabled: () => enabled,
     localBashModule: { LocalBashExecutor: class {} }, translateMsysPath,
@@ -147,3 +147,15 @@ test('native schema authoring: implicit property-map, required markers and capab
   await assert.rejects(executor.execute(prepared, exec), /disabled by experimentalNative/);
   assert.equal(ensure, 1);
  });
+
+
+test('native directory: optional service preserves modern failures and policy/header precedence', async()=>{
+  const agent={session:{header:{cwd:'D:/header'}}};let service,root='E:/policy';
+  const ctx={get:key=>key==='workingDirectory'?service:key==='sandboxPolicy'?{resolve:()=>({mode:'danger-full-access',...(root?{workspaceRoot:root}:{})})}:undefined,shellEnv:{collect:()=>({})}};
+  const executor=createNativeExecutor(ctx,{platform:'win32',localBashModule:{LocalBashExecutor:class{}},translateMsysPath,createScope(){throw new Error('must not mount')},createNativeOutputAdapter(){throw new Error('must not spawn')}});
+  const exec={agent,signal:new AbortController().signal};
+  assert.equal((await executor.prepare(request(),exec)).cwd,'E:\\policy');
+  root=undefined;assert.equal((await executor.prepare(request(),exec)).cwd,'D:\\header');
+  const failure=new Error('official ensure failed');service={ensure(){throw failure}};
+  await assert.rejects(executor.prepare(request(),exec),e=>e===failure);
+});

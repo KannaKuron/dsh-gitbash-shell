@@ -40,6 +40,7 @@
  * @module dsh-gitbash-shell/bash-tool
  */
 
+import { resolveSessionCwd } from './session-workdir.js'
 import {
   ESCALATION_TARGETS,
   parseExitStatus,
@@ -517,12 +518,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           // this is the same ensure() seam the modern official tool-bash uses;
           // on hosts without it, fall back to the session cwd exactly the way
           // the rc.2-era official resolveWorkdir did (policy root ?? header).
-          const workingDirectory = ctx.get !== undefined ? ctx.get('workingDirectory') : undefined
-          const cwd = exec.agent === undefined
-            ? undefined
-            : workingDirectory !== undefined
-              ? await workingDirectory.ensure(exec.agent, exec.signal)
-              : (standingPolicy?.workspaceRoot ?? exec.agent?.session?.header?.cwd)
+          const cwd = await resolveSessionCwd(ctx, exec, policy)
           const workdir = resolveWorkdir(args.workdir, cwd)
           const dshEnv = ctx.shellEnv.collect(exec)
           const request = {

@@ -149,4 +149,8 @@ test('client: experimental switch defaults ON and writes the authoritative field
   assert.equal(f.writes.at(-1).value, true);
   const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
   for (const key of ['experimental.label', 'experimental.hint']) assert.equal(source.split('"' + key + '":').length - 1, 21);
+  const labels = [...source.matchAll(/"experimental.label": ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]));
+  assert.equal(labels.filter(label => label === labels[1]).length, 1, 'only English uses the English placeholder');
+  const hints = [...source.matchAll(/"experimental.hint": ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]));
+  for (const hint of hints) for (const fact of ['gitbash_native', 'gitbash_to_native_path', 'UNCONFINED', 'danger-full-access']) assert.ok(hint.includes(fact));
 });

@@ -103,7 +103,7 @@ export function renderNativeResult(value) {
 export function createNativeToolModule(deps) {
   if (typeof deps.toolsModule?.defineTool !== 'function') throw new Error('gitbash_native: host defineTool capability unavailable')
   return {
-    inject: ['tools', 'subprocess', 'workingDirectory', 'shellEnv'],
+    inject: ['tools', 'subprocess', 'shellEnv'],
     apply(ctx, config = {}) {
       const executor = createNativeExecutor(ctx, deps)
       const enabled = config.enableRunInBackground !== false

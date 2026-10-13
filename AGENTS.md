@@ -606,6 +606,9 @@
        时,inject/服务消费面必须取兼容矩阵内最老宿主的形状或可选化——「宿主新版本有」不等于
        「矩阵内都有」;激活/注册类日志必须回读验证,成功日志本身不是证据**(与 §0 静态 import、
        §4j 硬注入、v0.38.2 fiber 时序同一失败家族的第无数课)。
+       实验 native 与 Bash 的 cwd 消费共用 `src/session-workdir.js`；native 同样不得硬 inject
+       workingDirectory。服务存在时 ensure 错误不得吞掉，只有缺服务才走旧接缝。
+       companion 激活必须确认 apply 已执行；开关开启时还须工具面回读，关闭时只报告 scope 就绪。
 
 ## 验证清单(改动后)
 

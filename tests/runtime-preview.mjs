@@ -32,7 +32,7 @@ function createScope(parent) {
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
 
-async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true } = {}) {
+async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true, workingDirectory = { ensure: async () => process.cwd() }, sessionCwd, policyWorkspaceRoot = process.cwd() } = {}) {
   const root = new Context()
   const cleanups = []
   const logs = []
@@ -42,7 +42,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
   const failed = deferred()
   const agentScopes = []
   const official = { kind: 'official-pwsh' }
-  const policy = { mode: 'danger-full-access', workspaceRoot: process.cwd() }
+  const policy = { mode: 'danger-full-access', ...(policyWorkspaceRoot === null ? {} : { workspaceRoot: policyWorkspaceRoot }) }
   const readFrom = () => ({ text: 'runtime-preview-ok', nextOffset: 18, lossy: false })
   for (const [name, value] of Object.entries({
     shell: official,
@@ -50,7 +50,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     sandbox: {},
     ...(ptc ? { ptcRuntime: { language: 'typescript', executionInstructions: 'Prompt-only fixture; never executes programs', resolve: spec => spec, run() { throw new Error('prompt routing fixture must not execute') } } } : {}),
     sandboxPolicy: { defaultMode: policy.mode, resolve: request => request?.session?.header.policy ?? policy },
-    workingDirectory: { ensure: async () => process.cwd() },
+    ...(workingDirectory === null ? {} : { workingDirectory }),
     loader: { internal: { async import(name) {
       if (pauseModules && name === '@deepseek-ai/dsh-tools') { entered.resolve(); await release.promise }
       return import(name)
@@ -70,7 +70,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
       ctx.tools.register(defineTool({ name, description: name, parameters: {}, output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }, execute: () => name }))
     }
   } })
-  const agent = { id: 'runtime-preview-agent', session: { header: {} } }
+  const agent = { id: 'runtime-preview-agent', session: { header: { ...(sessionCwd === undefined ? {} : { cwd: sessionCwd }) } } }
   const agentScope = createAgentScope(agentParent, agent)
   agent.ctx = agentScope.ctx
   cleanups.push(() => agentScope.dispose())
@@ -502,3 +502,22 @@ test('runtime preview: actual run_code transport receives Unicode/EOF fixes and 
   const uncertain = "const p='/c/工作/a'; return (4+2) / 2"
   assert.equal(await run(uncertain), dialectHelpers.programPrelude(env) + uncertain)
 })
+
+
+test('runtime preview: old hosts without workingDirectory mount all companions and preserve policy-first cwd', { timeout: 10000 }, async t => {
+  const spawns=[];
+  const f=await fixture(t,{explicitTools:true,workingDirectory:null,sessionCwd:'D:/session-project',policyWorkspaceRoot:null,
+    subprocessRuntime:{spawn(spec){spawns.push(spec);return {done:Promise.resolve({exitCode:0,signal:null}),collected:{stdout:{readFrom:()=>({text:'ok',nextOffset:2,lossy:false})},stderr:{readFrom:()=>({text:'',nextOffset:0,lossy:false})}},terminate(){}}}}});
+  await bounded(f.activated.promise,'old-host companions');
+  assert.deepEqual(f.names().sort(),['bash','gitbash_native','gitbash_to_native_path']);
+  for(const [workdir,cwd] of [[undefined,'D:/session-project'],['scripts','D:/session-project/scripts'],['E:/explicit','E:/explicit']]){
+    const response=await f.execute('bash',{command:'memory-only',description:'Verify old-host cwd',...(workdir===undefined?{}:{workdir})});
+    assert.equal(response.isError,false,JSON.stringify(response));assert.equal(spawns.at(-1).cwd,cwd);
+  }
+  f.agent.session.header.policy={mode:'danger-full-access',workspaceRoot:'F:/policy-project'};
+  const response=await f.execute('bash',{command:'memory-only',description:'Verify policy precedence',workdir:'scripts'});
+  assert.equal(response.isError,false,JSON.stringify(response));assert.equal(spawns.at(-1).cwd,'F:/policy-project/scripts');
+  f.setExperimental(false);assert.deepEqual(f.names(),['bash']);
+  f.setExperimental(true);assert.deepEqual(f.names().sort(),['bash','gitbash_native','gitbash_to_native_path']);
+  assert.equal(f.root.get('shell'),f.official);
+});

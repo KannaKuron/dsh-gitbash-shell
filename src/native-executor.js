@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { resolveSessionCwd } from './session-workdir.js'
 
 // No host peer imports here: the owner supplies modules via its host loader.
 const KEYS = new Set(['description', 'executable', 'argv', 'cwd', 'timeoutMs', 'run_in_background', 'entrypoint', 'stdoutEncoding', 'stderrEncoding', 'errors'])
@@ -136,14 +137,14 @@ export function createNativeExecutor(ctx, deps) {
     waitBudget: request => Math.max(1, remaining(request)),
     async prepare(args, exec) {
       requireEnabled()
-      requireNativePolicy(ctx, exec, sandboxModule)
+      const policy = requireNativePolicy(ctx, exec, sandboxModule)
       exec.signal?.throwIfAborted()
       if (args?.timeoutMs !== undefined && (!Number.isFinite(args.timeoutMs) || args.timeoutMs <= 0)) throw new TypeError('timeoutMs: expected a positive finite number')
       const startedAt = Date.now()
       const timeoutMs = Math.min(args?.timeoutMs ?? NATIVE_TIMEOUT_MS, NATIVE_MAX_TIMEOUT_MS)
       const preparation = cancellation(exec.signal, timeoutMs)
       try {
-        const sessionCwd = exec.agent === undefined ? undefined : await whileActive(() => ctx.workingDirectory.ensure(exec.agent, preparation.signal), preparation.signal)
+        const sessionCwd = await whileActive(() => resolveSessionCwd(ctx, { ...exec, signal: preparation.signal }, policy), preparation.signal)
         requireEnabled()
         preparation.signal.throwIfAborted()
         const request = parseNativeRequest(args, { translateMsysPath, sessionCwd, platform: deps.platform ?? process.platform })

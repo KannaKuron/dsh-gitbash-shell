@@ -2,18 +2,18 @@
 
 > **这是实验性讨论的验证记录，不是发布或安全放行。**
 > 关联：[设计/接口/待讨论决定](<experimental-native-execution.md>)、[CHANGELOG](<../CHANGELOG.md>)。
-> 验证日期：2026-10-13。以下结果适用于所列运行环境，不代表所有宿主版本或生产场景均已通过。
+> 验证日期：2026-10-14（保留此前轮次记录）。以下结果适用于所列运行环境，不代表所有宿主版本或生产场景均已通过。
 
 ## 1. 验证基准与结果
 
-- 实验增量基线：[此前 MSYS 兼容边界修复提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/4816cd8848a52f73f5f054f761d3ec862cb87ade)（此前MSYS兼容边界修复）。
+- 当前实验基线：[上游 v0.39.3 与 PR #28 后续修复](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)。前置 PR #24 已合并。
 - 测试环境：**DSH Core 0.2.1-alpha.2**、Node 24.13.0、Windows / Git for Windows。
 - 新native功能按公开能力探测启用；既有兼容版本范围之外的实际覆盖情况见后文待验收项。
-- 最终普通全仓：**223 tests / 223 pass / 0 fail / 0 skip / 0 cancel，exit0**。
-- 最终实际Core完整preview：**72 tests / 72 pass / 0 fail / 0 skip / 0 cancel，exit0**。
+- 最终普通全仓：**231 tests / 231 pass / 0 fail / 0 skip / 0 cancel，exit0**。
+- 最终实际Core完整preview：**79 tests / 79 pass / 0 fail / 0 skip / 0 cancel，exit0**。
 - 语法与`git diff --check`通过；npm dry-run确认新源码包含于发布文件集合。Dry-run不是已安装/发布，也不是新增生产版本。
 
-计数是Node test runner报告口径，包括子测试/套件；不同轮次或独立复跑有重叠，**不累加为独立覆盖数量**。223/72是完整脚本结果，不意味着223个单元加72个都是真生产进程场景。
+计数是Node test runner报告口径，包括子测试/套件；不同轮次或独立复跑有重叠，**不累加为独立覆盖数量**。231/79 是当前完整脚本结果，不意味着每项都是真生产进程场景。
 
 ## 2. 证据等级
 
@@ -133,7 +133,7 @@ DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:prev
 
 ## 7. 转正式功能前的验收清单
 
-- [ ] 决定experimental opt-in/default与受限breaking体验。
+- [x] 维护者裁决默认开启的 volatile 开关，关闭恢复旧行为。
 - [ ] 生产GUI/full plugin apply、Agent真实选择、会话replay。
 - [ ] 真Windows confinement正负权限/IPC/token及可接受隔离方案。
 - [ ] SSH/PTY、代表性非CRT/解释器程序的实际quoting。
@@ -144,15 +144,25 @@ DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:prev
 
 在这些项完成前，保持Draft/实验讨论定位，不称普遍编码修复或新沙箱实现。
 
-## PR #26 运行时开关裁决后的验证
+## PR #26 运行时开关裁决后的验证（2026-10-13 历史轮次）
 
 本轮普通完整回归 **226/226**，实际安装 Core 完整 preview **75/75**，均 exit0、无 skip/cancel。环境仍为 Windows、Node 24.13.0、Core 0.2.1-alpha.2。新增覆盖：
 
-- 卡片缺键默认 ON、两向写同一行 Config 字段、21 字典键对齐（其余 19 语言暂用英文）。
+- 卡片缺键默认 ON、两向写同一行 Config 字段、21 字典键对齐（当时其余 19 语言暂用英文，本轮已本地化）。
 - 实际 ToolRuntime 中现有会话 ON/OFF 反复切换、初始 OFF 后启用、工具 schema 注销/注册、受限 Bash 拒绝/旧 unconfined 结果；root shell 不变。
 - 旧路径定义关闭后零翻译；native 已准备请求关闭后零 scope/adapter；artifact 异步准备期间关闭后零 spawn、scope 释放，重新开启后真实 Node producer 运行一次。
 - #24 actual promotion DTO 测试以显式 OFF 验证旧 sandbox facts 提示，full-access 无警示。
 
 初版 tools.restrict agent-local mask 被实际 Core 拒绝；改为动态拥有者注册。artifact 负例初版检查仅在 spawn facade 内，被 Core 转为失败 handle；增加准备后检查后以明确错误拒绝，未放宽零 spawn 断言。
 
-仍待正式四项验收：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 win32 真机全量验证、非 CRT 解释器矩阵抽测。#24 未合并，合并后到上游 main 的 rebase 尚待。
+仍待正式四项验收：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 win32 真机全量验证、非 CRT 解释器矩阵抽测。当时 #24 未合并；本轮已完成到上游 main 的 rebase。
+
+## 同步 v0.39.3 后的验证（2026-10-14）
+
+当前完整回归 231/231、实际 Core preview 79/79，exit0、无 skip/cancel。新增缺 workingDirectory 的三工具挂载/cwd/双向开关，真实 native producer 的 policy/header 默认目录；有服务 ensure 错误不降级。两个 companion 也验证真实注册后才报成功。21 份字典已本地化。
+
+代表性解释器抽测：真实 cmd.exe 的 literal /c echo sentinel；Windows PowerShell 的显式 EncodedCommand + UTF16 输出中文 sentinel。均通过；这些固定脚本不证明任意引号、元字符或所有非 CRT parser 的可靠性。真实 Git Bash 在 fixture RO/WW 中 OFF 执行并携带 unconfined facts，ON 再次拒绝；未确定策略在 ON 拒绝。所有进程均在隔离 Context 与临时目录中，不改变生产 Profile。
+
+[已安装实验构建的实机报告](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6149607594)覆盖 Bash/native/path 入口与 RO/WW、单次批准不粘滞。报告没有记录精确提交，且明确未覆盖开关 OFF、生产 GUI、真实 LLM 自主选路或非 CRT 矩阵；将其作为有限外部证据，不扩展为当前 rebase 构建的完整验收。
+
+仍需真实 LLM 自主选路、生产 GUI、维护者 Windows 全量验证、非 CRT 矩阵的正式确认；保留 Draft/RFC。

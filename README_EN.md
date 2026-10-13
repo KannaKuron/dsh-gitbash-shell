@@ -4,7 +4,7 @@
 
 [简体中文](README.md) | English
 
-> **Experimental implementation discussion / Unreleased:** the fail-closed behaviour and two explicit tools below have not been published/deployed and are not a release candidate. Public npm installation does not guarantee these changes. See the [design, interfaces and open decisions](<docs/experimental-native-execution.md>), [verification matrix and reproduction](<docs/experimental-native-verification.md>) and Unreleased CHANGELOG.
+> **Experimental implementation discussion / Unreleased:** the fail-closed behaviour and two explicit tools below have not been officially released and are not a release candidate. Public npm installation does not guarantee these changes. See the [design, interfaces and open decisions](<docs/experimental-native-execution.md>), [verification matrix and reproduction](<docs/experimental-native-verification.md>) and Unreleased CHANGELOG.
 
 > Run **agent commands on Git Bash by default** on Windows with DeepSeek
 > Harness (dsh) — the plugin does NOT replace the host executor (the official

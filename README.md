@@ -4,7 +4,7 @@
 
 简体中文 | [English](README_EN.md)
 
-> **Unreleased／实验性实现讨论**：下述 fail-closed 与两个显式工具尚未发布/部署，不是发布候选；安装公开 npm 包不保证包含这些变更。详见[设计、接口与待讨论决定](<docs/experimental-native-execution.md>)、[验证矩阵与复现](<docs/experimental-native-verification.md>)及 CHANGELOG。
+> **Unreleased／实验性实现讨论**：下述 fail-closed 与两个显式工具尚未正式发布，不是发布候选；安装公开 npm 包不保证包含这些变更。详见[设计、接口与待讨论决定](<docs/experimental-native-execution.md>)、[验证矩阵与复现](<docs/experimental-native-verification.md>)及 CHANGELOG。
 
 > 让 DeepSeek Harness (dsh) 在 Windows 上**默认用 Git Bash 跑命令**的官方风格插件
 > —— 不替换宿主执行器(官方 PowerShell 执行器原样保留):新增自有 bash 工具

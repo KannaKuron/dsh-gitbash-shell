@@ -33,7 +33,7 @@ function createScope(parent) {
   const fiber = parent.plugin(value => { ctx = value })
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
-async function fixture(t, { jobs = false, promote = false, controller = true, artifactFactory, ensure } = {}) {
+async function fixture(t, { jobs = false, promote = false, controller = true, artifactFactory, ensure, missingDirectoryService = false, policyWorkspaceRoot = DIR } = {}) {
   const root = new Context()
   const disposers = []
   const spawned = []
@@ -41,11 +41,11 @@ async function fixture(t, { jobs = false, promote = false, controller = true, ar
   let mode = 'danger-full-access'
   let experimental = true
   let adapterConstructions = 0
-  const policy = { defaultMode: 'danger-full-access', resolve: () => mode === undefined ? undefined : { mode, workspaceRoot: DIR } }
+  const policy = { defaultMode: 'danger-full-access', resolve: () => mode === undefined ? undefined : { mode, ...(policyWorkspaceRoot === null ? {} : { workspaceRoot: policyWorkspaceRoot }) } }
   const official = { name: 'official-preserved' }
   let agent
   for (const [name, value] of Object.entries({ shell: official, sandboxPolicy: policy,
-    workingDirectory: { ensure: ensure ?? (async () => DIR) }, agents: { get: id => agent?.id === id ? agent : undefined } })) disposers.push(root.provide(name, value))
+    ...(missingDirectoryService ? {} : { workingDirectory: { ensure: ensure ?? (async () => DIR) } }), agents: { get: id => agent?.id === id ? agent : undefined } })) disposers.push(root.provide(name, value))
   const mount = async (module, config) => {
     const fiber = root.plugin(module, config)
     disposers.push(() => fiber.dispose())
@@ -58,7 +58,7 @@ async function fixture(t, { jobs = false, promote = false, controller = true, ar
   const rootProvider = root.reflect.store[root[Context.isolate].subprocess]
   const rootShell = root.reflect.store[root[Context.isolate].shell]
   const agentId = `native-preview-${randomUUID()}`
-  agent = { id: agentId, session: { header: { id: agentId } } }
+  agent = { id: agentId, session: { header: { id: agentId, cwd: DIR } } }
   const agentScope = createAgentScope(root, agent)
   agent.ctx = agentScope.ctx
   disposers.push(() => agentScope.dispose())
@@ -415,3 +415,34 @@ process.on('exit', code => {
   fs.writeFileSync(path.join(DIR, 'results.json'), JSON.stringify({ exitCode: code, node: process.version, core: 'installed host via --import loader', rows }, null, 2))
   console.log(`Native preview evidence: ${DIR}`)
 })
+
+
+test('installed Core native: missing directory service uses policy root then header for a real producer', {timeout:15000}, async t=>{
+  for(const policyWorkspaceRoot of [DIR,null]){
+    const f=await fixture(t,{missingDirectoryService:true,policyWorkspaceRoot});
+    const response=await f.run(request('console.log(process.cwd())'));
+    assert.equal(response.isError,false,JSON.stringify(response));
+    assert.equal(response.value.stdout.text.trim(),path.win32.normalize(DIR));
+    assert.equal(f.spawned.length,1);f.preserved();
+  }
+});
+
+
+test('installed Core native: cmd literal /c reaches the interpreter without MSYS conversion', {timeout:15000}, async t=>{
+  const f=await fixture(t);
+  const executable=path.join(process.env.SystemRoot??'C:/Windows','System32','cmd.exe');
+  const response=await f.run({description:'Fixed cmd interpreter sentinel',executable:typedPath(executable),entrypoint:'interpreter',argv:['/d','/s','/c','echo CMD_FIXED_SENTINEL'].map(literal)});
+  assert.equal(response.isError,false,JSON.stringify(response));assert.equal(response.value.exitCode,0);
+  assert.equal(response.value.stdout.text.trim(),'CMD_FIXED_SENTINEL');
+  assert.ok(f.spawned[0].spec.argv.includes('/c'));f.preserved();
+});
+
+test('installed Core native: Windows PowerShell encoded command declares UTF16 output explicitly', {timeout:15000}, async t=>{
+  const f=await fixture(t);
+  const executable=path.join(process.env.SystemRoot??'C:/Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+  const code='[Console]::OutputEncoding = [System.Text.Encoding]::Unicode; [Console]::Write("PS_FIXED_中文_SENTINEL")';
+  const encoded=Buffer.from(code,'utf16le').toString('base64');
+  const response=await f.run({description:'Fixed PowerShell interpreter sentinel',executable:typedPath(executable),entrypoint:'interpreter',argv:['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',encoded].map(literal),stdoutEncoding:'utf16le'});
+  assert.equal(response.isError,false,JSON.stringify(response));assert.equal(response.value.exitCode,0);
+  assert.equal(response.value.stdout.text,'PS_FIXED_中文_SENTINEL');f.preserved();
+});
