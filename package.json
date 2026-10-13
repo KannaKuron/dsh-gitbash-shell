@@ -1,7 +1,7 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.38.5",
-  "description": "Windows 上让 agent 的每条 shell 命令改经 Git for Windows bash 执行;物化四个内置预设的 Git Bash 变体,统一 MSYS 盘根路径方言,侧栏终端接管可开关。· Run every agent shell command through Git for Windows bash on Windows; materialize Git Bash variants of the built-in presets, unify the MSYS drive-root path dialect, and adopt the sidebar terminal behind a switch.",
+  "version": "0.39.0",
+  "description": "Windows 上给 agent 一个真正的 Git Bash 命令工具:私有 Git Bash 执行器实例(官方 PowerShell 执行器原样保留),统一 MSYS 盘根路径方言,官方 pwsh 工具默认隐藏可开关,物化四个内置预设的 Git Bash 变体,侧栏终端接管可开关。· Give agents a real Git Bash tool on Windows: a private Git Bash executor instance (the official PowerShell executor stays untouched), a unified MSYS drive-root path dialect, an opt-in official pwsh tool, and four Git Bash preset variants.",
   "type": "module",
   "repository": {
     "type": "git",
@@ -30,6 +30,14 @@
         "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
+    },
+    "compatibility": {
+      "dsh": ">=0.1.7-rc",
+      "dshReleases": {
+        "0.2.0-rc.2": "compatible",
+        "0.2.1-alpha.1": "compatible",
+        "0.2.1-alpha.2": "compatible"
+      }
     }
   },
   "files": [

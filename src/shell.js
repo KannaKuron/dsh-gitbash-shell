@@ -1,12 +1,14 @@
 /**
- * dsh-gitbash-shell/shell — the Git Bash ctx.shell executor.
+ * dsh-gitbash-shell/shell — the Git Bash executor INSTANCE (route B, v0.39.0).
  *
- * The shipped Windows host composes `dsh-pwsh-sandbox` as ctx.shell and the
- * platform gates (`!!js process.platform === 'win32'`) disable the bash
- * stack on Windows, because a bare `bash` on Windows resolves to the WSL
- * shim in System32 — or to nothing at all when Git's bin directory is not on
- * PATH. This plugin restores the bash stack on Windows while pointing it at
- * Git for Windows' real bash.exe:
+ * Since route B this class is NOT mounted as the host `ctx.shell` service:
+ * the official PowerShell executor keeps that slot untouched (the DSH-Store
+ * catalog gate forbids bundle patches that disable official components, and
+ * replacing the shell executor IS overriding one). Instead the plugin
+ * constructs ONE private instance of this class in a PRIVATE cordis scope
+ * (`executorScope.ctx.plugin(GitBashSandboxExecutor)`, src/inline-tools.js)
+ * and hands it to the plugin's OWN bash tool (src/bash-tool.js). The class
+ * body is unchanged from its executor-row era:
  *
  *   - extends @deepseek-ai/dsh-bash-sandbox so every confined-mode
  *     (read-only / workspace-write) call keeps the exact sandbox policy,
@@ -33,8 +35,9 @@
  * full system environment plus the DSH_* snapshot exactly like the pwsh
  * executor did.
  *
- * Loaded as a class plugin: Cordis constructs it and the ShellExecutor base
- * registers `ctx.shell` (one implementation per context).
+ * Constructed as a cordis class plugin (static inject/Config honoured) —
+ * inside the PRIVATE scope only, so the base class's service registration
+ * lands there and never touches the root `ctx.shell` slot.
  */
 
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'

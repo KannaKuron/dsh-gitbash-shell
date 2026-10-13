@@ -1,4 +1,4 @@
-# dsh-gitbash-shell bundle patch
+# dsh-gitbash-shell bundle patch (route B, v0.39.0)
 #
 # Installed through the official CLI —
 #
@@ -6,41 +6,27 @@
 #
 # — the command reconciles `dsh.profile.bundles` against installed packages
 # and, seeing this declaration, appends dsh-gitbash-shell to the bundle
-# stack. The profile boot then merges this patch:
+# stack. The profile boot then merges this patch, which is ADDITIVE ONLY:
 #
-#   1. withdraw the PowerShell executor (the framework composes exactly one
-#      ctx.shell provider per process);
-#   2. insert the Git Bash executor row (a subclass of the shipped
-#      @deepseek-ai/dsh-bash-sandbox, so sandbox policy, denial
-#      classification, background jobs, and settings behave identically);
-#   3. insert the preset-materialization row, which writes the
-#      standard/minimal/code/cordis Git Bash variants into the first
-#      user-trust preset root.
+#   1. insert the plugin row (id `gitbash-shell`, matching the settings
+#      namespace string). Everything the plugin does — the own bash tool over
+#      a PRIVATE Git Bash executor (src/bash-tool.js + src/shell.js), the
+#      declarative preset variants, the terminal adoption, the path dialect —
+#      is runtime work owned by that row. The host's own PowerShell executor
+#      and every official row keep their places untouched; no official
+#      component is disabled, replaced or duplicated here.
 #
-# On non-Windows hosts the executor row is disabled and the bundle is inert
-# apart from the preset materialization (bash is already the native stack).
+# On non-Windows hosts the row mounts inert: the inline tool patch, the
+# executor construction and the client half are all platform-gated in code.
 #
-# This patch deliberately does NOT flip the base host tool-bash/tool-pwsh
-# rows: the web surface disables them and lets agent presets provide the
-# model-facing shell tools instead.
-- id: pwsh-sandbox
-  disabled: true
-
+# This patch deliberately does NOT flip ANY base row: the web surface's own
+# gates decide which model-facing tools exist, and the plugin's runtime layer
+# composes with them per agent.
 - insert:
-    - id: gitbash-executor
-      name: dsh-gitbash-shell/shell
-      disabled: !!js process.platform !== 'win32'
-      config:
-        timeoutMs: 60000
-        # EMPTY = AUTO (v0.28.0, issue #11): the shared resolver walks
-        # setting > default install paths > PATH > registry PATH, and accepts
-        # ONLY Git for Windows' bash. A hard-coded C: path here made a Git
-        # installed elsewhere (e.g. Q:/Git) look like "dsh is broken".
-        bashPath: ""
-
     # Row id 'gitbash-shell' (was 'gitbash-presets' through v0.23.0): dsh >= 0.1.7
     # keys a plugin's live Config form and the one-shot legacy settings.yaml
     # import by the row id, so it now matches the settings namespace string.
+    # Older hosts treat the id as opaque.
     - id: gitbash-shell
       name: dsh-gitbash-shell
 
@@ -52,8 +38,15 @@
 # ('shell.get' name), so pointing config.shell at Git Bash on Windows makes
 # the sidebar terminal open bash AND display a 'bash' tab label; per-open
 # settings overrides (which this plugin also fills) then agree with it.
+#
+# The path is PROBED at boot (v0.39.0, hardening the v0.15-era hardcode that
+# broke on Git installs outside the default directory — issue #13): the two
+# standard install roots are probed via node:fs, and when neither exists the
+# value resolves to '' which the sidebar treats as "no override" (the
+# per-open settings path and the terminal adoption remain the authoritative
+# channels on such machines).
 - id: better-sidebar
   name: dsh-better-sidebar
   config:
     shell: !!js >-
-      process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : ''
+      (() => { try { if (process.platform !== 'win32') return ''; const fs = process.getBuiltinModule('node:fs'); const pf = (process.env.ProgramFiles ?? process.env.PROGRAMFILES ?? 'C:\\Program Files').replace(/[\\/]+$/, ''); const lad = (process.env.LOCALAPPDATA ?? '').replace(/[\\/]+$/, ''); const candidates = [pf + '\\Git\\bin\\bash.exe', lad === '' ? '' : lad + '\\Programs\\Git\\bin\\bash.exe']; for (const candidate of candidates) { if (candidate !== '' && fs.existsSync(candidate)) return candidate } return '' } catch { return '' } })()

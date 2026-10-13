@@ -4,16 +4,19 @@
 
 简体中文 | [English](README_EN.md)
 
-> 让 DeepSeek Harness (dsh) 在 Windows 上**全部使用 Git Bash** 的官方风格插件
-> —— 以 Git for Windows 的 `bash.exe` 替换 PowerShell 执行器,并为所有模式
-> 注册对应的 Git Bash 版 agent preset。
+> 让 DeepSeek Harness (dsh) 在 Windows 上**默认用 Git Bash 跑命令**的官方风格插件
+> —— 不替换宿主执行器(官方 PowerShell 执行器原样保留):新增自有 bash 工具
+> (私有 Git Bash 执行器实例,不注册为服务),并为所有模式注册对应的 Git Bash 版
+> agent preset。
 
 ## 它解决什么
 
 官方 Windows 组合默认把 `dsh-pwsh-sandbox` 作为 `ctx.shell`(PowerShell 执行器),
 且各 preset 的 `tool-bash` 行在 win32 上被禁用——因为在 Windows 上裸 `bash`
-会解析到 `C:\Windows\System32\bash.exe`(WSL 占位),本插件直接指定
-`C:/Program Files/Git/bin/bash.exe`。沙箱语义在 POSIX 宿主上完整保留;
+会解析到 `C:\Windows\System32\bash.exe`(WSL 占位)。本插件**不替换这个执行器**:
+它新增一个自有 `bash` 工具,执行在私有的 Git Bash 执行器实例上(继承官方
+`@deepseek-ai/dsh-bash-sandbox`,`bashPath` 只认 Git for Windows)。沙箱语义在
+POSIX 宿主上完整保留;
 **Windows 宿主上受限模式有一处重要例外——见下方
 [「安全语义:Windows 上的受限模式」](#安全语义windows-上的受限模式)**。
 
@@ -21,16 +24,18 @@
 
 - **官方四个模式直接获得 Git Bash**——模式列表保持官方原样,不再新增变体:
   每个会话创建时,本插件探测该模式的工具面,「有 pwsh 无 bash」(官方 Windows
-  组合的形态)即在该会话内激活**官方原版 tool-bash 模块**(后台任务、审批升级、
-  渲染行为逐字节不变),并遮蔽「假 pwsh」——它的执行器在本机就是 Git Bash,
-  工具名却叫 pwsh,留着只会骗模型。
+  组合的形态)即在该会话内注册**自有 bash 工具**(对官方 tool-bash 逐调用镜像:
+  后台任务、审批升级、渲染行为不变)。宿主官方 `pwsh` 工具是**真正的
+  PowerShell**(v0.39.0 起,本插件不再替换执行器),默认被隐藏、开关显示——见下一条。
 - **bash 工具说明附带路由规则**:能用 Git Bash 就用 Git Bash;只有必须用到
   Windows 原生能力(cmdlet/注册表/服务/WMI)时才用 PowerShell;bash 出错在
   bash 里修,禁止在 bash 里嵌 `pwsh -Command`(变量展开与输出编码会在那里坏掉)。
-- **`pwsh7` 工具(默认关,v0.37.0 起更名并翻默认)**:一个真正的 PowerShell 7 工具,走宿主
-  `ctx.subprocess` 通道,用**系统安装的** pwsh 7 执行 Windows 原生操作;
-  `command`/`script_path` 二选一、严格拒绝未声明参数、输出强制 UTF-8、
-  超长输出截断并落盘。机器没装 pwsh 7 时不发布;仅完全权限会话可用。
+- **`pwsh` 工具(官方 PowerShell,默认隐藏,开关显示)**:宿主官方的 `pwsh` 工具
+  就是真正的 PowerShell(官方解析器自动优先 PowerShell 7),可直接用于 Windows
+  原生操作(cmdlet/注册表/服务/WMI)。默认关闭(`pwshTool` 开关):该工具对本插件
+  会话隐藏,主机保持 bash 优先;开启后它直接可见可用——无需安装任何额外组件。
+  旧 PowerShell 7 旁路工具(v0.37–v0.38.5 的独立工具)已随 v0.39.0 新架构退役;
+  命令仍然首选 bash 工具。
 - **`gb_*` FastCtx 文件工具(默认开)**:`gb_inspect_local_file`/`gb_grep`/
   `gb_glob`/`gb_replace`(Rust 实现:批量范围读取带 token 预算、grep 截断
   标注、编码探测)。它们是官方 read/grep/glob/edit 的**补充**——官方工具接
@@ -80,26 +85,30 @@ dsh plugin --profile web add dsh-gitbash-shell
 
 ## 它做了什么
 
-bundle patch(`cordis.patch.yml`)应用三个改动:
+bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件行
+`gitbash-shell`,不禁用、不替换任何官方行——宿主官方 PowerShell 执行器与全部
+官方组件保持原位。旧版「替换执行器」的三步 patch 在 route B 下变成运行时工作:
 
-1. `pwsh-sandbox` 行 `disabled: true` —— 每进程只允许一个 `ctx.shell`;
-2. 插入 `gitbash-executor`(`dsh-gitbash-shell/shell`):继承官方
-   `@deepseek-ai/dsh-bash-sandbox`,仅把内层 argv 换成
-   `<git-bash.exe> -c <command>`。沙箱策略/拒绝分类/后台任务/超时/设置节
-   沿用官方实现;full-access 分支单独接 Git Bash(父类那里硬编码裸 `bash`);
+1. **不再撤 `pwsh-sandbox`、不再插执行器行**:插件不再替换宿主执行器,官方
+   `pwsh` 工具重新是真正的 PowerShell;
+2. **自有 bash 工具跑在私有执行器实例上**(`src/bash-tool.js` + `src/shell.js`):
+   `GitBashSandboxExecutor` 继承官方 `@deepseek-ai/dsh-bash-sandbox`,仅把内层
+   argv 换成 `<git-bash.exe> -c <command>`,在私有 cordis scope 中构造、**永不
+   注册为 `ctx.shell` 服务**。沙箱策略/拒绝分类/后台任务/超时/设置节沿用官方
+   实现;full-access 分支单独接 Git Bash(父类那里硬编码裸 `bash`);
    **Windows 上受限分支有一处例外,见下一节**;
-3. 插入 `gitbash-shell`(`dsh-gitbash-shell`):**v0.35.0 起双形态**——
+3. **`gitbash-shell` 行**(`dsh-gitbash-shell`):**v0.35.0 起双形态**——
    默认(`variantPresets: false`)不注册变体,由**行内工具补位**
-   (`src/inline-tools.js`)在 `agent/created` 时按工具面激活官方
-   tool-bash 模块并遮蔽假 pwsh,另发布 `pwsh7`(默认关)与 `gb_*` 工具
-   (`src/fastctx-bridge.js`);开关打开时按 v0.32.0 起的**声明式注册**
+   (`src/inline-tools.js`)在 `agent/created` 时按工具面注册自有 bash 工具;
+   官方 `pwsh`(真 PowerShell)默认隐藏(`pwshTool` 开关显示);`gb_*` 工具
+   (`src/fastctx-bridge.js`)随行发布。开关打开时按 v0.32.0 起的**声明式注册**
    (`ctx.agentPresets.register`)提供上表 4 个 preset 变体——
    行集是仓库里已提交、可 diff 的 JS 数据(`src/compositions.js`),**不再物化
    任何目录**;旧版本遗留在磁盘上的物化树,启动时仅当 marker 判定为
    「未被用户改过」才单向清理,用户改过的绝不碰(清理不受开关影响)。
 
 **环境变量**:`bash.exe` 是 host 进程的直接子进程(不经 git-bash 登录壳),完整继承
-系统环境变量与 `DSH_*` 快照,和原来 pwsh 拿到的完全一致。
+系统环境变量与 `DSH_*` 快照。
 
 ## 安全语义:Windows 上的受限模式
 
@@ -127,7 +136,8 @@ bundle patch(`cordis.patch.yml`)应用三个改动:
   (Low → Medium);`$env:TEMP` 不再被重定向到 per-session 隔离目录。
 
 **如果你需要 shell 也被硬性拦住**(例如不希望模型经 shell 写工作区外的任何路径),
-这个插件在 Windows 上不适合你——卸载即回到 `pwsh-sandbox` 的受限语义,没有中间态。
+注意本插件的自有 bash 工具在 Windows 受限模式下同样 unconfined(见上)——不用
+它、或卸载本插件让它消失即可;官方 PowerShell 执行器从未被本插件触碰。
 `danger-full-access` 预设本来就不受限,装不装本插件行为一致。
 
 > 这一取舍的完整分析(含 0.6.0~0.13.1 的故障史与社区两派对比)见 CHANGELOG
@@ -237,14 +247,16 @@ DSH 自己的「新建终端」**不经过**本插件的执行器:它由官方�
    请把 profile 的 patch 里 `terminal-controller` 行的 `shell` 字段**删掉**,再重启 DSH(终端随即回到原来的 shell);
    只想让它别再自动改、但不介意保留现状的话,关开关即可。
 
-## 配置(执行器)
+## 配置(自有 bash 工具)
 
-`gitbash-executor` 行支持:
+`bashPath` 经设置卡「Git Bash 路径」(= `gitbash-shell` 行 config 的 `bashPath`
+字段)配置;pre-v0.39 旧 profile 遗留的 `gitbash-executor` 行配置仍被读取
+(兼容,优先级更高):
 
 ```yaml
-config:
-  bashPath: "D:/Tools/Git/bin/bash.exe"   # 默认 C:/Program Files/Git/bin/bash.exe
-  timeoutMs: 60000                         # 默认 60s,可继续用 shell 设置节调整
+- id: gitbash-shell
+  config:
+    bashPath: "D:/Tools/Git/bin/bash.exe"   # 默认空 = 自动探测链
 ```
 
 ## 验证
@@ -254,7 +266,8 @@ npm test
 ```
 
 重启 host 后新会话:
-- 工具列表里出现 `bash`(不再有 `pwsh`),描述为 Git Bash;
+- 工具列表里出现自有 `bash` 工具(执行在 Git Bash 上);官方 `pwsh` 工具默认隐藏,
+  设置卡开启「pwsh 工具」开关后可见(真正的 PowerShell);
 - `echo \$BASH_VERSION` 有输出、`command -v bash` 指向 Git 安装目录。
 
 ## 卸载
@@ -265,7 +278,8 @@ dsh plugin --profile web remove dsh-gitbash-shell
 
 或删除 profile`package.json` 中依赖 + `dsh.profile.bundles` 中的条目后
 `dsh plugin --profile web install`。卸载并重启后,未改过的 `* -gitbash`
-preset 会被插件自动清理;宿主 shell 回退为 PowerShell。
+preset 会被插件自动清理;宿主官方 PowerShell 执行器原样保留(本插件从未替换它),
+官方 `pwsh` 工具不再被隐藏。
 
 ## 与 dsh-ptc-cordis-preset 联动
 
@@ -344,7 +358,7 @@ Config 的布尔字段 `pythonRuntime`(默认 `false`),由它在 profile 组合�
 
 ## POSIX 路径方言(v0.7.0 引入,受 `posixPaths` 开关门控)
 
-Windows 上本插件把宿主 shell 换成 Git Bash 的同时,让**模型看到的路径**统一成 MSYS 盘根
+Windows 上本插件让命令默认走自有 Git Bash 工具的同时,让**模型看到的路径**统一成 MSYS 盘根
 POSIX 形式(`/c/Users/...`、`/c/Program Files/...`)。开关是 settings 命名空间
 `gitbash-shell` 的布尔字段 `posixPaths`,**默认开启**(v0.10.0 起),可在 **设置 → 插件**
 里本插件的「Git Bash 路径方言」卡片上随时切换;不修改任何 preset / 组合文件,标准/极简/

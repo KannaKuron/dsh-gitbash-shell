@@ -1,11 +1,12 @@
 /**
- * dsh-gitbash-shell — host half (preset materialization).
+ * dsh-gitbash-shell — host half (route B: the own bash tool + preset variants).
  *
- * Installed as a profile bundle, this plugin swaps Windows' PowerShell shell
- * for Git for Windows bash (the executor lives in ./shell.js). On startup it
- * also materializes four Git Bash agent presets into the FIRST user-trust
- * preset root, mirroring how dsh-ptc-cordis-preset ships its 'ptc-cordis'
- * preset:
+ * Installed as a profile bundle, this plugin gives dsh a Git Bash command
+ * channel WITHOUT touching the host's official PowerShell executor (route B,
+ * v0.39.0 — the executor instance lives in ./shell.js and is constructed in a
+ * private scope for the plugin's own bash tool). On startup it also registers
+ * four Git Bash agent preset variants, mirroring how dsh-ptc-cordis-preset
+ * ships its 'ptc-cordis' preset:
  *
  *   standard-gitbash — 标准模式 · Git Bash (tool-bash on, tool-pwsh off)
  *   minimal-gitbash  — 极简模式 · Git Bash (persistent Git Bash terminal)
@@ -56,7 +57,7 @@ import { fileURLToPath } from 'node:url'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
-import { GITBASH_MSYS_ADDENDUM, GITBASH_ROUTE_ADDENDUM, GITBASH_ROUTE_ADDENDUM_NO_PWSH, mountInlineTools, resolveHostPwsh7 } from './inline-tools.js'
+import { GITBASH_MSYS_ADDENDUM, GITBASH_ROUTE_ADDENDUM, GITBASH_ROUTE_ADDENDUM_NO_PWSH, mountInlineTools } from './inline-tools.js'
 import { mountFastctx } from './fastctx-bridge.js'
 
 /**
@@ -503,10 +504,12 @@ export const Config = Schema === null ? undefined : Schema.object({
    */
   variantPresets: live(Schema.boolean().default(false)),
   /**
-   * Publish `pwsh7` — a REAL PowerShell 7 tool over ctx.subprocess —
-   * while the host `pwsh` tool is denied (its executor is Git Bash on this
-   * host). Default ON; requires pwsh 7 on the machine (never a bundled
-   * payload) and danger-full-access per session.
+   * Show the host `pwsh` tool to agents (v0.39.0 semantics; default OFF).
+   * Route B keeps the official pwsh executor in place, so the tool is REAL
+   * PowerShell (7 first per the official resolver) — showing it is a pure
+   * product choice. OFF (default) hides it per agent: the host stays
+   * bash-first. The retired v0.37 `pwsh7` side-channel is gone; this switch
+   * now controls the real thing.
    */
   pwshTool: live(Schema.boolean().default(false)),
   /**
@@ -1964,7 +1967,7 @@ export async function apply(ctx, config = {}) {
   // materialize: service present, 'active: true' on Windows, 'active: false'
   // where the bundle is installed but the platform stack stayed native.
   /* The explicit tier of the resolution chain, in its documented priority:
-     the `gitbash-executor` row's own config > the `gitbash-shell` row's
+     the (pre-v0.39, legacy-profile) `gitbash-executor` row's config > the `gitbash-shell` row's
      `bashPath` field > empty (= run the automatic chain). Both this layer and
      the executor resolve from this same value, so an explicit answer is never
      substituted and never silently ignored.
@@ -2091,10 +2094,10 @@ export async function apply(ctx, config = {}) {
           // every agent (routing is dialect-independent), while the MSYS
           // sentence only describes the world the dialect switch creates.
           // Idempotent by marker: assemble may run more than once per agent.
-          // The routing sentence follows the pwsh switch (v0.37.0): while the
-          // pwsh7 tool is off (the default) the sentence must NOT name it —
-          // a route to a tool the agent cannot see only teaches the model to
-          // call a denied name.
+          // The routing sentence follows the pwsh switch (v0.37.0; route B
+          // v0.39.0): while the pwsh tool is hidden (the default) the sentence
+          // must NOT name it — a route to a tool the agent cannot see only
+          // teaches the model to call a hidden name.
           if (assembly && typeof assembly === 'object' && Array.isArray(assembly.tools)) {
             const routeSentence = liveSettings.pwshTool() === true ? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH
             for (const tool of assembly.tools) {
@@ -2599,16 +2602,17 @@ export async function apply(ctx, config = {}) {
     })
   }
 
-  // ── inline tool patch (v0.35.0): Git Bash for the OFFICIAL presets ──────
+  // ── inline tool patch (v0.35.0; route B since v0.39.0) ──────────────────
   // The official preset rows compose `tool-bash` as win32-disabled, and the
   // patch layer cannot reach rows nested in a preset declaration (buildMap
   // only descends into group rows), so the fix runs at the tool layer: per
-  // agent, a face of "pwsh yes / bash no" gets the OFFICIAL tool-bash
-  // activated in an agent-owned scope plus a deny on the fake pwsh (its
-  // executor is ctx.shell, which here IS Git Bash), and the assemble
-  // waterfall carries the bash-first routing sentence. The variantPresets
-  // switch is honored BY OBSERVATION — a variant agent's face already has
-  // bash, so this patch never fires there.
+  // agent, a face of "pwsh yes / bash no" gets the plugin's OWN bash tool
+  // (src/bash-tool.js — a private Git Bash executor in a private scope, the
+  // official tool surface mirrored call-for-call) plus a HIDE on the real pwsh
+  // tool while the pwsh switch is off (route B: the official executor stays in
+  // place, so pwsh is real PowerShell and hiding it is a product choice). The
+  // variantPresets switch is honored BY OBSERVATION — a variant agent's face
+  // already has bash, so this patch never fires there.
   if (process.platform === 'win32') {
     try {
       mountInlineTools(ctx, {
@@ -2629,21 +2633,10 @@ export async function apply(ctx, config = {}) {
             dispose: async () => { try { await fiber?.dispose?.() } catch { /* already gone */ } },
           }
         },
-        allowed: (session) => {
-          try { return ctx.get('sandboxPolicy')?.resolve({ session })?.mode === 'danger-full-access' } catch { return false }
-        },
-        spawn: (spec) => {
-          const subprocess = ctx.get('subprocess')
-          if (!subprocess || typeof subprocess.spawn !== 'function') throw new Error('the host subprocess service is not available on this deployment')
-          return subprocess.spawn(spec)
-        },
-        pwshPath: resolveHostPwsh7({ exists: existsSync }),
         pwshEnabled: () => liveSettings.pwshTool() === true,
-        msysToWin: (p) => translateMsysPath(p, buildTranslateEnv(readConfiguredBashPath())),
-        echo: (text) => (liveSettings.dialect().posixPaths === true ? windowsToMsys(text) : text),
         log: (m) => console.log(TAG + ' ' + m),
       })
-      console.log(TAG + ' inline tool patch armed (official presets get Git Bash; bash-first routing enforced)')
+      console.log(TAG + ' inline tool patch armed (own bash tool over a private Git Bash executor; official pwsh executor untouched)')
     } catch (error) {
       console.log(TAG + ' inline tool patch wiring failed: ' + (error?.message ?? error))
     }

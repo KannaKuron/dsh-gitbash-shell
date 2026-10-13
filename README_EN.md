@@ -4,11 +4,13 @@
 
 [简体中文](README.md) | English
 
-> Run **every agent shell command through Git Bash** on Windows with DeepSeek
-> Harness (dsh) — replaces the PowerShell executor, gives the four OFFICIAL
-> presets Git Bash through a per-agent inline tool patch (v0.35.0), publishes
-> a real `pwsh7` (system PowerShell 7, off by default since v0.37.0) and
-> the `gb_*` FastCtx file
+> Run **agent commands on Git Bash by default** on Windows with DeepSeek
+> Harness (dsh) — the plugin does NOT replace the host executor (the official
+> PowerShell executor stays untouched): it adds its own `bash` tool running
+> on a PRIVATE Git Bash executor instance, gives the four OFFICIAL presets
+> Git Bash through a per-agent inline tool patch (v0.35.0), keeps the
+> official `pwsh` tool (REAL PowerShell) hidden behind a switch (`pwshTool`,
+> off by default), publishes the `gb_*` FastCtx file
 > tools, and keeps the four `· Git Bash` variant presets behind a switch
 > (`variantPresets`, off by default).
 
@@ -36,21 +38,30 @@ dsh plugin --profile web add dsh-gitbash-shell
 
 ## What it does
 
-The bundle patch (`cordis.patch.yml`):
+The bundle patch (`cordis.patch.yml`) is ADDITIVE ONLY (v0.39.0): it inserts
+this plugin's row (`gitbash-shell`) and nothing else — no official row is
+disabled or replaced, and the host's own PowerShell executor keeps its place.
+The old "replace the executor" three-step patch became runtime work:
 
-1. disables `pwsh-sandbox` (one `ctx.shell` provider per process);
-2. mounts `dsh-gitbash-shell/shell` — a subclass of the shipped
-   `@deepseek-ai/dsh-bash-sandbox` whose inner argv is
-   `<git-bash.exe> -c <command>` (sandbox policy, denial classification,
-   background jobs, and settings behavior all inherited; **one Windows
-   exception for confined modes — see the next section**);
-3. mounts `dsh-gitbash-shell`. **v0.35.0 dual form** — by default
+1. **`pwsh-sandbox` is NOT withdrawn and no executor row is inserted**: the
+   plugin no longer replaces the host executor, so the official `pwsh` tool
+   is REAL PowerShell again;
+2. **the own bash tool runs on a PRIVATE executor instance**
+   (`src/bash-tool.js` + `src/shell.js`): `GitBashSandboxExecutor` — a
+   subclass of the shipped `@deepseek-ai/dsh-bash-sandbox` whose inner argv
+   is `<git-bash.exe> -c <command>` — is constructed in a private cordis
+   scope and is NEVER registered as the `ctx.shell` service (sandbox policy,
+   denial classification, background jobs, and settings behavior all
+   inherited; **one Windows exception for confined modes — see the next
+   section**);
+3. **the `gitbash-shell` row**. **v0.35.0 dual form** — by default
    (`variantPresets: false`) it registers NO variants: the inline tool patch
-   (`src/inline-tools.js`) activates the OFFICIAL tool-bash module per agent
-   whenever the tool face says "pwsh yes / bash no", denies the fake pwsh,
-   and publishes `pwsh7` (off by default since v0.37.0) plus the `gb_*`
+   (`src/inline-tools.js`) registers the own bash tool per agent whenever the
+   tool face says "pwsh yes / bash no"; the official `pwsh` tool (REAL
+   PowerShell) stays hidden behind the `pwshTool` switch (off by default);
+   the `gb_*`
    FastCtx tools
-   (`src/fastctx-bridge.js`). With the switch on, it registers the four
+   (`src/fastctx-bridge.js`) publish alongside. With the switch on, it registers the four
    preset variants **declaratively** (`ctx.agentPresets.register`,
    v0.32.0+) — the row sets are committed, diffable JS data
    (`src/compositions.js`) and **no directory is ever materialized**;
@@ -59,8 +70,7 @@ The bundle patch (`cordis.patch.yml`):
    ignores the switch).
 
 Environment: `bash.exe` is spawned as a direct child of the host, so it
-inherits the full system environment plus the `DSH_*` snapshot, exactly like
-the pwsh executor did.
+inherits the full system environment plus the `DSH_*` snapshot.
 
 ### Upgrading from 0.34.x
 
@@ -106,10 +116,11 @@ permission presets actually run **UNCONFINED**:
   longer redirected to a per-session directory.
 
 **If you need the shell itself hard-fenced too** (e.g. the model must not
-write anywhere outside the workspace through the shell), this plugin is not
-for you on Windows — uninstalling restores `pwsh-sandbox`'s confined
-semantics; there is no middle ground. The `danger-full-access` preset is
-unconfined by design either way.
+write anywhere outside the workspace through the shell), note that this
+plugin's own bash tool also runs confined commands UNCONFINED on Windows (see
+above) — avoid it there, or uninstall the plugin so the tool goes away; the
+official PowerShell executor was never touched by this plugin. The
+`danger-full-access` preset is unconfined by design either way.
 
 > The full analysis (the 0.6.0–0.13.1 failure history and the community's two
 > camps) is in the CHANGELOG under v0.13.2 and in the `src/shell.js` header.
@@ -134,11 +145,14 @@ the four-variant roster of 0.24.x is unchanged; see
 [Cooperation with dsh-ptc-cordis-preset](#cooperation-with-dsh-ptc-cordis-preset) for the decision
 rule, the timing, and how both sides share one state.
 
-Executor config:
+Own-bash-tool config: `bashPath` lives on the settings card (= the `bashPath`
+field of the `gitbash-shell` row config); a pre-v0.39 legacy profile's
+`gitbash-executor` row config is still read first (compatibility):
 
 ```yaml
-config:
-  bashPath: "D:/Tools/Git/bin/bash.exe"   # default '' (empty) = automatic chain
+- id: gitbash-shell
+  config:
+    bashPath: "D:/Tools/Git/bin/bash.exe"   # default '' (empty) = automatic chain
 ```
 
 The automatic chain (empty `bashPath`) probes, in order: explicit settings → default
@@ -201,7 +215,8 @@ capability ships in **dsh-ptc-cordis-preset ≥ 0.14.0**.
 
 ## POSIX path dialect (introduced in v0.7.0, gated by the `posixPaths` switch)
 
-While replacing the host shell with Git Bash on Windows, this plugin makes every path the
+While commands default to this plugin's own Git Bash tool on Windows, the
+plugin makes every path the
 model sees use the MSYS drive-root POSIX form (/c/Users/..., /c/Program Files/...). The switch
 is the `posixPaths` boolean in the `gitbash-shell` settings namespace; it is **on by default**
 (since v0.10.0) and can be toggled any time on this plugin's "Git Bash path dialect" card in

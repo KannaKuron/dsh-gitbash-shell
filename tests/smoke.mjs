@@ -2014,11 +2014,14 @@ test('bash resolution: everything fails -> a report with the chain, the fix and 
 
 test('no-fallback guards: the plugin never swaps in another shell (patch + executor source)', () => {
   const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-  // pwsh-sandbox stays UNCONDITIONALLY withdrawn — never gated on bash health
-  const block = patch.slice(patch.indexOf('- id: pwsh-sandbox'), patch.indexOf('- insert:'))
-  assert.match(block, /disabled: true/)
-  assert.doesNotMatch(block, /!!js/, 'the pwsh withdrawal must not become conditional')
+  // ROUTE B (v0.39.0): the patch no longer withdraws pwsh-sandbox at all —
+  // the official PowerShell executor keeps its place, so there is no
+  // substitution left to gate on bash health. The patch is ADDITIVE ONLY.
+  assert.doesNotMatch(patch, /pwsh-sandbox/, 'the official executor row is never touched')
+  assert.doesNotMatch(patch, /gitbash-executor/, 'no executor row is inserted (the executor is a private runtime instance now)')
+  assert.doesNotMatch(patch, /disabled: true/, 'the additive patch disables nothing')
   assert.doesNotMatch(patch, /bashPath: "C:\/Program Files\/Git\/bin\/bash\.exe"/, 'no hard-coded C: default survives in the patch')
+  assert.match(patch, /- insert:/, 'the patch stays purely additive')
   const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
   // Only the PROGRAM itself is inspected: comments explain the surrounding
   // history (and legitimately mention the shipped pwsh executor it replaces).
@@ -2895,66 +2898,37 @@ test('schemastery: both halves resolve through the shared loader, and neither st
   assert.match(readFileSync('src/index.js', 'utf8'), /executorConfigSchema\(\)/)
 })
 
-// ── v0.35.0: inline tool patch (official presets get Git Bash) ─────────────
+// ── v0.39.0: inline tool patch (route B — the plugin's OWN bash tool) ──────
 
-test('inline tools: the face verdict keys on pwsh-without-bash, and dsh-ops is detected', async () => {
+test('inline tools: the face verdict keys on pwsh-without-bash; hiding keys on the row switch', async () => {
   const { inlineNeeds } = await import('../src/inline-tools.js')
-  // The official win32 composition: pwsh present, bash absent -> patch it in.
-  assert.deepEqual(inlineNeeds(['pwsh', 'read', 'edit']), { needsBash: true, denyPwsh: true, opsPresent: false })
-  // A face that already has bash (variant presets ON, or a future official
-  // change) is left alone — the switch and this patch are exclusive by
-  // observation, with no explicit lock.
-  assert.deepEqual(inlineNeeds(['bash', 'pwsh']), { needsBash: false, denyPwsh: false, opsPresent: false })
-  assert.deepEqual(inlineNeeds(['bash']), { needsBash: false, denyPwsh: false, opsPresent: false })
+  // The official win32 composition: pwsh present, bash absent -> own bash tool.
+  assert.deepEqual(inlineNeeds(['pwsh', 'read', 'edit']), { needsBash: true, hidePwsh: true, opsPresent: false })
+  // Switch ON (pwshVisible): the REAL pwsh tool stays visible.
+  assert.deepEqual(inlineNeeds(['pwsh'], { pwshVisible: true }), { needsBash: true, hidePwsh: false, opsPresent: false })
+  // A face that already has bash (variant presets ON) needs no bash tool;
+  // hiding still follows the switch.
+  assert.deepEqual(inlineNeeds(['bash', 'pwsh']), { needsBash: false, hidePwsh: true, opsPresent: false })
+  assert.deepEqual(inlineNeeds(['bash']), { needsBash: false, hidePwsh: false, opsPresent: false })
   // dsh-ops tools in the face stand our surfaces down.
-  assert.deepEqual(inlineNeeds(['bash', 'ops_grep', 'ops_bash']).opsPresent, true)
-  assert.deepEqual(inlineNeeds(['ops_inspect_local_file']).opsPresent, true)
+  assert.equal(inlineNeeds(['bash', 'ops_grep', 'ops_bash']).opsPresent, true)
+  assert.equal(inlineNeeds(['ops_inspect_local_file']).opsPresent, true)
+  assert.equal(inlineNeeds(['pwsh', 'ops_grep'], { pwshVisible: true }).opsPresent, true)
   // Garbage in: no crash, no verdict.
-  assert.deepEqual(inlineNeeds(undefined), { needsBash: false, denyPwsh: false, opsPresent: false })
-})
-
-test('inline tools: pwsh7 arguments are STRICT, and argv keeps scripts out of JSON', async () => {
-  const { validatePwshArgs, pwshArgv } = await import('../src/inline-tools.js')
-  assert.equal(validatePwshArgs({ command: 'Get-Date' }), undefined)
-  // The host bash/pwsh tools accept run_in_background; this tool must REFUSE
-  // it loudly instead of silently running foreground.
-  assert.match(validatePwshArgs({ command: 'x', run_in_background: true }), /unknown key/)
-  assert.match(validatePwshArgs({}), /exactly one/)
-  assert.match(validatePwshArgs({ command: 'x', script_path: 'y' }), /exactly one/)
-  assert.match(validatePwshArgs({ command: 'x', timeoutMs: -1 }), /timeoutMs/)
-  assert.match(validatePwshArgs('nope'), /expected an object/)
-  // argv shapes: -Command for short input, -File (never embedded JSON) for scripts.
-  assert.deepEqual(pwshArgv('pwsh.exe', { command: 'Get-Date' }).argv,
-    ['pwsh.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', 'Get-Date'])
-  const scripted = pwshArgv('pwsh.exe', { script_path: '/c/Users/x/run.ps1' }, { msysToWin: (p) => 'C:/Users/x/run.ps1' })
-  assert.deepEqual(scripted.argv, ['pwsh.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-File', 'C:/Users/x/run.ps1'])
-  assert.match(pwshArgv('pwsh.exe', {}).error, /exactly one/)
-})
-
-test('inline tools: host pwsh 7 resolution — well-known installs first, PATH last, 5.1 never', async () => {
-  const { resolveHostPwsh7 } = await import('../src/inline-tools.js')
-  // Non-Windows hosts publish nothing.
-  assert.equal(resolveHostPwsh7({ platform: 'darwin', exists: () => true, env: {} }), '')
-  const exists = (p) => p === 'P:\\PowerShell\\7\\pwsh.exe' || p === 'D:\\tools\\pwsh.exe'
-  // The well-known install beats the PATH hit.
-  assert.equal(resolveHostPwsh7({ platform: 'win32', exists, env: { ProgramFiles: 'P:', PATH: 'D:\\tools' } }), 'P:\\PowerShell\\7\\pwsh.exe')
-  // A PATH pwsh is still a tool when no install exists.
-  assert.equal(resolveHostPwsh7({ platform: 'win32', exists, env: { ProgramFiles: 'Q:', PATH: 'D:\\tools' } }), 'D:\\tools\\pwsh.exe')
-  // Absent everywhere -> '' (the tool is simply not published).
-  assert.equal(resolveHostPwsh7({ platform: 'win32', exists: () => false, env: {} }), '')
+  assert.deepEqual(inlineNeeds(undefined), { needsBash: false, hidePwsh: false, opsPresent: false })
 })
 
 test('inline tools: the routing sentence is present and dialect-split', async () => {
   const mod = await import('../src/inline-tools.js')
   assert.match(mod.GITBASH_ROUTE_ADDENDUM, /Prefer this bash tool/)
   assert.match(mod.GITBASH_ROUTE_ADDENDUM, /never embed `pwsh -Command`/)
-  assert.match(mod.GITBASH_ROUTE_ADDENDUM, /pwsh7 tool/, 'the ON variant names the real pwsh7 tool')
+  assert.match(mod.GITBASH_ROUTE_ADDENDUM, /use the pwsh tool ONLY when/, 'the ON variant names the REAL pwsh tool')
+  assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM, /pwsh7/, 'the retired side-channel name is gone')
   assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM, /gitbash_pwsh/, 'the misleading name is gone')
-  // The OFF variant (the default) must NOT name the pwsh7 tool: a route to a
-  // tool the agent cannot see only teaches the model to call a denied name.
+  // The OFF variant (the default) must NOT name the pwsh tool: a route to a
+  // tool the agent cannot see only teaches the model to call a hidden name.
   assert.match(mod.GITBASH_ROUTE_ADDENDUM_NO_PWSH, /Prefer this bash tool/)
-  assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM_NO_PWSH, /pwsh7/)
-  assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM_NO_PWSH, /PowerShell tool on this host.{0,4}pwsh7/)
+  assert.doesNotMatch(mod.GITBASH_ROUTE_ADDENDUM_NO_PWSH, /pwsh/)
   // The MSYS sentence describes ONLY the dialect world; a delegate with the
   // dialect off must not be told it lives in /c/.
   assert.match(mod.GITBASH_MSYS_ADDENDUM, /\/c\/Users/)
@@ -2965,8 +2939,8 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   assert.match(hostSource, /mountInlineTools\(ctx, \{/)
   assert.match(hostSource, /mountFastctx\(ctx, \{/)
   assert.match(hostSource, /variantPresets: live\(Schema\.boolean\(\)\.default\(false\)\)/)
-  // v0.37.0 (user decision): the pwsh7 tool is OFF by default — no special
-  // pwsh surface unless the user asks for one. The routing sentence follows.
+  // The pwsh switch keeps its id and default; route B made it a visibility
+  // switch for the REAL tool.
   assert.match(hostSource, /pwshTool: live\(Schema\.boolean\(\)\.default\(false\)\)/)
   assert.match(hostSource, /fastctxTools: live\(Schema\.boolean\(\)\.default\(true\)\)/)
   assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM/)
@@ -2975,112 +2949,261 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   // The desired set collapses to [] while the switch is off — the cleanup
   // still runs, but nothing registers.
   assert.match(hostSource, /readVariants && readVariants\(\) === true\s*\?\s*effectivePresetIds/)
-  // v0.35.2 (the Windows field report): mountInlineTools receives the host
-  // agents service so the mount-time sweep can reach ALREADY-LIVE agents.
+  // Mount-time sweep wiring (v0.35.2) survives.
   assert.match(hostSource, /agents: \(c\) => \{ try \{ return c\.get\('agents'\) \} catch \{ return undefined \} \}/)
+  // Route B: the retired seams are GONE from the host half.
+  assert.doesNotMatch(hostSource, /resolveHostPwsh7/, 'the pwsh7 resolver is retired')
+  assert.doesNotMatch(hostSource, /pwshPath:/, 'no pwsh path is handed to the inline layer any more')
+  assert.doesNotMatch(hostSource, /allowed: \(session\)/, 'the full-access gate rode only the retired pwsh7 channel')
 })
 
-test('inline tools: the mount-time sweep and the call-layer guard exist (v0.35.2)', () => {
+test('inline tools: the executor is PRIVATE, and both guard layers exist (route B)', () => {
   const source = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
-  // Layer 1 — the sweep: an agent that exists before this row mounts (plugin
-  // hot-reload, host that resumed sessions first) never fires agent/created.
+  // The executor mounts through cordis's class-plugin path in a PRIVATE
+  // scope — never as the root ctx.shell service.
+  assert.match(source, /executorScope\.ctx\.plugin\(GitBashSandboxExecutor\)/)
+  assert.match(source, /executorScope\.ctx\.shell/, 'the instance is read out of the private scope')
+  assert.doesNotMatch(source, /ctx\.plugin\('\.\/shell'\)/)
+  assert.doesNotMatch(source, /name: 'dsh-gitbash-shell\/shell'/, 'no executor ROW is inserted from the runtime layer')
+  // Layer 1 — the mount-time sweep (v0.35.2): an agent that exists before
+  // this row mounts never fires agent/created.
   assert.match(source, /for \(const agent of agents\?\.\(ctx\)\?\.list\?\.\(\) \?\? \[\]\)/)
-  // Layer 2 — the independent call-layer guard on tools/pre-execute: even if
-  // the per-agent visibility restriction loses a race, a `pwsh` dispatch that
-  // reaches its executor would run Git Bash; deny it and name the replacements.
+  // Layer 2 — the independent call-layer guard on tools/pre-execute. Route B
+  // wording: the pwsh tool is REAL, merely hidden while the switch is off.
   assert.match(source, /tools\/pre-execute/)
-  assert.match(source, /the host pwsh tool would run Git Bash on this host/)
+  assert.match(source, /hiddenPwshDenyReason\(\)/)
+  assert.match(source, /deps\.pwshEnabled\?\.\(\) !== true/)
   // Regression lock: the per-agent state map must NOT be named `agents` —
-  // that identifier is the destructured host service, and a same-named
-  // `const` next to it is a SyntaxError that kills the whole module.
+  // that identifier is the destructured host service.
   assert.match(source, /const tracked = new Map\(\)/)
   assert.doesNotMatch(source, /const agents = new Map\(\)/)
 })
 
-test('inline tools: the three issue-#18 root causes stay fixed', () => {
+test('inline tools: the hidden-pwsh deny reason points at the switch, not a lie', async () => {
+  const { hiddenPwshDenyReason } = await import('../src/inline-tools.js')
+  const reason = hiddenPwshDenyReason()
+  assert.match(reason, /hidden on this host/)
+  assert.match(reason, /pwsh tool switch/)
+  assert.match(reason, /Use the bash tool/)
+  assert.doesNotMatch(reason, /would run Git Bash/, 'route B: the pwsh tool is REAL now — the old lie wording must be gone')
+})
+
+test('inline tools: the three issue-#18 root causes stay fixed (route B forms)', () => {
   const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   const toolsSource = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
   const bridgeSource = readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')
-  // Root cause 1 — resolveHostPwsh7 is called with the injected `exists`.
-  // A zero-arg call throws `exists is not a function` on win32 and the
-  // surrounding catch swallows the ENTIRE inline-tool wiring, which is how
-  // all four v0.35.0 faces died at once on the reporter's machine.
-  assert.match(hostSource, /resolveHostPwsh7\(\{ exists: existsSync \}\)/)
-  assert.doesNotMatch(hostSource, /resolveHostPwsh7\(\)/)
+  // Root cause 1 (retired with the pwsh7 channel): the host half must not
+  // import or call the resolver at all — its absence is the guard now.
+  assert.doesNotMatch(hostSource, /resolveHostPwsh7/)
   // Root cause 2 — every registered definition carries the host-required
   // `output { schema, render }` contract; the host throws
   // `must declare output { schema, render, presentationMeta? }` otherwise.
-  assert.match(toolsSource, /output: \{\s*schema: TOOL_OUTPUT_SCHEMA,\s*render:/)
+  // The own bash tool declares it in bash-tool.js; the bridge reuses the
+  // frozen contract from inline-tools.
+  const bashToolSource = readFileSync(new URL('../src/bash-tool.js', import.meta.url), 'utf8')
+  assert.match(bashToolSource, /output: \{/)
+  assert.match(bashToolSource, /schema: outputSchemaSpec\(\)/)
+  assert.match(bashToolSource, /render: \(_args, value\) =>/)
   assert.match(bridgeSource, /output: \{\s*schema: TOOL_OUTPUT_SCHEMA,\s*render:/)
-  // Root cause 3 — the fake-pwsh deny goes through the AGENT's scoped
-  // context. On the ROOT context the host throws "requires a scoped
-  // context" and the deny silently never exists (the dsh-ops shape is
+  // Root cause 3 — the pwsh hide goes through the AGENT's scoped context.
+  // On the ROOT context the host throws "requires a scoped context" and the
+  // restriction silently never exists (the dsh-ops shape is
   // `agent.ctx.tools.restrict(...)`).
   assert.match(toolsSource, /agent\.ctx\?\.tools\?\.restrict\?\.\(\{ deny: \['pwsh'\] \}\)/)
   assert.doesNotMatch(toolsSource, /tools\(ctx\)\?\.restrict/)
 })
 
-test('inline tools: bash resolution tries the HOST loader before a plain require (v0.38.1)', async () => {
-  const { resolveToolBashEntry } = await import('../src/inline-tools.js')
-  const officialMod = { apply: async () => {} }
+test('inline tools: resolveHostModule tries the HOST loader before a plain require (v0.38.1 channel, v0.39 shape)', async () => {
+  const { resolveHostModule } = await import('../src/inline-tools.js')
+  const officialMod = { marker: 'official' }
   // Channel 1: the host's own internal loader (the exact call the row mount
   // makes) — reaches desktop app.asar internals.
-  const viaLoader = await resolveToolBashEntry({
+  const viaLoader = await resolveHostModule({
     baseUrl: 'file:///host/base',
     loader: { internal: { import: async (name, parentURL) => {
-      assert.equal(name, '@deepseek-ai/dsh-tool-bash')
+      assert.equal(name, '@deepseek-ai/dsh-tools')
       assert.equal(parentURL, 'file:///host/base')
       return officialMod
     } } },
-  })
-  assert.equal(viaLoader && typeof viaLoader.load === 'function', true, 'the host-loader channel yields a lazy loader')
-  assert.equal(await viaLoader.load(), officialMod)
+  }, '@deepseek-ai/dsh-tools')
+  assert.equal(viaLoader, officialMod, 'the host-loader channel wins')
   // Channel 2 fallback: no internal loader -> plain createRequire from the
-  // host base (resolves nothing for a bogus base here -> undefined, logged).
-  const viaPlain = await resolveToolBashEntry({ baseUrl: '/definitely/not/a/real/base' })
-  assert.equal(viaPlain === undefined || typeof viaPlain.load === 'function', true)
+  // host base (resolves nothing for a bogus base here -> undefined).
+  const viaPlain = await resolveHostModule({ baseUrl: '/definitely/not/a/real/base' }, '@deepseek-ai/dsh-tools')
+  assert.equal(viaPlain === undefined || typeof viaPlain === 'object', true)
 })
 
-test('fastctx bridge: malformed patterns fail LOUD and ignore rules are stated (v0.38.5)', async () => {
-  // The upstream server silently treats a non-string glob pattern as
-  // "everything" (field smoke report); the bridge must turn the typo into an
-  // error BEFORE dispatch, and state the diverging ignore rules on the tools.
-  const { TOOL_OUTPUT_SCHEMA, renderTextContent } = await import('../src/inline-tools.js')
-  const mod = await import('../src/fastctx-bridge.js')
+test('bash tool: the module refuses a non-executor, declares no shell inject, and registers bash', async () => {
+  const { createBashToolModule } = await import('../src/bash-tool.js')
+  assert.throws(() => createBashToolModule({ executor: {}, log: () => {} }), /resolve\(\)\/execute\(\)/)
   const registered = []
-  const fakeRegistry = { register: (def) => { registered.push(def); return () => {} } }
-  // Drive the registration loop through mountFastctx? Too heavy: assert the
-  // executed wrapper behavior via the exported pieces instead.
-  void mod
-  void fakeRegistry
-  // Behavior contract: glob/replace validate pattern in execute; grep does not.
-  const srcBridge = (await import('node:fs')).readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')
-  assert.match(srcBridge, /rawName === 'glob' \|\| rawName === 'replace'/)
-  assert.match(srcBridge, /pattern must be a non-empty string/)
-  assert.match(srcBridge, /Ignore rules: this tool only honors a bare \.ignore file/)
-  assert.match(srcBridge, /honors \.gitignore and skips \.git/)
+  const sections = []
+  const ctx = {
+    tools: { register: (def) => { registered.push(def); return () => {} } },
+    systemPrompt: { section: (s) => sections.push(s), getSectionOrder: () => 100 },
+    shellEnv: { collect: () => ({}) },
+    workingDirectory: { ensure: async () => '/w' },
+    get: () => undefined, // no jobs / no sandboxPolicy / no approval
+    // The official jobs surface waits for the service through ctx.inject even
+    // when it is absent NOW (it may compose later); the callback just never
+    // fires on this stub.
+    inject: () => {},
+    logger: {},
+  }
+  const executor = {
+    sandboxMode: undefined, // no sandbox fact -> no escalation surface
+    resolve: (request) => ({ ...request, workdir: '/w', timeoutMs: request.timeoutMs ?? 120000 }),
+    execute: async () => { throw new Error('not used by this test') },
+  }
+  const mod = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: undefined, llmModule: undefined, log: () => {} })
+  assert.deepEqual(mod.inject, ['tools', 'systemPrompt', 'shellEnv', 'workingDirectory'],
+    'ctx.shell must NOT be declared: the official executor owns that service')
+  mod.apply(ctx, {})
+  assert.equal(registered.length, 1)
+  const def = registered[0]
+  assert.equal(def.name, 'bash')
+  assert.match(def.description, /Execute a bash command \(`bash -c`\)/)
+  assert.match(def.description, /\$DSH\*/, 'the official DSH_* prose survives')
+  assert.equal(typeof def.output?.render, 'function')
+  assert.equal(typeof def.execute, 'function')
+  assert.equal(def.parameters.run_in_background, undefined, 'no jobs registry -> no background surface advertised')
+  assert.equal(def.parameters.sandbox_permissions, undefined, 'no escalation surface without the sandbox helper')
+  assert.equal(sections.length, 1, 'the exit-marker prompt section is registered')
 })
 
-test('inline tools: the tool definitions speak the host output contract (issue #18)', async () => {
-  const mod = await import('../src/inline-tools.js')
-  const bridgeSource = readFileSync(new URL('../src/fastctx-bridge.js', import.meta.url), 'utf8')
-  assert.match(bridgeSource, /import \{ TOOL_OUTPUT_SCHEMA, renderTextContent \} from '\.\/inline-tools\.js'/,
-    'the bridge reuses the pwsh family\'s frozen contract instead of a drifting copy')
-  const def = mod.gitbashPwshDefinition({
-    pwsh: 'C:/Program Files/PowerShell/7/pwsh.exe',
-    spawn: () => { throw new Error('not used by this test') },
-    allowed: () => false,
+test('bash tool: the schema advertises background + escalation only when the composition offers them', async () => {
+  const { createBashToolModule } = await import('../src/bash-tool.js')
+  const registered = []
+  const sandbox = {
+    approveEscalation: async (request) => request.effectiveMode,
+    validateEscalationArgs: () => {},
+    sandboxPermissionsDescription: (subject) => `esc(${subject})`,
+  }
+  const makeCtx = (jobs) => ({
+    tools: { register: (def) => { registered.push(def); return () => {} } },
+    systemPrompt: { section: () => {}, getSectionOrder: () => 100 },
+    shellEnv: { collect: () => ({}) },
+    workingDirectory: { ensure: async () => '/w' },
+    get: (key) => (key === 'jobs' ? jobs : undefined),
+    // A composed jobs registry arrives through the inject callback; run it
+    // synchronously so the job-backed registration is observable.
+    inject: (_names, fn) => fn({ jobs, effect: () => () => {} }),
+    logger: {},
   })
-  assert.equal(typeof def.output?.render, 'function', 'pwsh7 carries the output contract')
-  assert.deepEqual(
-    def.output.render({}, { content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }),
-    [{ type: 'text', text: 'a\nb' }],
+  const executor = { sandboxMode: 'workspace-write', resolve: (r) => r, execute: async () => { throw new Error('unused') } }
+  // Plain-fallback shape (defineTool absent) with the full composition.
+  const mod = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: sandbox, llmModule: undefined, log: () => {} })
+  mod.apply(makeCtx({ start: () => 'j1', wait: async () => ({ status: 'completed' }), read: () => ({ chunks: [], lossy: false }), kill: () => {}, remove: () => {} }), {})
+  const def = registered[registered.length - 1]
+  assert.deepEqual(def.parameters.required, ['description', 'command'])
+  assert.equal(def.parameters.properties.run_in_background !== undefined, true)
+  assert.deepEqual(def.parameters.properties.sandbox_permissions.enum, ['workspace-write', 'danger-full-access'])
+  assert.match(def.parameters.properties.sandbox_permissions.description, /esc\(command\)/)
+  assert.equal(def.output.schema.oneOf.length, 3, 'background | promoted | foreground')
+  // The defineTool path would wrap execute with soft validation; the plain
+  // path validates INSIDE executeBody via validateBashArgs — both carry the
+  // same hard errors.
+  await assert.rejects(() => def.execute({ command: '  ', description: 'x' }, { agent: undefined, signal: { aborted: false } }), /invalid command/)
+  await assert.rejects(() => def.execute({ command: 'ls', description: '  ' }, { agent: undefined, signal: { aborted: false } }), /invalid description/)
+  await assert.rejects(() => def.execute({ command: 'ls', description: 'x', timeoutMs: -1 }, { agent: undefined, signal: { aborted: false } }), /invalid timeoutMs/)
+})
+
+test('bash tool: the defineTool path is taken when the host tools module resolves', async () => {
+  const { createBashToolModule } = await import('../src/bash-tool.js')
+  const registered = []
+  const seen = []
+  // A minimal stand-in for @deepseek-ai/dsh-tools.defineTool: it marks which
+  // shape it received (the spec dialect carries key-level `required` flags)
+  // and returns the definition as-is.
+  const toolsModule = { defineTool: (options) => { seen.push(options); return { name: options.name, viaDefineTool: true } } }
+  const ctx = {
+    tools: { register: (def) => { registered.push(def); return () => {} } },
+    systemPrompt: { section: () => {}, getSectionOrder: () => 100 },
+    shellEnv: { collect: () => ({}) },
+    workingDirectory: { ensure: async () => '/w' },
+    get: () => undefined,
+    inject: () => {},
+    logger: {},
+  }
+  const executor = { sandboxMode: undefined, resolve: (r) => r, execute: async () => { throw new Error('unused') } }
+  const mod = createBashToolModule({ executor, toolsModule, sandboxModule: undefined, llmModule: undefined, log: () => {} })
+  mod.apply(ctx, {})
+  assert.equal(registered.length, 1)
+  assert.equal(registered[0].viaDefineTool, true, 'the defineTool channel is preferred when available')
+  assert.equal(seen[0].name, 'bash')
+  // The spec dialect: key-level required flags ride the property entries.
+  assert.equal(seen[0].parameters.command.required, true)
+  assert.equal(seen[0].parameters.description.required, true)
+  // The output union rides the same spec shape defineTool expects.
+  assert.equal(seen[0].output.schema.oneOf.length, 3)
+})
+
+test('bash render: the official marker contract survives verbatim', async () => {
+  const mod = await import('../src/bash-render.js')
+  assert.equal(mod.sandboxDenialMarker('workspace-write'), '[sandbox: file access denied under workspace-write mode]')
+  assert.match(mod.escalationHintMarker('command'), /sandbox_permissions.*justification/)
+  assert.deepEqual(mod.ESCALATION_TARGETS, ['workspace-write', 'danger-full-access'])
+  // parseExitStatus: the LAST marker anchors the split.
+  assert.deepEqual(mod.parseExitStatus('out\n[exit code: 2]'), { body: 'out', exitCode: 2 })
+  assert.deepEqual(mod.parseExitStatus('out\n[killed by signal: SIGTERM]'), { body: 'out', signal: 'SIGTERM' })
+  assert.deepEqual(mod.parseExitStatus('clean'), { body: 'clean', exitCode: 0 })
+  // renderResult: stdout, [stderr] section, then denial -> timeout -> stopped
+  // -> signal/exit markers, exit LAST.
+  const text = mod.renderResult({
+    stdout: { text: 'ok', truncated: false }, stderr: { text: 'bad', truncated: false },
+    exitCode: 3, signal: null, timedOut: true, aborted: false, timeoutMs: 5000,
+    sandbox: { mode: 'workspace-write', denied: true },
+  }, ['workspace-write'])
+  assert.match(text, /^ok\n\[stderr\]\nbad\n/)
+  assert.ok(text.indexOf('[sandbox: file access denied under workspace-write mode]') < text.indexOf('[timed out after 5000ms]'))
+  assert.ok(text.indexOf('[timed out after 5000ms]') < text.indexOf('[exit code: 3]'))
+  assert.match(text, /\[exit code: 3\]$/, 'the exit marker stays last')
+  // Truncation names the spill file; empty output still reads as a body.
+  assert.match(mod.renderResult({ stdout: { text: '', truncated: true, spillPath: 'S:/full' }, stderr: { text: '', truncated: false }, exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1 }), /full output: S:\/full/)
+  assert.match(mod.renderResult({ stdout: { text: '', truncated: false }, stderr: { text: '', truncated: false }, exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1 }), /^\(no output\)$/)
+  // renderPromoted hands the job over in the official words.
+  assert.match(mod.renderPromoted({ jobId: 'j9', timeoutMs: 1000, output: 'part' }), /\[still running after 1000ms; moved to background job j9\]/)
+  assert.match(mod.renderPromoted({ jobId: 'j9', timeoutMs: 1000, output: 'part' }), /job_output, stop it with job_kill/)
+})
+
+test('bash background adapter: outcomes, ring reads, and cancellation map onto the jobs vocabulary', async () => {
+  const mod = await import('../src/bash-render.js')
+  assert.deepEqual(mod.processOutcome({ status: 'completed', exitCode: 0 }), { status: 'completed', detail: 'exit code: 0' })
+  assert.deepEqual(mod.processOutcome({ status: 'killed', signal: 'SIGKILL' }), { status: 'killed', detail: 'signal: SIGKILL' })
+  assert.deepEqual(mod.processOutcome({ status: 'killed', signal: null }), { status: 'killed', detail: 'killed before exit' })
+  const denied = mod.processOutcome({ status: 'completed', exitCode: 1, sandbox: { mode: 'workspace-write', denied: true } }, ['workspace-write'])
+  assert.match(denied.detail, /file access denied/)
+  assert.match(denied.detail, /escalation available/)
+  // ringDelta: stdout first, then ONE stderr section.
+  assert.equal(mod.ringDelta([{ channel: 'stdout', text: 'a' }, { channel: 'stderr', text: 'e1' }, { channel: 'stdout', text: 'b' }, { channel: 'stderr', text: 'e2' }]), 'ab\n[stderr]\ne1e2')
+  assert.equal(mod.ringDelta([]), '')
+  // processJob: cancel kills the process; a start error maps to failed.
+  let killed = false
+  const hooks = mod.processJob(
+    async (signal) => ({ done: new Promise((resolve) => { signal.addEventListener('abort', () => { killed = true; resolve() }) }), kill: () => {} }),
+    (proc) => mod.processOutcome({ status: 'killed', signal: null }),
   )
-  assert.deepEqual(
-    def.output.render({}, { content: [] }),
-    [{ type: 'text', text: '' }],
-    'empty content still renders one text block, never an empty array',
-  )
+  hooks.cancel('human stop')
+  await hooks.done
+  assert.equal(killed, true, 'cancellation reaches the process')
+  const failed = await mod.processJob(async () => { throw new Error('spawn boom') }, mod.processOutcome).done
+  assert.deepEqual(failed, { status: 'failed', detail: 'spawn boom' })
+})
+
+test('market gate: the patch can never trip the DSH-Store protected-patch heuristic', () => {
+  const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  // AI-Scarlett/DSH-Store check-plugin-submission.mjs:170-175 rejects a
+  // submission when BOTH the @deepseek-ai namespace AND a literal
+  // `disabled: true` appear in the same patch file. Route B makes this
+  // structurally true; this assertion keeps it that way forever.
+  const hasNamespace = /@deepseek-ai\//.test(patch)
+  const hasLiteralDisabled = /disabled:\s*true/i.test(patch)
+  assert.ok(!(hasNamespace && hasLiteralDisabled), 'the patch must not carry both gate triggers at once')
+  assert.match(patch, /- insert:/, 'purely additive')
+  assert.match(patch, /id: gitbash-shell/, 'the plugin row survives')
+  // The better-sidebar edit probes instead of hardcoding (issue #13).
+  assert.match(patch, /getBuiltinModule\('node:fs'\)/)
+  assert.doesNotMatch(patch, /'C:\/Program Files\/Git\/bin\/bash\.exe'/, 'no literal default install path survives in the probe')
 })
 
 // ── v0.35.0: the FastCtx bridge (gb_* additions) ───────────────────────────

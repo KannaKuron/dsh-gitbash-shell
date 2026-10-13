@@ -10,9 +10,9 @@
  * Every variant mirrors the official 0.1.7 preset it replaces (packages/
  * bundle/web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the
  * one Git Bash delta: the bash rows are always on and the pwsh rows are
- * always off (the host executor is this plugin's shell.js — on non-Windows
- * hosts that is the native stack anyway, which is exactly what the old
- * materialized variants encoded). A second, conditional delta exists while
+ * always off (the plugin ships its OWN bash tool over a private executor —
+ * on non-Windows hosts the official stack is native anyway, which is exactly
+ * what the old materialized variants encoded). A second, conditional delta exists while
  * dsh-ptc-cordis-preset reports its experimental-CPython backend ACTIVE: the
  * two workflow rows follow the official Python composition and go off (see
  * `pythonActive` below). While that backend is off — the default, and also

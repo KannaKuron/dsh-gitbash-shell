@@ -22,11 +22,16 @@
 
 ## 项目一句话
 
-`dsh-gitbash-shell`:Windows 上把 dsh 的 `ctx.shell` 换成 Git for Windows bash 的插件。
-1) host 执行器(`src/shell.js`,继承官方 `@deepseek-ai/dsh-bash-sandbox`);
+`dsh-gitbash-shell`:Windows 上给 dsh 提供 Git Bash 命令通道的插件。
+**route B 架构(v0.39.0 起)**:不再替换宿主 `ctx.shell` 执行器(官方 PowerShell 执行器
+原样保留,patch 纯新增——DSH STORE 收录合规,见 CHANGELOG v0.39.0),改为:
+1) **自有 bash 工具**(`src/bash-tool.js`,对官方 tool-bash 逐调用镜像)执行在**私有
+   `GitBashSandboxExecutor` 实例**上(`src/shell.js`,继承官方 `@deepseek-ai/dsh-bash-sandbox`,
+   于私有 cordis scope 构造,永不注册为 `ctx.shell` 服务);
 2) **行内工具补位(v0.35.0 起,默认)**:`src/inline-tools.js` 在 `agent/created` 时按工具面
-   为**官方四个 preset** 激活官方 tool-bash 模块并遮蔽假 pwsh,另发布 `pwsh7`
-   (系统 pwsh 7,默认关)与 `gb_*` FastCtx 文件工具(`src/fastctx-bridge.js`,与 dsh-ops 自动让位);
+   为**官方四个 preset** 注册自有 bash 工具;官方 `pwsh`(真 PowerShell)默认隐藏
+   (`pwshTool` 开关显示);`pwsh7` 旁路已随 route B 退役;`gb_*` FastCtx 文件工具
+   (`src/fastctx-bridge.js`,与 dsh-ops 自动让位);
 3) 声明式 preset 变体(`src/index.js` + `src/compositions.js`,`variantPresets` 开关**默认关**,
    开启时以 `ctx.agentPresets.register` 注册 standard/minimal/ptc/cordis 四个 `* · Git Bash`
    变体;启动时单向清理旧物化残留目录,清理不受开关影响);
@@ -566,6 +571,20 @@
        (官方 glob 不忽略任何 / gb_grep 尊重 .gitignore 跳 .git / gb_glob 只认裸 .ignore)。
        ⑥ 真机复验已由用户完成(bash 全链路 + 27 工具全量冒烟,见 CHANGELOG v0.38.5),
        v0.35.0 标注的「待做」就此销账。
+       ⑦ **route B(v0.39.0,DSH STORE 收录合规后的架构终态)**:AI-Scarlett/DSH-Store #1396
+       以 `SUBMISSION_PATCH_PROTECTED` 拒收(patch 同时含 `@deepseek-ai/` 字样与字面
+       `disabled: true`,扫描器双正则 AND)——「替换 ctx.shell」架构与市场「不禁用官方组件」
+       契约本质冲突,用户裁决改造架构而非钻字面。新事实:**patch 纯新增**(不再撤
+       `pwsh-sandbox`、不再插执行器行;冒烟有「市场门禁自检」断言锁死);**自有 bash 工具**
+       (`src/bash-tool.js`,对官方 tool-bash 逐调用镜像)执行在**私有执行器实例**上
+       (inline-tools 在私有 scope `executorScope.ctx.plugin(GitBashSandboxExecutor)` 构造,
+       `static inject` 走 cordis 官方链,§4k schemastery 语义自动满足,**永不注册为
+       `ctx.shell`**);官方 `pwsh` 重新为真(官方解析器自动优先 PowerShell 7),`pwshTool`
+       开关语义 = 「显示 pwsh 工具」(默认关 = `tools.restrict` 隐藏 + pre-execute 兜底拒,
+       理由句 `hiddenPwshDenyReason()` 指路设置卡),`pwsh7` 旁路整体退役;
+       `resolveHostModule`(inline-tools 导出)是宿主包解析的唯一通道(loader 优先 +
+       createRequire 兜底)。bashPath 显式配置只认 `gitbash-shell` 行(executor 行已不存在,
+       `executorConfiguredBashPath` 二段式读取保留作老 profile 兼容层)。
 
 ## 验证清单(改动后)
 

@@ -3,6 +3,57 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.39.0 — 2026-10-13
+
+**类型**:feat(架构转向:route B——插件自带 bash 工具,不再替换宿主执行器;DSH STORE 收录合规)。
+
+- **背景**:AI-Scarlett/DSH-Store(第三方插件市场)的固定 Commit 检查对 v0.38.5 给出确定性拒绝
+  `SUBMISSION_PATCH_PROTECTED: Bundle Patch appears to disable an official component`
+  ([DSH-Store#1396](https://github.com/AI-Scarlett/DSH-Store/issues/1396))——扫描器
+  (`check-plugin-submission.mjs:173-175`)对 patch 文本做双正则 AND 判定
+  (`出现 @deepseek-ai/ 字样` ∧ `出现字面 disabled: true`),而本插件的 patch 恰好双中:
+  禁用官方 `pwsh-sandbox` 执行器行正是「替换 shell 底座」架构的落点。市场契约
+  (「不禁用、替换官方组件」)与旧架构**本质冲突**,用户裁决走 route B:为收录改造架构,
+  而不是钻扫描器字面的空子。
+- **新架构(route B)**:宿主 PowerShell 执行器(`pwsh-sandbox`)**原样保留**,patch 变为
+  **纯新增**(只 insert `gitbash-shell` 插件行 + better-sidebar 终端 shell 探测式 edit)。
+  bash 能力改为**插件自有工具**:
+  - `src/bash-tool.js`:自有 `bash` 工具,对官方 `@deepseek-ai/dsh-tool-bash`
+    **调用级镜像**(schema/输出三态 union/后台 jobs/超时晋升/沙箱升级/渲染/prompt 节),
+    唯一替换点 = `ctx.shell.resolve/execute` → **私有执行器实例**
+    (构造于私有 cordis scope 的 `GitBashSandboxExecutor`,`static inject` 全链生效,
+    永不注册为 `ctx.shell` 服务——官方 PowerShell 执行器的工作不受任何影响);
+  - `src/bash-render.js`:官方 render.ts/background.ts 的逐调用镜像
+    (exit 标记契约、`[stderr]` 段、denial/escalation 标记、ring 读、晋升文本),
+    沙箱 marker 内联为官方原文;
+  - 宿主依赖(`dsh-tools` 的 defineTool、`dsh-sandbox` 的升级助手)经宿主 loader 通道解析,
+    缺席时定义退化为 plain JSON schema、升级面整体不广告——**严格变窄,不变宽**。
+- **pwsh 语义反转**:官方 `pwsh` 工具重新成为**真 PowerShell**(官方解析器自动优先
+  PowerShell 7)——假工具恒灭逻辑随执行器替换一起退役。`pwshTool` 开关(字段名不变,
+  默认关)语义变为「**显示 pwsh 工具**」:关 = 每 agent `tools.restrict` 隐藏 + pre-execute
+  兜底拒(理由句指路设置卡);开 = 真工具直接可见。**`pwsh7` 旁路工具整体退役**
+  (与官方 pwsh 跑同一二进制,纯冗余);`resolveHostPwsh7`/`pwshArgv`/`validatePwshArgs`
+  及其 21 门语言词条随之删除,设置卡词条改写为 pwsh 显示开关。
+- **patch 收紧**:`pwsh-sandbox` 禁用行与 `gitbash-executor` 行删除;`executorConfiguredBashPath`
+  的二段式读取保留作老 profile 兼容层(读不到即回退 `gitbash-shell` 行值);better-sidebar
+  edit 的硬编码 `C:/Program Files/Git/bin/bash.exe` 改为 boot 期 `!!js` 探测
+  (默认安装位置 → LOCALAPPDATA,两处皆缺返回 '' 交还官方行为,issue #13 教训)。
+  **冒烟新增「市场门禁自检」断言**:patch 永远不得同时携带 `@deepseek-ai/` 字样与字面
+  `disabled: true`——把上架契约锁进测试,防未来回归。
+- **行为变化**:①官方 `pwsh` 不再被无条件拒绝(开关开后是真 PowerShell);②bashPath 显式
+  配置只认 `gitbash-shell` 行(executor 行随 patch 删除,该层配置本来就是空串默认);
+  ③老 profile 里手写的 `gitbash-executor` 行会在启动日志出现「unknown row」级提示
+  (宿主行为),配置值请迁移到设置卡 bashPath。
+- **冒烟**:122 项(121 绿 + 1 项历史实测跳过「path rescue measured」,与本版无关):inlineNeeds 新形状(hidePwsh 随开关)、
+  bash-tool 模块面(无 shell inject/双形态 schema/硬校验)、bash-render 标记契约、
+  后台适配、市场门禁自检、patch 形态锁(不再出现 pwsh-sandbox/gitbash-executor/字面禁用)。
+- **真机验证(win32)**:待做——按 AGENTS §4l 纪律,真机通过前本版本不标「完成」:
+  ①启动日志 `own bash tool ready (private Git Bash executor at ...)`;
+  ②新会话 bash 工具出现,`command -v bash` 指向 Git 安装目录;官方 pwsh 不在工具面;
+  ③设置卡开 pwsh 工具 → 新会话 pwsh 出现且 `Get-Process` 等 cmdlet 真实执行;
+  ④后台任务:`sleep 30` + run_in_background → job_output/job_kill;
+  ⑤PTY 终端「· Git Bash」不受影响;⑥dsh-ops 同装时让位不变。
+
 ## v0.38.5 — 2026-10-13
 
 **类型**:fix(用户 27 工具全量冒烟报告的 FastCtx 两项;bash 工具真机验收通过)。

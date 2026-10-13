@@ -298,10 +298,13 @@ export function effectiveConfiguredBashPath(ownRowValue, settingsValue) {
 
 /**
  * The `gitbash-executor` ROW's own `bashPath` — the highest-priority tier.
- * Read through the Loader's public surface (the row id is part of this
- * plugin's own bundle patch), so the translation layer sees the same explicit
- * value the executor row carries instead of quietly resolving a different
- * one. Absent row / absent config / any loader shape change reads ''.
+ * ROUTE B (v0.39.0): the executor row no longer exists in the shipped patch,
+ * so on current installs this tier reads '' and the `gitbash-shell` settings
+ * row below is the only explicit tier. The read is KEPT as a compatibility
+ * layer: profiles installed before v0.39.0 may still carry the row (the host
+ * merges profile-patch layers by id), and an explicit value written there
+ * back then must keep winning over a silent auto-chain. Absent row / absent
+ * config / any loader shape change reads ''.
  *
  * TWO access paths, because hosts differ (issue #13, measured on 0.2.0-rc.2):
  * bundle-patched rows live in the OWNING PLUGIN'S SUBTREE there, so a bare
