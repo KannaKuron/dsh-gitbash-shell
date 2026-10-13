@@ -237,6 +237,7 @@ test('path-tool: the module owns its registration and reverts it on disposal', (
   const effects = []
   const ctx = {
     tools: {
+      schemas: () => registered.map(definition => ({ name: definition.name })),
       register(definition) {
         registered.push(definition)
         return () => { registered.pop() }

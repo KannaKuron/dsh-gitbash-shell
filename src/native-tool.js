@@ -180,7 +180,7 @@ export function createNativeToolModule(deps) {
         })
       }
       let currentJobs
-      const refresh = registerExperimentalTool(ctx, () => definition(currentJobs), deps.experimentalEnabled)
+      const refresh = registerExperimentalTool(ctx, () => definition(currentJobs), deps.experimentalEnabled, { scope: deps.scope, log: deps.log })
       if (!enabled) return
       ctx.inject(['jobs'], jobCtx => {
         currentJobs = jobCtx.jobs

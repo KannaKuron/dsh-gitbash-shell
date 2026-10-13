@@ -9,11 +9,11 @@
 - 当前实验基线：[上游 v0.39.3 与 PR #28 后续修复](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)。前置 PR #24 已合并。
 - 测试环境：**DSH Core 0.2.1-alpha.2**、Node 24.13.0、Windows / Git for Windows。
 - 新native功能按公开能力探测启用；既有兼容版本范围之外的实际覆盖情况见后文待验收项。
-- 最终普通全仓：**231 tests / 231 pass / 0 fail / 0 skip / 0 cancel，exit0**。
-- 最终实际Core完整preview：**79 tests / 79 pass / 0 fail / 0 skip / 0 cancel，exit0**。
+- 最终普通全仓：**232 tests / 232 pass / 0 fail / 0 skip / 0 cancel，exit0**。
+- 最终实际Core完整preview：**85 tests / 85 pass / 0 fail / 0 skip / 0 cancel，exit0**。
 - 语法与`git diff --check`通过；npm dry-run确认新源码包含于发布文件集合。Dry-run不是已安装/发布，也不是新增生产版本。
 
-计数是Node test runner报告口径，包括子测试/套件；不同轮次或独立复跑有重叠，**不累加为独立覆盖数量**。231/79 是当前完整脚本结果，不意味着每项都是真生产进程场景。
+计数是Node test runner报告口径，包括子测试/套件；不同轮次或独立复跑有重叠，**不累加为独立覆盖数量**。232/85 是当前完整脚本结果，不意味着每项都是真生产进程场景。
 
 ## 2. 证据等级
 
@@ -157,7 +157,7 @@ DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:prev
 
 仍待正式四项验收：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 win32 真机全量验证、非 CRT 解释器矩阵抽测。当时 #24 未合并；本轮已完成到上游 main 的 rebase。
 
-## 同步 v0.39.3 后的验证（2026-10-14）
+## 同步 v0.39.3 后的验证（2026-10-14，所有权修复前）
 
 当前完整回归 231/231、实际 Core preview 79/79，exit0、无 skip/cancel。新增缺 workingDirectory 的三工具挂载/cwd/双向开关，真实 native producer 的 policy/header 默认目录；有服务 ensure 错误不降级。两个 companion 也验证真实注册后才报成功。21 份字典已本地化。
 
@@ -166,3 +166,13 @@ DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:prev
 [已安装实验构建的实机报告](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6149607594)覆盖 Bash/native/path 入口与 RO/WW、单次批准不粘滞。报告没有记录精确提交，且明确未覆盖开关 OFF、生产 GUI、真实 LLM 自主选路或非 CRT 矩阵；将其作为有限外部证据，不扩展为当前 rebase 构建的完整验收。
 
 仍需真实 LLM 自主选路、生产 GUI、维护者 Windows 全量验证、非 CRT 矩阵的正式确认；保留 Draft/RFC。
+
+## 独立审查后的工具所有权修复（2026-10-14）
+
+隔离子代理确认一项 P2：开关 OFF 期间外部注册同名工具，恢复 ON 后全局外部工具被遮蔽，同 agent 外部工具则导致 duplicate 异常并中断后续 companion 注册。共用注册入口现对每次初始挂载、开关更新及 native Jobs 刷新重新检查当前 agent 的所有权；外部所有者存在时让位，检查或注册失败记录日志并隔离异常。实际 Core 的 knownNames 包含隐藏工具，旧宿主回退 schemas 检查；旧宿主隐藏工具行为尚未独立验证。
+
+`tests/runtime-preview.mjs` 新增六项实际 Core 回归：path/native × 全局/同 agent 四种冲突的重复 OFF→ON、外部所有者移除后的恢复、native Jobs 卸载/重载冲突，以及隐藏全局同名工具。`tests/runtime-regressions.mjs` 新增一项单个注册失败不阻断另一个工具、后续恢复和卸载清理的回归。scope 就绪与实际注册成功分别记录。
+
+最终普通全仓 **232/232**、实际 Core 完整 preview **85/85**，均 exit0、无 skip/cancel。隔离子代理独立重跑原始所有权复现两项与新增专项七项，**9/9** 通过：全局与同 agent 外部 sentinel 均保持原响应，另一 companion 正常注册。未发现新的确认缺陷。这些专项与完整结果重叠，不累加。
+
+最初疑似 Bash policy 时序问题已撤回：实际宿主契约为逐操作快照，模式变更作用于下一次调用；直接修改 fixture header.policy 不能证明违约。本轮保持该契约。上述四项正式验收仍待，继续保持 Draft/RFC。

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { mountInlineTools } from '../src/inline-tools.js'
 import { createBashToolModule } from '../src/bash-tool.js'
+import { registerExperimentalTool } from '../src/experimental-tools.js'
 
 function inlineFixture({ visible = false, names = ['bash', 'pwsh'], externalDeny = [] } = {}) {
   const listeners = new Map()
@@ -210,3 +211,26 @@ test('runtime: restricted foreground and background calls fail before Jobs admis
   assert.match(definition.output.render({}, value)[0].text, /started background job admitted-job/)
   assert.equal(admitted.length, 1)
 })
+
+
+test('runtime: a registration failure is logged without aborting another companion refresh', () => {
+  const listeners = [], cleanups = [], definitions = new Map(), logs = [];
+  let enabled = false, fail = true;
+  const ctx = { tools: {
+    schemas: () => [...definitions.keys()].map(name => ({ name })),
+    register(definition) {
+      if (fail && definition.name === 'path') throw new Error('tool path is already registered in this scope');
+      definitions.set(definition.name, definition);
+      return () => definitions.delete(definition.name);
+    },
+  }, effect: callback => cleanups.push(callback()), on: (_event, callback) => listeners.push(callback) };
+  for (const name of ['path', 'native']) registerExperimentalTool(ctx, () => ({ name }), () => enabled, { log: message => logs.push(message) });
+  const update = value => { enabled = value; for (const listener of listeners) listener([['experimentalNative']]); };
+  assert.doesNotThrow(() => update(true));
+  assert.deepEqual([...definitions.keys()], ['native']);
+  assert.ok(logs.some(line => line.includes('path registration failed')));
+  update(false);fail = false;update(true);
+  assert.deepEqual([...definitions.keys()], ['path', 'native']);
+  for (const cleanup of cleanups.reverse()) cleanup();
+  assert.equal(definitions.size, 0);
+});

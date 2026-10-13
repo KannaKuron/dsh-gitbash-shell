@@ -291,10 +291,7 @@ export function createPathToolModule(deps = {}) {
       if (typeof ctx?.tools?.register !== 'function') {
         throw new Error('path-tool: ctx.tools.register is unavailable; cannot own the tool registration')
       }
-      registerExperimentalTool(ctx, () => definition, deps.experimentalEnabled)
-      ;(typeof deps.log === 'function' ? deps.log : () => {})(
-        `${PATH_TOOL_NAME} registered (explicit full-value MSYS→native conversion, no I/O)`,
-      )
+      registerExperimentalTool(ctx, () => definition, deps.experimentalEnabled, { scope: deps.scope, log: deps.log })
     },
   }
 }

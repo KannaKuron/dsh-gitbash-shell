@@ -608,7 +608,7 @@
        §4j 硬注入、v0.38.2 fiber 时序同一失败家族的第无数课)。
        实验 native 与 Bash 的 cwd 消费共用 `src/session-workdir.js`；native 同样不得硬 inject
        workingDirectory。服务存在时 ensure 错误不得吞掉，只有缺服务才走旧接缝。
-       companion 激活必须确认 apply 已执行；开关开启时还须工具面回读，关闭时只报告 scope 就绪。
+       companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，knownNames 可用时包含隐藏工具，旧宿主回退 schemas；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
 
 ## 验证清单(改动后)
 

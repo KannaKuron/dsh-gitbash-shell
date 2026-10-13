@@ -297,8 +297,8 @@ export function mountInlineTools(ctx, deps) {
         const extraModules = []
         if (typeof deps.translatePath === 'function') {
           const { createPathToolModule, PATH_TOOL_NAME } = await untilDisposed(import('./path-tool.js'), controller.signal)
-          extraModules.push({ name: PATH_TOOL_NAME, module: createPathToolModule({
-            toolsModule: hostModules.toolsModule, translate: deps.translatePath, experimentalEnabled, log,
+          extraModules.push({ name: PATH_TOOL_NAME, create: scope => createPathToolModule({
+            toolsModule: hostModules.toolsModule, translate: deps.translatePath, experimentalEnabled, log, scope,
           }) })
           try {
             const localBashModule = await untilDisposed(resolveHostModule(ctx, '@deepseek-ai/dsh-bash-local'), controller.signal)
@@ -309,11 +309,11 @@ export function mountInlineTools(ctx, deps) {
             }
             const { createNativeOutputAdapter } = await untilDisposed(import('./native-output.js'), controller.signal)
             const { createNativeToolModule } = await untilDisposed(import('./native-tool.js'), controller.signal)
-            extraModules.push({ name: 'gitbash_native', module: createNativeToolModule({
+            extraModules.push({ name: 'gitbash_native', create: scope => createNativeToolModule({
               toolsModule: hostModules.toolsModule, sandboxModule: hostModules.sandboxModule,
               localBashModule, createScope, translateMsysPath: deps.translatePath,
               createNativeOutputAdapter, outputOptions: { OutputCollector: outputModule?.OutputCollector },
-              createArtifactDirectory: deps.createArtifactDirectory, experimentalEnabled, log,
+              createArtifactDirectory: deps.createArtifactDirectory, experimentalEnabled, log, scope,
             }) })
           } catch (error) {
             if (controller.signal.aborted) throw error
@@ -363,22 +363,21 @@ export function mountInlineTools(ctx, deps) {
         throw new Error('bash tool did not register for this agent (module fiber INACTIVE — this host lacks an injected service the module requires — or the tools read-back is unavailable); bash is NOT available in this session, please report this with your dsh version (issue #27)')
       }
       for (const extra of extraModules ?? []) {
-        if (faceNames(agent).includes(extra.name)) continue // Never replace another owner.
         let extraFiber
         try {
           let applied = false
-          extraFiber = scope.ctx.plugin({ ...extra.module, async apply(extraCtx, config) {
-            await extra.module.apply(extraCtx, config)
+          const module = extra.create(agent)
+          extraFiber = scope.ctx.plugin({ ...module, async apply(extraCtx, config) {
+            await module.apply(extraCtx, config)
             applied = true
           } })
           await untilDisposed(extraFiber, state.controller.signal)
           if (!isLive(agent, state)) return
-          if (!applied || (experimentalEnabled() && !faceNames(agent).includes(extra.name))) {
-            throw new Error(`${extra.name} did not register (module inactive or tool not visible)`)
+          if (!applied) {
+            throw new Error(`${extra.name} scope inactive (a required service may be missing)`)
           }
-          log(experimentalEnabled()
-            ? `${extra.name} activated in the agent-owned scope`
-            : `${extra.name} scope ready; tool disabled by experimentalNative`)
+          // Registration/stand-down is reported by the shared live registrar.
+          log(`${extra.name} scope ready; registration follows experimentalNative and existing owners`)
         } catch (error) {
           if (!isLive(agent, state)) return
           await extraFiber?.dispose()

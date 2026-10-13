@@ -195,7 +195,7 @@ trusted owner在真实policy/校验后创建自有临时目录，不从model cwd
 
 没有controller时明确拒绝，不以“admission失败后再运行前台”冒二次副作用风险。没有Jobs时为前台kill deadline；有Jobs时可timeout promotion。该差异需在正式用户体验验收中检查。
 
-Windows own-bash agent scope挂两个companions，不覆盖已有同名工具。两工具必须确认 apply 已执行及当前开启状态下工具面可见；关闭状态仅报告 scope 就绪。Bash/native 共用可选目录读取，有服务走官方 ensure（错误不降级），无服务走旧 policy.workspaceRoot ?? session.header.cwd 接缝。缺native executor/OutputCollector公开能力不撤bash/path。新工具不加入minimal持久终端通道，不改变root PowerShell、market patch或preset id。
+Windows own-bash agent scope挂两个companions，各自按 agent 创建注册模块。初始挂载、开关更新和 native Jobs 刷新共用注册入口：先注销自身注册，再检查当前 agent 的工具所有权；已有外部全局或同 agent 同名工具就让位。实际 Core 的 knownNames 包含隐藏工具，旧宿主回退 schemas 检查；检查失败也让位。外部所有者移除后，下次刷新可恢复。注册异常只记录日志，不阻断另一个 companion 的更新。两工具必须确认 apply 已执行；scope 就绪与实际注册成功分别报告，关闭或让位时不会报告注册成功。Bash/native 共用可选目录读取，有服务走官方 ensure（错误不降级），无服务走旧 policy.workspaceRoot ?? session.header.cwd 接缝。缺native executor/OutputCollector公开能力不撤bash/path。新工具不加入minimal持久终端通道，不改变root PowerShell、market patch或preset id。
 
 ## 11. 已发生的反证与修正
 

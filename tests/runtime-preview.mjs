@@ -521,3 +521,87 @@ test('runtime preview: old hosts without workingDirectory mount all companions a
   f.setExperimental(true);assert.deepEqual(f.names().sort(),['bash','gitbash_native','gitbash_to_native_path']);
   assert.equal(f.root.get('shell'),f.official);
 });
+
+
+function foreignCompanion(name, value) {
+  return { inject: ['tools'], apply(ctx) {
+    ctx.tools.register(defineTool({ name, description: 'Foreign companion owner', parameters: { msys_path: { type: 'string', required: true } },
+      output: { schema: { type: 'string' }, render: (_args, result) => [{ type: 'text', text: result }] }, execute: () => value }));
+  } };
+}
+
+for (const layer of ['global', 'agent']) for (const name of ['gitbash_to_native_path', 'gitbash_native']) {
+  test('runtime preview: live companion preserves foreign ' + layer + ' owner of ' + name, { timeout: 10000 }, async t => {
+    const f = await fixture(t, { explicitTools: true, experimental: false });
+    await bounded(f.activated.promise, 'companion scopes ready');
+    const owner = layer === 'global' ? f.root : f.agent.ctx;
+    const sentinel = 'FOREIGN_' + layer + '_' + name;
+    const foreign = owner.plugin(foreignCompanion(name, sentinel));
+    await foreign;
+    t.after(() => foreign.dispose());
+    for (const enabled of [true, false, true]) {
+      assert.doesNotThrow(() => f.setExperimental(enabled));
+      const response = await f.execute(name, { msys_path: '/c/sentinel' });
+      assert.equal(response.isError, false, JSON.stringify(response));
+      assert.equal(response.value, sentinel);
+      assert.equal(f.tools.sdkSchemas(f.agent).find(tool => tool.name === name).output.type, 'string', 'SDK retains the foreign return contract');
+      const other = name === 'gitbash_native' ? 'gitbash_to_native_path' : 'gitbash_native';
+      assert.equal(f.names().includes(other), enabled, 'one collision cannot block the other companion');
+    }
+    assert.ok(f.logs.some(line => line.includes(name + ' registration skipped: an existing tool owns this name')));
+    await foreign.dispose();
+    f.setExperimental(false);
+    f.setExperimental(true);
+    const output = f.tools.sdkSchemas(f.agent).find(tool => tool.name === name).output;
+    if (name === 'gitbash_to_native_path') assert.equal(output.type, 'object');
+    else assert.ok(output.oneOf.every(branch => branch.type === 'object'), 'native union contract recovers after the owner leaves');
+    await f.patch.dispose();
+    assert.deepEqual(f.names(), ['pwsh']);
+  });
+}
+
+test('runtime preview: native Jobs reload preserves a foreign owner without blocking its scope', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true, experimental: false });
+  await bounded(f.activated.promise, 'companion scopes ready');
+  const foreign = f.agent.ctx.plugin(foreignCompanion('gitbash_native', 'FOREIGN_JOBS_OWNER'));
+  await foreign;
+  t.after(() => foreign.dispose());
+  assert.doesNotThrow(() => f.setExperimental(true));
+  for (let i = 0; i < 2; i++) {
+    const removeJobs = f.root.provide('jobs', {});
+    await new Promise(setImmediate);
+    assert.equal((await f.execute('gitbash_native', { msys_path: '/c/sentinel' })).value, 'FOREIGN_JOBS_OWNER');
+    await removeJobs();
+    assert.equal((await f.execute('gitbash_native', { msys_path: '/c/sentinel' })).value, 'FOREIGN_JOBS_OWNER');
+    assert.ok(f.names().includes('gitbash_to_native_path'));
+  }
+  await foreign.dispose();
+  const removeJobs = f.root.provide('jobs', {});
+  await new Promise(setImmediate);
+  try {
+    assert.ok(f.tools.sdkSchemas(f.agent).find(tool => tool.name === 'gitbash_native').output.oneOf.every(branch => branch.type === 'object'));
+    assert.ok(f.tools.get('gitbash_native', f.agent).parameters.properties.run_in_background);
+  } finally { await removeJobs(); }
+  assert.equal(f.tools.get('gitbash_native', f.agent).parameters.properties.run_in_background, undefined);
+});
+
+
+test('runtime preview: an initially hidden foreign tool retains ownership through companion mounting', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true, pauseModules: true });
+  await bounded(f.entered.promise, 'pause before companion mounting');
+  const foreign = f.root.plugin(foreignCompanion('gitbash_to_native_path', 'HIDDEN_FOREIGN_OWNER'));
+  await foreign;
+  t.after(() => foreign.dispose());
+  const lift = f.agent.ctx.tools.restrict({ deny: ['gitbash_to_native_path'] });
+  t.after(lift);
+  f.release.resolve();
+  await bounded(f.activated.promise, 'companion scopes with a hidden foreign owner');
+  assert.ok(!f.names().includes('gitbash_to_native_path'), 'own registration must not bypass another owner’s visibility mask');
+  assert.ok(f.names().includes('gitbash_native'));
+  lift();
+  assert.equal((await f.execute('gitbash_to_native_path', { msys_path: '/c/sentinel' })).value, 'HIDDEN_FOREIGN_OWNER');
+  await foreign.dispose();
+  f.setExperimental(false);
+  f.setExperimental(true);
+  assert.deepEqual((await f.execute('gitbash_to_native_path', { msys_path: '/c/sentinel' })).value, { native_path: 'C:/sentinel' });
+});

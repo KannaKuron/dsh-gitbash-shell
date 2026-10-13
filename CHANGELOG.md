@@ -5,6 +5,29 @@
 
 ## Unreleased — 2026-10-14
 
+### PR #26：工具所有权修复与独立复核（fix / test / docs）
+
+- 共用注册入口在每次开关或 Jobs 刷新时，先注销自身注册，再检查当前 agent 可见的工具所有权；外部全局或同 agent 的同名工具均让位。实际 Core 的 knownNames 检查也包含隐藏工具，旧宿主回退 schemas 检查。
+- 两个 companion 按 agent 创建注册模块，初始冲突仍保留待命 scope；外部所有者移除后，下次刷新可恢复。所有权检查或注册失败记录明确日志，不向 volatile 事件抛错，不阻断另一个 companion。
+- scope 就绪与工具注册成功分别记录，避免让位或关闭状态被报告为注册成功。Bash 的逐操作 policy 快照契约保持不变。
+- 新增实际 Core 回归覆盖 path/native × 全局/同 agent 的 OFF→ON 冲突、重复开关、所有者移除恢复、native Jobs 刷新以及隐藏的全局同名工具；普通回归覆盖单个注册失败的隔离与恢复。
+- Windows / Node 24.13.0 / Core 0.2.1-alpha.2：普通完整回归 **232/232**、实际 Core 完整 preview **85/85**，均 exit0、无 skip/cancel。隔离子代理独立复核原始所有权复现与新增专项 **9/9** 通过，未发现新的确认缺陷；专项与完整结果有重叠，不累加覆盖数。
+- 相关：[PR #26](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26)。继续保持 Draft/RFC；真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证和非 CRT 矩阵正式确认仍待。
+
+### PR #26：隔离子代理独立审查（review / 修复前复现记录）
+
+- 由未继承本次对话历史的子代理重新审查[当前实验提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/771c618dde5e509a80cb2b77733d1517fc7c89f2)
+  相对[上游基线](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)的完整增量。
+  普通回归 231/231、实际 Core preview 79/79 均 exit0、无 skip/cancel；静态审查覆盖策略/开关、目录、注册/Jobs 生命周期、argv/编码/预算及文档证据。
+- 确认一项 P2：experimental-tools 的 refresh 仅在首次挂载之外直接重注册，不重查同名工具所有权。
+  OFF 期间外部注册全局同名 path 工具，ON 后真实 ToolRuntime 调用从 FOREIGN_OWNER 变为本插件 native_path 对象；
+  同 agent 层则同步抛 already registered，阻断本次后续 companion 激活。真实 Core/Cordis 与受控 sentinel 工具复现，未启动 native 进程。
+- 建议将冲突判定纳入每次 refresh 的共用注册入口；存在外部所有者时让位并明确日志，不向 volatile 事件抛 duplicate。
+  补 OFF→ON 的全局/同 agent 层及 native Jobs refresh 回归。产品源码尚未修改，未推送或发送 GitHub 评论。
+- 排除最初疑似的 Bash policy 时序问题：实际 sandboxPolicy 契约是逐操作快照、模式变更作用于下一次调用；
+  fixture 直接修改 header.policy 的反证不足以证明违约，且 base 已有此行为，因此撤回拟议 P1。反证脚本的失败数不等于缺陷数。
+- 无确认 P0/P1；继续保持 Draft/RFC。真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证和非 CRT 矩阵正式确认仍待，测试绿色不替代这些门槛。
+
 ### PR #26：同步 v0.39.3 与旧宿主兼容（fix / docs / test）
 
 - 已 rebase 到[上游吸收 PR #28 改进后的 main](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)，前置 PR #24 已合并；正式 v0.39.3 的记录完整保留。
