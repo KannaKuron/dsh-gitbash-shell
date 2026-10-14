@@ -585,6 +585,15 @@
        `resolveHostModule`(inline-tools 导出)是宿主包解析的唯一通道(loader 优先 +
        createRequire 兜底)。bashPath 显式配置只认 `gitbash-shell` 行(executor 行已不存在,
        `executorConfiguredBashPath` 二段式读取保留作老 profile 兼容层)。
+       ⑨ **dsh-ops 0.3.0 互通:gb_* 退役 + 跨工具家族方言统一(v0.39.4,用户拍板)**:T-Auto/dsh-ops
+       0.3.0 以原生 Rust `ops_*` 文件工具取代 FastCtx 上游(走 DSH 原生 policy/sandbox 通道)并新增
+       PTC 批量能力与三平台支持。用户裁决:**bash 不让位**(ops_bash 仅 full-access + 裸 subprocess
+       无沙箱;受限会话只有本插件的 bash),**gb_* 退役**(`fastctxTools` 默认 false,四处 reader 同步,
+       显式 true 可恢复;opsPresent 让位仍兜底),**方言由本插件统一**——ops_* 的入参(root 顶层 +
+       operations[].path/to + protect[] 嵌套)翻译成 Windows 形式,返回(items[].path/matches[].path/root)
+       与失败(content/message)回流 `/c/`。**方法论**:互通适配前先读对方源码定事实(工具名/参数形状/
+       返回结构/提示挂点),对方提示走 systemPrompt.section 即被 windowsToMsys 源头替换天然覆盖,无需
+       改人家文案;宿主 patch 引擎对缺失行的 warn-and-skip 是固有噪音,文档说明而非硬修。
        ⑧ **模块 inject 面是兼容契约(issue #27,v0.39.3)**:route B 镜像新版宿主 tool-bash 时把
        `workingDirectory` 一起抄进了自有模块的硬 `inject`——而兼容矩阵声明兼容的 `0.2.0-rc.2`
        **没有该服务**,cordis 对无法满足的 inject 让 fiber **永久 INACTIVE**(apply 不执行、零日志),

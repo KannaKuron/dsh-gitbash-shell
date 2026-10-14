@@ -2299,7 +2299,8 @@ window.__ModuleLoader__.load({
 			   writeField exactly like every other row on this card. */
 			var variantOn = snap.value.variantPresets === true;
 			var pwshOn = snap.value.pwshTool !== false;
-			var fctxOn = snap.value.fastctxTools !== false;
+			// Default OFF (v0.39.4): must match the host's `=== true` reader.
+			var fctxOn = snap.value.fastctxTools === true;
 
 			var modeSection = fold("sec.mode",
 				E("div", { className: "gb-row" },

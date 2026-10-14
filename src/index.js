@@ -517,7 +517,7 @@ export const Config = Schema === null ? undefined : Schema.object({
    * Default ON; Windows-only payload, stands down entirely when dsh-ops is
    * present (its ops_* tools already cover the same ground).
    */
-  fastctxTools: live(Schema.boolean().default(true)),
+  fastctxTools: live(Schema.boolean().default(false)),
 })
 
 /** Read one Config value across eras: Volatile ref (>= 0.1.7) or plain value. */
@@ -582,8 +582,8 @@ function makeLiveReader(ctx, config) {
       variantPresets: valueOf(config.variantPresets) === true,
       // Default ON (v0.35.0): the pwsh replacement fills the denied host tool.
       pwshTool: valueOf(config.pwshTool) !== false,
-      // Default ON (v0.35.0): the FastCtx bridge stands down when dsh-ops is present.
-      fastctxTools: valueOf(config.fastctxTools) !== false,
+      // Default OFF (v0.39.4, dsh-ops 0.3.0): FastCtx is dead upstream and dsh-ops ships stronger native ops_* file tools; an explicit true re-enables the bridge. It still stands down when dsh-ops is present.
+      fastctxTools: valueOf(config.fastctxTools) === true,
     }
   }
   return {
@@ -593,7 +593,7 @@ function makeLiveReader(ctx, config) {
     autoTerminalShell: () => dialect().autoTerminalShell !== false,
     variantPresets: () => (hasConfig ? valueOf(config.variantPresets) === true : false),
     pwshTool: () => (hasConfig ? valueOf(config.pwshTool) !== false : true),
-    fastctxTools: () => (hasConfig ? valueOf(config.fastctxTools) !== false : true),
+    fastctxTools: () => (hasConfig ? valueOf(config.fastctxTools) === true : false),
     // Default OFF: only an explicit true asks for deduplication.
     suppressPeerCordis: () => (hasConfig ? valueOf(config.suppressPeerCordis) === true : false),
   }
@@ -773,7 +773,9 @@ function pathEcho(value, env) {
  * content VERBATIM: output is data, never rewritten (the same red line as
  * file content in successful results).
  */
-const ERROR_CONTENT_TOOLS = new Set(['read', 'read_image', 'write', 'edit', 'glob', 'grep', 'present'])
+// ops_* six (v0.39.4, dsh-ops 0.3.0): their failures quote Windows paths too —
+// the error content and error.message must answer in the same /c/ dialect.
+const ERROR_CONTENT_TOOLS = new Set(['read', 'read_image', 'write', 'edit', 'glob', 'grep', 'present', 'ops_inspect_local_file', 'ops_glob', 'ops_grep', 'ops_replace', 'ops_batch', 'ops_result'])
 
 export function rewriteErrorContent(content, options) {
   if (!Array.isArray(content)) return content
@@ -868,6 +870,37 @@ export function rewriteResultPaths(name, value, env) {
     })
     return changed ? { ...value, files } : value
   }
+  // v0.39.4 (dsh-ops 0.3.0): ops_* tools answer with the same paths the
+  // model must keep speaking /c/ about. Their Rust worker names every path
+  // field `path` (items[] / matches[]) and ops_batch/ops_result echo the
+  // operation `root`; detailsRef ids are opaque, never rewritten.
+  if (name === 'ops_grep' && Array.isArray(value.matches)) {
+    let changed = false
+    const matches = value.matches.map((match) => {
+      if (!match || typeof match !== 'object' || typeof match.path !== 'string' || match.path === '') return match
+      const out = toMsys(match.path)
+      if (out === match.path) return match
+      changed = true
+      return { ...match, path: out }
+    })
+    return changed ? { ...value, matches } : value
+  }
+  if ((name === 'ops_inspect_local_file' || name === 'ops_glob' || name === 'ops_replace') && Array.isArray(value.items)) {
+    let changed = false
+    const items = value.items.map((item) => {
+      if (!item || typeof item !== 'object' || typeof item.path !== 'string' || item.path === '') return item
+      const out = toMsys(item.path)
+      if (out === item.path) return item
+      changed = true
+      return { ...item, path: out }
+    })
+    return changed ? { ...value, items } : value
+  }
+  if ((name === 'ops_batch' || name === 'ops_result') && typeof value.root === 'string' && value.root !== '') {
+    const out = toMsys(value.root)
+    if (out !== value.root) return { ...value, root: out }
+    return value
+  }
   if (name === 'glob' && Array.isArray(value.paths)) {
     let changed = false
     const paths = value.paths.map((p) => {
@@ -909,7 +942,9 @@ export function rewriteResultPaths(name, value, env) {
 
 const MSYS_DRIVE_ROOT = /^\/([a-z])\/(.*)$/i
 const MSYS_BARE_DRIVE = /^\/([a-z])$/i
-const TRANSLATABLE_PATH_FIELDS = new Set(['file_path', 'path', 'workdir'])
+// 'root' (v0.39.4): dsh-ops ops_batch/ops_result name their path argument `root`;
+// no official tool uses that key, so the extra alias is collision-free.
+const TRANSLATABLE_PATH_FIELDS = new Set(['file_path', 'path', 'workdir', 'root'])
 
 // ── virtual mounts + env (v0.17.0) ─────────────────────────────────────
 //
@@ -1140,6 +1175,37 @@ export function translatePathArguments(args, env) {
     })
     if (files.some((file, index) => file !== next.files[index])) {
       next.files = files
+      changed = true
+    }
+  }
+  // v0.39.4 (dsh-ops 0.3.0): ops_batch carries its paths one level down —
+  // operations[] objects with path/to, and protect[] as a plain string
+  // array. Same deal as present's files[].path: the field-name whitelist
+  // only sees top-level keys. The model speaks /c/ everywhere; these
+  // arrive at the Rust worker as native absolute paths.
+  if (Array.isArray(next.operations)) {
+    const operations = next.operations.map((operation) => {
+      if (!operation || typeof operation !== 'object') return operation
+      let out = operation
+      for (const field of ['path', 'to']) {
+        if (typeof out[field] !== 'string') continue
+        const translated = translateMsysPath(out[field], env)
+        if (translated !== out[field]) out = { ...out, [field]: translated }
+      }
+      return out
+    })
+    if (operations.some((operation, index) => operation !== next.operations[index])) {
+      next.operations = operations
+      changed = true
+    }
+  }
+  if (Array.isArray(next.protect)) {
+    const protect = next.protect.map((entry) => {
+      if (typeof entry !== 'string') return entry
+      return translateMsysPath(entry, env)
+    })
+    if (protect.some((entry, index) => entry !== next.protect[index])) {
+      next.protect = protect
       changed = true
     }
   }

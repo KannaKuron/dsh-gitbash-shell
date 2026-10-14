@@ -3,6 +3,38 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.39.4 — 2026-10-14
+
+**类型**:feat(dsh-ops 0.3.0 互通:gb_* 退役 + 统一方言桥) / fix(docs)。
+
+### dsh-ops 0.3.0 互通:gb_* 退役 + 双工具家族统一 `/c/` 方言
+
+dsh-ops(T-Auto)0.3.0 起以原生 Rust `ops_*` 文件工具(`ops_inspect_local_file`/`ops_grep`/`ops_glob`/`ops_replace`,
+走 DSH 原生 policy/sandbox/subprocess 通道)取代 FastCtx 上游,并新增 PTC 批量能力(`ops_batch`/`ops_result`,
+opt-in)与跨平台(win/mac/linux)支持。本版把并存形态收敛为「各司其职 + 方言由本插件统一」:
+
+- **`fastctxTools` 默认关(弃用声明)**:上游 FastCtx 已被亲爹弃用,`ops_*` 同职能且更强(原生沙箱 mediation、
+  统一 `path` 契约、CAS 原子替换、跨平台)。默认值 true→false(schema、stub reader、live reader、client 卡
+  四处同步);显式开启可恢复,已装 dsh-ops 时无论开关如何都自动让位(既有 `opsPresent` 检测,0.3.0 工具名
+  未变,零改动兼容)。
+- **bash 不让位(产品裁决,2026-10-14)**:dsh-ops 的 `ops_bash` 仅 full-access 会话发布且走裸 `ctx.subprocess`
+  (无沙箱 confine、无 unconfined 如实标注);受限会话只有本插件的 bash 可用,且两工具不同名并存无害——
+  本插件继续是「全模式真 Git Bash 沙箱通道」,`ops_bash` 是 full-access 下的第二选择。
+- **入参翻译扩展**:字段白名单加 `root`(ops_batch/ops_result 的路径参数,官方工具无此键,零碰撞);
+  新增 `operations[]` 对象数组的 `path`/`to` 与 `protect[]` 字符串数组的嵌套翻译(同 present `files[].path`
+  的先例)。模型说 `/c/...`,Rust worker 收到原生绝对路径。
+- **出参成功面回流**:ops_* 六件加入 `rewriteResultPaths`——文件四件的 `items[].path`/`matches[].path`
+  (Rust 端所有路径字段统一叫 `path`)与 PTC 两件的 `root` 回显 `/c/`;`detailsRef` 等引用 ID 不透明不改写。
+- **失败面回流**:`ERROR_CONTENT_TOOLS` 加 ops_* 六件——失败 content 与 `error.message` 里的 Windows 路径
+  统一回答 `/c/`(`error.message` 走无条件 `msysEcho`,自动覆盖)。
+- **提示词无需改动**:dsh-ops 的提示走 `systemPrompt.section`(与官方同挂点),本插件的 `windowsToMsys`
+  源头替换覆盖全部 sections;其文案无 `C:/` 字面量(「正斜杠分隔符」与 `/c/` 方言天然兼容)。
+- **已知事项**:未安装 dsh-better-sidebar 的部署,启动时宿主对探测式 patch edit 打一条
+  `entry "better-sidebar" not found` warn——宿主 patch 引擎对缺失行的固有行为,插件侧无法在保留该 edit
+  功能(boot 层侧栏终端 shell 默认)的前提下去除,README 已说明。
+- **测试**:新增 dsh-ops 互通矩阵(入参 root/operations/protect、出参 items/matches/root、失败 content/message、
+  wrapper 门控源码断言、fastctxTools 默认关断言);全量 **172/172**(+1 win32-only skip)。
+
 ## v0.39.3 — 2026-10-14
 
 **类型**:fix(自有 bash 工具的宿主服务兼容 #27、MSYS 参数/编码提示、源码路径边界与 unconfined 可观测性) / test / docs。

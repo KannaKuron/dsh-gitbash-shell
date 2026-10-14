@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { rewriteCodePaths, scanCodeLiterals, runCodeHintFor, translateDispatch, dialectApplies, windowsToMsys } from '../src/index.js'
+import { rewriteCodePaths, scanCodeLiterals, runCodeHintFor, translateDispatch, dialectApplies, windowsToMsys, rewriteResultPaths, rewriteErrorContent, rewriteErrorMessage } from '../src/index.js'
 import { bashDescription, createBashToolModule } from '../src/bash-tool.js'
 import { renderResult, renderBackground, renderJobRead, renderPromoted, processOutcome, parseExitStatus } from '../src/bash-render.js'
 
@@ -204,4 +204,58 @@ test('compatibility: activation success requires a registry read-back, never a b
   assert.match(inlineTools, /schemas\?\.\(agent\)/, 'the activated log line must be gated on a schemas read-back')
   assert.match(inlineTools, /includes\('bash'\) === false/)
   assert.match(inlineTools, /retained = true[\s\S]*activated for this agent/, 'retained (scope ownership) may only be set after the read-back passes')
+})
+
+// ── dsh-ops 0.3.0 interop (v0.39.4): one dialect across BOTH tool families ──
+//
+// dsh-ops 0.3.0 replaced its FastCtx file tools with native ops_* tools whose
+// path contract is plain node:path (relative to the session cwd, or absolute
+// Windows). Our dialect teaches the model /c/ everywhere — so the translation
+// layer converts on the way in (arguments), and echoes on the way out
+// (results, error content). ops_bash stays their tool; our `bash` is the
+// dialect carrier and is not retired.
+
+test('interop: ops_* arguments translate — root, operations[].path/to, protect[]', () => {
+  const args = {
+    root: '/c/work/proj',
+    operations: [
+      { op: 'copy', path: '/c/work/a.txt', to: '/c/work/b.txt' },
+      { op: 'remove', path: 'relative/keep.txt' },
+    ],
+    protect: ['/c/work/keep', 'relative/also-keep'],
+  }
+  const out = translateDispatch({ name: 'ops_batch', arguments: args }, { posixPaths: true }, env)
+  assert.equal(out.root, 'C:/work/proj', '/c/ maps through the env drive root')
+  assert.deepEqual(out.operations[0], { op: 'copy', path: 'C:/work/a.txt', to: 'C:/work/b.txt' })
+  assert.equal(out.operations[1].path, 'relative/keep.txt', 'relative paths are not ours to touch')
+  assert.deepEqual(out.protect, ['C:/work/keep', 'relative/also-keep'])
+  assert.equal(args.root, '/c/work/proj', 'caller input is not mutated')
+  // The posixPaths gate lives in the tools/execute WRAPPER (dialect.posixPaths
+  // && dialectApplies), not inside translateDispatch — lock that wiring:
+  const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(hostSource, /if \(dialect\.posixPaths && dialectApplies\(dialect, exec && exec\.agent\)\) \{[\s\S]*?translateDispatch\(exec, dialect, env\)/, 'the wrapper gates the whole argument face on the live posixPaths switch')
+})
+
+test('interop: ops_* results echo back in /c/ — items[].path, matches[].path, root', () => {
+  const winEnv = { home: 'C:/Users/u', tmpDir: 'C:/Temp', gitRoot: 'C:/Program Files/Git' }
+  const glob = rewriteResultPaths('ops_glob', { status: 'completed', items: [{ path: 'D:\\work\\a.ts' }, { path: 'D:\\work\\b.ts' }] }, winEnv)
+  assert.deepEqual(glob.items.map((item) => item.path), ['/d/work/a.ts', '/d/work/b.ts'])
+  const grep = rewriteResultPaths('ops_grep', { matches: [{ path: 'D:\\work\\a.ts', line: 3, text: 'x' }] }, winEnv)
+  assert.equal(grep.matches[0].path, '/d/work/a.ts')
+  assert.equal(grep.matches[0].text, 'x', 'non-path payload stays verbatim')
+  const inspect = rewriteResultPaths('ops_inspect_local_file', { items: [{ path: 'D:\\work\\a.txt', line: 1, text: 'hello' }] }, winEnv)
+  assert.equal(inspect.items[0].path, '/d/work/a.txt')
+  const batch = rewriteResultPaths('ops_batch', { root: 'D:\\work\\proj', status: 'completed', detailsRef: 'res-1' }, winEnv)
+  assert.equal(batch.root, '/d/work/proj')
+  assert.equal(batch.detailsRef, 'res-1', 'reference ids are opaque, never rewritten')
+  const noPaths = { status: 'completed', changed: 2 }
+  assert.equal(rewriteResultPaths('ops_replace', noPaths, winEnv), noPaths, 'no path fields -> returned untouched')
+})
+
+test('interop: ops_* failures answer in /c/ too (error content and message)', () => {
+  const winEnv = { home: 'C:/Users/u', tmpDir: 'C:/Temp', gitRoot: 'C:/Program Files/Git' }
+  const content = rewriteErrorContent([{ type: 'text', text: 'outside workspace root: D:\\work\\secret.txt' }], { env: winEnv })
+  assert.match(content[0].text, /\/d\/work\/secret\.txt/)
+  const message = rewriteErrorMessage('path escapes the workspace: D:\\work\\secret.txt', { env: winEnv })
+  assert.match(message, /\/d\/work\/secret\.txt/)
 })

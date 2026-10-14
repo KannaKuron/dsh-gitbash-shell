@@ -2956,7 +2956,10 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   // The pwsh switch keeps its id and default; route B made it a visibility
   // switch for the REAL tool.
   assert.match(hostSource, /pwshTool: live\(Schema\.boolean\(\)\.default\(false\)\)/)
-  assert.match(hostSource, /fastctxTools: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  // Default OFF (v0.39.4): dsh-ops 0.3.0 replaced FastCtx with native ops_*
+  // file tools — the bridge retires to an explicit opt-in.
+  assert.match(hostSource, /fastctxTools: live\(Schema\.boolean\(\)\.default\(false\)\)/)
+  assert.match(hostSource, /fastctxTools: valueOf\(config\.fastctxTools\) === true/)
   assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM/)
   assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM_NO_PWSH/)
   assert.match(hostSource, /liveSettings\.pwshTool\(\) === true \? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH/)

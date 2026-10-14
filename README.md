@@ -36,10 +36,14 @@ POSIX 宿主上完整保留;
   会话隐藏,主机保持 bash 优先;开启后它直接可见可用——无需安装任何额外组件。
   旧 PowerShell 7 旁路工具(v0.37–v0.38.5 的独立工具)已随 v0.39.0 新架构退役;
   命令仍然首选 bash 工具。
-- **`gb_*` FastCtx 文件工具(默认开)**:`gb_inspect_local_file`/`gb_grep`/
+- **`gb_*` FastCtx 文件工具(默认关,v0.39.4 起弃用)**:`gb_inspect_local_file`/`gb_grep`/
   `gb_glob`/`gb_replace`(Rust 实现:批量范围读取带 token 预算、grep 截断
   标注、编码探测)。它们是官方 read/grep/glob/edit 的**补充**——官方工具接
-  文件沙箱,仍是默认推荐;已安装 dsh-ops 时本组自动让位。
+  文件沙箱,仍是默认推荐。**dsh-ops 0.3.0 起原生 `ops_*` 文件工具取代了
+  FastCtx 上游,本组默认关闭**(`fastctxTools` 显式开启可恢复);已安装
+  dsh-ops 时无论开关如何都会自动让位。与 dsh-ops 并存时本插件继续负责
+  `/c/` 方言统一:`ops_*` 的入参(含 `root`/`operations[].path`/`protect`)
+  自动转换、返回与报错路径自动回流 `/c/`。
 
 四个「· Git Bash」**变体 preset 仍保留,默认关闭**(`variantPresets` 开关,
 设置卡可开):开启后注册 `standard-gitbash`/`minimal-gitbash`/`code-gitbash`/

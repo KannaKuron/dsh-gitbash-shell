@@ -10,9 +10,10 @@
 > on a PRIVATE Git Bash executor instance, gives the four OFFICIAL presets
 > Git Bash through a per-agent inline tool patch (v0.35.0), keeps the
 > official `pwsh` tool (REAL PowerShell) hidden behind a switch (`pwshTool`,
-> off by default), publishes the `gb_*` FastCtx file
-> tools, and keeps the four `· Git Bash` variant presets behind a switch
-> (`variantPresets`, off by default).
+> off by default), keeps the `gb_*` FastCtx file tools behind a switch
+> (`fastctxTools`, off by default since v0.39.4 — dsh-ops 0.3.0's native
+> `ops_*` tools superseded FastCtx), and keeps the four `· Git Bash` variant
+> presets behind a switch (`variantPresets`, off by default).
 
 ### Host requirement & preset alignment
 
@@ -60,8 +61,12 @@ The old "replace the executor" three-step patch became runtime work:
    tool face says "pwsh yes / bash no"; the official `pwsh` tool (REAL
    PowerShell) stays hidden behind the `pwshTool` switch (off by default);
    the `gb_*`
-   FastCtx tools
-   (`src/fastctx-bridge.js`) publish alongside. With the switch on, it registers the four
+   FastCtx tools (`src/fastctx-bridge.js`) publish alongside — **retired to
+   an explicit opt-in from v0.39.4** (dsh-ops 0.3.0 replaced FastCtx with
+   native `ops_*` file tools; when dsh-ops is present the bridge stands down
+   regardless, and this plugin keeps the `/c/` dialect unified across both
+   tool families by translating `ops_*` arguments and echoing their results
+   and errors back in MSYS form). With the switch on, it registers the four
    preset variants **declaratively** (`ctx.agentPresets.register`,
    v0.32.0+) — the row sets are committed, diffable JS data
    (`src/compositions.js`) and **no directory is ever materialized**;
