@@ -54,7 +54,7 @@ IPC/Token/AppContainer/VM 路线仍需隔离环境的真实正负权限验证；
 | Node 路径 | 字面量尽力重写 | 可显式转换运行时完整值；legacy 默认未改 |
 | 编码 | 原有 UTF-8 捕获边界 | 新入口逐流显式编码，默认 utf8/replace |
 | 设置/界面 | 现有 Config/UI | `experimentalNative` volatile 布尔，默认 true，同卡实时编辑 |
-| 同装 dsh-ops 的受限会话 | 本插件 bash fail-closed；ops_bash 只发 full-access | 两插件默认值下均无命令工具：需关 experimentalNative 或切换会话模式 |
+| 同装 dsh-ops 的受限会话 | 本插件 bash fail-closed；ops_bash 只发 full-access | 不是零命令工具：`ops_*` 在场时补位逻辑不遮蔽 pwsh（`inlineNeeds` 的 hidePwsh 短路，宿主 pwsh 故事保留），官方执行器带真围栏可直接跑命令；bash 要回来需切 danger-full-access 或关 experimentalNative（后者同时放开 ops_bash） |
 
 **运行时开关：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」，权威值是 `gitbash-shell` 行 Config 的 `experimentalNative`，默认 true（包括旧配置缺键）。开启时受限/未确定 Windows Bash 拒绝，两个 companions 在能力可用且不冲突时注册。关闭时实时注销两个工具（旧 SDK 引用也拒绝），Bash 恢复旧版明确标注 `enforcement: 'unconfined'` 的受限执行并一次性日志告知；未确定策略保持旧版宿主委派。关闭不提供真实围栏，shell 文件写入限制不执行；官方文件工具策略始终独立。
 

@@ -3,13 +3,28 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## Unreleased — 2026-10-14
+## v0.40.0 — 2026-10-15
+
+### PR #26 合并：实验原生执行 / fail-closed（feat / docs）
+
+- [KouzakiUmi 的实验性 RFC](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26)经维护者两步评审后 squash 合并（[74f0186](https://github.com/KannaKuron/dsh-gitbash-shell/commit/74f01865a1046f8d2fae053fd4b7d1dfd93694a0)）：
+  - **`experimentalNative` 开关（默认开，可实时关）**：开启时 Windows read-only/workspace-write/缺失策略的 Git Bash 在工作目录准备、Jobs admission 与 argv 解析之前拒绝（宿主真 `SandboxUnavailableError`，导出缺失仍拒绝）；关闭时实时注销 `gitbash_native`/`gitbash_to_native_path` 并恢复明确标注 `enforcement: 'unconfined'` 的旧 Bash（缺失策略保持旧版宿主委派）。拒绝文案指路设置开关与会话访问模式控件，Agent 不得自动换工具/模式绕过。
+  - **`gitbash_native`**：typed argv（literal/path 二值、4096 项 / 30000 字符、仅 `.exe`、已知解释器强制显式 `entrypoint: interpreter`）、逐流显式编码（utf8/gbk/utf16le/raw，无 auto，spawn 前 fatal 探测）、prepared capability（WeakMap，不可伪造 DTO）、8MiB/16MiB 输出预算（双流共享、UTF-8 游标对齐）、Jobs 提升（超时转 managed job，admission 不重试）、解码/存储失败绝不改写命令真实结局。仅 danger-full-access 策略放行。
+  - **`gitbash_to_native_path`**：显式整值 MSYS→Windows 转换（`msys_path` 刻意避开翻译层白名单）；无 I/O、无权限授予；无挂载映射时显式拒绝，绝不把 POSIX 拼写冒充 `native_path`。
+  - **共享注册入口**：每次开关/Jobs 刷新先注销自身再检查所有权（knownNames 含隐藏工具，旧宿主回退 schemas）；外部占名让位、注册失败不阻断其他 companion、OFF→ON 恢复。
+  - **路由提示**：`bash`/`run_code` 的提示块改为按实际工具面生成的可替换幂等块；PTC 只提「SDK 实际提供的 binding」。
+- 评审确认：拒绝时序、开关四态多点重读、与 v0.39.4 翻译层零交集（`msys_path`/`native_path`/`executable`/`argv`/`cwd` 均不在 `TRANSLATABLE_PATH_FIELDS`）、平台门控（POSIX 受限调用走父类真沙箱）。
+- 文档修正（维护者评审发现，合并后在 main 修正）：设计文档 §3 组合盲点句原写「同装 dsh-ops 的受限会话均无命令工具」，与 `inline-tools.js` 的 `hidePwsh && !opsPresent` 短路矛盾——`ops_*` 在场时 pwsh 不被遮蔽，官方执行器带真围栏，受限会话是「无 bash 但 pwsh 可用」。
+- 已知项（后续清理）：`gitbash_native` 的 Jobs 门控字段 `enableRunInBackground`/`promoteOnTimeout` 从 agent scope 读取，行 Config 不可达，实际恒开；行为无害，`experimentalNative` 总开关仍可整体关闭。
+- 验证：维护者本地（macOS/Node 24.21）`npm test` 235 pass + 1 skip（原有 macOS-only 项）/ 0 fail；贡献者 Windows（Node 24.13.0/Core 0.2.1-alpha.2）普通回归 236/236 + 实际 Core 完整 preview 86/86；分支 CI ubuntu+windows × Node 22/24 全绿。
+- 实验帽子保留：真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证、非 CRT 解释器矩阵四项门槛正式确认前，`experimentalNative` 命名与文档定位不变。
+- 相关：[PR #26](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26)、[评审评论](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6186822600)。感谢 @KouzakiUmi 的完整 RFC、隔离子代理自审与三轮收敛。
 
 ### PR #26：第一轮设计评审后 rebase 到 v0.39.4（fix / test / docs）
 
 - 按[维护者第一轮设计评审](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6182031633)将实验分支 rebase 到[上游 v0.39.4 main（52da331）](https://github.com/KannaKuron/dsh-gitbash-shell/commit/52da331)；冲突集中在 CHANGELOG、smoke 的路由文本断言、index.js/client.js 的开关读法（`experimentalNative` 默认 true 读 `!== false`，`fastctxTools` 默认 OFF 读 `=== true`）。
 - 新增实际 Core 断言（评审①）：`fastctxTools` OFF（v0.39.4 默认值）且工具面无 `gb_*`/`ops_*` 的单装场景，companion 注册检测（knownNames/faceNames）照常挂载 `gitbash_native` 与 `gitbash_to_native_path`（设计文档 §10 语义）；禁用的桥走 unpublish 短路、不进入 publish（新增用例断言 disabled 日志；`createRequireFrom`/`msysToWin` 桩在 publish 路径上，门控移除时由该日志断言判负）。
-- 设计文档 §3 体验表补组合盲点一句（评审②）：同装 dsh-ops 的受限会话在两插件默认值下均无命令工具（本插件 bash fail-closed、ops_bash 只发 full-access、gb_* 默认关），需关 experimentalNative 或切换会话模式。
+- 设计文档 §3 体验表补组合盲点一句（评审②）：同装 dsh-ops 的受限会话中本插件 bash fail-closed、ops_bash 只发 full-access、gb_* 默认关，但 **pwsh 不被遮蔽**（`ops_*` 在场时 hidePwsh 短路，官方执行器带真围栏）——受限会话不是「零命令工具」，可直接用 pwsh；bash 回归需切 danger-full-access 或关 experimentalNative。（合并前措辞误作「均无命令工具」，维护者评审时对照 `inline-tools.js` 的 `hidePwsh && !opsPresent` 短路修正，见 v0.40.0。）
 - session-workdir 双实现收敛（评审③）：保留模块化 `src/session-workdir.js`（`throwIfAborted` 更完整、diff 噪声更小），bash-tool.js 单行调用。
 - 相关：[PR #26](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26)。Windows / Node 24.13.0：普通完整回归 **236/236**、实际 Core（desktop-next host，0.2.0-rc.1）完整 preview **86/86**（较上轮 85 增本轮①断言一例），均 exit0、无 skip/cancel。PR 已为非 draft，按维护者第一轮评审（rebase + ①断言后声明 ready）视为 ready for review；真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证和非 CRT 矩阵正式确认仍待。
 
