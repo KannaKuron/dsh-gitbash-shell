@@ -2960,9 +2960,9 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   // file tools — the bridge retires to an explicit opt-in.
   assert.match(hostSource, /fastctxTools: live\(Schema\.boolean\(\)\.default\(false\)\)/)
   assert.match(hostSource, /fastctxTools: valueOf\(config\.fastctxTools\) === true/)
-  assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM/)
-  assert.match(hostSource, /GITBASH_ROUTE_ADDENDUM_NO_PWSH/)
-  assert.match(hostSource, /liveSettings\.pwshTool\(\) === true \? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH/)
+  // Routing rides applyToolRouting (inline-tools.js) since the native RFC:
+  // the sentence is picked from the actual offered face, and the pwsh-visible
+  // / msys facts still flow from the live settings read here.
   assert.match(hostSource, /applyToolRouting\(assembly\.tools,/)
   assert.match(hostSource, /pwshVisible: liveSettings\.pwshTool\(\) === true/)
   assert.match(hostSource, /msys: applies && dialect\.posixPaths === true/)

@@ -12,6 +12,7 @@ import * as shellEnv from '@deepseek-ai/dsh-shell-env'
 import { applyToolRouting, mountInlineTools, mountPrivateExecutor } from '../src/inline-tools.js'
 import { createBashToolModule } from '../src/bash-tool.js'
 import { GitBashSandboxExecutor } from '../src/shell.js'
+import { mountFastctx } from '../src/fastctx-bridge.js'
 
 const deferred = () => {
   let resolve
@@ -460,6 +461,34 @@ test('runtime preview: explicit tools activate in the real per-agent wiring and 
   await bounded(reactivated.promise, 'explicit tools reload activation')
   assert.deepEqual(f.names().sort(), ['bash', 'gitbash_native', 'gitbash_to_native_path'], 'reload must not duplicate registrations')
   assert.equal(f.root.get('shell'), f.official)
+})
+
+// Review round 1 on PR #26 (v0.39.4 rebase): fastctxTools now defaults to OFF
+// and the disabled bridge must neither spawn nor resolve the payload — while
+// companion registration detection (knownNames/faceNames) on a face with no
+// gb_* and no ops_* still mounts gitbash_native / gitbash_to_native_path, per
+// design doc §10 semantics.
+test('runtime preview: companions mount on the single-install face with fastctxTools OFF (v0.39.4 default)', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true })
+  await bounded(f.activated.promise, 'explicit tools activation')
+  const bridge = f.root.plugin(ctx => mountFastctx(ctx, {
+    platform: 'win32',
+    enabled: () => false, // the v0.39.4 default read (valueOf(...) === true)
+    tools: c => c.get('tools'),
+    log: message => f.deps.log(message),
+    createRequireFrom: () => { throw new Error('the disabled bridge must never resolve the payload') },
+    msysToWin: () => { throw new Error('the disabled bridge never translates arguments') },
+  }))
+  t.after(() => bridge.dispose())
+  await bridge
+  f.root.emit('agent/created', { agent: f.agent })
+  await new Promise(setImmediate)
+  const names = f.names()
+  assert.ok(!names.some((name) => name.startsWith('gb_')), 'no gb_* tools on a single-install face')
+  assert.ok(!names.some((name) => name.startsWith('ops_')), 'no ops_* tools without dsh-ops')
+  assert.deepEqual([...names].sort(), ['bash', 'gitbash_native', 'gitbash_to_native_path'],
+    'companion registration detection is independent of the fastctxTools switch')
+  assert.ok(f.logs.some(line => line.includes('FastCtx bridge disabled by the fastctxTools switch')))
 })
 
 // The real run_code transport captures rewritten source in a mock PTC runtime;
