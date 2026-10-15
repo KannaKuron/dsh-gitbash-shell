@@ -54,6 +54,7 @@ IPC/Token/AppContainer/VM 路线仍需隔离环境的真实正负权限验证；
 | Node 路径 | 字面量尽力重写 | 可显式转换运行时完整值；legacy 默认未改 |
 | 编码 | 原有 UTF-8 捕获边界 | 新入口逐流显式编码，默认 utf8/replace |
 | 设置/界面 | 现有 Config/UI | `experimentalNative` volatile 布尔，默认 true，同卡实时编辑 |
+| 同装 dsh-ops 的受限会话 | 本插件 bash fail-closed；ops_bash 只发 full-access | 两插件默认值下均无命令工具：需关 experimentalNative 或切换会话模式 |
 
 **运行时开关：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」，权威值是 `gitbash-shell` 行 Config 的 `experimentalNative`，默认 true（包括旧配置缺键）。开启时受限/未确定 Windows Bash 拒绝，两个 companions 在能力可用且不冲突时注册。关闭时实时注销两个工具（旧 SDK 引用也拒绝），Bash 恢复旧版明确标注 `enforcement: 'unconfined'` 的受限执行并一次性日志告知；未确定策略保持旧版宿主委派。关闭不提供真实围栏，shell 文件写入限制不执行；官方文件工具策略始终独立。
 
@@ -212,7 +213,7 @@ Windows own-bash agent scope挂两个companions，各自按 agent 创建注册�
 - [x] Controller 缺失保持明确拒绝，不静默改前台重复执行。
 - [x] Artifact ownership/quota/retention 由插件层自管；跨调用 quota/purge 尚未实现，不宣称已验收。
 - [ ] **长期跟踪（不阻塞本 PR）**：Core 将来开放 native typed argv、逐流 encoding、closed DTO 等对应公开 API 时，遵循官方优先纪律整体切换并退役插件私有实现。
-- [x] **同步上游**：前置 PR #24 已合并；实验已 rebase 到[上游吸收 PR #28 改进后的 main](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)，继承正式 v0.39.3 的兼容与激活验证。
+- [x] **同步上游**：前置 PR #24 已合并；实验已 rebase 到[上游 v0.39.4 的 main](https://github.com/KannaKuron/dsh-gitbash-shell/commit/52da331)（v0.39.4 起 `fastctxTools` 默认 OFF、新增 ops_* 互操作面），继承正式 v0.39.4 的兼容与激活验证；单装工具面在 `fastctxTools` OFF 下 companion 注册检测不受影响（`tests/runtime-preview.mjs`「companions mount on the single-install face with fastctxTools OFF」锁死设计文档 §10 语义）。
 - [ ] **拆分评估**：建议两步 review：① Bash fail-closed + 行 Config/UI/拒绝引导/回退；② native/path、逐流输出与可见性路由。唯一开关在第一步建立，第二步复用同一字段。当前保留完整 Draft/RFC，尚未另开子 PR。
 - [ ] **转正式的四项门槛**：真实 Agent 自主选路、生产 GUI（非 preview）、维护者 Windows 真机全量验证、非 CRT 解释器矩阵抽测。四项齐后才谈 ready for review → release。
 - [ ] 真实Agent选工具评测、生产GUI/full apply、会话replay尚未验收。

@@ -5,6 +5,14 @@
 
 ## Unreleased — 2026-10-14
 
+### PR #26：第一轮设计评审后 rebase 到 v0.39.4（fix / test / docs）
+
+- 按[维护者第一轮设计评审](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6182031633)将实验分支 rebase 到[上游 v0.39.4 main（52da331）](https://github.com/KannaKuron/dsh-gitbash-shell/commit/52da331)；冲突集中在 CHANGELOG、smoke 的路由文本断言、index.js/client.js 的开关读法（`experimentalNative` 默认 true 读 `!== false`，`fastctxTools` 默认 OFF 读 `=== true`）。
+- 新增实际 Core 断言（评审①）：`fastctxTools` OFF（v0.39.4 默认值）且工具面无 `gb_*`/`ops_*` 的单装场景，companion 注册检测（knownNames/faceNames）照常挂载 `gitbash_native` 与 `gitbash_to_native_path`（设计文档 §10 语义）；禁用的桥不解析载荷、不翻译参数（`createRequireFrom`/`msysToWin` 绊线证明门控）。
+- 设计文档 §3 体验表补组合盲点一句（评审②）：同装 dsh-ops 的受限会话在两插件默认值下均无命令工具（本插件 bash fail-closed、ops_bash 只发 full-access、gb_* 默认关），需关 experimentalNative 或切换会话模式。
+- session-workdir 双实现收敛（评审③）：保留模块化 `src/session-workdir.js`（`throwIfAborted` 更完整、diff 噪声更小），bash-tool.js 单行调用。
+- 相关：[PR #26](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26)。Windows / Node 24.13.0：普通完整回归 **235/235**、实际 Core（desktop-next host，0.2.0-rc.1）完整 preview **86/86**（较上轮 85 增本轮①断言一例），均 exit0、无 skip/cancel。继续保持 Draft/RFC；真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证和非 CRT 矩阵正式确认仍待。
+
 ### PR #26：工具所有权修复与独立复核（fix / test / docs）
 
 - 共用注册入口在每次开关或 Jobs 刷新时，先注销自身注册，再检查当前 agent 可见的工具所有权；外部全局或同 agent 的同名工具均让位。实际 Core 的 knownNames 检查也包含隐藏工具，旧宿主回退 schemas 检查。
