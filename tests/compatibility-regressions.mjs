@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { rewriteCodePaths, scanCodeLiterals, runCodeHintFor, translateDispatch, dialectApplies, windowsToMsys, rewriteResultPaths, rewriteErrorContent, rewriteErrorMessage } from '../src/index.js'
 import { bashDescription, createBashToolModule } from '../src/bash-tool.js'
+import { applyToolRouting, toolRoutingHintFor } from '../src/inline-tools.js'
+import { pathToolDescription } from '../src/path-tool.js'
 import { renderResult, renderBackground, renderJobRead, renderPromoted, processOutcome, parseExitStatus } from '../src/bash-render.js'
 
 const env = { home: 'C:/Users/审计', tmpDir: 'C:/Temp', gitRoot: 'C:/Program Files/Git' }
@@ -81,8 +83,8 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   let handler
   let dialect = { posixPaths: true, codePaths: true, subagentDialect: true }
   const ctx = { on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn } }
-  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'GITBASH_ROUTE_ADDENDUM', 'GITBASH_ROUTE_ADDENDUM_NO_PWSH', 'GITBASH_MSYS_ADDENDUM', source.slice(start, end))(
-    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, '', '', '')
+  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', source.slice(start, end))(
+    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting)
   const assemble = agent => {
     const assembly = { tools: [{ name: 'run_code' }], contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [] }
     handler(assembly, { agent }, () => {})
@@ -97,6 +99,72 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   assert.equal(assemble({ session: { header: { origin: 'subagent' } } }), 'BASE')
 })
 
+test('routing: offered native/path/pwsh tools have explicit pre-execution decision criteria', () => {
+  const tools = ['bash', 'gitbash_native', 'gitbash_to_native_path', 'pwsh'].map(name => ({ name }))
+  const hint = toolRoutingHintFor(tools, { pwshVisible: true })
+  assert.match(hint, /shell syntax, scripts, pipelines, redirection/)
+  assert.match(hint, /gitbash_native before execution/)
+  assert.match(hint, /exact literal argv.*\/all or \/c/)
+  assert.match(hint, /raw for unknown\/mixed bytes/)
+  assert.match(hint, /gitbash_to_native_path only for a complete caller-declared/)
+  assert.match(hint, /runtime-built value/)
+  assert.match(hint, /use the pwsh tool ONLY when PowerShell cmdlets/)
+  assert.match(hint, /denial is a stop condition/)
+  assert.match(hint, /never blindly repeat a side-effecting command/)
+  assert.doesNotMatch(hint, /ALL commands/)
+})
+
+test('routing: visibility matrix never recommends an absent companion or hidden pwsh', () => {
+  for (let mask = 0; mask < 8; mask++) for (const pwshVisible of [false, true]) {
+    const names = ['bash', ...(mask & 1 ? ['gitbash_native'] : []), ...(mask & 2 ? ['gitbash_to_native_path'] : []), ...(mask & 4 ? ['pwsh'] : [])]
+    const hint = toolRoutingHintFor(names.map(name => ({ name })), { pwshVisible })
+    assert.equal(hint.includes('gitbash_native'), !!(mask & 1))
+    assert.equal(hint.includes('gitbash_to_native_path'), !!(mask & 2))
+    assert.equal(/\bpwsh\b/.test(hint), !!(mask & 4) && pwshVisible)
+    assert.match(hint, /denial is a stop condition/)
+  }
+  assert.equal(toolRoutingHintFor(undefined), '')
+  assert.equal(toolRoutingHintFor([{ name: 'run_code' }]), '')
+})
+
+test('routing: replaceable blocks are idempotent and follow live visibility/dialect', () => {
+  const bash = { name: 'bash', description: 'BASE' }
+  let tools = [bash, { name: 'gitbash_native' }, { name: 'gitbash_to_native_path' }, { name: 'pwsh' }]
+  applyToolRouting(tools, { pwshVisible: true, msys: true })
+  const first = bash.description
+  applyToolRouting(tools, { pwshVisible: true, msys: true })
+  assert.equal(bash.description, first)
+  assert.match(first, /\/c\/Users/)
+  tools = [bash]
+  applyToolRouting(tools, { pwshVisible: false, msys: false })
+  assert.ok(bash.description.startsWith('BASE'))
+  assert.doesNotMatch(bash.description, /gitbash_native|gitbash_to_native_path|\bpwsh\b|\/c\/Users/)
+  assert.equal(bash.description.split('[gitbash tool routing]').length, 2)
+})
+
+test('routing: PTC-only presentation teaches offered SDK selection without guessed hidden names', () => {
+  const tool = { name: 'run_code', description: 'PTC_BASE' }
+  applyToolRouting([tool])
+  assert.match(tool.description, /await tools\.<name>/)
+  assert.match(tool.description, /typed native-executable binding for exact Windows argv/)
+  assert.match(tool.description, /complete-path conversion binding/)
+  assert.match(tool.description, /If a needed binding is absent, report the missing capability/)
+  assert.match(tool.description, /denial is a stop condition/)
+  assert.doesNotMatch(tool.description, /gitbash_native|gitbash_to_native_path|\bpwsh\b/)
+  const once = tool.description
+  applyToolRouting([tool])
+  assert.equal(tool.description, once)
+})
+
+test('routing: path binding explains Node runtime conversion and explicitly disallows denial retries', () => {
+  const text = pathToolDescription()
+  assert.match(text, /runtime-built MSYS paths before direct native Node fs\/path/)
+  assert.match(text, /result\.native_path/)
+  assert.match(text, /Never pass routes, search strings, shell commands or program source/)
+  assert.match(text, /inside run_code/)
+  assert.match(text, /not a reason to convert the spelling and retry/)
+})
+
 test('compatibility: the registered bash description always warns about native boundaries', () => {
   const text = bashDescription()
   assert.match(text, /ipconfig \/all and cmd \/c/)
@@ -107,8 +175,10 @@ test('compatibility: the registered bash description always warns about native b
   assert.match(text, /decoded as UTF-8/)
   assert.match(text, /CP936\/GBK/)
   assert.match(text, /mixed streams cannot safely be guessed/)
-  assert.match(text, /does NOT enforce shell file-write restrictions/)
-  assert.match(text, /never use shell to bypass its denial/)
+  assert.match(text, /read-only\/workspace-write or unresolved policy is refused before/)
+  assert.match(text, /explicitly resolved danger-full-access policy/)
+  assert.match(text, /Do not switch tools or permissions automatically to bypass a refusal/)
+  assert.doesNotMatch(text, /will use an UNCONFINED|route does NOT enforce/, 'current behaviour must describe refusal, not the retired bypass')
 })
 
 test('compatibility: unconfined foreground warning preserves exit parsing and cancellation', () => {

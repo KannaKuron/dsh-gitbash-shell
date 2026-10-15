@@ -3,6 +3,145 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## Unreleased — 2026-10-14
+
+### PR #26：第一轮设计评审后 rebase 到 v0.39.4（fix / test / docs）
+
+- 按[维护者第一轮设计评审](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6182031633)将实验分支 rebase 到[上游 v0.39.4 main（52da331）](https://github.com/KannaKuron/dsh-gitbash-shell/commit/52da331)；冲突集中在 CHANGELOG、smoke 的路由文本断言、index.js/client.js 的开关读法（`experimentalNative` 默认 true 读 `!== false`，`fastctxTools` 默认 OFF 读 `=== true`）。
+- 新增实际 Core 断言（评审①）：`fastctxTools` OFF（v0.39.4 默认值）且工具面无 `gb_*`/`ops_*` 的单装场景，companion 注册检测（knownNames/faceNames）照常挂载 `gitbash_native` 与 `gitbash_to_native_path`（设计文档 §10 语义）；禁用的桥走 unpublish 短路、不进入 publish（新增用例断言 disabled 日志；`createRequireFrom`/`msysToWin` 桩在 publish 路径上，门控移除时由该日志断言判负）。
+- 设计文档 §3 体验表补组合盲点一句（评审②）：同装 dsh-ops 的受限会话在两插件默认值下均无命令工具（本插件 bash fail-closed、ops_bash 只发 full-access、gb_* 默认关），需关 experimentalNative 或切换会话模式。
+- session-workdir 双实现收敛（评审③）：保留模块化 `src/session-workdir.js`（`throwIfAborted` 更完整、diff 噪声更小），bash-tool.js 单行调用。
+- 相关：[PR #26](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26)。Windows / Node 24.13.0：普通完整回归 **236/236**、实际 Core（desktop-next host，0.2.0-rc.1）完整 preview **86/86**（较上轮 85 增本轮①断言一例），均 exit0、无 skip/cancel。PR 已为非 draft，按维护者第一轮评审（rebase + ①断言后声明 ready）视为 ready for review；真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证和非 CRT 矩阵正式确认仍待。
+
+### PR #26：工具所有权修复与独立复核（fix / test / docs）
+
+- 共用注册入口在每次开关或 Jobs 刷新时，先注销自身注册，再检查当前 agent 可见的工具所有权；外部全局或同 agent 的同名工具均让位。实际 Core 的 knownNames 检查也包含隐藏工具，旧宿主回退 schemas 检查。
+- 两个 companion 按 agent 创建注册模块，初始冲突仍保留待命 scope；外部所有者移除后，下次刷新可恢复。所有权检查或注册失败记录明确日志，不向 volatile 事件抛错，不阻断另一个 companion。
+- scope 就绪与工具注册成功分别记录，避免让位或关闭状态被报告为注册成功。Bash 的逐操作 policy 快照契约保持不变。
+- 新增实际 Core 回归覆盖 path/native × 全局/同 agent 的 OFF→ON 冲突、重复开关、所有者移除恢复、native Jobs 刷新以及隐藏的全局同名工具；普通回归覆盖单个注册失败的隔离与恢复。
+- Windows / Node 24.13.0 / Core 0.2.1-alpha.2：普通完整回归 **232/232**、实际 Core 完整 preview **85/85**，均 exit0、无 skip/cancel。隔离子代理独立复核原始所有权复现与新增专项 **9/9** 通过，未发现新的确认缺陷；专项与完整结果有重叠，不累加覆盖数。
+- 相关：[PR #26](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26)。继续保持 Draft/RFC；真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证和非 CRT 矩阵正式确认仍待。
+
+### PR #26：隔离子代理独立审查（review / 修复前复现记录）
+
+- 由未继承本次对话历史的子代理重新审查[当前实验提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/771c618dde5e509a80cb2b77733d1517fc7c89f2)
+  相对[上游基线](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)的完整增量。
+  普通回归 231/231、实际 Core preview 79/79 均 exit0、无 skip/cancel；静态审查覆盖策略/开关、目录、注册/Jobs 生命周期、argv/编码/预算及文档证据。
+- 确认一项 P2：experimental-tools 的 refresh 仅在首次挂载之外直接重注册，不重查同名工具所有权。
+  OFF 期间外部注册全局同名 path 工具，ON 后真实 ToolRuntime 调用从 FOREIGN_OWNER 变为本插件 native_path 对象；
+  同 agent 层则同步抛 already registered，阻断本次后续 companion 激活。真实 Core/Cordis 与受控 sentinel 工具复现，未启动 native 进程。
+- 建议将冲突判定纳入每次 refresh 的共用注册入口；存在外部所有者时让位并明确日志，不向 volatile 事件抛 duplicate。
+  补 OFF→ON 的全局/同 agent 层及 native Jobs refresh 回归。产品源码尚未修改，未推送或发送 GitHub 评论。
+- 排除最初疑似的 Bash policy 时序问题：实际 sandboxPolicy 契约是逐操作快照、模式变更作用于下一次调用；
+  fixture 直接修改 header.policy 的反证不足以证明违约，且 base 已有此行为，因此撤回拟议 P1。反证脚本的失败数不等于缺陷数。
+- 无确认 P0/P1；继续保持 Draft/RFC。真实 Agent 自主选路、生产 GUI、维护者 Windows 全量验证和非 CRT 矩阵正式确认仍待，测试绿色不替代这些门槛。
+
+### PR #26：同步 v0.39.3 与旧宿主兼容（fix / docs / test）
+
+- 已 rebase 到[上游吸收 PR #28 改进后的 main](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)，前置 PR #24 已合并；正式 v0.39.3 的记录完整保留。
+- Bash/native 共享可选 workingDirectory 读取：有服务保留官方 ensure 及其失败，缺服务使用 policy.workspaceRoot ?? session.header.cwd。native 不再硬 inject 缺失服务。
+- 两个 companion 的成功日志同样要求 apply 已执行及工具面回读；OFF 只报告 scope 就绪且工具关闭，避免 INACTIVE/关闭状态假阳性。
+- 设置开关的 21 份字典均完成本地化，新增文案护栏保留工具名、UNCONFINED 与 danger-full-access 事实；人工译文审阅仍欢迎维护者补充。
+- 新增旧宿主形状下的三工具挂载、双向开关与 cwd；native policy/header/服务失败；真实 cmd 字面 /c 和 PowerShell EncodedCommand + UTF16 输出。真实 Git Bash RO/WW 开关双向切换、未确定策略拒绝亦通过。
+- 当前普通完整回归 **231/231**、实际 Core 完整 preview **79/79**，均 exit0、无 skip/cancel；Windows / Node 24.13.0 / Core 0.2.1-alpha.2。语法、diff 和 npm pack dry-run 通过。
+- 已安装实验构建的[三入口实机报告](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6149607594)作为外部证据引用；报告未记录精确提交，不作为当前 rebase 构建的生产 GUI 验收。真实 LLM 自主选路、维护者 Windows 全量验证与完整非 CRT quoting 矩阵仍待。
+
+
+### PR #26：维护者裁决与运行时开关（fix / feat / docs / test）
+
+- docs：PR 描述和实验文档的提交引用使用可点击链接及说明性标签，避免明文提交 ID。
+
+- 行 Config 新增 volatile 布尔 `experimentalNative`，默认 true，旧配置缺键亦开启；设置卡即时编辑。
+  开启时 Windows 受限/未确定 Bash 拒绝；关闭恢复明确标注 `unconfined` 的旧版 Bash 与实例级日志，不提供真实 shell 写入围栏。
+- 两个新工具随开关实时注销/注册，既有会话无需重启；旧 SDK 引用关闭后拒绝。路径工具在翻译前检查；
+  native 在准备入口、异步准备后、执行入口和最终 spawn 重验。已启动后台 producer 保留生命周期。
+- 拒绝错误与 Bash 描述说明设置卡关闭路径，以及由用户在会话访问模式控件选择 danger-full-access 的路径。
+  21 份词典键齐备，中文/英文先行，其余 19 份暂用英文，合并前补本地化。
+- 实验已 rebase 到 [前置 PR 的最新修复提交](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/c79332ea2fb6da38042063f7b55046115de8e530)，保留其 promotion sandbox 警示回归，显式 OFF 验证旧行为。
+  当时 #24 仍 OPEN，到 main 的 rebase 尚待（已于本轮完成）；建议两步 review（fail-closed + 开关/UI；native/path/输出/路由），保留 Draft/RFC。
+- 长期跟踪：Core 开放对应 native/encoding/closed DTO API 后优先整体迁移并退役私有实现；artifact 自管，controller 缺失保持拒绝。
+  正式门槛仍为真实 Agent 选路、生产 GUI、维护者 win32 全量验证及非 CRT 矩阵抽测。
+- 本轮纠正：实际 Core 的 tools.restrict 只认全局工具，初版 agent-local mask 失败；改为拥有者动态注销/注册。
+  artifact 准备期间关闭的负例推动增加准备后检查，避免把拒绝落成 providerFailure；零 spawn、scope 释放及再次开启通过。
+- 验证：Windows / Node 24.13.0 / Core 0.2.1-alpha.2，普通完整回归 **226/226**、实际 Core 完整 preview **75/75**，
+  exit0、无 skip/cancel；syntax、diff、npm pack dry-run 通过。不等同于上述四项正式验收。
+- 相关：[PR #26 裁决](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6146363513)、[前置 PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24)。
+
+**类型**:feat(显式运行时路径/native typed argv/逐流解码) / fix(受限请求 fail-closed、生命周期与输出事实) / test / docs。
+
+### Agent 选工具指引补齐（Unreleased）
+
+- 移除“ALL commands都优先bash”的歧义；明确shell语法/管道/POSIX脚本、精确native argv/已知逐流
+  编码、完整值Node路径转换、真正PowerShell cmdlet/WMI四类场景。只按实际可见工具名称引导，
+  pwsh同时要求开关允许；缺native/helper不建议虚构名称，不自动换解释器/权限绕拒绝。
+- 路由与方言开关独立，替换幂等文案块随可见性变化；PTC-only run_code得到SDK决策说明，
+  native/path绑定自身描述在实际Core生成SDK中可见。未知混编码不猜，decoder失败不盲目重跑副作用。
+- 增加5项路由/可见性矩阵/重组/SDK-only/路径说明回归、2项实际Core普通/PTC提示与SDK送达验证。
+  普通全仓 **223/223**、完整实际Corepreview **72/72**，exit0、无skip；不是实际LLM自主选择验收，
+  不承诺每次选对。工具执行参数与Config/UI保持不变。
+
+### 实验性实现（Unreleased）
+
+- **策略变化**：Windows 自有 bash 与 native 在 read-only/workspace-write/缺失策略时拒绝，
+  实际 Core 返回 SANDBOX_UNAVAILABLE；工作目录准备、Jobs admission/promotion与spawn前不走旧
+  unconfined绕过，不自动换工具/权限。default full不放宽会话policy；root官方provider不变。
+  历史unconfined渲染保留仅为旧记录。不是恢复真实IPC/OS围栏，不覆盖minimal PTY/交互终端。
+- **完整值路径工具**：新增gitbash_to_native_path，参数msys_path、输出native_path，复用每调用
+  fresh共享mount；与自动方言/codePaths独立。未知映射、URL、空值/NUL拒绝，不访问文件或授权限。
+  实际ToolRuntime→NodePtcRuntime→LocalSubprocessRuntime→Node/fs读取自有中文/#输入，route/tag不变。
+- **原生工具**：新增gitbash_native，绝对typed executable/cwd、literal/path argv，逐流utf8/gbk/
+  utf16le/raw与replace/strict；只显式path转换，literal /all、/c、空串/引号保真。
+  拒绝bare command、model env、.cmd/.bat/隐式脚本；已知解释器需明确opt-in，非二进制鉴定或任意parser保证。
+- **托管与输出**：每execution私有scope复用真实executeArgv/provider/Jobs，不另造runner或依赖private
+  spawnSpec；decoder错误保真实exit，不诱导重跑。增量UTF8/BOM兼容、独立reader/cursor、raw/decoded产物
+  与payload预算；scope属agent，后台/promotion卸载工具后仍可结束、仅清自身资源。
+- **独立验证发现的问题与修正**：实证ownerdispose/direct kill曾错报completed/complete、artifact callback
+  可无限await、facts schema过宽；均修为operation-owned cause、中止/不完整事实、准备阶段abort/deadline
+  race与closed schemas。终态enum/callback三参同步；晚产物保留trusted retention，不伪称已清除。
+- **最后全仓结果**：普通回归 **218/218**，实际安装Core 0.2.1-alpha.2完整preview **70/70**，均exit0、
+  无skip/cancel。独立专项复跑unit41/41、preview55/55；与全仓结果重叠，不另加总数。
+  语法、diff检查和npm dry-run源码清单通过。
+- **测试整合纠正**：首全仓旧description断言还锁旧unconfined措辞，改为更严格拒绝/禁止绕行护栏。
+  首preview缺3项显式证据env；加test-only preview-env，operator目录优先，否则unique host temp。
+  路径夹具原硬编码D盘/安装bootstrap，改动态盘符/宿主自身bootstrap；C盘临时目录真实fs读复验通过。
+  所有失败尝试证据保留，不称失败观察为修复PASS。
+- **边界**：未知同流混编码不可普遍解码；legacy codePaths业务字符串猜测仍在，显式工具不改变其默认。
+  8MiB两流raw+decoded/16MiB自有payload不是RSS或跨任务硬quota，无自动purge；生产GUI/完整插件apply、
+  真受限token/ACL/IPC/VM负向权限、SSH/PTY与非CRT任意quoting尚未覆盖。未增加Config/UI文案字段。
+  公开讨论文档见[实验设计与接口](docs/experimental-native-execution.md)、
+  [验证分级与复现](docs/experimental-native-verification.md)。对应测试可随仓库复现。
+
+### 前置修复的历史验证（首次记录时未发布）
+
+- **重启后复测(2026-10-13)**:desktop Profile 的本地安装来源为
+  [PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24) 的
+  [`4816cd8`](https://github.com/KouzakiUmi/dsh-gitbash-shell/commit/4816cd8848a52f73f5f054f761d3ec862cb87ade)
+  修复构建(包/插件清单0.39.2,不是额外发版);四个关键已安装源码与工作树逐字节一致、bundle开启。
+  当前实例status路由200/ok=true;真实前台、后台、超时转后台均输出预期sentinel,中文输出正常;
+  native `cmd //d //c echo`通过,未设置全局EXCL。原始固定GBK字节仍乱码,显式GBK→UTF-8通过,
+  说明编码边界仍在,没有把警示宣称为底层修复。再次执行普通回归 **166/166**、宿主preview **17/17**。
+  已安装包helper覆盖中文/#路径、EOF注释和tagged-template保护,描述包含参数/编码/安全提示;
+  独立render探针首轮误把stdout/stderr传为字符串,按真实stream DTO修正后通过,未修改产品代码。
+  本次复测未覆盖真实PTC引擎与生产受限会话；unconfined反馈仅由隔离Core/renderer测试核验。
+
+### 未修复问题研究(2026-10-13;不是产品实施或发版)
+
+- **原生参数/编码**:实际安装 Core 0.2.1-alpha.2 的隔离 argv/raw-pipe/私有 facade→executeArgv
+  与固定字节机制断言 **21/21**;可复用托管 provider,不需另造 runner。不同流显式解码可行,
+  已混在同流的未知编码不可可靠猜测;private spawnSpec 不当稳定接口。cmd 的前斜杠 executable
+  是另一个本机失败反例,反斜杠固定 echo 通过不代表任意 cmd/批处理 quoting 已验收。
+- **真实 PTC 补证**:ToolRuntime→真实 NodePtcRuntime→真实 LocalSubprocessRuntime→Node/fs
+  隔离实验 **8/8**，独立复跑 exit0。显式完整值 helper 配合 codePaths OFF 能读对动态路径,
+  并保留 `/c/users` 路由数据;legacy 字面量猜测仍误改。不是完整插件 apply/生产 GUI/受限 OS 证明。
+- **安全因果纠正**:现场 MSYS 3.6.10-5a1665c8 源码的 cygheap 使用 VirtualAlloc,signal pipe
+  显式 sec_user DACL 缺 restricting SID;当前 Core Flags=13 且 TokenDefaultDacl 已补 ACE。
+  因而历史笼统“用户-only cygheap 映射/只补默认 DACL/所有未来版本无解”不再作为当前根因依据。
+  私有 IPC 身份路线仅静态可行,SID 集合模型 **9/9**不是 AccessCheck 或新沙箱实测。
+- **研究提出的方向**：受限模式spawn前fail-closed、显式native typed argv/逐流decoder/path helper；
+  Core加法契约与隔离Windows VM中的IPC/AppContainer/LPAC/guest边界仍需进一步验收。
+  当前实现与验证见[实验设计](docs/experimental-native-execution.md)、
+  [验证矩阵](docs/experimental-native-verification.md)；前置兼容修复见[PR #24](https://github.com/KannaKuron/dsh-gitbash-shell/pull/24)。
+
 ## v0.39.4 — 2026-10-14
 
 **类型**:feat(dsh-ops 0.3.0 互通:gb_* 退役 + 统一方言桥) / fix(docs)。
@@ -34,7 +173,6 @@ opt-in)与跨平台(win/mac/linux)支持。本版把并存形态收敛为「各�
   功能(boot 层侧栏终端 shell 默认)的前提下去除,README 已说明。
 - **测试**:新增 dsh-ops 互通矩阵(入参 root/operations/protect、出参 items/matches/root、失败 content/message、
   wrapper 门控源码断言、fastctxTools 默认关断言);全量 **172/172**(+1 win32-only skip)。
-
 ## v0.39.3 — 2026-10-14
 
 **类型**:fix(自有 bash 工具的宿主服务兼容 #27、MSYS 参数/编码提示、源码路径边界与 unconfined 可观测性) / test / docs。

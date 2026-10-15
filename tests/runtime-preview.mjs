@@ -9,9 +9,10 @@ import { createScope as createAgentScope } from '@deepseek-ai/dsh-scope'
 import { ToolRuntime, defineTool } from '@deepseek-ai/dsh-tools'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import * as shellEnv from '@deepseek-ai/dsh-shell-env'
-import { mountInlineTools, mountPrivateExecutor } from '../src/inline-tools.js'
+import { applyToolRouting, mountInlineTools, mountPrivateExecutor } from '../src/inline-tools.js'
 import { createBashToolModule } from '../src/bash-tool.js'
 import { GitBashSandboxExecutor } from '../src/shell.js'
+import { mountFastctx } from '../src/fastctx-bridge.js'
 
 const deferred = () => {
   let resolve
@@ -32,7 +33,7 @@ function createScope(parent) {
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
 
-async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime } = {}) {
+async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true, workingDirectory = { ensure: async () => process.cwd() }, sessionCwd, policyWorkspaceRoot = process.cwd() } = {}) {
   const root = new Context()
   const cleanups = []
   const logs = []
@@ -42,26 +43,27 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
   const failed = deferred()
   const agentScopes = []
   const official = { kind: 'official-pwsh' }
-  const policy = { mode: 'danger-full-access', workspaceRoot: process.cwd() }
+  const policy = { mode: 'danger-full-access', ...(policyWorkspaceRoot === null ? {} : { workspaceRoot: policyWorkspaceRoot }) }
   const readFrom = () => ({ text: 'runtime-preview-ok', nextOffset: 18, lossy: false })
   for (const [name, value] of Object.entries({
     shell: official,
     subprocess: subprocessRuntime ?? { spawn() { return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: { stdout: { readFrom }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } }, terminate() {} } } },
     sandbox: {},
+    ...(ptc ? { ptcRuntime: { language: 'typescript', executionInstructions: 'Prompt-only fixture; never executes programs', resolve: spec => spec, run() { throw new Error('prompt routing fixture must not execute') } } } : {}),
     sandboxPolicy: { defaultMode: policy.mode, resolve: request => request?.session?.header.policy ?? policy },
-    workingDirectory: { ensure: async () => process.cwd() },
+    ...(workingDirectory === null ? {} : { workingDirectory }),
     loader: { internal: { async import(name) {
       if (pauseModules && name === '@deepseek-ai/dsh-tools') { entered.resolve(); await release.promise }
       return import(name)
     } } },
   })) cleanups.push(root.provide(name, value))
-  const mount = async module => {
-    const fiber = root.plugin(module)
+  const mount = async (module, config) => {
+    const fiber = root.plugin(module, config)
     cleanups.push(() => fiber.dispose())
     await fiber
     return fiber
   }
-  for (const module of [SystemPrompt, ToolRuntime, shellEnv]) await mount(module)
+  for (const module of [SystemPrompt, ToolRuntime, shellEnv]) await mount(module, module === ToolRuntime ? { mode: ptc ? 'ptc' : 'native' } : undefined)
   let agentParent
   await mount({ inject: ['tools'], apply(ctx) {
     agentParent = ctx
@@ -69,13 +71,18 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
       ctx.tools.register(defineTool({ name, description: name, parameters: {}, output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }, execute: () => name }))
     }
   } })
-  const agent = { id: 'runtime-preview-agent', session: { header: {} } }
+  const agent = { id: 'runtime-preview-agent', session: { header: { ...(sessionCwd === undefined ? {} : { cwd: sessionCwd }) } } }
   const agentScope = createAgentScope(agentParent, agent)
   agent.ctx = agentScope.ctx
   cleanups.push(() => agentScope.dispose())
   const deps = {
     tools: ctx => ctx.get('tools'), agents: () => ({ list: () => [agent] }),
     pwshEnabled: () => pwshVisible,
+    experimentalEnabled: () => experimental,
+    ...(explicitTools ? {
+      translatePath: value => dialectHelpers.translateMsysPath(value, { home: 'D:/compat-home', tmpDir: 'D:/compat-temp', gitRoot: 'C:/Program Files/Git' }),
+      createArtifactDirectory() { throw new Error('registration/refusal fixture must not create artifacts') },
+    } : {}),
     log(message) {
       logs.push(message)
       if (message.includes('own bash tool activated')) activated.resolve()
@@ -106,6 +113,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     root, agent, tools, patch, official, logs, entered, release, activated, failed, agentScopes, deps,
     names: () => tools.schemas(agent).map(schema => schema.name),
     set: value => { pwshVisible = value; root.emit('loader/volatile-update', [['pwshTool']]) },
+    setExperimental: value => { experimental = value; root.emit('loader/volatile-update', [['experimentalNative']]) },
     allowAgentMount: () => { failAgentMount = false },
     execute: (name, args = {}) => tools.execute({ agent, name, callId: `${name}-runtime-preview`, arguments: args, signal: new AbortController().signal }),
     remount: () => mount(ctx => mountInlineTools(ctx, deps)),
@@ -126,6 +134,32 @@ test('runtime preview: live pwsh schema and dispatch follow both switch directio
   assert.equal(f.root.get('shell'), f.official)
   await f.patch.dispose()
   assert.ok(f.names().includes('pwsh'))
+})
+
+test('runtime preview: experimental switch changes existing schemas and restricted Bash without restart', { timeout: 15000 }, async t => {
+  for (const initial of [true, false]) {
+    const f = await fixture(t, { explicitTools: true, experimental: initial })
+    await bounded(f.activated.promise, 'experimental tools activation')
+    f.agent.session.header.policy = { mode: 'workspace-write', workspaceRoot: process.cwd() }
+    const args = { command: 'memory-only command', description: 'Verify live opt-out' }
+    for (const enabled of [initial, !initial, initial, !initial]) {
+      f.setExperimental(enabled)
+      for (const name of ['gitbash_native', 'gitbash_to_native_path']) assert.equal(f.names().includes(name), enabled, JSON.stringify({ name, initial, enabled, logs: f.logs }))
+      const result = await f.execute('bash', args)
+      assert.equal(result.isError, enabled, JSON.stringify(result))
+      if (enabled) {
+        assert.equal(result.error.info.code, 'SANDBOX_UNAVAILABLE')
+        assert.match(result.error.message, /Settings.*experimentalNative.*session access-mode/)
+      } else {
+        assert.equal(result.value.sandbox.enforcement, 'unconfined')
+        assert.equal(result.value.sandbox.mode, 'workspace-write')
+        assert.equal((await f.execute('gitbash_to_native_path', { msys_path: '/c/test' })).isError, true)
+      }
+      assert.equal(f.root.get('shell'), f.official)
+    }
+    await f.patch.dispose()
+    assert.deepEqual(f.names(), ['pwsh'])
+  }
 })
 
 test('runtime preview: plugin disposal cancels a delayed host import and cannot leave a ghost bash', { timeout: 10000 }, async t => {
@@ -263,28 +297,31 @@ test('runtime preview: private execution retains deadlines, background no-expiry
   assert.equal(f.root.get('shell'), f.official)
 })
 
-test('runtime preview: actual ToolRuntime surfaces unconfined foreground and initial background facts', { timeout: 10000 }, async t => {
-  const f = await fixture(t)
-  await bounded(f.activated.promise, 'compatibility bash activation')
+test('runtime preview: actual ToolRuntime refuses unsafe foreground/background admission', { timeout: 10000 }, async t => {
+  let spawns = 0
+  const f = await fixture(t, { subprocessRuntime: { spawn() { spawns++; throw new Error('restricted fixture must not spawn') } } })
+  await bounded(f.activated.promise, 'fail-closed bash activation')
   assert.match(f.tools.get('bash', f.agent).description, /MSYS2_ARG_CONV_EXCL/)
+  assert.match(f.tools.get('bash', f.agent).description, /refused before/)
   for (const mode of ['read-only', 'workspace-write']) {
     f.agent.session.header.policy = { mode, workspaceRoot: process.cwd() }
-    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify unconfined model feedback' })
-    assert.equal(value.isError, false, JSON.stringify(value))
-    assert.equal(value.value.sandbox.enforcement, 'unconfined')
-    assert.match(value.content[0].text, /unconfined.*NOT enforced/)
+    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify structured safe refusal' })
+    assert.equal(value.isError, true, JSON.stringify(value))
+    assert.equal(value.error.info.code, 'SANDBOX_UNAVAILABLE')
+    assert.match(value.content[0].text, /not started/)
   }
   const admitted = []
-  const off = f.root.provide('jobs', { start(spec) { admitted.push(spec); return 'compatibility-background' } })
+  const off = f.root.provide('jobs', { start(spec) { admitted.push(spec); return 'must-not-be-admitted' } })
   try {
     await new Promise(resolve => setImmediate(resolve))
-    const value = await f.execute('bash', { command: 'memory-only command', description: 'Verify admission warning', run_in_background: true })
-    assert.equal(value.isError, false, JSON.stringify(value))
-    assert.equal(value.value.kind, 'background')
-    assert.equal(value.value.sandbox.enforcement, 'unconfined')
-    assert.match(value.content[0].text, /started background job compatibility-background[\s\S]*unconfined/)
-    assert.equal(admitted.length, 1)
+    for (const run_in_background of [false, true]) {
+      const value = await f.execute('bash', { command: 'memory-only command', description: 'Reject unsafe job admission', run_in_background })
+      assert.equal(value.isError, true, JSON.stringify(value))
+      assert.equal(value.error.info.code, 'SANDBOX_UNAVAILABLE')
+    }
+    assert.equal(admitted.length, 0)
   } finally { await off() }
+  assert.equal(spawns, 0)
   assert.equal(f.root.get('shell'), f.official)
 })
 
@@ -294,7 +331,7 @@ test('runtime preview: actual promoted DTO renders sandbox notes from handle fac
     const finished = deferred()
     const raw = 'promotion-raw-output'
     const readFrom = () => ({ text: raw, nextOffset: raw.length, lossy: false })
-    const f = await fixture(t, { subprocessRuntime: { spawn() {
+    const f = await fixture(t, { experimental: false, subprocessRuntime: { spawn() {
       spawned.resolve()
       return { done: finished.promise, collected: { stdout: { readFrom }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
         terminate() { finished.resolve({ exitCode: 1, signal: 'SIGTERM' }) } }
@@ -338,16 +375,120 @@ test('runtime preview: actual promoted DTO renders sandbox notes from handle fac
   }
 })
 
-test('runtime preview: actual execution handle carries unconfined facts for live jobs', { timeout: 10000 }, async t => {
+test('runtime preview: direct resolved restricted execution refuses and full handle stays memoized', { timeout: 10000 }, async t => {
   const f = await fixture(t, { existingBash: true })
   const { executor, executorScope } = await mountPrivateExecutor(f.root, GitBashSandboxExecutor, createScope)
   t.after(() => executorScope.dispose())
   const spec = executor.resolve({ command: 'memory-only command', workdir: process.cwd(), sandboxPolicy: { mode: 'read-only', workspaceRoot: process.cwd() } })
-  const handle = await executor.execute(spec)
-  assert.equal(handle.sandbox.enforcement, 'unconfined')
+  await assert.rejects(() => executor.execute(spec), error => error.code === 'SANDBOX_UNAVAILABLE')
+  await assert.rejects(() => executor.execute({ ...spec, sandboxPolicy: undefined }), error => error.code === 'SANDBOX_UNAVAILABLE')
+  const full = { ...spec, sandboxPolicy: { mode: 'danger-full-access', workspaceRoot: process.cwd() } }
+  const handle = await executor.execute(full)
+  assert.deepEqual(handle.sandbox, { mode: 'danger-full-access', denied: false })
   assert.equal(handle.result(), handle.result(), 'projection remains memoized')
   assert.deepEqual((await handle.result()).sandbox, handle.sandbox)
   assert.equal(f.root.get('shell'), f.official)
+})
+
+for (const ptc of [false, true]) test(`runtime preview: routing reaches the actual ${ptc ? 'PTC SDK' : 'native tool'} prompt and respects visibility`, { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true, ptc })
+  await bounded(f.activated.promise, 'routing tools activation')
+  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const start = source.indexOf("ctx.on('system-prompt/assemble',")
+  const end = source.indexOf("      console.log(TAG + ' prompt-assembly path dialect active", start)
+  assert.ok(start >= 0 && end > start)
+  let dialect = { posixPaths: false, codePaths: false, subagentDialect: true }
+  const hook = f.root.plugin(ctx => {
+    new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', source.slice(start, end))(
+      ctx, { dialect: () => dialect, pwshTool: () => f.deps.pwshEnabled() }, dialectHelpers.dialectApplies, dialectHelpers.windowsToMsys, dialectHelpers.runCodeHintFor, applyToolRouting)
+  })
+  t.after(() => hook.dispose())
+  await hook
+  const assemble = () => f.root.get('systemPrompt').assemble({ scope: f.agent, agent: f.agent })
+  const first = await assemble()
+  const sdk = first.sections.find(section => section.name === 'tools:sdk')?.text ?? ''
+  if (ptc) {
+    assert.deepEqual(first.tools.map(tool => tool.name), ['run_code'])
+    assert.match(first.tools[0].description, /call only bindings actually offered/)
+    assert.match(first.tools[0].description, /denial is a stop condition/)
+    assert.match(sdk, /gitbash_native/)
+    assert.match(sdk, /Choose this tool BEFORE execution/)
+    assert.match(sdk, /gitbash_to_native_path/)
+    assert.match(sdk, /runtime-built MSYS paths before direct native Node/)
+    assert.doesNotMatch(sdk, /\bpwsh\b/, 'hidden tools must not be offered as SDK bindings')
+  } else {
+    const text = first.tools.find(tool => tool.name === 'bash').description
+    assert.match(text, /gitbash_native before execution/)
+    assert.match(text, /gitbash_to_native_path only/)
+    assert.doesNotMatch(text, /\bpwsh\b|ALL commands|\/c\/Users/)
+  }
+  f.set(true)
+  const shown = await assemble()
+  if (ptc) assert.match(shown.sections.find(section => section.name === 'tools:sdk').text, /\bpwsh\b/)
+  else assert.match(shown.tools.find(tool => tool.name === 'bash').description, /use the pwsh tool ONLY when/)
+  f.set(false)
+  dialect = { ...dialect, posixPaths: true, subagentDialect: false }
+  f.agent.session.header.origin = 'subagent'
+  const delegated = await assemble()
+  const text = delegated.tools.find(tool => tool.name === (ptc ? 'run_code' : 'bash')).description
+  assert.match(text, /denial is a stop condition/, 'routing is independent of delegated dialect switches')
+  assert.doesNotMatch(text, /\/c\/Users/)
+  assert.equal(f.root.get('shell'), f.official)
+})
+
+test('runtime preview: explicit tools activate in the real per-agent wiring and retire together', { timeout: 10000 }, async t => {
+  let spawns = 0
+  const f = await fixture(t, { explicitTools: true, subprocessRuntime: { spawn() { spawns++; throw new Error('this fixture must not spawn') } } })
+  await bounded(f.activated.promise, 'explicit tools activation')
+  assert.deepEqual(f.names().sort(), ['bash', 'gitbash_native', 'gitbash_to_native_path'])
+  const translated = await f.execute('gitbash_to_native_path', { msys_path: '/d/项目/文件#1.txt' })
+  assert.equal(translated.isError, false, JSON.stringify(translated))
+  assert.deepEqual(translated.value, { native_path: 'D:/项目/文件#1.txt' })
+  for (const mode of ['read-only', 'workspace-write']) {
+    f.agent.session.header.policy = { mode, workspaceRoot: process.cwd() }
+    const denied = await f.execute('gitbash_native', { description: 'Refuse unsupported policy', executable: { kind: 'path', value: 'C:/controlled.exe' }, argv: [] })
+    assert.equal(denied.isError, true, JSON.stringify(denied))
+    assert.equal(denied.error.info.code, 'SANDBOX_UNAVAILABLE')
+  }
+  assert.equal(spawns, 0)
+  assert.equal(f.root.get('shell'), f.official)
+  await f.patch.dispose()
+  assert.deepEqual(f.names(), ['pwsh'], 'all own registrations and visibility masks retire together')
+  const reactivated = deferred()
+  const previousLog = f.deps.log
+  f.deps.log = message => { previousLog(message); if (message.includes('own bash tool activated')) reactivated.resolve() }
+  await f.remount()
+  await bounded(reactivated.promise, 'explicit tools reload activation')
+  assert.deepEqual(f.names().sort(), ['bash', 'gitbash_native', 'gitbash_to_native_path'], 'reload must not duplicate registrations')
+  assert.equal(f.root.get('shell'), f.official)
+})
+
+// Review round 1 on PR #26 (v0.39.4 rebase): fastctxTools now defaults to OFF
+// and the disabled bridge must neither spawn nor resolve the payload — while
+// companion registration detection (knownNames/faceNames) on a face with no
+// gb_* and no ops_* still mounts gitbash_native / gitbash_to_native_path, per
+// design doc §10 semantics.
+test('runtime preview: companions mount on the single-install face with fastctxTools OFF (v0.39.4 default)', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true })
+  await bounded(f.activated.promise, 'explicit tools activation')
+  const bridge = f.root.plugin(ctx => mountFastctx(ctx, {
+    platform: 'win32',
+    enabled: () => false, // the v0.39.4 default read (valueOf(...) === true)
+    tools: c => c.get('tools'),
+    log: message => f.deps.log(message),
+    createRequireFrom: () => { throw new Error('the disabled bridge must never resolve the payload') },
+    msysToWin: () => { throw new Error('the disabled bridge never translates arguments') },
+  }))
+  t.after(() => bridge.dispose())
+  await bridge
+  f.root.emit('agent/created', { agent: f.agent })
+  await new Promise(setImmediate)
+  const names = f.names()
+  assert.ok(!names.some((name) => name.startsWith('gb_')), 'no gb_* tools on a single-install face')
+  assert.ok(!names.some((name) => name.startsWith('ops_')), 'no ops_* tools without dsh-ops')
+  assert.deepEqual([...names].sort(), ['bash', 'gitbash_native', 'gitbash_to_native_path'],
+    'companion registration detection is independent of the fastctxTools switch')
+  assert.ok(f.logs.some(line => line.includes('FastCtx bridge disabled by the fastctxTools switch')))
 })
 
 // The real run_code transport captures rewritten source in a mock PTC runtime;
@@ -390,3 +531,106 @@ test('runtime preview: actual run_code transport receives Unicode/EOF fixes and 
   const uncertain = "const p='/c/工作/a'; return (4+2) / 2"
   assert.equal(await run(uncertain), dialectHelpers.programPrelude(env) + uncertain)
 })
+
+
+test('runtime preview: old hosts without workingDirectory mount all companions and preserve policy-first cwd', { timeout: 10000 }, async t => {
+  const spawns=[];
+  const f=await fixture(t,{explicitTools:true,workingDirectory:null,sessionCwd:'D:/session-project',policyWorkspaceRoot:null,
+    subprocessRuntime:{spawn(spec){spawns.push(spec);return {done:Promise.resolve({exitCode:0,signal:null}),collected:{stdout:{readFrom:()=>({text:'ok',nextOffset:2,lossy:false})},stderr:{readFrom:()=>({text:'',nextOffset:0,lossy:false})}},terminate(){}}}}});
+  await bounded(f.activated.promise,'old-host companions');
+  assert.deepEqual(f.names().sort(),['bash','gitbash_native','gitbash_to_native_path']);
+  for(const [workdir,cwd] of [[undefined,'D:/session-project'],['scripts','D:/session-project/scripts'],['E:/explicit','E:/explicit']]){
+    const response=await f.execute('bash',{command:'memory-only',description:'Verify old-host cwd',...(workdir===undefined?{}:{workdir})});
+    assert.equal(response.isError,false,JSON.stringify(response));assert.equal(spawns.at(-1).cwd,cwd);
+  }
+  f.agent.session.header.policy={mode:'danger-full-access',workspaceRoot:'F:/policy-project'};
+  const response=await f.execute('bash',{command:'memory-only',description:'Verify policy precedence',workdir:'scripts'});
+  assert.equal(response.isError,false,JSON.stringify(response));assert.equal(spawns.at(-1).cwd,'F:/policy-project/scripts');
+  f.setExperimental(false);assert.deepEqual(f.names(),['bash']);
+  f.setExperimental(true);assert.deepEqual(f.names().sort(),['bash','gitbash_native','gitbash_to_native_path']);
+  assert.equal(f.root.get('shell'),f.official);
+});
+
+
+function foreignCompanion(name, value) {
+  return { inject: ['tools'], apply(ctx) {
+    ctx.tools.register(defineTool({ name, description: 'Foreign companion owner', parameters: { msys_path: { type: 'string', required: true } },
+      output: { schema: { type: 'string' }, render: (_args, result) => [{ type: 'text', text: result }] }, execute: () => value }));
+  } };
+}
+
+for (const layer of ['global', 'agent']) for (const name of ['gitbash_to_native_path', 'gitbash_native']) {
+  test('runtime preview: live companion preserves foreign ' + layer + ' owner of ' + name, { timeout: 10000 }, async t => {
+    const f = await fixture(t, { explicitTools: true, experimental: false });
+    await bounded(f.activated.promise, 'companion scopes ready');
+    const owner = layer === 'global' ? f.root : f.agent.ctx;
+    const sentinel = 'FOREIGN_' + layer + '_' + name;
+    const foreign = owner.plugin(foreignCompanion(name, sentinel));
+    await foreign;
+    t.after(() => foreign.dispose());
+    for (const enabled of [true, false, true]) {
+      assert.doesNotThrow(() => f.setExperimental(enabled));
+      const response = await f.execute(name, { msys_path: '/c/sentinel' });
+      assert.equal(response.isError, false, JSON.stringify(response));
+      assert.equal(response.value, sentinel);
+      assert.equal(f.tools.sdkSchemas(f.agent).find(tool => tool.name === name).output.type, 'string', 'SDK retains the foreign return contract');
+      const other = name === 'gitbash_native' ? 'gitbash_to_native_path' : 'gitbash_native';
+      assert.equal(f.names().includes(other), enabled, 'one collision cannot block the other companion');
+    }
+    assert.ok(f.logs.some(line => line.includes(name + ' registration skipped: an existing tool owns this name')));
+    await foreign.dispose();
+    f.setExperimental(false);
+    f.setExperimental(true);
+    const output = f.tools.sdkSchemas(f.agent).find(tool => tool.name === name).output;
+    if (name === 'gitbash_to_native_path') assert.equal(output.type, 'object');
+    else assert.ok(output.oneOf.every(branch => branch.type === 'object'), 'native union contract recovers after the owner leaves');
+    await f.patch.dispose();
+    assert.deepEqual(f.names(), ['pwsh']);
+  });
+}
+
+test('runtime preview: native Jobs reload preserves a foreign owner without blocking its scope', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true, experimental: false });
+  await bounded(f.activated.promise, 'companion scopes ready');
+  const foreign = f.agent.ctx.plugin(foreignCompanion('gitbash_native', 'FOREIGN_JOBS_OWNER'));
+  await foreign;
+  t.after(() => foreign.dispose());
+  assert.doesNotThrow(() => f.setExperimental(true));
+  for (let i = 0; i < 2; i++) {
+    const removeJobs = f.root.provide('jobs', {});
+    await new Promise(setImmediate);
+    assert.equal((await f.execute('gitbash_native', { msys_path: '/c/sentinel' })).value, 'FOREIGN_JOBS_OWNER');
+    await removeJobs();
+    assert.equal((await f.execute('gitbash_native', { msys_path: '/c/sentinel' })).value, 'FOREIGN_JOBS_OWNER');
+    assert.ok(f.names().includes('gitbash_to_native_path'));
+  }
+  await foreign.dispose();
+  const removeJobs = f.root.provide('jobs', {});
+  await new Promise(setImmediate);
+  try {
+    assert.ok(f.tools.sdkSchemas(f.agent).find(tool => tool.name === 'gitbash_native').output.oneOf.every(branch => branch.type === 'object'));
+    assert.ok(f.tools.get('gitbash_native', f.agent).parameters.properties.run_in_background);
+  } finally { await removeJobs(); }
+  assert.equal(f.tools.get('gitbash_native', f.agent).parameters.properties.run_in_background, undefined);
+});
+
+
+test('runtime preview: an initially hidden foreign tool retains ownership through companion mounting', { timeout: 10000 }, async t => {
+  const f = await fixture(t, { explicitTools: true, pauseModules: true });
+  await bounded(f.entered.promise, 'pause before companion mounting');
+  const foreign = f.root.plugin(foreignCompanion('gitbash_to_native_path', 'HIDDEN_FOREIGN_OWNER'));
+  await foreign;
+  t.after(() => foreign.dispose());
+  const lift = f.agent.ctx.tools.restrict({ deny: ['gitbash_to_native_path'] });
+  t.after(lift);
+  f.release.resolve();
+  await bounded(f.activated.promise, 'companion scopes with a hidden foreign owner');
+  assert.ok(!f.names().includes('gitbash_to_native_path'), 'own registration must not bypass another owner’s visibility mask');
+  assert.ok(f.names().includes('gitbash_native'));
+  lift();
+  assert.equal((await f.execute('gitbash_to_native_path', { msys_path: '/c/sentinel' })).value, 'HIDDEN_FOREIGN_OWNER');
+  await foreign.dispose();
+  f.setExperimental(false);
+  f.setExperimental(true);
+  assert.deepEqual((await f.execute('gitbash_to_native_path', { msys_path: '/c/sentinel' })).value, { native_path: 'C:/sentinel' });
+});

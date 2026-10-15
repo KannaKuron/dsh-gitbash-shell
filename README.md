@@ -4,6 +4,8 @@
 
 简体中文 | [English](README_EN.md)
 
+> **Unreleased／实验性实现讨论**：下述 fail-closed 与两个显式工具尚未正式发布，不是发布候选；安装公开 npm 包不保证包含这些变更。详见[设计、接口与待讨论决定](<docs/experimental-native-execution.md>)、[验证矩阵与复现](<docs/experimental-native-verification.md>)及 CHANGELOG。
+
 > 让 DeepSeek Harness (dsh) 在 Windows 上**默认用 Git Bash 跑命令**的官方风格插件
 > —— 不替换宿主执行器(官方 PowerShell 执行器原样保留):新增自有 bash 工具
 > (私有 Git Bash 执行器实例,不注册为服务),并为所有模式注册对应的 Git Bash 版
@@ -111,40 +113,31 @@ bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件
    任何目录**;旧版本遗留在磁盘上的物化树,启动时仅当 marker 判定为
    「未被用户改过」才单向清理,用户改过的绝不碰(清理不受开关影响)。
 
-**环境变量**:`bash.exe` 是 host 进程的直接子进程(不经 git-bash 登录壳),完整继承
-系统环境变量与 `DSH_*` 快照。
+**环境变量**：`bash.exe` 经 host 的托管 subprocess provider 直接启动（不经登录壳）；
+父环境经过宿主凭据清洗，再合入受保护的 `DSH_*` 快照，不提供完整未过滤环境或绕过凭据保护。
 
 ## 安全语义:Windows 上的受限模式
 
-**POSIX 宿主**:官方沙箱语义**完整保留**——受限令牌、工作区围栏、拒绝分类,
-与 `@deepseek-ai/dsh-bash-sandbox` 完全一致。本节只讲 Windows。
+**POSIX 宿主**：自有执行器的受限路径仍继承官方后端与拒绝分类。本节只讲 Windows。
 
-**Windows 宿主上的事实**:`read-only` / `workspace-write` 权限预设下的 **shell 命令**,
-实际以**不受限(unconfined)方式执行**:
+**Unreleased 的 Windows 自有 bash/native 工具在 experimentalNative 开启时（默认）采用 fail-closed**：`read-only`、
+`workspace-write` 或缺失/未解析的策略在执行前拒绝；仅真实解析为
+`danger-full-access` 的调用可以执行。受限请求不会登记/启动无围栏进程，也不会自动
+回退 pwsh/cmd/WSL、切模式或绕过文件工具拒绝。用户可在设置中关闭 experimentalNative，恢复明确标注 unconfined 的旧版 Bash 行为。
 
-- **为什么**:已验证的 Git Bash/MSYS 组合在现有 restricted-token 后端下初始化失败,
-  历史复现为 `msys-2.0.dll` 的 cygheap/signal-pipe 对象权限与 restricting-SID
-  二次写检查不兼容(Win32 error 5 / 0xC0000142)。当前没有提供可用的受限 Git Bash
-  实现,不声称所有未来运行时或隔离方案都无解。本插件保留**如实标注的绕过**;
-  没有静默回退 pwsh/cmd/WSL,本次兼容修复也没有恢复 shell 写入围栏。
-- **如何标注**:结果元数据保留
-  `sandbox: { mode: "<请求的模式>", denied: false, enforcement: "unconfined" }`;
-  工具描述、前台正文、后台登记及结果摘要、超时转后台反馈都明确警示 shell 写限制未生效。
-  后台登记标明的是计划采用的执行边界,不代表命令已经运行;实例首次调用另有日志。
-- **文件工具是另一层**:官方 fs-tool policy 对 write/edit 保留策略检查:
-  `read-only` 拒绝修改,`workspace-write` 只允许声明的工作区和平台临时可写根。
-  read/glob/grep 等读取并非一律限制在工作区内。shell 进程不受这些工具检查约束,
-  **两者的边界并不一致**;绝不能用 shell 绕过文件工具已返回的策略拒绝。
-- **可观察的对照**(相对 pwsh-sandbox 时代):会话进程的完整性级别不再被压低
-  (Low → Medium);`$env:TEMP` 不再被重定向到 per-session 隔离目录。
+- **拒绝不是沙箱修复**：当前仍无已验证的受限 Git Bash。历史失败为 Win32 error 5 /
+  0xC0000142；匹配本机 MSYS 源码后发现 signal pipe 显式 SD 缺 restricting SID，
+  现代 cygheap 使用 VirtualAlloc，Core 已补 TokenDefaultDacl。不能继续宣称
+  “只补默认DACL就修好”或“所有未来版本无解”；真正 IPC/OS 方案仍需隔离环境验收。
+- **策略按调用解析**：默认 full 不会放宽另一个只读会话；原生入口的准备、异步边界与
+  spawn seam 重验策略。取消、owner dispose 和主动 kill 会标输出不完整，不伪装自然完成。
+- **文件工具是另一层**：官方 write/edit 仍按其 policy 判断；读取不一定只限工作区。
+  路径 helper 只转换字符串，不检查存在性、不授予读写权。不得用任一工具绕过已发生的拒绝。
+- **范围**：此门控覆盖本插件自有 bash/native 工具；侧栏交互终端、minimal 的持久 PTY
+  和其他插件执行器不因此获得围栏。官方 root PowerShell 执行器没有被替换。
 
-**如果你需要 shell 也被硬性拦住**(例如不希望模型经 shell 写工作区外的任何路径),
-注意本插件的自有 bash 工具在 Windows 受限模式下同样 unconfined(见上)——不用
-它、或卸载本插件让它消失即可;官方 PowerShell 执行器从未被本插件触碰。
-`danger-full-access` 预设本来就不受限,装不装本插件行为一致。
-
-> 这一取舍的完整分析(含 0.6.0~0.13.1 的故障史与社区两派对比)见 CHANGELOG
-> v0.13.2 与 `src/shell.js` 头注释。
+旧 unconfined 记录/渲染兼容仍保留供历史结果使用，不代表新调用可降级。历史见 CHANGELOG
+v0.13.2，当前行为及验证见 Unreleased。
 
 ## 配置
 
@@ -399,6 +392,50 @@ PTC/创造及用户自建模式一律覆盖。
 都不再改写,文件工具收 Windows 路径。**bash 始终是 Git Bash,不受此开关影响**——它只决定
 跨工具的路径方言。
 
+## 显式工具（Unreleased）
+
+**运行时开关 `experimentalNative`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」。开启时 Windows 受限/未确定模式拒绝 Bash，提供可用的两个显式工具；关闭立即注销并禁用两个工具，恢复明确标注 `unconfined` 的旧版 Bash（不执行 shell 文件写入限制）。修改作用于现有会话后续调用，无需重启，不终止已启动的任务。拒绝时用户也可在会话访问模式控件选择 `danger-full-access`；Agent 不得自行放宽权限。与路径方言及 codePaths 开关独立。
+
+
+两个工具随 Windows 的自有 bash 工具挂入同一 agent-owned scope；不替换官方工具或 root
+provider，已有同名工具不覆盖。旧 Core 缺少公开 native executor/OutputCollector 能力时不
+注册 native 工具，bash/path 不受影响；minimal 的持久终端不通过此补位通道。
+
+- **`gitbash_to_native_path`**：`{ msys_path: 完整值 } → { native_path }`，复用共享且新鲜的
+  挂载事实；Windows/cwd-relative 值可原样，未知 MSYS 根/缺 mount、URL、空值/NUL 显式拒绝。
+  独立于自动方言与 `codePaths` 开关，不猜程序字符串用途、不授文件权限。
+- **`gitbash_native`**：`description`、绝对 `executable: { kind: 'path', value }`、
+  `argv: [{ kind: 'literal'|'path', value }]`；literal 不经 MSYS 转换，path 明确转换并规范化。
+  可选绝对 typed `cwd`；不支持裸 command、model env、隐式脚本、`.cmd/.bat` 或 escalation。
+  已知解释器须显式 `entrypoint: 'interpreter'`；这不是二进制鉴定，也不保证任意 cmd/非CRT parser quoting。
+- 每流 `stdoutEncoding`/`stderrEncoding`：`utf8`（默认）、`gbk`、`utf16le`、`raw`；
+  `errors: 'replace'`（默认）或显式 `strict`。同流未知混合字节应选 raw，不能自动猜码。
+  解码/存储问题独立于真实 exitCode：命令已执行不等于输出可靠，不应因此重复副作用操作。
+- 现有 Jobs 提供后台与 timeout promotion（须有 controller）；缺能力明确拒绝，不静默忽略参数。
+  没有 Jobs 时为前台 kill deadline。准备阶段也有取消/有界预算；owner dispose/kill 标为中止。
+- 产物存放在 host 自有临时目录，不是 model cwd。默认两流 raw+decoded 总磁盘上限8MiB，
+  适配器自有载荷预算16MiB；不是OS/RSS或跨任务硬限。完成产物保留便于读取，无自动purge承诺。
+  `sourceComplete`、管线 `complete`、tail `lossy`、`artifact.complete` 是不同事实，须联合读取。
+
+**Agent 路由指引**：提示组装与工具说明会明确区分：shell语法/管道/重定向/POSIX脚本用
+`bash`；原生.exe精确argv或已知逐流编码用可见的 `gitbash_native`；Node I/O需要完整MSYS
+运行时路径时才用可见的 `gitbash_to_native_path`；真正cmdlet/服务/WMI用可见且开关允许的
+`pwsh`。按实际工具面引导，不推荐未注册/隐藏的工具，重复组装随可见性更新、不堆叠。
+权限拒绝必须停止，不能换工具/模式；解码失败不等于命令没执行，不能盲目重跑副作用。
+
+PTC 模式只直调 `run_code`，里面使用已提供的 `tools.gitbash_to_native_path` / `tools.gitbash_native`。
+run_code描述给出SDK选路规则，实际绑定各自说明适用场景；不编造未提供的绑定名称。
+已验证实际Core普通/PTC提示与SDK文案送达；未运行真实LLM自主选择验收，不保证每次选择正确。
+假设已取得完整 `inputPath`，直接 Node I/O 可写：
+
+```typescript
+const resolved = await tools.gitbash_to_native_path({ msys_path: inputPath });
+const fs = await import('node:fs/promises');
+return await fs.readFile(resolved.native_path, 'utf8');
+```
+
+若程序含路径状路由/搜索数据，选择 `codePaths: false` 避免 legacy 自动误改；工具参数翻译仍在。
+
 ## 原生 Windows 程序与 run_code 的兼容边界
 
 工具描述始终警示下面的参数、编码和安全限制;这些限制不随路径方言关闭而消失。
@@ -421,8 +458,7 @@ PTC/创造及用户自建模式一律覆盖。
   直接调用 Node fs/path 时优先明确的 Windows drive-letter 或 cwd-relative 路径;
   工具 path/file_path 字段仍走工具参数翻译。词法扫描不能识别路由、搜索数据或 shell
   command 的用途;此类字符串不要依赖自动重写,必要时关闭 `codePaths`(提示同步标为 OFF)。
-- **沙箱**:参见上方安全章节。警示可见性得到修复,但 Windows shell 的 unconfined
-  取舍未改变,文件工具的策略拒绝绝不授权 shell 重试。
+- **沙箱**：参见上方安全章节。Unreleased 在 experimentalNative 开启时改为受限请求执行前拒绝，不是恢复了真实围栏；文件工具拒绝不授权 shell/native 重试。
 
 ## 与 dsh-better-sidebar 联动
 

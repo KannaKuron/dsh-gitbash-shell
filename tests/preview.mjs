@@ -30,6 +30,7 @@ test('preview: real host registers and executes Git Bash without replacing Power
   const root = new Context()
   const cleanups = []
   const logs = []
+  let experimental = true
   const own = (dispose) => { cleanups.push(dispose); return dispose }
   t.after(async () => {
     for (const cleanup of cleanups.reverse()) await cleanup()
@@ -42,7 +43,7 @@ test('preview: real host registers and executes Git Bash without replacing Power
     return fiber
   }
   const policy = { mode: 'danger-full-access', workspaceRoot: cwd }
-  own(root.provide('sandboxPolicy', { defaultMode: policy.mode, resolve: () => policy }))
+  own(root.provide('sandboxPolicy', { defaultMode: policy.mode, resolve: () => policy.mode === undefined ? undefined : policy }))
   own(root.provide('sandbox', { confine() { throw new Error('preview never requests confinement') } }))
   own(root.provide('workingDirectory', { ensure: async () => cwd }))
   own(root.provide('loader', { internal: { import: (name) => import(name) } }))
@@ -85,6 +86,7 @@ test('preview: real host registers and executes Git Bash without replacing Power
       agents: () => ({ list: () => [agent] }),
       createScope,
       pwshEnabled: () => pwshVisible,
+      experimentalEnabled: () => experimental,
       log(message) {
         logs.push(message)
         if (message.includes('activation failed') || message.includes('hide failed')) rejectReady(new Error(message))
@@ -117,6 +119,26 @@ test('preview: real host registers and executes Git Bash without replacing Power
   assert.match(text, /MINGW(?:32|64)_NT-/)
   assert.match(text, /GITBASH_PREVIEW_OK/)
   assert.equal(bash.value.exitCode, 0)
+  // Real Git Bash, fixture-owned policy only: OFF restores truthful legacy facts.
+  for (const mode of ['read-only', 'workspace-write']) {
+    policy.mode = mode
+    const denied = await run('bash', 'printf "MUST_NOT_START\\n"')
+    assert.equal(denied.isError, true)
+    assert.match(denied.error.message, /command was not started/)
+    experimental = false
+    root.emit('loader/volatile-update', [['experimentalNative']])
+    const legacy = await run('bash', 'printf "LEGACY_FIXED_SENTINEL\\n"')
+    assert.equal(legacy.isError, false, JSON.stringify(legacy))
+    assert.equal(legacy.value.sandbox.mode, mode)
+    assert.equal(legacy.value.sandbox.enforcement, 'unconfined')
+    assert.match(legacy.value.stdout.text, /LEGACY_FIXED_SENTINEL/)
+    experimental = true
+    root.emit('loader/volatile-update', [['experimentalNative']])
+    assert.equal((await run('bash', 'printf "MUST_NOT_START\\n"')).isError, true)
+  }
+  policy.mode = undefined
+  assert.equal((await run('bash', 'printf "MUST_NOT_START\\n"')).isError, true)
+  policy.mode = 'danger-full-access'
   const pwsh = await run('pwsh', 'Write-Output "POWERSHELL_PREVIEW_OK"; Get-Process -Id $PID | Select-Object -ExpandProperty ProcessName')
   assert.equal(pwsh.isError, false, JSON.stringify(pwsh))
   assert.match(pwsh.content.map((block) => block.text ?? '').join('\n'), /POWERSHELL_PREVIEW_OK/)

@@ -40,17 +40,18 @@
 ## 核心不变量(改代码前必读)
 0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.1.7-rc`(兼容门禁 `plugin-compatibility.ts` 读 peer `@deepseek-ai/dsh`,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 必须标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),没有「旧宿主分支」可回退。要点:四个变体由 `pluginsFor({ kind, gitBash, skillsDir, pythonActive, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,双态镜像官方 standard/minimal/ptc/cordis + Git Bash 增量:`hostExtras` 缺省 ↔ 0.1.7 行集,`{ timeContext, toolSchedule }` ↔ 0.2.1 行集,探测式接入见第 8 条;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
 
-1. **执行器只替换 argv,不替换行为——除 Windows 受限分支(v0.13.2,issue #1)**:沙箱策略、拒绝分类、
-   后台任务、设置节全部沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 分支必须单独接 Git Bash
-   (父类硬编码裸 `bash`,Windows 上会解析到 WSL 占位)。**Windows confined 分支同样必须单独接**:
-   MSYS2 在 restricted-token(dsh-sandbox-windows-acl)下 DLL 初始化即死(msys-2.0.dll 的 cygheap
-   映射与 signal pipe 的 DACL 只含用户 SID,WRITE_RESTRICTED 的 pass-2 写检查要求 restricting-SID
-   ACE → Win32 error 5 / 0xC0000142;0.6.0 起所有版本;cmd/pwsh 走匿名管道不受影响)——OS 层冲突
-   无插件内解,故 win32 的 read-only/workspace-write 调用改走 runArgv/startArgv(不受限执行),结果
-   sandbox 标注 `enforcement: 'unconfined'` + 实例级一次性 console.log 提示;fs 工具沙箱不受影响
-   (另一层)。**红线:绝不静默假成功**——要么真受限、要么明示 unconfined、失败如实带错误码。
-   社区同类取舍:绕过(zimzaza4/dsh-bash-win、Jyleaves/dsh-win-bash-fix)vs 拒绝(liceses/
-   dsh-gitbash-preset);本插件选绕过+如实标注。本机复现记录见 CHANGELOG v0.13.2。
+1. **执行器替换 full-access argv；Windows 未验证受限能力必须 fail-closed（Unreleased）**:
+   沙箱/生命周期基础设施沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 必须显式 Git for Windows
+   argv（裸 bash 会命中 WSL 占位）。Windows read-only/workspace-write/缺失策略在工作目录准备、
+   Jobs admission 与 spawn 前拒绝（`experimentalNative` 默认 true）；不得自动换工具/模式。
+   按 PR #26 维护者裁决，用户可实时关闭该 volatile 行 Config 开关，恢复明确标注 unconfined
+   的旧 Bash 行为并注销 native/path 两工具；旧 SDK 引用必须拒绝，新 native spawn 必须重验开关。
+   拒绝使用实际宿主 SandboxUnavailableError，导出缺失仍必须拒绝；官方 root provider 不变。
+   **拒绝不是恢复真围栏**。匹配的现代 MSYS signal pipe 有显式 SD 且缺 restricting SID，
+   cygheap 为 VirtualAlloc；实际 Core 已补 TokenDefaultDacl。不得再用“只补默认DACL/所有未来版本
+   无解/用户-only cygheap 映射”的历史泛化论断。新 IPC/OS 方案必须实际正负权限验收；文件工具
+   policy 另属一层，拒绝不得绕过。侧栏交互终端/minimal PTY不因此获得围栏。
+   历史复现见 CHANGELOG v0.13.2；当前实施与独立验证见 CHANGELOG Unreleased。
    **0.1.7 执行器契约(v0.24.4 补齐,issue #6 复盘)**:① `Config` 的六个继承字段
    (`cwd`/`timeoutMs`/`maxTimeoutMs`/`maxOutputBytes`/`maxSpillBytes`/`graceMs`)**必须经
    `live()` 探测加 `.volatile()`** —— 0.1.7-alpha.1 起基类把它们读成 `Volatile<T>` 并一律 `.get()`,
@@ -58,7 +59,7 @@
    插件自己的 `bashPath` 保持裸值。② 方法面改了:`run`/`start` 被删除,抽象面是
    `resolve` + `execute(spec): Promise<ShellExecution>`,后台执行 = `onExpiry: 'none'` 的一次
    execution,前台/后台由调用方是否 await `result()` 决定 —— 所以**必须覆盖 `execute`** 才能让
-   "全权访问走 Git Bash argv""win32 受限改走 unconfined"两条继续成立(`run`/`start` 只留给
+   "全权访问走 Git Bash argv""win32 未验证受限能力拒绝启动"两条继续成立(`run`/`start` 只留给
    ≤0.1.6,`execute` 在无 `super.execute` 时委派给 `run`);父类的 `decorateResult` 是私有的,
    就地记忆化投影由本插件的 `decorateExecution` 复刻。③ `settings` 服务在 0.1.7 上**没有
    `get(ns)` 了**(只剩 `describe()`/`update()`):读插件设置一律用 `describe()` 里本行
@@ -605,6 +606,9 @@
        时,inject/服务消费面必须取兼容矩阵内最老宿主的形状或可选化——「宿主新版本有」不等于
        「矩阵内都有」;激活/注册类日志必须回读验证,成功日志本身不是证据**(与 §0 静态 import、
        §4j 硬注入、v0.38.2 fiber 时序同一失败家族的第无数课)。
+       实验 native 与 Bash 的 cwd 消费共用 `src/session-workdir.js`；native 同样不得硬 inject
+       workingDirectory。服务存在时 ensure 错误不得吞掉，只有缺服务才走旧接缝。
+       companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，knownNames 可用时包含隐藏工具，旧宿主回退 schemas；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
 
 ## 验证清单(改动后)
 

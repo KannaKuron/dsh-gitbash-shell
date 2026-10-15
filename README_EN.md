@@ -4,6 +4,8 @@
 
 [简体中文](README.md) | English
 
+> **Experimental implementation discussion / Unreleased:** the fail-closed behaviour and two explicit tools below have not been officially released and are not a release candidate. Public npm installation does not guarantee these changes. See the [design, interfaces and open decisions](<docs/experimental-native-execution.md>), [verification matrix and reproduction](<docs/experimental-native-verification.md>) and Unreleased CHANGELOG.
+
 > Run **agent commands on Git Bash by default** on Windows with DeepSeek
 > Harness (dsh) — the plugin does NOT replace the host executor (the official
 > PowerShell executor stays untouched): it adds its own `bash` tool running
@@ -74,8 +76,7 @@ The old "replace the executor" three-step patch became runtime work:
    only when the marker proves the user never edited them (the cleanup
    ignores the switch).
 
-Environment: `bash.exe` is spawned as a direct child of the host, so it
-inherits the full system environment plus the `DSH_*` snapshot.
+Environment: `bash.exe` is a direct child of the host's managed subprocess provider, not a login launcher. Parent environment values pass through credential scrubbing before the protected `DSH_*` overlay; this does not expose an unfiltered host environment.
 
 ### Upgrading from 0.34.x
 
@@ -91,46 +92,40 @@ to bring old sessions back as-is, turn `variantPresets` on.
 
 ## Security semantics: confined modes on Windows
 
-**POSIX hosts**: the official sandbox semantics are **fully preserved** —
-restricted tokens, workspace fencing, denial classification, identical to
-`@deepseek-ai/dsh-bash-sandbox`. This section is about Windows only.
+**POSIX hosts:** the executor's restricted path still inherits the official backend and denial classification. This section concerns Windows.
 
-**On Windows**, shell commands under the `read-only` / `workspace-write`
-permission presets actually run **UNCONFINED**:
+**Unreleased Windows bash/native tools fail closed while experimentalNative is ON (default):** read-only, workspace-write or unresolved policy is refused before execution. Only an actually resolved danger-full-access call may run. Restricted requests never admit/start an unconfined process, automatically switch permissions/interpreters, or bypass file-tool denials. This changes the old labelled-bypass behaviour.
 
-- **Why**: tested Git Bash/MSYS combinations failed to initialize under the
-  existing restricted-token backend. Historical reproduction found cygheap/
-  signal-pipe object permissions incompatible with the restricting-SID write
-  check (Win32 error 5 / 0xC0000142). No working confined Git Bash implementation
-  is provided here; this is not a claim that every future runtime or isolation
-  design is impossible. The plugin retains its **labelled bypass**, with no
-  silent fallback to pwsh/cmd/WSL. Compatibility fixes do not restore confinement.
-- **How it is labelled**: results retain
-  `sandbox: { mode: "<requested mode>", denied: false, enforcement: "unconfined" }`.
-  The tool description, foreground text, initial background registration,
-  background outcome and timeout-promotion feedback warn that shell write
-  restrictions are not enforced. Initial registration describes the planned
-  boundary, not a claim that the command has already run; there is also a
-  one-time notice per executor instance.
-- **Official file tools have a separate policy**: write/edit still reject
-  mutations under `read-only`; `workspace-write` checks the declared workspace
-  and platform writable temp roots. Reads such as read/glob/grep are not all
-  limited to the workspace. Shell processes are not governed by these tool
-  checks — **the two boundaries differ**. Never bypass a file-tool policy
-  denial through shell.
-- **Observable differences** vs the pwsh-sandbox era: the session process's
-  integrity level is no longer lowered (Low → Medium), and `$env:TEMP` is no
-  longer redirected to a per-session directory.
+- **Refusal is not restored confinement.** No verified confined Git Bash is provided. Historical failures were Win32 error 5 / 0xC0000142. The matched modern MSYS signal pipe uses an explicit SD without a restricting SID; cygheap uses VirtualAlloc, and Core already supplements TokenDefaultDacl. Neither a default-DACL-only fix nor permanent impossibility is established; IPC/OS solutions still require isolated-environment validation.
+- **Per-call authority:** a full-access deployment default cannot widen a read-only session. Native preparation, async boundaries and the spawn seam recheck authority. Cancellation, owner disposal and direct kill mark output incomplete instead of claiming natural success.
+- **Separate file policy:** official file tools retain their own checks; reads are not necessarily workspace-only. The path helper only converts strings: no existence check or permission grant. A refusal never authorizes another-tool workaround.
+- **Scope:** this gate covers this plugin's own bash/native tools. Sidebar interactive terminals, minimal's persistent PTY and other plugins' executors do not acquire confinement from it. The official root PowerShell executor stays untouched.
 
-**If you need the shell itself hard-fenced too** (e.g. the model must not
-write anywhere outside the workspace through the shell), note that this
-plugin's own bash tool also runs confined commands UNCONFINED on Windows (see
-above) — avoid it there, or uninstall the plugin so the tool goes away; the
-official PowerShell executor was never touched by this plugin. The
-`danger-full-access` preset is unconfined by design either way.
+Historical unconfined records/rendering remain readable; only the user’s explicit experimentalNative opt-out restores the legacy route. See CHANGELOG v0.13.2 for history and Unreleased for current behaviour/tests.
 
-> The full analysis (the 0.6.0–0.13.1 failure history and the community's two
-> camps) is in the CHANGELOG under v0.13.2 and in the `src/shell.js` header.
+## Explicit tools (Unreleased)
+
+**Runtime switch `experimentalNative` (default true):** Settings > Plugins > dsh-gitbash-shell > Experimental native execution / fail-closed. ON refuses restricted/unresolved Windows Bash and offers available companions. OFF immediately unregisters/disables both tools and restores legacy explicitly `unconfined` Bash, which does not enforce shell file-write restrictions. Changes affect subsequent calls in existing sessions without restart; already running jobs continue. Refusals also guide the user to select `danger-full-access` in the session access-mode control; agents must not relax permissions automatically. This switch is independent of path dialect/codePaths.
+
+Both companions join the Windows own-bash agent scope without replacing official tools/root providers. Existing names are not overwritten. Missing public native executor/OutputCollector capability skips native without breaking bash/path; minimal's persistent terminal does not use this inline patch.
+
+- **gitbash_to_native_path**: `{ msys_path: completeValue } → { native_path }`, using fresh shared mount facts. Native Windows/cwd-relative values may pass through; unknown MSYS roots/missing facts, URLs, empty/NUL values reject. Independent of automatic dialect/codePaths switches, with no filesystem access or permission grant.
+- **gitbash_native**: description, absolute `executable: {kind:'path',value}`, `argv: [{kind:'literal'|'path',value}]`, optional absolute typed cwd. Literals avoid MSYS conversion; only declared paths translate/normalize. No bare command, model env, implicit scripts, .cmd/.bat or escalation. Known interpreters require explicit `entrypoint:'interpreter'`; this is not executable attestation or a guarantee about arbitrary cmd/non-CRT parsers.
+- Independent stdoutEncoding/stderrEncoding: utf8 (default), gbk, utf16le or raw; errors defaults to replace, strict is opt-in. Unknown mixed bytes require raw rather than guessing. Decoding/storage failures retain actual exit facts; never blindly rerun side effects because display failed.
+- Existing Jobs supports background/promotion when its controller is attached. Missing capability rejects rather than ignoring fields. Without Jobs, foreground uses a kill deadline; preparation also has bounded cancellation. Owner disposal/direct kill marks interrupted output.
+- Host-owned temporary artifacts, not model cwd: default 8MiB combined raw+decoded disk cap and 16MiB adapter-owned payload budget, not OS/RSS or cross-task hard quotas. Completed files remain readable; no automatic purge is promised. sourceComplete, pipeline complete, tail lossy and artifact.complete are distinct facts.
+
+**Agent routing:** descriptions distinguish shell syntax/pipelines/redirection/POSIX scripts (bash), exact native .exe argv/known per-stream encoding (offered gitbash_native), complete MSYS runtime values before Node I/O (offered gitbash_to_native_path), and genuine cmdlets/services/WMI (offered, enabled pwsh). Guidance follows actual visibility and replaces its own block on reassembly. Permission denial means stop, not another-tool/mode retry; display failure never authorizes blindly repeating side effects.
+
+PTC directly calls only run_code; invoke the offered `tools.gitbash_to_native_path`/`tools.gitbash_native` inside it. The run_code description explains SDK selection without inventing absent names, while binding descriptions explain their purpose. Actual Core native/PTC prompt delivery is tested; autonomous LLM selection has not been tested or guaranteed. Given an already obtained complete inputPath:
+
+```typescript
+const resolved = await tools.gitbash_to_native_path({ msys_path: inputPath });
+const fs = await import('node:fs/promises');
+return await fs.readFile(resolved.native_path, 'utf8');
+```
+
+For route/search strings that resemble paths, choose codePaths:false to avoid legacy guessing; typed tool argument translation still works.
 
 ## Native Windows and run_code compatibility boundaries
 
@@ -163,8 +158,7 @@ output encodings.
   Lexical scanning cannot distinguish routes/search data/shell command strings
   from paths. Do not rely on rewriting those values; disable `codePaths` when
   needed (the model hint now accurately states OFF).
-- **Security**: warnings are now visible, but Windows unconfined behavior is
-  unchanged. A file-tool policy denial never authorizes a shell retry.
+- **Security**: Unreleased refuses restricted calls before execution while experimentalNative is ON; this is not restored confinement. A file-tool policy denial never authorizes a shell/native retry.
 
 ## Config
 

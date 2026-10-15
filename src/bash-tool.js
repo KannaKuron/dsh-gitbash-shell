@@ -40,6 +40,7 @@
  * @module dsh-gitbash-shell/bash-tool
  */
 
+import { resolveSessionCwd } from './session-workdir.js'
 import {
   ESCALATION_TARGETS,
   parseExitStatus,
@@ -102,7 +103,7 @@ export function bashDescription() {
     + 'Git for Windows (MSYS) converts path-looking arguments when invoking native Windows programs: ipconfig /all and cmd /c may break; use ipconfig //all or cmd //c, or a per-command MSYS2_ARG_CONV_EXCL prefix. '
     + 'Exclusions are prefixes: excluding /c also excludes /c/... paths, so use native drive-letter paths for those arguments; do not disable conversion globally. Verify the expected effect as well as the exit code. '
     + 'Output is decoded as UTF-8; native Windows programs may emit OEM/ANSI bytes (for example CP936/GBK) and display garbled text. Use a program UTF-8 option or explicit known-encoding conversion before capture; locale variables alone do not fix native output, and mixed streams cannot safely be guessed or decoded globally as GBK. '
-    + 'On Windows, this Git Bash route does NOT enforce shell file-write restrictions in read-only/workspace-write mode (unconfined). Official file-tool write/edit policy is separate; never use shell to bypass its denial.'
+    + 'On Windows, while Experimental native execution / fail-closed (experimentalNative, default ON) is enabled, read-only/workspace-write or unresolved policy is refused before this Git Bash command starts because verified confinement is unavailable. Only an explicitly resolved danger-full-access policy can execute this route. The user can turn off that switch in Settings > Plugins > dsh-gitbash-shell to restore explicitly UNCONFINED legacy Bash, or select danger-full-access in the session access-mode control. Do not switch tools or permissions automatically to bypass a refusal; official file-tool write/edit policy remains separate.'
 }
 
 /** The official foreground/present call view (index.ts:108). */
@@ -511,16 +512,13 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           const policy = approvedMode === undefined
             ? standingPolicy
             : { ...standingPolicy, mode: approvedMode }
+          // Refuse unsupported policy before directory preparation or job admission.
+          if (typeof executor.gitBashRoute === 'function') executor.gitBashRoute({ sandboxPolicy: policy })
           // Optional read (issue #27): on hosts that provide workingDirectory
           // this is the same ensure() seam the modern official tool-bash uses;
           // on hosts without it, fall back to the session cwd exactly the way
           // the rc.2-era official resolveWorkdir did (policy root ?? header).
-          const workingDirectory = ctx.get !== undefined ? ctx.get('workingDirectory') : undefined
-          const cwd = exec.agent === undefined
-            ? undefined
-            : workingDirectory !== undefined
-              ? await workingDirectory.ensure(exec.agent, exec.signal)
-              : (standingPolicy?.workspaceRoot ?? exec.agent?.session?.header?.cwd)
+          const cwd = await resolveSessionCwd(ctx, exec, policy)
           const workdir = resolveWorkdir(args.workdir, cwd)
           const dshEnv = ctx.shellEnv.collect(exec)
           const request = {
