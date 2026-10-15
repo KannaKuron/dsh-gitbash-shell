@@ -141,7 +141,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh 工具(官方 PowerShell)",
 			"pwsh.hint": "默认关闭:开启后宿主官方的 pwsh 工具对会话可见——它是真正的 PowerShell(官方解析器自动优先 PowerShell 7),可直接用于 Windows 原生操作(注册表/服务/WMI)。关闭(默认)时该工具被隐藏,主机保持 bash 优先。无需安装任何额外组件;旧 PowerShell 7 旁路工具已随新架构退役。命令仍然首选 bash 工具。",
 			"fctx.label": "FastCtx 文件工具(gb_*)",
-			"fctx.hint": "默认开启:发布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 实现:批量读取带 token 预算、编码探测)。它们是官方 read/grep/glob/edit 的补充——官方工具接文件沙箱,仍是默认推荐;检测到 dsh-ops(ops_* 工具)时本组自动让位。",
+			"fctx.hint": "默认关闭(v0.39.4 起弃用,可显式开启):发布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 实现:批量读取带 token 预算、编码探测)。它们是官方 read/grep/glob/edit 的补充——官方工具接文件沙箱,仍是默认推荐;检测到 dsh-ops(ops_* 工具)时本组自动让位。",
 		};
 
 		var en = {
@@ -219,7 +219,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh tool (official PowerShell)",
 			"pwsh.hint": "Off by default: when on, the host's official pwsh tool becomes visible to sessions — REAL PowerShell (the official resolver prefers PowerShell 7 automatically) for Windows-native work (registry/services/WMI). Off (the default) hides it and keeps the host bash-first. Nothing extra to install; the retired PowerShell 7 side-channel tool is gone. Commands still prefer the bash tool.",
 			"fctx.label": "FastCtx file tools (gb_*)",
-			"fctx.hint": "On by default: publishes gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batched reads with a token budget, encoding detection). ADDITIONS to the official read/grep/glob/edit — the official tools keep the file sandbox and stay the default. Stands down automatically when dsh-ops is installed.",
+			"fctx.hint": "Off by default since v0.39.4 (deprecated; re-enable explicitly): publishes gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batched reads with a token budget, encoding detection). ADDITIONS to the official read/grep/glob/edit — the official tools keep the file sandbox and stay the default. Stands down automatically when dsh-ops is installed.",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded
@@ -307,7 +307,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "أداة pwsh (PowerShell الرسمية)",
 			"pwsh.hint": "مُعطَّلة افتراضيًا: عند التفعيل تصبح أداة pwsh الرسمية للمضيف مرئية للجلسات — وهي PowerShell حقيقية (يفضِّل المُحلِّل الرسمي PowerShell 7 تلقائيًا) لأعمال Windows الأصلية (السجل/الخدمات/WMI). وعند الإيقاف (الافتراضي) تُخفى الأداة ويبقى المضيف يفضِّل bash. لا حاجة لتثبيت أي شيء إضافي؛ أداة PowerShell 7 الجانبية القديمة أُوقفت مع المعمارية الجديدة. مرِّر الأوامر عبر أداة bash كالمعتاد.",
 			"fctx.label": "أدوات ملفات FastCtx (gb_*)",
-			"fctx.hint": "مُفعَّلة افتراضيًا: تنشر gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: قراءات دفعية بميزانية رموز وكشف ترميز). إضافة إلى read/grep/glob/edit الرسمية التي تحتفظ بصندوق الرمل وتبقى الافتراض؛ تتوقف تلقائيًا عند تثبيت dsh-ops.",
+			"fctx.hint": "مُعطَّلة افتراضيًا (مهجورة منذ v0.39.4؛ يمكن تفعيلها صراحةً): تنشر gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: قراءات دفعية بميزانية رموز وكشف ترميز). إضافة إلى read/grep/glob/edit الرسمية التي تحتفظ بصندوق الرمل وتبقى الافتراض؛ تتوقف تلقائيًا عند تثبيت dsh-ops.",
 			},
 			/* locale: de */
 			"de": {
@@ -385,7 +385,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh-Werkzeug (offizielles PowerShell)",
 			"pwsh.hint": "Standardmäßig aus: Beim Einschalten wird das offizielle pwsh-Werkzeug des Hosts für Sitzungen sichtbar — ECHTES PowerShell (der offizielle Resolver bevorzugt PowerShell 7 automatisch) für Windows-natives Arbeiten (Registry/Dienste/WMI). Im Aus-Zustand (der Standard) bleibt es verborgen und der Host bleibt bash-first. Nichts zusätzlich zu installieren; das alte PowerShell-7-Seitenkanal-Werkzeug ist mit der neuen Architektur entfallen. Befehle laufen weiterhin bevorzugt über das bash-Werkzeug.",
 			"fctx.label": "FastCtx-Dateiwerkzeuge (gb_*)",
-			"fctx.hint": "Standardmäßig ein: Veröffentlicht gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: stapelweise Lesevorgänge mit Token-Budget, Kodierungserkennung). ERGÄNZUNGEN zu read/grep/glob/edit — die offiziellen Werkzeuge behalten die Datei-Sandbox und bleiben Standard. Weicht automatisch zurück, wenn dsh-ops installiert ist.",
+			"fctx.hint": "Standardmäßig aus (seit v0.39.4 veraltet; explizit aktivierbar): Veröffentlicht gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: stapelweise Lesevorgänge mit Token-Budget, Kodierungserkennung). ERGÄNZUNGEN zu read/grep/glob/edit — die offiziellen Werkzeuge behalten die Datei-Sandbox und bleiben Standard. Weicht automatisch zurück, wenn dsh-ops installiert ist.",
 			},
 			/* locale: fr */
 			"fr": {
@@ -463,7 +463,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "Outil pwsh (PowerShell officiel)",
 			"pwsh.hint": "Désactivé par défaut : activé, l'outil pwsh officiel de l'hôte devient visible pour les sessions — du VRAI PowerShell (le résolveur officiel préfère automatiquement PowerShell 7) pour le travail Windows natif (registre/services/WMI). Désactivé (défaut), il reste masqué et l'hôte garde bash en priorité. Rien à installer ; l'ancien outil PowerShell 7 en parallèle a été retiré avec la nouvelle architecture. Passez toujours par l'outil bash en premier.",
 			"fctx.label": "Outils de fichiers FastCtx (gb_*)",
-			"fctx.hint": "Activé par défaut : publie gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust : lectures par lots avec budget de tokens, détection d’encodage). COMPLÉMENTS aux outils officiels read/grep/glob/edit — ceux-ci conservent le bac à sable fichiers et restent la valeur par défaut. Se retire automatiquement si dsh-ops est installé.",
+			"fctx.hint": "Désactivé par défaut (abandonné depuis v0.39.4 ; réactivable explicitement) : publie gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust : lectures par lots avec budget de tokens, détection d’encodage). COMPLÉMENTS aux outils officiels read/grep/glob/edit — ceux-ci conservent le bac à sable fichiers et restent la valeur par défaut. Se retire automatiquement si dsh-ops est installé.",
 			},
 			/* locale: hi */
 			"hi": {
@@ -541,7 +541,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh टूल (आधिकारिक PowerShell)",
 			"pwsh.hint": "डिफ़ॉल्ट रूप से बंद: चालू करने पर होस्ट का आधिकारिक pwsh टूल सत्रों के लिए दिखाई देता है — असली PowerShell (आधिकारिक रिज़ॉल्वर स्वतः PowerShell 7 को प्राथमिकता देता है), Windows-नेटिव काम (रजिस्ट्री/सेवाएँ/WMI) के लिए सीधे उपयोगी। बंद (डिफ़ॉल्ट) रहने पर यह छिपा रहता है और होस्ट bash-प्राथमिकता बनाए रखता है। कुछ भी अतिरिक्त इंस्टॉल करने की ज़रूरत नहीं; पुराना PowerShell 7 साइड-चैनल टूल नए आर्किटेक्चर के साथ सेवामुक्त हो गया। कमांड अब भी पहले bash टूल से चलाएँ।",
 			"fctx.label": "FastCtx फ़ाइल उपकरण (gb_*)",
-			"fctx.hint": "डिफ़ॉल्ट रूप से चालू: gb_inspect_local_file / gb_grep / gb_glob / gb_replace प्रकाशित करता है (Rust: टोकन बजट के साथ बैच रीड, एनकोडिंग पहचान)। आधिकारिक read/grep/glob/edit के अतिरिक्त — आधिकारिक उपकरण फ़ाइल सैंडबॉक्स रखते हैं और डिफ़ॉल्ट बने रहते हैं। dsh-ops इंस्टॉल होने पर स्वतः पीछे हट जाता है।",
+			"fctx.hint": "डिफ़ॉल्ट रूप से बंद (v0.39.4 से deprecated; स्पष्ट रूप से चालू करें): gb_inspect_local_file / gb_grep / gb_glob / gb_replace प्रकाशित करता है (Rust: टोकन बजट के साथ बैच रीड, एनकोडिंग पहचान)। आधिकारिक read/grep/glob/edit के अतिरिक्त — आधिकारिक उपकरण फ़ाइल सैंडबॉक्स रखते हैं और डिफ़ॉल्ट बने रहते हैं। dsh-ops इंस्टॉल होने पर स्वतः पीछे हट जाता है।",
 			},
 			/* locale: id */
 			"id": {
@@ -619,7 +619,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "Alat pwsh (PowerShell resmi)",
 			"pwsh.hint": "Nonaktif secara default: saat aktif, alat pwsh resmi milik host menjadi terlihat bagi sesi — PowerShell ASLI (resolver resmi otomatis memilih PowerShell 7) untuk kerja native Windows (registry/layanan/WMI). Nonaktif (default) menyembunyikannya dan host tetap bash-first. Tidak perlu menginstal apa pun; alat samping PowerShell 7 yang lama sudah dipensiunkan bersama arsitektur baru. Jalankan perintah tetap lewat alat bash terlebih dahulu.",
 			"fctx.label": "Alat berkas FastCtx (gb_*)",
-			"fctx.hint": "Aktif secara bawaan: menerbitkan gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: pembacaan batch dengan anggaran token, deteksi enkode). TAMBAHAN untuk read/grep/glob/edit resmi — alat resmi tetap memiliki sandbox berkas dan menjadi bawaan. Mundur otomatis saat dsh-ops terinstal.",
+			"fctx.hint": "Nonaktif secara bawaan (dihentikan sejak v0.39.4; aktifkan secara eksplisit): menerbitkan gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: pembacaan batch dengan anggaran token, deteksi enkode). TAMBAHAN untuk read/grep/glob/edit resmi — alat resmi tetap memiliki sandbox berkas dan menjadi bawaan. Mundur otomatis saat dsh-ops terinstal.",
 			},
 			/* locale: it */
 			"it": {
@@ -697,7 +697,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "Strumento pwsh (PowerShell ufficiale)",
 			"pwsh.hint": "Disattivo per impostazione predefinita: quando attivo, lo strumento pwsh ufficiale dell'host diventa visibile alle sessioni — VERO PowerShell (il resolver ufficiale preferisce automaticamente PowerShell 7) per lavoro Windows nativo (registro/servizi/WMI). Disattivo (predefinito), resta nascosto e l'host resta bash-first. Nulla da installare in più; il vecchio strumento laterale PowerShell 7 è andato in pensione con la nuova architettura. Instrada comunque i comandi prima tramite lo strumento bash.",
 			"fctx.label": "Strumenti file FastCtx (gb_*)",
-			"fctx.hint": "Attivo per impostazione predefinita: pubblica gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: letture in batch con budget di token, rilevamento della codifica). AGGIUNTE ai read/grep/glob/edit ufficiali — quelli ufficiali mantengono la sandbox dei file e restano la scelta predefinita. Si ritira automaticamente con dsh-ops installato.",
+			"fctx.hint": "Disattivato per impostazione predefinita (deprecato dalla v0.39.4; riattivabile esplicitamente): pubblica gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: letture in batch con budget di token, rilevamento della codifica). AGGIUNTE ai read/grep/glob/edit ufficiali — quelli ufficiali mantengono la sandbox dei file e restano la scelta predefinita. Si ritira automaticamente con dsh-ops installato.",
 			},
 			/* locale: ja */
 			"ja": {
@@ -775,7 +775,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh ツール(公式 PowerShell)",
 			"pwsh.hint": "既定はオフ:オンにすると、ホスト公式の pwsh ツールがセッションから見えるようになります — 本物の PowerShell です(公式リゾルバが自動で PowerShell 7 を優先)。レジストリ/サービス/WMI など Windows ネイティブ作業にそのまま使えます。オフ(既定)では非表示のまま、ホストは bash 優先を保ちます。追加インストールは一切不要。旧 PowerShell 7 バイパスツールは新アーキテクチャで退役しました。コマンドは引き続き bash ツールを優先してください。",
 			"fctx.label": "FastCtx ファイルツール(gb_*)",
-			"fctx.hint": "既定はオン:gb_inspect_local_file / gb_grep / gb_glob / gb_replace を公開(Rust:トークン予算付き一括読み取り、エンコーディング検出)。公式 read/grep/glob/edit への追加であり、公式ツールはファイルサンドボックスを保ち既定の推奨のまま。dsh-ops が入ると自動で退きます。",
+			"fctx.hint": "既定はオフ(v0.39.4 で非推奨;明示的に有効化可):gb_inspect_local_file / gb_grep / gb_glob / gb_replace を公開(Rust:トークン予算付き一括読み取り、エンコーディング検出)。公式 read/grep/glob/edit への追加であり、公式ツールはファイルサンドボックスを保ち既定の推奨のまま。dsh-ops が入ると自動で退きます。",
 			},
 			/* locale: ko */
 			"ko": {
@@ -853,7 +853,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh 도구(공식 PowerShell)",
 			"pwsh.hint": "기본적으로 꺼짐: 켜면 호스트의 공식 pwsh 도구가 세션에 표시됩니다 — 진짜 PowerShell이며(공식 리졸버가 자동으로 PowerShell 7을 우선), 레지스트리/서비스/WMI 등 Windows 네이티브 작업에 바로 쓸 수 있습니다. 꺼짐(기본값)이면 숨겨진 채로 호스트는 bash 우선을 유지합니다. 추가 설치가 전혀 필요 없습니다. 이전 PowerShell 7 우회 도구는 새 아키텍처와 함께 은퇴했습니다. 명령은 여전히 bash 도구를 먼저 사용하세요.",
 			"fctx.label": "FastCtx 파일 도구(gb_*)",
-			"fctx.hint": "기본 켜짐: gb_inspect_local_file / gb_grep / gb_glob / gb_replace 를 공개합니다(Rust: 토큰 예산 기반 일괄 읽기, 인코딩 감지). 공식 read/grep/glob/edit 의 추가이며 공식 도구는 파일 샌드박스를 유지하고 기본 권장입니다. dsh-ops 가 설치되면 자동으로 물러납니다.",
+			"fctx.hint": "기본 꺼짐(v0.39.4부터 사용 중단;명시적으로 켤 수 있음): gb_inspect_local_file / gb_grep / gb_glob / gb_replace 를 공개합니다(Rust: 토큰 예산 기반 일괄 읽기, 인코딩 감지). 공식 read/grep/glob/edit 의 추가이며 공식 도구는 파일 샌드박스를 유지하고 기본 권장입니다. dsh-ops 가 설치되면 자동으로 물러납니다.",
 			},
 			/* locale: nl */
 			"nl": {
@@ -931,7 +931,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh-hulpmiddel (officiële PowerShell)",
 			"pwsh.hint": "Standaard uit: ingeschakeld wordt het officiële pwsh-hulpmiddel van de host zichtbaar voor sessies — ECHTE PowerShell (de officiële resolver geeft automatisch de voorkeur aan PowerShell 7) voor Windows-natief werk (register/services/WMI). Uit (de standaard) blijft het verborgen en blijft de host bash-first. Niets extra te installeren; het oude PowerShell-7-sidechannel-hulpmiddel is met de nieuwe architectuur met pensioen. Voer opdrachten nog steeds bij voorkeur uit via het bash-hulpmiddel.",
 			"fctx.label": "FastCtx-bestandshulpmiddelen (gb_*)",
-			"fctx.hint": "Standaard aan: publiceert gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: gelezen in batches met tokenbudget, coderingsdetectie). AANVULLINGEN op read/grep/glob/edit — de officiële hulpmiddelen houden de bestandssandbox en blijven de standaard. Trekt zich automatisch terug wanneer dsh-ops is geïnstalleerd.",
+			"fctx.hint": "Standaard uit (verouderd sinds v0.39.4; expliciet inschakelen): publiceert gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: gelezen in batches met tokenbudget, coderingsdetectie). AANVULLINGEN op read/grep/glob/edit — de officiële hulpmiddelen houden de bestandssandbox en blijven de standaard. Trekt zich automatisch terug wanneer dsh-ops is geïnstalleerd.",
 			},
 			/* locale: pl */
 			"pl": {
@@ -1009,7 +1009,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "Narzędzie pwsh (oficjalny PowerShell)",
 			"pwsh.hint": "Domyślnie wyłączone: po włączeniu oficjalne narzędzie pwsh hosta staje się widoczne dla sesji — PRAWDZIWY PowerShell (oficjalny resolver automatycznie preferuje PowerShell 7) do natywnej pracy w Windows (rejestr/usługi/WMI). Wyłączone (domyślnie) pozostaje ukryte, a host pozostaje bash-first. Niczego nie trzeba dodatkowo instalować; stare narzędzie poboczne PowerShell 7 przeszło na emeryturę wraz z nową architekturą. Polecenia nadal wykonuj najpierw przez narzędzie bash.",
 			"fctx.label": "Narzędzia plików FastCtx (gb_*)",
-			"fctx.hint": "Domyślnie włączone: publikuje gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: odczyty wsadowe z budżetem tokenów, wykrywanie kodowania). DODATKI do oficjalnych read/grep/glob/edit — oficjalne narzędzia zachowują sandbox plików i pozostają domyślne. Wycofuje się automatycznie, gdy zainstalowano dsh-ops.",
+			"fctx.hint": "Domyślnie wyłączone (przestarzałe od v0.39.4; można włączyć ręcznie): publikuje gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: odczyty wsadowe z budżetem tokenów, wykrywanie kodowania). DODATKI do oficjalnych read/grep/glob/edit — oficjalne narzędzia zachowują sandbox plików i pozostają domyślne. Wycofuje się automatycznie, gdy zainstalowano dsh-ops.",
 			},
 			/* locale: pt */
 			"pt": {
@@ -1087,7 +1087,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "Ferramenta pwsh (PowerShell oficial)",
 			"pwsh.hint": "Desativado por padrão: ao ativar, a ferramenta pwsh oficial do host fica visível para as sessões — PowerShell REAL (o resolvedor oficial prefere automaticamente o PowerShell 7) para trabalho nativo do Windows (registro/serviços/WMI). Desativado (o padrão), ela permanece oculta e o host continua bash-first. Nada extra para instalar; a antiga ferramenta paralela PowerShell 7 foi aposentada com a nova arquitetura. Encaminhe os comandos ainda pela ferramenta bash primeiro.",
 			"fctx.label": "Ferramentas de arquivos FastCtx (gb_*)",
-			"fctx.hint": "Ativado por padrão: publica gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: leituras em lote com orçamento de tokens, detecção de codificação). ADIÇÕES aos read/grep/glob/edit oficiais — os oficiais mantêm o sandbox de arquivos e continuam o padrão. Recua automaticamente quando o dsh-ops está instalado.",
+			"fctx.hint": "Desativado por padrão (preterido desde a v0.39.4; reative explicitamente): publica gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: leituras em lote com orçamento de tokens, detecção de codificação). ADIÇÕES aos read/grep/glob/edit oficiais — os oficiais mantêm o sandbox de arquivos e continuam o padrão. Recua automaticamente quando o dsh-ops está instalado.",
 			},
 			/* locale: ru */
 			"ru": {
@@ -1165,7 +1165,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "Инструмент pwsh (официальный PowerShell)",
 			"pwsh.hint": "По умолчанию выключено: при включении штатный pwsh-инструмент хоста становится видимым для сессий — НАСТОЯЩИЙ PowerShell (официальный резолвер автоматически предпочитает PowerShell 7) для нативной работы Windows (реестр/службы/WMI). В выключенном состоянии (по умолчанию) он скрыт, и хост остаётся bash-приоритетным. Ничего дополнительно устанавливать не нужно; старый обходной инструмент PowerShell 7 ушёл в отставку вместе с новой архитектурой. Команды по-прежнему выполняйте сначала через инструмент bash.",
 			"fctx.label": "Файловые инструменты FastCtx (gb_*)",
-			"fctx.hint": "По умолчанию включено: публикует gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: пакетные чтения с бюджетом токенов, определение кодировки). ДОПОЛНЕНИЯ к официальным read/grep/glob/edit — официальные сохраняют файловую песочницу и остаются выбором по умолчанию. Автоматически отступает при установленном dsh-ops.",
+			"fctx.hint": "По умолчанию отключено (устарело с v0.39.4; включите явно): публикует gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: пакетные чтения с бюджетом токенов, определение кодировки). ДОПОЛНЕНИЯ к официальным read/grep/glob/edit — официальные сохраняют файловую песочницу и остаются выбором по умолчанию. Автоматически отступает при установленном dsh-ops.",
 			},
 			/* locale: sv */
 			"sv": {
@@ -1243,7 +1243,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh-verktyget (officiell PowerShell)",
 			"pwsh.hint": "Av som standard: när den är på blir hostens officiella pwsh-verktyg synligt för sessioner — ÄKTA PowerShell (den officiella upplösaren föredrar automatiskt PowerShell 7) för Windows-inbyggt arbete (register/tjänster/WMI). Av (standarden) hålls den dold och hosten förblir bash-först. Inget extra att installera; det gamla PowerShell 7-sidokanalverktyget har pensionerats med den nya arkitekturen. Kör kommandon fortfarande via bash-verktyget först.",
 			"fctx.label": "FastCtx-filverktyg (gb_*)",
-			"fctx.hint": "På som standard: publicerar gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batchläsningar med tokenbudget, kodningsdetektering). TILLÄGG till de officiella read/grep/glob/edit — de officiella behåller filsandlådan och förblir standard. Drar sig automatiskt tillbaka när dsh-ops är installerat.",
+			"fctx.hint": "Av som standard (utfasad från v0.39.4; aktivera explicit): publicerar gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batchläsningar med tokenbudget, kodningsdetektering). TILLÄGG till de officiella read/grep/glob/edit — de officiella behåller filsandlådan och förblir standard. Drar sig automatiskt tillbaka när dsh-ops är installerat.",
 			},
 			/* locale: th */
 			"th": {
@@ -1321,7 +1321,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "เครื่องมือ pwsh (PowerShell ทางการ)",
 			"pwsh.hint": "ปิดอยู่โดยค่าเริ่มต้น: เมื่อเปิด เครื่องมือ pwsh ทางการของโฮสต์จะปรากฏแก่เซสชัน — เป็น PowerShell แท้ (ตัวแก้ไขทางการเลือก PowerShell 7 ให้โดยอัตโนมัติ) ใช้ได้ทันทีสำหรับงาน Windows แบบเนทีฟ (registry/services/WMI) เมื่อปิด (ค่าเริ่มต้น) เครื่องมือจะถูกซ่อนและโฮสต์ยังให้ bash มาก่อน ไม่ต้องติดตั้งอะไรเพิ่ม; เครื่องมือข้างทาง PowerShell 7 เดิมได้เลิกใช้ไปพร้อมสถาปัตยกรรมใหม่ ส่งคำสั่งผ่านเครื่องมือ bash เป็นอันดับแรกเช่นเดิม",
 			"fctx.label": "เครื่องมือไฟล์ FastCtx (gb_*)",
-			"fctx.hint": "เปิดตามค่าเริ่มต้น: เผยแพร่ gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: อ่านเป็นชุดพร้อมงบ token, ตรวจจับ encoding) เป็นส่วนเสริมของ read/grep/glob/edit ทางการ — เครื่องมือทางการยังมี sandbox ไฟล์และเป็นค่าเริ่มต้น ถอยอัตโนมัติเมื่อติดตั้ง dsh-ops",
+			"fctx.hint": "ปิดตามค่าเริ่มต้น (เลิกใช้ตั้งแต่ v0.39.4; เปิดได้ด้วยตนเอง): เผยแพร่ gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: อ่านเป็นชุดพร้อมงบ token, ตรวจจับ encoding) เป็นส่วนเสริมของ read/grep/glob/edit ทางการ — เครื่องมือทางการยังมี sandbox ไฟล์และเป็นค่าเริ่มต้น ถอยอัตโนมัติเมื่อติดตั้ง dsh-ops",
 			},
 			/* locale: tr */
 			"tr": {
@@ -1399,7 +1399,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh aracı (resmî PowerShell)",
 			"pwsh.hint": "Varsayılan olarak kapalı: açıkken ana makinenin resmî pwsh aracı oturumlara görünür olur — GERÇEK PowerShell (resmî çözümleyici otomatik olarak PowerShell 7'yi tercih eder) Windows-yerel işler (kayıt defteri/hizmetler/WMI) için doğrudan kullanılabilir. Kapalı (varsayılan) kaldığında gizli kalır ve ana makine bash-öncelikli kalır. Ekstra bir şey kurmaya gerek yok; eski PowerShell 7 yan kanal aracı yeni mimariyle birlikte emekli edildi. Komutları yine de önce bash aracıyla çalıştırın.",
 			"fctx.label": "FastCtx dosya araçları (gb_*)",
-			"fctx.hint": "Varsayılan açık: gb_inspect_local_file / gb_grep / gb_glob / gb_replace yayımlar (Rust: token bütçeli toplu okumalar, kodlama algılama). Resmî read/grep/glob/edit’e EKLER — resmî araçlar dosya kum havuzunu korur ve varsayılan kalır. dsh-ops kurulu olduğunda otomatik olarak geri çekilir.",
+			"fctx.hint": "Varsayılan kapalı (v0.39.4'ten itibaren kullanım dışı; açıkça etkinleştirin): gb_inspect_local_file / gb_grep / gb_glob / gb_replace yayımlar (Rust: token bütçeli toplu okumalar, kodlama algılama). Resmî read/grep/glob/edit’e EKLER — resmî araçlar dosya kum havuzunu korur ve varsayılan kalır. dsh-ops kurulu olduğunda otomatik olarak geri çekilir.",
 			},
 			/* locale: vi */
 			"vi": {
@@ -1477,7 +1477,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "Công cụ pwsh (PowerShell chính thức)",
 			"pwsh.hint": "Mặc định tắt: khi bật, công cụ pwsh chính thức của host hiển thị cho các phiên — PowerShell THẬT (bộ phân giải chính thức tự ưu tiên PowerShell 7) dùng ngay cho công việc Windows gốc (registry/services/WMI). Tắt (mặc định) thì nó vẫn bị ẩn và host vẫn ưu tiên bash. Không cần cài thêm gì; công cụ rẽ nhánh PowerShell 7 cũ đã nghỉ hưu cùng kiến trúc mới. Vẫn ưu tiên chạy lệnh qua công cụ bash trước.",
 			"fctx.label": "Công cụ tệp FastCtx (gb_*)",
-			"fctx.hint": "Mặc định bật: phát hành gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: đọc theo lô có ngân sách token, phát hiện mã hóa). BỔ SUNG cho read/grep/glob/edit chính thức — công cụ chính thức giữ sandbox tệp và vẫn là mặc định. Tự rút khi dsh-ops được cài.",
+			"fctx.hint": "Mặc định tắt (không còn dùng từ v0.39.4; bật thủ công nếu cần): phát hành gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: đọc theo lô có ngân sách token, phát hiện mã hóa). BỔ SUNG cho read/grep/glob/edit chính thức — công cụ chính thức giữ sandbox tệp và vẫn là mặc định. Tự rút khi dsh-ops được cài.",
 			},
 			/* locale: zh-hk */
 			"zh-hk": {
@@ -1555,7 +1555,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh 工具(官方 PowerShell)",
 			"pwsh.hint": "預設關閉:開啟後宿主官方的 pwsh 工具對會話可見——它是真正的 PowerShell(官方解析器自動優先 PowerShell 7),可直接用於 Windows 原生操作(登錄檔/服務/WMI)。關閉(預設)時該工具被隱藏,主機保持 bash 優先。無需安裝任何額外元件;舊版 PowerShell 7 旁路工具已隨新架構退役。命令仍然首選 bash 工具。",
 			"fctx.label": "FastCtx 檔案工具(gb_*)",
-			"fctx.hint": "預設開啟:發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
+			"fctx.hint": "預設關閉(v0.39.4 起棄用,可顯式開啟):發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
 			},
 			/* locale: zh-mo */
 			"zh-mo": {
@@ -1633,7 +1633,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh 工具(官方 PowerShell)",
 			"pwsh.hint": "預設關閉:開啟後宿主官方的 pwsh 工具對會話可見——它是真正的 PowerShell(官方解析器自動優先 PowerShell 7),可直接用於 Windows 原生操作(登錄檔/服務/WMI)。關閉(預設)時該工具被隱藏,主機保持 bash 優先。無需安裝任何額外元件;舊版 PowerShell 7 旁路工具已隨新架構退役。命令仍然首選 bash 工具。",
 			"fctx.label": "FastCtx 檔案工具(gb_*)",
-			"fctx.hint": "預設開啟:發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
+			"fctx.hint": "預設關閉(v0.39.4 起棄用,可顯式開啟):發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
 			},
 			/* locale: zh-tw */
 			"zh-tw": {
@@ -1711,7 +1711,7 @@ window.__ModuleLoader__.load({
 			"pwsh.label": "pwsh 工具(官方 PowerShell)",
 			"pwsh.hint": "預設關閉:開啟後宿主官方的 pwsh 工具對工作階段可見——它是真正的 PowerShell(官方解析器自動優先 PowerShell 7),可直接用於 Windows 原生操作(登錄檔/服務/WMI)。關閉(預設)時該工具被隱藏,主機保持 bash 優先。無需安裝任何額外元件;舊版 PowerShell 7 旁路工具已隨新架構退役。命令仍然首選 bash 工具。",
 			"fctx.label": "FastCtx 檔案工具(gb_*)",
-			"fctx.hint": "預設開啟:發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
+			"fctx.hint": "預設關閉(v0.39.4 起棄用,可顯式開啟):發布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 實現:批量讀取帶 token 預算、編碼探測)。它們是官方 read/grep/glob/edit 的補充——官方工具接檔案沙箱,仍是預設推薦;偵測到 dsh-ops 時本組自動讓位。",
 			},
 		};
 
