@@ -6,7 +6,7 @@
 
 ## 1. 验证基准与结果
 
-- 当前实验基线：[上游 v0.39.3 与 PR #28 后续修复](https://github.com/KannaKuron/dsh-gitbash-shell/commit/114dcde434b99755532cc402f13cecbfe86c9a67)。前置 PR #24 已合并。
+- 当前实验基线：[上游 v0.39.4（52da331）](https://github.com/KannaKuron/dsh-gitbash-shell/commit/52da331)。前置 PR #24 已合并；2026-10-15 第一轮设计评审后由 v0.39.3（114dcde）rebase 而来，本节末尾补记本轮验证。
 - 测试环境：**DSH Core 0.2.1-alpha.2**、Node 24.13.0、Windows / Git for Windows。
 - 新native功能按公开能力探测启用；既有兼容版本范围之外的实际覆盖情况见后文待验收项。
 - 最终普通全仓：**232 tests / 232 pass / 0 fail / 0 skip / 0 cancel，exit0**。
@@ -176,3 +176,9 @@ DSH_PREVIEW_HOST_DIR='<实际宿主resources/app绝对路径>' npm run test:prev
 最终普通全仓 **232/232**、实际 Core 完整 preview **85/85**，均 exit0、无 skip/cancel。隔离子代理独立重跑原始所有权复现两项与新增专项七项，**9/9** 通过：全局与同 agent 外部 sentinel 均保持原响应，另一 companion 正常注册。未发现新的确认缺陷。这些专项与完整结果重叠，不累加。
 
 最初疑似 Bash policy 时序问题已撤回：实际宿主契约为逐操作快照，模式变更作用于下一次调用；直接修改 fixture header.policy 不能证明违约。本轮保持该契约。上述四项正式验收仍待，继续保持 Draft/RFC。
+
+## 同步 v0.39.4 后的验证（2026-10-15，第一轮设计评审收敛）
+
+按[维护者第一轮设计评审](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26#issuecomment-6182031633)rebase 到 v0.39.4（52da331）并完成三项收敛：① 新增实际 Core 断言——`fastctxTools` OFF（v0.39.4 默认值）且工具面无 `gb_*`/`ops_*` 的单装场景下 companion 注册检测照常挂载（`tests/runtime-preview.mjs`「companions mount on the single-install face with fastctxTools OFF」）；② 设计文档 §3 补同装 dsh-ops 组合盲点；③ session-workdir 保留模块化 `src/session-workdir.js`（52da331 未触及 bash-tool.js，收敛在 rebase 中自动完成，smoke 新增源码断言防双实现静默回归）。
+
+普通完整回归 **236/236**、实际 Core（desktop-next host，0.2.0-rc.1）完整 preview **86/86**（较上轮 85 增本轮①断言一例），均 exit0、无 skip/cancel。有界只读交叉核验（隔离子代理）独立复跑数字一致，变异测试确认新断言对 fastctx 门控移除有唯一检测力；fastctxTools OFF 下禁用的桥走 unpublish 短路、不进入 publish（disabled 日志断言）。已知非本轮引入的遗留：客户端 FastCtx 卡 21 语言 hint 仍写「默认开启」而实际默认 OFF（继承自 main 52da331），拟作为上游问题在 PR 说明。上述四项正式验收仍待。

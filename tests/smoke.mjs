@@ -3130,6 +3130,17 @@ test('bash tool: the schema advertises background + escalation only when the com
   await assert.rejects(() => def.execute({ command: 'ls', description: 'x', timeoutMs: -1 }, { agent: undefined, signal: { aborted: false } }), /invalid timeoutMs/)
 })
 
+// Review round 1 on PR #26 (item 3): the workdir seam stays modular. An inline
+// `ctx.get('workingDirectory')` copy must not silently come back the next time
+// main touches bash-tool.js.
+test('bash tool: the session-workdir seam stays modular, no inline fallback', () => {
+  const source = readFileSync(new URL('../src/bash-tool.js', import.meta.url), 'utf8')
+  assert.match(source, /import \{ resolveSessionCwd \} from '\.\/session-workdir\.js'/)
+  assert.doesNotMatch(source, /ctx\.get\('workingDirectory'\)/, 'no inline workingDirectory fallback; route it through src/session-workdir.js')
+  const module = readFileSync(new URL('../src/session-workdir.js', import.meta.url), 'utf8')
+  assert.match(module, /export (async )?function resolveSessionCwd|export const resolveSessionCwd/)
+})
+
 test('bash tool: the defineTool path is taken when the host tools module resolves', async () => {
   const { createBashToolModule } = await import('../src/bash-tool.js')
   const registered = []
