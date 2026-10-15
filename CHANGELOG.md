@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.40.1 — 2026-10-15
+
+### 清理 gitbash_native 的两个死配置读取（chore）
+
+- 删除 `gitbash_native` 模块对 `config.enableRunInBackground`/`config.promoteOnTimeout` 的读取（[v0.40.0 已知项](#v0400--2026-10-15)就此销账）：该模块由 inline 接线**手动挂载在 agent scope**（`scope.ctx.plugin({...module})` 无参调用），行/执行器 Config 不可达，两个字段自 v0.40.0 起读到的恒为 undefined、按 `!== false` 恒开——是"没接线的开关面板"而非活门控。清理后行为一个字节不变：`background` 仅由 Jobs 注册表在场决定（这正是实际生效的逻辑），超时转 Job 跟随后台可用性；用户级开关仍是 `experimentalNative` 总闸（要关 native 后台只能整体关闭 native/path，官方 tool-bash 的同名活开关不受影响）。
+- 模块 `apply(ctx)` 签名不再收 config，并加注释说明挂载差异与官方 tool-bash 的区别；`tests/native-preview.mjs` 装置同步（装置曾以 `plugin(mod, { promoteOnTimeout })` 作为**测试注入点**参数化 promote——删除后装置不再传第二参；唯一的 promote 场景（jobs 在场断言 promoted）清理前后行为一致）。**preview 改动待 Windows 真机复验**（本机 Node 24 无法运行 preview 套件；`npm test` 普通回归 235 pass + 1 skip / 0 fail）。
+- 保留说明：`src/bash-tool.js` 的 `config?.enableRunInBackground ?? true` 防御式读取**不清理**——bash 工具是官方 tool-bash 的逐调用镜像物，这两个字段在官方行 Config 上真实存在且可关；我们的镜像接不到行 Config 时按 `?? true` 显式走官方默认，语义是"默认开"而非"假装可配"。
+- 相关：[PR #26](https://github.com/KannaKuron/dsh-gitbash-shell/pull/26) 评审遗留清理。
+
 ## v0.40.0 — 2026-10-15
 
 ### PR #26 合并：实验原生执行 / fail-closed（feat / docs）

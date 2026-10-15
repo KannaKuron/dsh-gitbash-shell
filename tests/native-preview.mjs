@@ -33,7 +33,7 @@ function createScope(parent) {
   const fiber = parent.plugin(value => { ctx = value })
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
-async function fixture(t, { jobs = false, promote = false, controller = true, artifactFactory, ensure, missingDirectoryService = false, policyWorkspaceRoot = DIR } = {}) {
+async function fixture(t, { jobs = false, controller = true, artifactFactory, ensure, missingDirectoryService = false, policyWorkspaceRoot = DIR } = {}) {
   const root = new Context()
   const disposers = []
   const spawned = []
@@ -77,7 +77,7 @@ async function fixture(t, { jobs = false, promote = false, controller = true, ar
       return { spawn(spec) { const handle = adapter.spawn(spec); spawned.push({ spec, handle }); return handle } }
     },
   }
-  const toolFiber = agent.ctx.plugin(createNativeToolModule(deps), { promoteOnTimeout: promote })
+  const toolFiber = agent.ctx.plugin(createNativeToolModule(deps))
   await toolFiber
   disposers.push(() => toolFiber.dispose())
   const tools = root.get('tools')
@@ -370,7 +370,7 @@ test('installed Core native: Jobs background, consuming reads and final encoding
 })
 
 test('installed Core native: promotion continues; tool fiber reload does not kill handed-off job', { timeout: 15000 }, async t => {
-  const f = await fixture(t, { jobs: true, promote: true })
+  const f = await fixture(t, { jobs: true })
   const response = await f.run(request('console.log("READY");setTimeout(()=>console.log("AFTER_PROMOTION"),900)', { timeoutMs: 350 }))
   assert.equal(response.isError, false, JSON.stringify(response))
   assert.equal(response.value.kind, 'promoted')

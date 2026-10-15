@@ -104,13 +104,17 @@ export function createNativeToolModule(deps) {
   if (typeof deps.toolsModule?.defineTool !== 'function') throw new Error('gitbash_native: host defineTool capability unavailable')
   return {
     inject: ['tools', 'subprocess', 'shellEnv'],
-    apply(ctx, config = {}) {
+    apply(ctx) {
       const executor = createNativeExecutor(ctx, deps)
-      const enabled = config.enableRunInBackground !== false
-      const promoteOnTimeout = config.promoteOnTimeout !== false && enabled
+      // No Config gates here: this module is mounted by hand in an agent scope
+      // (`scope.ctx.plugin({...module})`), so row/executor Config fields are
+      // unreachable and would read as permanently-on dead switches. Background
+      // follows the job registry's presence alone; the user-level kill switch
+      // is experimentalNative (the official tool-bash keeps its own live
+      // enableRunInBackground/promoteOnTimeout on its row).
       const definition = jobs => {
-        const background = enabled && jobs !== undefined
-        const promote = background && promoteOnTimeout
+        const background = jobs !== undefined
+        const promote = background
         const startJob = (request, exec) => {
           let proc
           let finalFacts = ''
@@ -181,7 +185,6 @@ export function createNativeToolModule(deps) {
       }
       let currentJobs
       const refresh = registerExperimentalTool(ctx, () => definition(currentJobs), deps.experimentalEnabled, { scope: deps.scope, log: deps.log })
-      if (!enabled) return
       ctx.inject(['jobs'], jobCtx => {
         currentJobs = jobCtx.jobs
         refresh()
