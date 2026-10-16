@@ -2412,6 +2412,37 @@ test('toolchain: the PATH scan resolves commands, first hit wins, bad dirs are s
   assert.equal(scanCommands(broken, TOOLCHAIN).size, 0, 'an unreadable directory is not fatal')
 })
 
+test('toolchain: only executable extensions resolve — a man page is not the command', () => {
+  // issue #31: the scan used to strip ANY extension, so a man page sitting
+  // beside the real binary won the first-hit race. MEASURED: readdir sorts
+  // `just.1` before `just.exe` in winget's portable package directory, so the
+  // card's path column pointed at the man page.
+  const io = {
+    pathDirs: () => ['C:/pkg'],
+    readdir: () => ['just.1', 'just.exe', 'make.1', 'tree.txt', 'jq.md', 'gdu.d', 'fzf', 'bat.EXE'],
+  }
+  const hits = scanCommands(io, TOOLCHAIN)
+  // The extension-less executable still resolves: Git for Windows PATH
+  // directories are full of them (`/usr/bin/make` carries no extension), and a
+  // portable package can drop one beside its own docs.
+  assert.equal(hits.get('fzf'), 'C:/pkg' + '\\' + 'fzf')
+  // `just.1` sorts BEFORE `just.exe`, so this pins "first EXECUTABLE hit wins"
+  // rather than "first entry sharing the stem wins".
+  assert.equal(hits.get('just'), 'C:/pkg' + '\\' + 'just.exe')
+  // Case-insensitive, the way Windows itself resolves the extension.
+  assert.equal(hits.get('bat'), 'C:/pkg' + '\\' + 'bat.EXE')
+  // A man page / document / directory is NOT the command.
+  assert.equal(hits.has('make'), false, 'a man page must not resolve as make')
+  assert.equal(hits.has('tree'), false, 'a text file must not resolve as tree')
+  assert.equal(hits.has('jq'), false, 'a markdown file must not resolve as jq')
+  assert.equal(hits.has('gdu'), false, 'a directory named gdu.d must not resolve as gdu')
+  // The decision layer follows the scan: with no executable found the row stays
+  // installable, instead of claiming somebody else's toolchain provides it.
+  const state = classifyToolState({ hasCommand: hits.has('make'), wingetOwned: false, upgradable: false })
+  assert.equal(state, 'missing')
+  assert.equal(isActionable(state), true)
+})
+
 test('toolchain: the state machine — winget inventory first, others never touched', () => {
   assert.equal(classifyToolState({ hasCommand: false, wingetOwned: false, upgradable: false }), 'missing')
   // Somebody else's toolchain: present but NOT ours to install or upgrade.
