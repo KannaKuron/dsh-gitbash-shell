@@ -1765,14 +1765,16 @@ function cleanupLegacyTrees(presetIds) {
  * package is absent rejects the WHOLE mount, so the rows ride this probe: each
  * is added only when its package resolves from the HOST's module base —
  * `ctx.baseUrl`, the exact base `prepareProfileEntries` mounts preset rows
- * from, so the probe can never disagree with the mounter. On dsh <= 0.2.0 both
+ * from, so the probe can never disagree with the mounter. On dsh <= 0.2.0 all
  * stay false and the row set stays byte-identical to the 0.1.7 mirror. Probed
  * once per boot; the profile's package set does not change under a running
- * host. minimal never gains the rows (the official minimal preset has none).
+ * host. `compaction` is the one flag minimal consumes (the official
+ * 0.2.1-alpha.3 minimal rows); the rest only shape the full variants.
  * @param {object} ctx - cordis context (any fiber of the running host).
  * @param {Function} [resolve] - predicate override for tests; receives a
  *   package specifier, resolves like `require.resolve`, returns boolean.
- * @returns {Promise<{timeContext: boolean, toolSchedule: boolean}>}
+ * @returns {Promise<{timeContext: boolean, toolSchedule: boolean,
+ *   pluginMarket: boolean, compaction: boolean}>}
  */
 export async function probeHostExtras(ctx, resolve) {
   let ok = resolve
@@ -1787,11 +1789,13 @@ export async function probeHostExtras(ctx, resolve) {
       ok = () => false
     }
   }
-  const [timeContext, toolSchedule] = await Promise.all([
+  const [timeContext, toolSchedule, pluginMarket, compaction] = await Promise.all([
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-time-context')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-schedule')).then(Boolean),
+    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-plugin-market/tools')).then(Boolean),
+    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-compaction-basic')).then(Boolean),
   ])
-  return { timeContext, toolSchedule }
+  return { timeContext, toolSchedule, pluginMarket, compaction }
 }
 
 /** Run one probe predicate; ANY failure reads as "absent" (a throwing
@@ -1871,7 +1875,7 @@ async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, python
   const meta = PRESET_META[presetId]
   if (!meta) return undefined
   const plugins = meta.kind === 'minimal'
-    ? minimalPluginsFor({ bashPath: minimalPtyBashPath(readBashResolution) })
+    ? minimalPluginsFor({ bashPath: minimalPtyBashPath(readBashResolution), hostExtras })
     : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir, pythonActive, hostExtras })
   return ctx.agentPresets.register({
     id: presetId,
@@ -1908,9 +1912,10 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   cleanupLegacyTrees(presetIds)
   const gitBashActive = process.platform === 'win32'
   const skillsDir = await resolveSkillsDir()
-  // The dsh 0.2.1 additions (time-context / tool-schedule rows) probe once per
-  // boot and ride every (re-)registration below — the profile's package set
-  // cannot change under a running host.
+  // The dsh 0.2.1 additions (time-context / tool-schedule / plugin-market /
+  // minimal compaction rows) probe once per boot and ride every
+  // (re-)registration below — the profile's package set cannot change under a
+  // running host.
   const hostExtras = await probeHostExtras(ctx)
   /** presetId -> unregister, i.e. exactly what is live right now. */
   const live = new Map()
@@ -2007,8 +2012,13 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')'
     + (live.size === 0 ? ' — variantPresets is off: the official presets carry Git Bash through the inline tool patch (see the CHANGELOG)'
       : '')
-    + (hostExtras.timeContext || hostExtras.toolSchedule
-    ? ' [dsh 0.2.1 additions: ' + (hostExtras.timeContext ? 'time-context' : '') + (hostExtras.timeContext && hostExtras.toolSchedule ? ' + ' : '') + (hostExtras.toolSchedule ? 'tool-schedule (subagents denied)' : '') + ']'
+    + (hostExtras.timeContext || hostExtras.toolSchedule || hostExtras.pluginMarket || hostExtras.compaction
+    ? ' [dsh 0.2.1 additions: ' + [
+        hostExtras.timeContext ? 'time-context' : '',
+        hostExtras.toolSchedule ? 'tool-schedule' : '',
+        hostExtras.pluginMarket ? 'plugin-market' : '',
+        hostExtras.compaction ? 'minimal compaction' : '',
+      ].filter(Boolean).join(' + ') + ']'
     : ''))
 
   // The peer's capability: `ctx.inject` makes this independent of row order,

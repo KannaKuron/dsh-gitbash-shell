@@ -186,6 +186,12 @@ test('compatibility: unconfined foreground warning preserves exit parsing and ca
   assert.deepEqual(parseExitStatus(renderResult({ ...result, exitCode: 2, timedOut: true })), {
     body: renderResult({ ...result, exitCode: 2, timedOut: true }).replace(/\n\[exit code: 2\]$/, ''), exitCode: 2,
   })
+  // Official 0.2.1-alpha.5: exitCode null renders "[exit code: null]" and the
+  // parser round-trips it as null (the card model reads explicit null as a
+  // failure; the producer already emitted this marker before).
+  const ended = renderResult({ ...result, exitCode: null, timedOut: true })
+  assert.match(ended, /\[exit code: null\]$/)
+  assert.deepEqual(parseExitStatus(ended), { body: ended.replace(/\n\[exit code: null\]$/, ''), exitCode: null })
   const killed = renderResult({ ...result, signal: 'SIGTERM', timedOut: true })
   assert.match(killed, /unconfined/)
   assert.match(killed, /\[killed by signal: SIGTERM\]$/)

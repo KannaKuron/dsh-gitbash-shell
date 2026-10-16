@@ -7,12 +7,14 @@
  * of the committed assets/<variant>/agent.cordis*.yml texts the materializer
  * writes on older hosts.
  *
- * Every variant mirrors the official 0.1.7 preset it replaces (packages/
- * bundle/web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the
- * Git Bash routing: full variants keep the official platform-gated shell
- * rows, and the inline patch adds OUR bash over a private executor on Windows.
- * The minimal variant instead keeps its persistent Git Bash terminal rows.
- * On non-Windows hosts the official stack stays native. A conditional delta exists while
+ * Every variant mirrors the official preset it replaces (packages/bundle/
+ * web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the Git Bash
+ * routing: full variants keep the official platform-gated shell rows, and the
+ * inline patch adds OUR bash over a private executor on Windows. The minimal
+ * variant instead keeps its persistent Git Bash terminal rows. On non-Windows
+ * hosts the official stack stays native. Host-release deltas ride hostExtras
+ * probes (the block below the header rows) — each probe keeps the base set
+ * byte-identical to the 0.1.7 mirror. A conditional delta exists while
  * dsh-ptc-cordis-preset reports its experimental-CPython backend ACTIVE: the
  * two workflow rows follow the official Python composition and go off (see
  * `pythonActive` below). While that backend is off — the default, and also
@@ -82,18 +84,18 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
   const bashDisabled = win
   const pwshDisabled = !win
   const workflowOn = kind !== 'ptc' && pythonActive !== true
-  // dsh 0.2.1 added two rows to every full-tool official preset — time-context
-  // (durable clock readings) and tool-schedule (the reminder tools) — plus a
-  // toolFilter deny of the four schedule_* tools on the subagent/subagent_fork
-  // configs (reminders never reach a subagent). A preset row whose package is
-  // absent rejects the WHOLE mount, so these ride a host probe (index.js
-  // probeHostExtras, resolved from ctx.baseUrl — the base rows mount from);
-  // absent/older hosts keep the byte-identical 0.1.7 row set. The deny list
-  // follows toolSchedule alone: denying tools that do not exist is noise.
-  const { timeContext = false, toolSchedule = false } = hostExtras
-  const subagentDeny = toolSchedule
-    ? { toolFilter: { deny: ['schedule_create', 'schedule_delete', 'schedule_list', 'schedule_update'] } }
-    : {}
+  // dsh 0.2.1 grew the official full-tool presets across releases, all
+  // row-id-stable: alpha.2 added time-context (durable clock readings) and
+  // tool-schedule (the reminder tools); alpha.3 DELETED the schedule_*
+  // toolFilter deny from the subagent/subagent_fork configs (official
+  // reminders reach subagents again — the deny was never load-bearing,
+  // nothing replaces it); alpha.4 added a tool-plugin-market row to every
+  // full preset. A preset row whose package is absent rejects the WHOLE
+  // mount, so these ride a host probe (index.js probeHostExtras, resolved
+  // from ctx.baseUrl — the base rows mount from); absent/older hosts keep
+  // the byte-identical 0.1.7 row set. The minimal variant carries its own
+  // 0.2.1-alpha.3 delta (tool-fs + compaction) behind the compaction flag.
+  const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false } = hostExtras
   const rows = [
     {
       id: 'persona',
@@ -170,12 +172,12 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
         {
           id: 'tool-subagent',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }), ...subagentDeny },
+          config: { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }) },
         },
         {
           id: 'tool-subagent-fork',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: { provider: 'fork', toolName: 'subagent_fork', ...(timeContext ? {} : { backgroundMode: 'continuable' }), ...subagentDeny },
+          config: { provider: 'fork', toolName: 'subagent_fork', ...(timeContext ? {} : { backgroundMode: 'continuable' }) },
         },
         {
           id: 'workflow-ptc',
@@ -226,6 +228,14 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
     // on wherever a profile context exists (every web deployment does).
     ...off(kind !== 'cordis'),
   })
+  if (pluginMarket) {
+    rows.push({
+      // The official 0.2.1-alpha.4 rows: same disabled split as the manager.
+      id: 'tool-plugin-market',
+      name: '@deepseek-ai/dsh-plugin-market/tools',
+      ...off(kind !== 'cordis'),
+    })
+  }
   return rows
 }
 
@@ -241,9 +251,14 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
  *   pins the historical default, so a missing Git stays a VISIBLE spawn
  *   failure — never a substitute shell (issue #15: the hardcoded default
  *   broke every PTY spawn where Git lives outside `C:/Program Files/Git`).
+ * @param {object} [input.hostExtras] - the host probe (probeHostExtras):
+ *   `compaction` true adds the official 0.2.1-alpha.3 minimal rows (an
+ *   image-read-only tool-fs plus the pruner-less compaction group) ahead of
+ *   the terminal.
  * @returns {object[]} the declarative plugins list.
  */
-export function minimalPluginsFor({ bashPath } = {}) {
+export function minimalPluginsFor({ bashPath, hostExtras = {} } = {}) {
+  const { compaction = false } = hostExtras
   const win = typeof process !== 'undefined' && process.platform === 'win32'
   return [
     {
@@ -255,6 +270,27 @@ export function minimalPluginsFor({ bashPath } = {}) {
         includeRuntimeContext: false,
       },
     },
+    ...(compaction ? [
+      {
+        // Official 0.2.1-alpha.3 minimal: image reads ride the fs tool; every
+        // other fs verb stays with the persistent terminal.
+        id: 'tool-fs',
+        name: '@deepseek-ai/dsh-tool-fs',
+        config: { read: false, readImage: true, write: false, edit: false },
+      },
+      {
+        // Official 0.2.1-alpha.3 minimal compaction group: NO pruner row
+        // (isolate carries compaction alone, unlike the full presets).
+        id: 'compaction',
+        name: 'cordis:group',
+        group: true,
+        isolate: { compaction: true },
+        config: [
+          { id: 'compaction-basic', name: '@deepseek-ai/dsh-compaction-basic' },
+          { id: 'command-compact', name: '@deepseek-ai/dsh-command-compact' },
+        ],
+      },
+    ] : []),
     {
       id: 'persistent-shell',
       name: 'cordis:group',

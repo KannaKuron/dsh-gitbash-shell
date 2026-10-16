@@ -44,7 +44,7 @@ for (const kind of ['standard', 'ptc', 'cordis']) {
     })) own(root.provide(key, value))
     for (const module of [SystemPrompt, LocalSubprocessRuntime, SandboxPwshExecutor, ToolRuntime, shellEnv]) await mount(module)
     const official = root.reflect.store[root[Context.isolate].shell]
-    const rows = pluginsFor({ kind, gitBash: true, hostExtras: { timeContext: true, toolSchedule: true } })
+    const rows = pluginsFor({ kind, gitBash: true, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true } })
     for (const row of rows.filter((row) => ['tool-bash', 'tool-pwsh'].includes(row.id) && row.disabled !== true)) {
       await mount(row.id === 'tool-bash' ? toolBash : toolPwsh)
     }

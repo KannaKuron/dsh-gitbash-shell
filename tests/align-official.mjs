@@ -21,21 +21,25 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { minimalPluginsFor, pluginsFor } from '../src/compositions.js'
 
-/** dsh-v0.2.1-alpha.2, packages/bundle/web-app/presets/*.patch.yml.
- * 0.2.1-alpha.2 removed the retired persona suffix (`{{cwd}}` variable gone),
- * the three disabled placeholder rows (codex / claude-code / ralph — the
- * provider rows moved to on-demand bundles), and the subagent rows'
- * `backgroundMode: 'continuable'` field, and rephrased the plan-mode first
- * sentence; 0.2.1's time-context + tool-schedule rows and the schedule_*
- * subagent deny stay. The plugin mirrors the era-specific shapes ONLY via the
- * host probe (hostExtras in oursOf below), so the alignment target is the
- * full-probe row set against the 0.2.1-alpha.2 text (minimal unchanged — its
- * pin is byte-identical across every release so far). */
+/** dsh-v0.2.1-alpha.5, packages/bundle/web-app/presets/*.patch.yml.
+ * Across 0.2.1-alpha.3..alpha.5 (all row-id-stable): the schedule_* subagent
+ * deny was DELETED (alpha.3 — official reminders reach subagents again), a
+ * tool-plugin-market row joined every full preset right after
+ * tool-plugin-manager (alpha.4 — disabled on standard/ptc,
+ * `!!js !ctx.get('profileContext')` on cordis), and minimal gained an
+ * image-read-only tool-fs row plus its own compaction group (no pruner row,
+ * isolate carries compaction alone). Earlier, 0.2.1-alpha.2 removed the
+ * retired persona suffix, the three disabled provider placeholder rows and
+ * the subagent `backgroundMode: 'continuable'`, rephrased the plan-mode
+ * first sentence, and added time-context + tool-schedule. The plugin mirrors
+ * the era-specific shapes ONLY via the host probe (hostExtras in oursOf
+ * below), so the alignment target is the full-probe row set against the
+ * alpha.5 text. */
 const PRESET_SHA256 = {
-  standard: '6462f63e24ea865d3931f992584bbc79aa152adf697e861af0b2e4dd7a4d622f',
-  cordis: '0b12c30161ac570face5e310f14f4c2177df20c0ca1c4e5a45ef959a37152434',
-  ptc: '162d1e57cc0ca48a2b54f4659e920264f46c87b3027a73e81429d345d584c566',
-  minimal: '71ef887f43d8a37931ba3b014e5b116f79018af873d06625fb22e280a23c1dfc',
+  standard: '0d398d2a6872a73a106cb3bd19303ecccf1637e1fcad4d0bf9d8a72d2c2c68f5',
+  cordis: '01b0fc94fd49136b332254a7ae5658e43ffe646f7248047dba65d499cfc74596',
+  ptc: '9e355c947bf61c3d2fe9bf3214b386f83c0d99d37579ce22576d4b82cb6e1a2c',
+  minimal: 'a2a9ba1c9c392a45466708f18bc0aefbf300577f9b544dc06049f73a8a5b3267',
 }
 
 /** Only minimal's persistent terminal differs from the official shell rows.
@@ -134,12 +138,12 @@ export function flatten(rows, depth = 0) {
  * the 0.2.1 text, and the 0.1.7-era row set stays locked by smoke.mjs. */
 function oursOf(variant, platform) {
   const kind = KINDS[variant]
-  if (kind === 'minimal') return flatten(minimalPluginsFor())
+  if (kind === 'minimal') return flatten(minimalPluginsFor({ hostExtras: { compaction: true } }))
   // Exercise BOTH host branches, independently of the machine running this
   // audit. This pure composition module has no imports or runtime effects.
   const source = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8').replace(/^export /gm, '')
   const compose = new Function('process', source + '\nreturn pluginsFor')({ platform: platform === 'win32' ? 'win32' : 'linux' })
-  return flatten(compose({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true } }))
+  return flatten(compose({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true } }))
 }
 
 const reported = []

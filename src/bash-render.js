@@ -48,16 +48,21 @@ export function escalationHintMarker(subject) {
 export const ESCALATION_TARGETS = Object.freeze(['workspace-write', 'danger-full-access'])
 
 /**
- * The official exit-status parse (dsh-shell render.ts:37): the LAST marker
- * line anchors the split between the output body and the exit pill.
+ * The official exit-status parse (the producer twin is dsh-shell render.ts,
+ * the reader twin is ui-tool terminal-card-model.ts — the card reader, which
+ * is what this parse feeds): the LAST marker line anchors the split between
+ * the output body and the exit pill. `null` is the official 0.2.1-alpha.5
+ * widening — the process ENDED without reporting a code; the card model reads
+ * an explicit null as a failure, while the marker-less fallback below still
+ * reads as success.
  * @param {string} text - the rendered result text.
- * @returns {{ body: string, exitCode?: number, signal?: string }}
+ * @returns {{ body: string, exitCode?: number | null, signal?: string }}
  */
 export function parseExitStatus(text) {
   const signal = /\n\[killed by signal: ([^\]\n]+)\]$/.exec(text)
   if (signal && signal[1] !== undefined) return { body: text.slice(0, signal.index), signal: signal[1] }
-  const exit = /\n\[exit code: (\d+)\]$/.exec(text)
-  if (exit && exit[1] !== undefined) return { body: text.slice(0, exit.index), exitCode: Number(exit[1]) }
+  const exit = /\n\[exit code: (-?\d+|null)\]$/.exec(text)
+  if (exit && exit[1] !== undefined) return { body: text.slice(0, exit.index), exitCode: exit[1] === 'null' ? null : Number(exit[1]) }
   return { body: text, exitCode: 0 }
 }
 

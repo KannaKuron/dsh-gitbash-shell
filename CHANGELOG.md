@@ -3,7 +3,22 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.40.2 — 2026-10-17
+
+### 适配 dsh 0.2.1-alpha.5:组合对齐重跑 + exit-status 解析器跟齐(feat / fix / test)
+
+- **组合行集跟随官方 0.2.1-alpha.3..alpha.5**(行 id 零改名;`tests/align-official.mjs` 重 pin 四枚 SHA256 后全绿):
+  - 官方在 alpha.3 **删除**了 subagent/subagent_fork 的 `toolFilter.deny`(`schedule_*` 四项——官方提醒工具重新可达子代理):插件侧 `subagentDeny` 整体删除,任何探针组合都不再产出 deny,与官方逐字节一致。
+  - alpha.4 给三个全工具 preset 新增 `tool-plugin-market` 行(紧跟 `tool-plugin-manager`;standard/ptc `disabled: true`,cordis `!!js !ctx.get('profileContext')`):挂新探针 `pluginMarket`(探测 `@deepseek-ai/dsh-plugin-market/tools`),disabled 分法与 manager 相同。
+  - alpha.3 给 **minimal** 新增 image-only `tool-fs`(`{read:false, readImage:true, write:false, edit:false}`)与专属 compaction 组(`isolate` 仅 `{compaction:true}`,**无** tool-result-pruner 行):`minimalPluginsFor` 增加 `hostExtras` 参数,挂 `compaction` 探针(探测 `@deepseek-ai/dsh-compaction-basic`)——minimal 不再是「永不加行」。
+  - `probeHostExtras` 扩为四探针(新增 plugin-market/tools、compaction-basic),返回 `{ timeContext, toolSchedule, pluginMarket, compaction }`;注册日志行同步;缺包/旧宿主仍保持 0.1.7 逐字节行集。
+- **exit-status 解析器 null 感知(fix)**:`parseExitStatus` 的 exit 正则 `/(\d+)/` → `/(-?\d+|null)/`、`'null'` → `null`。官方 0.2.1-alpha.5 把 `TerminalResultView.exitCode` 放宽为 `number | null`(正常结束但无退出码),客户端卡模型(ui-tool `terminal-card-model.ts`)已解析 `[exit code: null]`,而本插件的移植解析器会把该标记当「未匹配」错落 `exitCode: 0`(读作成功)。本解析喂的是 terminal 卡(镜像 client 侧读法),故对齐 client 实现;官方服务端 `dsh-shell render.ts` 的同名解析器仍为 `(\d+)` 未跟(如实记录,不抄)。生产端 `renderResult` 对 `exitCode: null` 本就打出 `[exit code: null]`(与官方 background 断言一致),bash 工具 schema 早已允许 `integer|null`,均无需改。
+- **测试同步**:`smoke.mjs` era 测试重写(默认无行 + probe-on 官方槽位 + deny **不得再出现** + minimal 四行断言)、`probeHostExtras` deepEqual 四键形状、minimal 接线正则(现在传 `hostExtras`)、`parseExitStatus` 加 null 例;`compatibility-regressions.mjs` 加 producer/parser 的 null 往返;`host-preview.mjs` hostExtras 形状同步。
+- **元数据**:version 0.40.2;`dsh.compatibility.dshReleases` 增 `0.2.1-alpha.3`/`alpha.4`/`alpha.5`(依据:静态对齐 + 全量回归;**Windows 双端真机验证待做**,发版前按家族纪律补)。
+- 相关:dsh v0.2.1-alpha.3/4/5 Release;`tests/align-official.mjs`(需 dsh checkout,不属于 `npm test`)。
+
 ## v0.40.1 — 2026-10-15
+
 
 ### 清理 gitbash_native 的两个死配置读取（chore）
 

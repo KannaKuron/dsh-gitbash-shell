@@ -70,10 +70,13 @@ Git Bash 增量;跟随 dsh 升级的对齐由冒烟测试
 **preset id 保持 `code-gitbash` 不变**——会话钉在 id 上,dsh 0.1.2 把内置 `code`
 改名 `ptc` 时本插件的变体 id 就没有跟随(改名会让已固定的会话报 preset not found)。
 
-**dsh 0.2.1 增量自动随行(v0.34.0)**:官方 0.2.1 给全工具 preset 加了时间上下文
-(`time-context`)与提醒工具(`schedule_*`,子代理不可用)——本插件在 0.2.1+ 宿主上
-探测到对应包即自动把这两行与 subagent 的 schedule_* deny 纳入三个全工具变体
-(极简变体不加,与官方一致);旧宿主行为逐字节不变,**无需为此升级 dsh**。
+**dsh 0.2.1 增量自动随行(v0.34.0 起,v0.40.2 对齐 alpha.5)**:官方 0.2.1 给全工具
+preset 加了时间上下文(`time-context`)与提醒工具(`schedule_*`);alpha.3 又把这两行
+从 subagent 的 `toolFilter.deny` 里移除(提醒工具重新可达子代理),给极简变体加了
+image-only `tool-fs` 与专属 compaction 组,alpha.4 给全工具 preset 加了插件市场
+(`tool-plugin-market`)。本插件在 0.2.1+ 宿主上探测到对应包即自动把上述行纳入变体
+(全工具三变体随探针取 `time-context`/`tool-schedule`/`tool-plugin-market`,极简
+变体只取 compaction 增量,与官方一致);旧宿主行为逐字节不变,**无需为此升级 dsh**。
 
 ## 安装(公开 npm 插件,推荐)
 

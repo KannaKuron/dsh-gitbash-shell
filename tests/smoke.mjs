@@ -1125,38 +1125,56 @@ test('compositions: dsh 0.2.1 host additions ride the probe, never the default',
   const { pluginsFor, minimalPluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
-  const deny = { deny: ['schedule_create', 'schedule_delete', 'schedule_list', 'schedule_update'] }
-  // default (dsh <= 0.2.0): no era rows, no toolFilter — the 0.1.7 mirror stays unchanged
+  // The schedule_* subagent deny is GONE at every probe level: official
+  // 0.2.1-alpha.3 deleted it (reminders reach subagents again), so no host
+  // shape produces it any more.
+  for (const kind of ['standard', 'ptc', 'cordis']) {
+    const rows = pluginsFor({ kind, gitBash: true, skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true } })
+    const delegation = row(rows, 'delegation').config
+    assert.equal(row(delegation, 'tool-subagent').config.toolFilter, undefined, kind)
+    assert.equal(row(delegation, 'tool-subagent-fork').config.toolFilter, undefined, kind)
+  }
+  // default (dsh <= 0.2.0): no era rows, no plugin-market — the 0.1.7 mirror stays unchanged
   for (const kind of ['standard', 'ptc', 'cordis']) {
     const rows = pluginsFor({ kind, gitBash: true, skillsDir: undefined })
-    assert.ok(!ids(rows).includes('time-context') && !ids(rows).includes('tool-schedule'), kind)
-    const delegation = row(rows, 'delegation').config
-    assert.equal(row(delegation, 'tool-subagent').config.toolFilter, undefined)
-    assert.equal(row(delegation, 'tool-subagent-fork').config.toolFilter, undefined)
+    assert.ok(!ids(rows).includes('time-context') && !ids(rows).includes('tool-schedule') && !ids(rows).includes('tool-plugin-market'), kind)
+    assert.equal(row(rows, 'tool-plugin-manager').disabled, kind !== 'cordis' ? true : undefined, kind)
   }
-  // probe on: rows in their official slots, deny on both subagent configs
-  const on = pluginsFor({ kind: 'standard', gitBash: true, skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true } })
+  // probe on: rows in their official slots — tool-plugin-market directly
+  // after tool-plugin-manager, same disabled split
+  const on = pluginsFor({ kind: 'standard', gitBash: true, skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true } })
   assert.equal(ids(on).indexOf('time-context'), ids(on).indexOf('agent-instructions') + 1)
   assert.equal(ids(on).indexOf('tool-schedule'), ids(on).indexOf('tool-jobs') + 1)
-  const delegation = row(on, 'delegation').config
-  assert.deepEqual(row(delegation, 'tool-subagent').config.toolFilter, deny)
-  assert.deepEqual(row(delegation, 'tool-subagent-fork').config.toolFilter, deny)
-  // half-probe: the toolFilter follows toolSchedule alone (denying absent tools is noise)
+  assert.equal(ids(on).indexOf('tool-plugin-market'), ids(on).indexOf('tool-plugin-manager') + 1)
+  assert.equal(row(on, 'tool-plugin-market').disabled, true)
+  const onCordis = pluginsFor({ kind: 'cordis', gitBash: true, skillsDir: '/s', hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true } })
+  assert.equal(row(onCordis, 'tool-plugin-market').disabled, undefined)
+  // half-probe: plugin-market off keeps the row away
   const half = pluginsFor({ kind: 'cordis', gitBash: true, skillsDir: '/s', hostExtras: { timeContext: true } })
-  assert.ok(ids(half).includes('time-context') && !ids(half).includes('tool-schedule'))
-  assert.equal(row(row(half, 'delegation').config, 'tool-subagent').config.toolFilter, undefined)
-  // minimal never gains the rows — the official minimal preset carries none
-  assert.equal(minimalPluginsFor().some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
+  assert.ok(ids(half).includes('time-context') && !ids(half).includes('tool-plugin-market'))
+  // minimal: the compaction probe adds the official alpha.3 rows ahead of the
+  // terminal (tool-fs image-read-only + the pruner-less compaction group)
+  const base = minimalPluginsFor()
+  assert.equal(base.length, 2)
+  const onMinimal = minimalPluginsFor({ hostExtras: { compaction: true } })
+  assert.equal(onMinimal.length, 4)
+  assert.equal(ids(onMinimal).indexOf('tool-fs'), ids(onMinimal).indexOf('persona') + 1)
+  assert.deepEqual(row(onMinimal, 'tool-fs').config, { read: false, readImage: true, write: false, edit: false })
+  const group = row(onMinimal, 'compaction')
+  assert.deepEqual(group.isolate, { compaction: true })
+  assert.equal(row(group.config, 'command-compact').name, '@deepseek-ai/dsh-command-compact')
+  assert.equal(group.config.some((r) => r.id === 'tool-result-pruner'), false, 'the minimal group carries NO pruner')
+  assert.equal(base.some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
 })
 
 test('probeHostExtras resolves from the host base and degrades to false', async () => {
   const { probeHostExtras } = await import('../src/index.js')
-  assert.deepEqual(await probeHostExtras(undefined, () => true), { timeContext: true, toolSchedule: true })
-  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { timeContext: false, toolSchedule: true })
+  assert.deepEqual(await probeHostExtras(undefined, () => true), { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true })
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { timeContext: false, toolSchedule: true, pluginMarket: false, compaction: false })
   // a throwing resolver reads as "absent" — never rejects the boot
-  assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), { timeContext: false, toolSchedule: false })
-  // default resolver from this test file's base: official host packages absent → both false
-  assert.deepEqual(await probeHostExtras({}), { timeContext: false, toolSchedule: false })
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false })
+  // default resolver from this test file's base: official host packages absent → all false
+  assert.deepEqual(await probeHostExtras({}), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false })
 })
 
 test('host half: lazy Config with volatile probing and the era branch', async () => {
@@ -1969,7 +1987,7 @@ test('minimal PTY shellPath rides the resolution chain; unresolved keeps the vis
   // the wiring: the row is fed from the SAME lazy chain the executor uses —
   // the explicit tier first (not the bare automatic chain), read per
   // registration, never frozen at apply time
-  assert.match(src, /minimalPluginsFor\(\{ bashPath: minimalPtyBashPath\(readBashResolution\) \}\)/)
+  assert.match(src, /minimalPluginsFor\(\{ bashPath: minimalPtyBashPath\(readBashResolution\), hostExtras \}\)/)
   assert.match(src, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution, \(\) => liveSettings\.variantPresets\(\)\)/)
 })
 
@@ -3176,8 +3194,10 @@ test('bash render: the official marker contract survives verbatim', async () => 
   assert.equal(mod.sandboxDenialMarker('workspace-write'), '[sandbox: file access denied under workspace-write mode]')
   assert.match(mod.escalationHintMarker('command'), /sandbox_permissions.*justification/)
   assert.deepEqual(mod.ESCALATION_TARGETS, ['workspace-write', 'danger-full-access'])
-  // parseExitStatus: the LAST marker anchors the split.
+  // parseExitStatus: the LAST marker anchors the split. `null` is the
+  // official 0.2.1-alpha.5 widening (ended without reporting a code).
   assert.deepEqual(mod.parseExitStatus('out\n[exit code: 2]'), { body: 'out', exitCode: 2 })
+  assert.deepEqual(mod.parseExitStatus('out\n[exit code: null]'), { body: 'out', exitCode: null })
   assert.deepEqual(mod.parseExitStatus('out\n[killed by signal: SIGTERM]'), { body: 'out', signal: 'SIGTERM' })
   assert.deepEqual(mod.parseExitStatus('clean'), { body: 'clean', exitCode: 0 })
   // renderResult: stdout, [stderr] section, then denial -> timeout -> stopped

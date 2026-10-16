@@ -38,7 +38,7 @@
 4) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
-0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.1.7-rc`(兼容门禁 `plugin-compatibility.ts` 读 peer `@deepseek-ai/dsh`,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 必须标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),没有「旧宿主分支」可回退。要点:四个变体由 `pluginsFor({ kind, gitBash, skillsDir, pythonActive, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,双态镜像官方 standard/minimal/ptc/cordis + Git Bash 增量:`hostExtras` 缺省 ↔ 0.1.7 行集,`{ timeContext, toolSchedule }` ↔ 0.2.1 行集,探测式接入见第 8 条;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
+0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.1.7-rc`(兼容门禁 `plugin-compatibility.ts` 读 peer `@deepseek-ai/dsh`,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 必须标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),没有「旧宿主分支」可回退。要点:四个变体由 `pluginsFor({ kind, gitBash, skillsDir, pythonActive, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,双态镜像官方 standard/minimal/ptc/cordis + Git Bash 增量:`hostExtras` 缺省 ↔ 0.1.7 行集,`{ timeContext, toolSchedule, pluginMarket }` ↔ 0.2.1 全工具行集(v0.40.2 起 alpha.3 已删 subagent 的 schedule_* deny,不产出任何 toolFilter),`{ compaction }` ↔ 0.2.1 minimal 行集(minimal 变体由 `minimalPluginsFor({ bashPath, hostExtras })` 生成),探测式接入见第 8 条;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
 
 1. **执行器替换 full-access argv；Windows 未验证受限能力必须 fail-closed（Unreleased）**:
    沙箱/生命周期基础设施沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 必须显式 Git for Windows
@@ -387,13 +387,17 @@
    全部保留。本插件 `shellEnv.register` 的 `variables: { DSH_PATH_DIALECT: { description } }` 是描述
    对象形状——**该提案实施的 dsh 升级必须同步把贡献声明改成键集合形状**(描述本就没有消费方,删除
    是纯减法);§4b 的官方 shell-env 事实段随改。
-   **dsh 0.2.1 组合增量已探测式接入(v0.34.0)**:官方全工具 preset 新增 `time-context`/`tool-schedule`
-   行与 subagent 的 `toolFilter.deny`(`schedule_*`);本插件**不抬宿主下限**,由 `probeHostExtras(ctx)`
-   从 **`ctx.baseUrl`**(行挂载同一解析基准)逐包 `require.resolve` 探测,可用才加行(仅
-   standard/ptc/cordis 三个 kind;minimal 永不加),toolFilter 跟随 `toolSchedule` 单独走;探测每 boot
-   一次、reconcile 重注册复用;任何解析异常降级为「不可用」。**不要**把这两行写成无条件(包缺失拒绝
-   整棵挂载),也**不要**为此抬 `engines.dsh`。官方下一版再加行时:先重跑 `tests/align-official.mjs`
-   (pins 换新 sha)再决定是否新增探测位。
+   **dsh 0.2.1 组合增量已探测式接入(v0.34.0;v0.40.2 对齐 alpha.5)**:官方全工具 preset 新增
+   `time-context`/`tool-schedule` 两行,极简 preset 新增 image-only `tool-fs` 与专属 compaction 组
+   (`isolate` 仅 compaction、无 pruner),alpha.4 起全工具 preset 另有 `tool-plugin-market`
+   (standard/ptc 关、cordis 随 profileContext);alpha.3 已把 `schedule_*` 从 subagent 的
+   `toolFilter.deny` 移除 ⇒ 插件侧**不再产出任何 toolFilter**。本插件**不抬宿主下限**,由
+   `probeHostExtras(ctx)` 从 **`ctx.baseUrl`**(行挂载同一解析基准)逐包 `require.resolve` 探测
+   (四包:time-context、tool-schedule、plugin-market/tools、compaction-basic),可用才加行
+   (`timeContext`/`toolSchedule`/`pluginMarket` 仅 standard/ptc/cordis 三个 kind,`compaction`
+   仅 minimal);探测每 boot 一次、reconcile 重注册复用;任何解析异常降级为「不可用」。**不要**把这些行
+   写成无条件(包缺失拒绝整棵挂载),也**不要**为此抬 `engines.dsh`。官方下一版再加行时:先重跑
+   `tests/align-official.mjs`(pins 换新 sha)再决定是否新增探测位。
    **官方 mcp-client 的运行时桥接口子(v0.35.0 追记)**:本插件 `src/fastctx-bridge.js` 的
    自写 MCP stdio 客户端,起因是官方 `@deepseek-ai/dsh-mcp-client` 只能作为**静态行**挂载
    (`command` 字面量、`mcp__<server>__<raw>` 名字、无工具过滤)。官方若开放「运行时以编程

@@ -1,6 +1,6 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.40.1",
+  "version": "0.40.2",
   "description": "Windows 上给 agent 一个真正的 Git Bash 命令工具:私有 Git Bash 执行器实例(官方 PowerShell 执行器原样保留),统一 MSYS 盘根路径方言,官方 pwsh 工具默认隐藏可开关,物化四个内置预设的 Git Bash 变体,侧栏终端接管可开关。· Give agents a real Git Bash tool on Windows: a private Git Bash executor instance (the official PowerShell executor stays untouched), a unified MSYS drive-root path dialect, an opt-in official pwsh tool, and four Git Bash preset variants.",
   "type": "module",
   "repository": {
@@ -36,7 +36,10 @@
       "dshReleases": {
         "0.2.0-rc.2": "compatible",
         "0.2.1-alpha.1": "compatible",
-        "0.2.1-alpha.2": "compatible"
+        "0.2.1-alpha.2": "compatible",
+        "0.2.1-alpha.3": "compatible",
+        "0.2.1-alpha.4": "compatible",
+        "0.2.1-alpha.5": "compatible"
       }
     }
   },
