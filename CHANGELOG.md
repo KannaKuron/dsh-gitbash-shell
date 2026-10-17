@@ -13,7 +13,7 @@
 - 修法（**纯函数改动、零 io 变更**）：新增扩展名白名单 `EXEC_EXTS = {.exe,.cmd,.bat,.com}`，扩展名不在白名单的条目直接跳过；**无扩展名照旧命中**——Git for Windows 自带 `/usr/bin/make` 这类无扩展名可执行文件（`fzf` 同理），这条不能丢。未加 `.` / `..` 防御分支：`readdirSync` 本就不返回这两项。
 - 回归用例（`tests/smoke.mjs`「only executable extensions resolve」）锁三层：手册页 / 文档 / 目录不命中；无扩展名真可执行仍命中；`just.1` 排在 `just.exe` 之前时**首个可执行命中者**路径正确（另覆盖 `.EXE` 大小写）。判定层补一条联动断言：扫不到 ⇒ `missing` ⇒ `isActionable` 为真。**该用例已在未修复的源码上验证会失败**（`actual: 'C:/pkg\just.1'`），修复后通过。
 - 目录区分（无扩展名目录 vs 无扩展名 MSYS 可执行文件）**留作后续**：需要给 `io.readdir` 增加 `stat`/`Dirent` 能力并牵动调用方，本版不动 io 契约。
-- 验证：Windows 10.0.26200 / Node 24.19.0，`npm test` **237 pass / 0 fail**（基线 236 + 本用例 1）。
+- 验证：Windows 10.0.26200 / Node 24.19.0，`npm test` 通过（当时基线计数把 skip 计入记作 237；维护者复核：基线 235 pass + 1 skip，合并分支 236 pass + 1 skip，本用例恰好多 1）。维护者另在 macOS / Node 24 复跑全量同绿，CI ubuntu+windows × Node 22/24 四矩阵绿。
 - 相关：[issue #31](https://github.com/KannaKuron/dsh-gitbash-shell/issues/31)。
 
 ## v0.40.3 — 2026-10-17
