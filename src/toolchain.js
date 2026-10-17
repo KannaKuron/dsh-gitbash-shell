@@ -214,17 +214,29 @@ export function parseExportJson(text, tools) {
 }
 
 /**
+ * The extensions a PATH entry must carry to BE the command. Anything else in a
+ * PATH directory — a man page, a README, a directory — merely shares the stem
+ * and must never resolve. An entry with NO extension still does: Git for
+ * Windows ships its own executables that way (`/usr/bin/make`).
+ */
+const EXEC_EXTS = new Set(['.exe', '.cmd', '.bat', '.com'])
+
+/**
  * Which catalog commands the machine already has, and WHERE they came from.
  * One `readdir` per PATH directory (not one `exists` per tool × directory ×
  * extension), and every unreadable directory is skipped rather than fatal.
  * First PATH hit wins, which is the same precedence the shell itself applies.
+ * Only EXECUTABLE entries resolve (see EXEC_EXTS): a man page (`just.1`) or a
+ * document (`jq.md`) shares the stem without being the command, and issue #31
+ * measured a man page winning the first-hit race over the `just.exe` beside it.
  * @param {{pathDirs: () => string[], readdir: (dir: string) => string[]}} io
  * @param {Array} tools - catalog entries to look for.
  * @returns {Map<string, string>} cmd → the first resolving full path.
  */
 export function scanCommands(io, tools) {
   const list = Array.isArray(tools) ? tools : TOOLCHAIN
-  // "make.exe" / "make.cmd" / "make" all resolve the command `make`.
+  // "make.exe" / "make.cmd" / "make" all resolve the command `make`; "make.1"
+  // (the man page) and "make.txt" do not — see EXEC_EXTS.
   const wanted = new Map(list.map((tool) => [String(tool.cmd).toLowerCase(), tool.cmd]))
   const found = new Map()
   let dirs
@@ -236,7 +248,12 @@ export function scanCommands(io, tools) {
     if (!Array.isArray(entries)) continue
     for (const entry of entries) {
       if (typeof entry !== 'string') continue
-      const base = entry.replace(/\.[^./\\]+$/, '').toLowerCase()
+      // The LAST extension decides, exactly as before — but it now has to be
+      // an executable one, so a man page/doc/directory is skipped instead of
+      // resolving to a command it merely shares a stem with.
+      const suffix = /(\.[^./\\]+)$/.exec(entry)
+      if (suffix !== null && !EXEC_EXTS.has(suffix[1].toLowerCase())) continue
+      const base = (suffix === null ? entry : entry.slice(0, suffix.index)).toLowerCase()
       const cmd = wanted.get(base)
       if (cmd !== undefined && !found.has(cmd)) {
         found.set(cmd, dir.replace(/[\\/]+$/, '') + '\\' + entry)

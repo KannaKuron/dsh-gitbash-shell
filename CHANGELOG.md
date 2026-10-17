@@ -3,6 +3,19 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.40.4 — 2026-10-17
+
+### 终端工具扫描只认可执行条目：手册页/文档/同名目录不再冒充命令（fix）
+
+- `scanCommands`（`src/toolchain.js`）原先用 `entry.replace(/\.[^./\\]+$/, '')` 剥掉**任意**扩展名，于是 PATH 目录里任何与工具同名的条目都算命中：
+  - **真实案例**：winget 便携包目录中 `just.1`（手册页）在字典序上排在 `just.exe` 之前，而扫描是「首个命中者胜出」⇒ 卡片「完整路径 / 由谁提供」列把手册页当成了 `just` 的可执行文件（实测 `commandPath` = `…\Casey.Just_Microsoft.Winget.Source_8wekyb3d8bbwe\just.1`）。
+  - **判定层影响**：`classifyToolState` 在 `wingetOwned === false` 时只看 `hasCommand`，所以一台**确实没装**该命令、而 PATH 里恰好有同名文档 / 手册页 / 目录的机器，该行会被判成 `external`（`isActionable` 为 false）——**安装入口永不出现**。本机 `just` 之所以未暴露，只是 winget 清单命中在前把它掩盖了。
+- 修法（**纯函数改动、零 io 变更**）：新增扩展名白名单 `EXEC_EXTS = {.exe,.cmd,.bat,.com}`，扩展名不在白名单的条目直接跳过；**无扩展名照旧命中**——Git for Windows 自带 `/usr/bin/make` 这类无扩展名可执行文件（`fzf` 同理），这条不能丢。未加 `.` / `..` 防御分支：`readdirSync` 本就不返回这两项。
+- 回归用例（`tests/smoke.mjs`「only executable extensions resolve」）锁三层：手册页 / 文档 / 目录不命中；无扩展名真可执行仍命中；`just.1` 排在 `just.exe` 之前时**首个可执行命中者**路径正确（另覆盖 `.EXE` 大小写）。判定层补一条联动断言：扫不到 ⇒ `missing` ⇒ `isActionable` 为真。**该用例已在未修复的源码上验证会失败**（`actual: 'C:/pkg\just.1'`），修复后通过。
+- 目录区分（无扩展名目录 vs 无扩展名 MSYS 可执行文件）**留作后续**：需要给 `io.readdir` 增加 `stat`/`Dirent` 能力并牵动调用方，本版不动 io 契约。
+- 验证：Windows 10.0.26200 / Node 24.19.0，`npm test` **237 pass / 0 fail**（基线 236 + 本用例 1）。
+- 相关：[issue #31](https://github.com/KannaKuron/dsh-gitbash-shell/issues/31)。
+
 ## v0.40.3 — 2026-10-17
 
 ### gitBash 能力服务新增 `pwshToolEnabled`(feat,additive——配对 dsh-ptc-cordis-preset v0.20.1)
