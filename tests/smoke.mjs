@@ -2104,6 +2104,12 @@ test('bash status route + capability expose the verdict to the client and to pee
   assert.match(src, /get tried\(\) \{ return readBashResolution\(\)\.tried \}/)
   // v0.35.1: peers drop the roster suffix while the inline patch is live.
   assert.match(src, /get inlinePatched\(\) \{ return process\.platform === 'win32' \}/)
+  // v0.40.3: the capability answers the masking layer's EXACT pwsh verdict,
+  // and the live reader is declared before the capability (getter reach).
+  assert.match(src, /get pwshToolEnabled\(\) \{ return liveSettings\.pwshTool\(\) === true \}/)
+  const capabilityIdx = src.indexOf('const gitBashCapability = {')
+  const readerIdx = src.indexOf('const liveSettings = makeLiveReader(ctx, config)')
+  assert.ok(readerIdx !== -1 && readerIdx < capabilityIdx, 'liveSettings precedes gitBashCapability so the pwshToolEnabled getter cannot hit a TDZ read')
   assert.match(src, /downloadUrl: GIT_BASH_DOWNLOAD_URL,/)
   // ONE resolver for the executor and the translation layer (issue #11's split)
   assert.match(src, /const resolution = resolveGitBashCached\(\{ configured: cacheKey \}\)/)

@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.40.3 — 2026-10-17
+
+### gitBash 能力服务新增 `pwshToolEnabled`(feat,additive——配对 dsh-ptc-cordis-preset v0.20.1)
+
+- **背景**:PTC 创造模式(ptc-cordis preset)的 pwsh 可见性矩阵有个残余不一致——gitbash-shell 单独安装且用户开启 `pwshTool` 开关时,官方 PTC/标准模式有 pwsh(遮蔽层放行、翻译层保护),而 ptc-cordis 组合仍禁(v0.20.0 只探测 dsh-ops 的 `opsPresent`,看不到本插件的私有设置)。跨插件没有读对方 config 的通道,唯一干净做法是把判定结果发布在已有的 `gitBash` 能力服务上。
+- **改动**:`gitBashCapability` 新增 `get pwshToolEnabled()` —— 返回 `liveSettings.pwshTool() === true`,与遮蔽层(`src/inline-tools.js` 的 `pwshVisible` 判定)**同一读取器、同一语义**:能力字段回答的就是「pwsh 行此刻对本机 agent 是否可见」。纯 additive(先例:`ok/source` v0.28.0、`inlinePatched` v0.35.1),老消费方忽略新字段。
+- **接线重排**:`const liveSettings = makeLiveReader(ctx, config)` 从能力服务之后提升到之前——getter 共享同一 reader,且声明先于能力对象构造,杜绝任何同步读取路径上的 TDZ。
+- **测试**:smoke 源码断言补 getter 形状 + liveSettings 必须先于 `gitBashCapability` 声明(防 TDZ 复发)。236 tests / 235 pass / 1 skip / 0 fail。
+- **消费方**:dsh-ptc-cordis-preset v0.20.1 起,组合条件从 `gitBashActive && !opsPresent` 扩为再 `&& !peerPwshTool`,「手动开 pwshTool、不装 dsh-ops」场景下 PTC 创造与官方模式一致放行。
+
 ## v0.40.2 — 2026-10-17
 
 ### 适配 dsh 0.2.1-alpha.5(0.2.1-rc.1 与其同码):组合对齐重跑 + exit-status 解析器跟齐(feat / fix / test)

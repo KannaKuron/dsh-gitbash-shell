@@ -2106,6 +2106,13 @@ export async function apply(ctx, config = {}) {
     console.log(`${TAG} inspect-registry shim wiring failed: ${error?.message ?? error}`)
   }
 
+  // Era-aware live settings: every consumer below re-reads the row Config
+  // refs on every use (volatile), so a flipped knob lands on the next
+  // dispatch with zero wiring. Declared BEFORE the cooperation capability so
+  // its getters share the same reader (v0.40.3 pwshToolEnabled) — the
+  // capability must answer with the exact value the masking layer sees.
+  const liveSettings = makeLiveReader(ctx, config)
+
   // ── cooperation capability ────────────────────────────────────────────────
   // Publish whether the Git Bash shell stack is active on this host so peer
   // plugins (e.g. dsh-ptc-cordis-preset) can adopt it in the presets they
@@ -2140,6 +2147,13 @@ export async function apply(ctx, config = {}) {
     // anything — peers reading this flag drop the suffix (dsh-ptc-cordis-preset
     // v0.17.3+); older peers ignore it and keep the v0.34 wording.
     get inlinePatched() { return process.platform === 'win32' },
+    // Additive (v0.40.3): whether the official pwsh row is VISIBLE for agents
+    // on this host — the exact `pwshTool() === true` verdict the masking layer
+    // reads (src/inline-tools.js hidePwsh), so peers composing the same row
+    // key off one signal instead of re-deriving the switch. Default OFF
+    // (bash-first); the switch is live, so a flip lands on the next read.
+    // Older peers ignore the field and keep the v0.20.0 ops-only behavior.
+    get pwshToolEnabled() { return liveSettings.pwshTool() === true },
     // Kept for existing consumers (peer plugins read `bashPath`): the resolved
     // interpreter. When resolution failed we report the explicit value (or the
     // historical default) so the ENOENT a consumer may hit names a real path —
@@ -2158,11 +2172,6 @@ export async function apply(ctx, config = {}) {
   }
   const disposeGitBash = ctx.provide('gitBash', gitBashCapability)
   ctx.effect(() => disposeGitBash, 'dsh-gitbash-shell: gitBash capability')
-
-  // Era-aware live settings: every consumer below re-reads the row Config
-  // refs on every use (volatile), so a flipped knob lands on the next
-  // dispatch with zero wiring.
-  const liveSettings = makeLiveReader(ctx, config)
 
   // ── official shell-env fact: DSH_PATH_DIALECT (Windows only, gated; v0.11.0) ──
   // dsh-shell-env owns the model-visible $DSH_* facts (host-plane service;
