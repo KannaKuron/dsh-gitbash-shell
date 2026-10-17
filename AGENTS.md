@@ -387,7 +387,7 @@
    全部保留。本插件 `shellEnv.register` 的 `variables: { DSH_PATH_DIALECT: { description } }` 是描述
    对象形状——**该提案实施的 dsh 升级必须同步把贡献声明改成键集合形状**(描述本就没有消费方,删除
    是纯减法);§4b 的官方 shell-env 事实段随改。
-   **dsh 0.2.1 组合增量已探测式接入(v0.34.0;v0.40.2 对齐 alpha.5)**:官方全工具 preset 新增
+   **dsh 0.2.1 组合增量已探测式接入(v0.34.0;v0.40.2 对齐 alpha.5,rc.1 同码)**:官方全工具 preset 新增
    `time-context`/`tool-schedule` 两行,极简 preset 新增 image-only `tool-fs` 与专属 compaction 组
    (`isolate` 仅 compaction、无 pruner),alpha.4 起全工具 preset 另有 `tool-plugin-market`
    (standard/ptc 关、cordis 随 profileContext);alpha.3 已把 `schedule_*` 从 subagent 的
