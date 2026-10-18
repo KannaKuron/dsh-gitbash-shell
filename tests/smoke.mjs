@@ -2521,8 +2521,16 @@ test('toolchain: only loopback + same-origin may install (the CSRF fence)', () =
   const blocked = call({ socket: { remoteAddress: '127.0.0.1' }, method: 'POST', headers: { host: '127.0.0.1:19387', origin: 'https://evil.example' } })
   assert.equal(blocked.ok, false)
   assert.equal(blocked.reason, 'cross-origin')
-  // A mutating request with no origin at all is refused outright.
-  assert.equal(call({ socket: { remoteAddress: '127.0.0.1' }, method: 'POST', headers: { host: '127.0.0.1:19387' } }).ok, false)
+  // A LAN peer stays refused even with a perfect same-origin header: the
+  // loopback check is the real fence and runs first.
+  const lanPost = call({ socket: { remoteAddress: '192.168.1.5' }, method: 'POST', headers: sameOrigin })
+  assert.equal(lanPost.ok, false)
+  assert.equal(lanPost.reason, 'not-loopback')
+  // Issue #33: the desktop Electron renderer's same-origin fetch carries NO
+  // Origin/Referer — browsers always attach Origin to mutating requests, so a
+  // missing header cannot be web-page CSRF. It passes; a CARRIED cross-origin
+  // value is still refused (asserted above).
+  assert.equal(call({ socket: { remoteAddress: '127.0.0.1' }, method: 'POST', headers: { host: '127.0.0.1:19387' } }).ok, true)
 })
 
 test('tool-runner: a request can only ever name catalog entries', async () => {
@@ -2565,6 +2573,10 @@ test('toolchain route: wired, fenced, and read by the client half', () => {
   assert.match(client, /dsh-gitbash-shell\/api\/tools/)
   assert.match(client, /"sec\.tools":/)
   assert.match(client, /"tools\.state\.external":/)
+  // Issue #33: runTools must surface non-2xx answers instead of parsing the
+  // error body and silently finding no job in it (loadTools already does).
+  const runBlock = client.slice(client.indexOf('function runTools'), client.indexOf('var toolsSection'))
+  assert.match(runBlock, /if \(!res\.ok\) throw new Error\("HTTP " \+ res\.status\)/, 'a refused install must show, not vanish')
 })
 
 /* ── native right-sidebar path rescue (v0.31.0) ──────────────────────────────

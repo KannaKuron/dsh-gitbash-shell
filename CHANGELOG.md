@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.41.1 — 2026-10-19
+
+### fix:桌面版设置页「安装 / 升级选中」无反应(栅栏 no-origin 误伤 Electron + 前端静默吞 403)
+
+- 报告:[issue #33](https://github.com/KannaKuron/dsh-gitbash-shell/issues/33)(@AncherEven,报告自带完整根因定位,感谢)。dsh 桌面版(Electron)设置 → 插件 → 终端工具,点「安装 / 升级选中」不报错、不出进度、按钮复原。
+- **fix(栅栏侧,tool-runner.js)**:`fenceToolRequest` 原要求改写类请求必须携带同源 Origin/Referer,而桌面版 Electron 渲染进程的同源 fetch **不携带**这两个头 → 恒 403 `no-origin`。现改为:缺 Origin 时放行 origin 半(信任围栏的真防线是 loopback 限定,保持不变);**携带** Origin/Referer 时仍必须同源,跨站一律拒。安全性论证:浏览器对一切改写请求(同站与跨站)都附加 Origin,缺头请求不可能来自网页 CSRF,只能来自非浏览器客户端——而后者本就能伪造同源头,栅栏对其原本就不构成额外防线。
+- **fix(前端侧,client.js)**:`runTools()` 对非 2xx 响应直接 `res.json()` 解析错误体、取不到 `job` 静默吞掉;现与 `loadTools()` 一致先判 `res.ok`,栅栏拒绝等失败会显示「HTTP 403」类错误而不是无反应。
+- 验证:`npm test` 263 项全绿;栅栏测试矩阵更新(缺头 POST 放行 / 携带跨源 POST 仍拒 / LAN 携带同源头仍 not-loopback / 前端 res.ok 守卫断言)。
+
 ## v0.41.0 — 2026-10-19
 
 ### feat:官方「持久终端」实验包 Git Bash 化自动接管;dsh-ops 并存时剔除其 shell 工具;terminal_* 方言说明

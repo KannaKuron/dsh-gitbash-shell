@@ -290,9 +290,16 @@ export function isSameOriginValue(value, host) {
 /**
  * The fence for the tools route. Installing is a side effect, so:
  *   - the peer must be loopback (a LAN or tunnel client never gets to install);
- *   - a mutating request must carry an Origin or Referer that matches Host.
+ *   - a mutating request that CARRIES an Origin or Referer must match Host.
  * A same-origin GET from the settings page passes; a form/fetch posted by any
  * other page fails on the origin check.
+ * A mutating request with NO origin header passes the origin half (issue #33):
+ * the desktop Electron renderer's same-origin fetch sends no Origin/Referer,
+ * and browsers attach Origin to every mutating request — same-site and
+ * cross-site alike — so a missing header cannot be web-page CSRF; it can only
+ * come from a non-browser client, which could forge a same-origin header just
+ * as easily. The loopback requirement stays (the real fence) and a carried
+ * cross-origin value is still refused.
  * @param {{ method?: string, headers?: object, socket?: object }} req
  * @returns {{ ok: boolean, reason: string }}
  */
@@ -304,7 +311,7 @@ export function fenceToolRequest(req) {
   const headers = (req && req.headers) || {}
   const host = headers.host || ''
   const origin = headers.origin || headers.referer || ''
-  if (origin === '') return { ok: false, reason: 'no-origin' }
+  if (origin === '') return { ok: true, reason: '' }
   if (!isSameOriginValue(origin, host)) return { ok: false, reason: 'cross-origin' }
   return { ok: true, reason: '' }
 }

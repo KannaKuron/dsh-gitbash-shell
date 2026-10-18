@@ -2551,7 +2551,12 @@ window.__ModuleLoader__.load({
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify({ action: "auto", ids: ids }),
 				})
-					.then(function (res) { return res.json(); })
+					// Issue #33: a non-2xx answer (e.g. a 403 fence refusal) is a JSON
+					// body too — parsing it and finding no job silently ate the error.
+					.then(function (res) {
+						if (!res.ok) throw new Error("HTTP " + res.status);
+						return res.json();
+					})
 					.then(function (data) { setToolJob(data !== null && typeof data === "object" && data.job ? data.job : null); })
 					.catch(function (err) { setToolErr(String((err && err.message) || err)); })
 					.then(function () { setToolBusy(false); });
