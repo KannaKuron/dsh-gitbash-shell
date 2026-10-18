@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { terminalDialect } from '../src/terminal-bundle.js'
 import { readFileSync } from 'node:fs'
 import { rewriteCodePaths, scanCodeLiterals, runCodeHintFor, translateDispatch, dialectApplies, windowsToMsys, rewriteResultPaths, rewriteErrorContent, rewriteErrorMessage } from '../src/index.js'
 import { bashDescription, createBashToolModule } from '../src/bash-tool.js'
@@ -83,8 +84,8 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   let handler
   let dialect = { posixPaths: true, codePaths: true, subagentDialect: true }
   const ctx = { on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn } }
-  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', source.slice(start, end))(
-    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting)
+  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', source.slice(start, end))(
+    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting, terminalDialect)
   const assemble = agent => {
     const assembly = { tools: [{ name: 'run_code' }], contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [] }
     handler(assembly, { agent }, () => {})

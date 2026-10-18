@@ -92,6 +92,27 @@ export function inlineNeeds(names, { pwshVisible } = {}) {
 }
 
 /**
+ * The dsh-ops shell pair (v0.41.0, owner decision): while this plugin's own
+ * bash owns a session, those two names are DENIED for the agent. The list is
+ * dsh-ops's own published surface - lib/policy.js builds every public name as
+ * TOOL_PREFIX + raw with TOOL_PREFIX = "ops_", and the shell-class raw names
+ * are "run" (one-shot shell) and "bash" (in-process shell). Their file/search
+ * (ops_inspect_local_file, ops_grep, ops_glob, ops_replace), background-job
+ * (ops_run_background, ops_job_*) and batch surfaces stay untouched - the
+ * owner's call: installing dsh-ops buys its enhancements, not a second bash.
+ */
+export const OPS_SHELL_TOOLS = Object.freeze(['ops_bash', 'ops_run'])
+
+/**
+ * The deny reason for an ops shell call on an agent our bash owns (route B
+ * wording): the tool exists, the host just routes shells elsewhere - the
+ * sentence names the owner and keeps the agent inside the offered face.
+ */
+export function deniedOpsShellReason() {
+  return 'the dsh-ops shell tools are denied on this host: dsh-gitbash-shell owns the shell (its own Git Bash bash tool). Use the bash tool for commands; the other ops_* tools (files, search, background jobs) are unaffected.'
+}
+
+/**
  * The routing addendum appended to the `bash` tool's description through the
  * system-prompt assemble waterfall. TWO variants (v0.37.0, user decision):
  * the pwsh tool is hidden by default, and a routing sentence that names a tool
@@ -124,10 +145,16 @@ const ROUTING_SAFETY = 'Choose the execution route before running. A policy/acce
 const PTC_ROUTING = 'Inside run_code, call only bindings actually offered by the current SDK with await tools.<name>(...). Select by their descriptions: shell execution for shell syntax/pipelines; an offered typed native-executable binding for exact Windows argv or explicitly known per-stream encodings; an offered complete-path conversion binding before passing an MSYS value to Node fs/path. These are different operations, not substitutes for permissions. Never pass routes, search text or source code to a path converter. Program strings do not perform shell expansion. If a needed binding is absent, report the missing capability; do not invent its name. ' + ROUTING_SAFETY
 
 /** Model guidance names only tools in this assembly, not a switch's intent. */
-export function toolRoutingHintFor(tools, { pwshVisible = false } = {}) {
+export function toolRoutingHintFor(tools, { pwshVisible = false, terminalGitBash = false } = {}) {
   const names = new Set((Array.isArray(tools) ? tools : []).map(tool => tool?.name))
   if (!names.has('bash')) return ''
   const lines = [pwshVisible && names.has('pwsh') ? GITBASH_ROUTE_ADDENDUM : GITBASH_ROUTE_ADDENDUM_NO_PWSH]
+  // v0.41.0: the persistent-terminal dialect fact. Said ONLY when the host
+  // actually carries the terminal tools AND our terminal-bundle adoption has
+  // settled the rows to Git Bash (the caller passes the settled flag) - a
+  // bundle left at its official defaults runs pwsh there, and a sentence
+  // must never describe a shell the button will not start.
+  if (terminalGitBash === true && names.has('terminal_open')) lines.push('The persistent terminal tools (terminal_open/read/send/...) run Git Bash (MSYS) on this host: the same drive-root paths (/c/...) and MINGW64 semantics as this bash tool; they are NOT PowerShell.')
   if (names.has('gitbash_native')) lines.push('Use gitbash_native before execution when a Windows .exe needs exact literal argv such as /all or /c without MSYS conversion, or independently declared stdout/stderr encodings. Supply an absolute executable, mark each argument literal or path, and select only a known encoding (raw for unknown/mixed bytes). It does not implement shell pipelines, expansion or .cmd/.bat wrappers; only resolved danger-full-access can execute it.')
   if (names.has('gitbash_to_native_path')) lines.push('Use gitbash_to_native_path only for a complete caller-declared MSYS filesystem path that a native Node fs/path API needs, especially a runtime-built value. Read native_path from the result. Never convert routes, search strings or shell/program source. Already-native or cwd-relative Node paths need no conversion; ordinary tool path fields already use their own translation. Conversion grants no access.')
   lines.push(ROUTING_SAFETY)
@@ -135,7 +162,7 @@ export function toolRoutingHintFor(tools, { pwshVisible = false } = {}) {
 }
 
 /** Add a replaceable, idempotent block; a reused assembly follows visibility. */
-export function applyToolRouting(tools, { pwshVisible = false, msys = false } = {}) {
+export function applyToolRouting(tools, { pwshVisible = false, msys = false, terminalGitBash = false } = {}) {
   if (!Array.isArray(tools)) return
   for (const tool of tools) {
     if (!tool || typeof tool.description !== 'string' || !['bash', 'run_code'].includes(tool.name)) continue
@@ -144,7 +171,7 @@ export function applyToolRouting(tools, { pwshVisible = false, msys = false } = 
     const end = start < 0 ? -1 : description.indexOf(ROUTING_END, start)
     if (end >= 0) description = description.slice(0, start) + description.slice(end + ROUTING_END.length)
     const hint = tool.name === 'bash'
-      ? toolRoutingHintFor(tools, { pwshVisible }) + (msys ? '\n' + GITBASH_MSYS_ADDENDUM : '')
+      ? toolRoutingHintFor(tools, { pwshVisible, terminalGitBash }) + (msys ? '\n' + GITBASH_MSYS_ADDENDUM : '')
       : PTC_ROUTING
     tool.description = description + ROUTING_START + hint + ROUTING_END
   }
@@ -234,7 +261,7 @@ export function mountInlineTools(ctx, deps) {
   const controller = new AbortController()
   let closed = false
   const isLive = (agent, state) => !closed && tracked.get(agent) === state && !state.controller.signal.aborted
-  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, pending: undefined, controller: new AbortController() })
+  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, controller: new AbortController() })
   const experimentalEnabled = () => deps.experimentalEnabled?.() !== false
   // Loader imports cannot be cancelled, but no continuation may outlive its
   // owner. Join our cancelled continuations without waiting on a stuck loader.
@@ -384,6 +411,26 @@ export function mountInlineTools(ctx, deps) {
           log(`${extra.name} activation failed; bash remains available: ${error?.message ?? error}`)
         }
       }
+      // v0.41.0 (owner decision): while OUR bash owns the session, the ops
+      // shell pair is denied by name - installing dsh-ops buys its file,
+      // search and background enhancements, not a second bash. Through the
+      // AGENT's scoped context, the exact shape the pwsh hide uses (issue
+      // #18: the root context throws "requires a scoped context"). Only the
+      // names actually in the face are listed, so a future dsh-ops rename
+      // degrades to "no denial", never to a wrong deny list. On failure the
+      // ops tools stay - our bash remains the routing answer either way.
+      const opsShell = faceNames(agent).filter((name) => OPS_SHELL_TOOLS.includes(name))
+      if (opsShell.length > 0) {
+        try {
+          const deny = agent.ctx?.tools?.restrict?.({ deny: [...opsShell] })
+          if (typeof deny === 'function') {
+            state.denyOpsShell = deny
+            log('ops shell tools denied for this agent (' + opsShell.join(', ') + '): this host\'s bash is ours; their file/search/background tools stay')
+          }
+        } catch (error) {
+          log('ops shell denial failed (their shell tools stay available): ' + (error?.message ?? error))
+        }
+      }
       retained = true
       log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {
@@ -414,6 +461,7 @@ export function mountInlineTools(ctx, deps) {
     const previous = tracked.get(agent)
     if (previous?.timer) { clearTimeout(previous.timer); previous.timer = undefined }
     if (previous?.denyPwsh) { previous.denyPwsh(); previous.denyPwsh = undefined }
+    if (previous?.denyOpsShell) { previous.denyOpsShell(); previous.denyOpsShell = undefined }
     const names = faceNames(agent)
     // The composed face may not be wired yet at created-time. Retry bounded:
     // a face with NEITHER tool carries no verdict. Five tries at 250ms, then
@@ -457,6 +505,26 @@ export function mountInlineTools(ctx, deps) {
     if (needs.needsBash && !state.scope) {
       startBash(agent, state)
     }
+    // v0.41.0: keep the ops shell denial attached while our bash owns the
+    // agent. The mask was undone above for observation; an agent that is
+    // already owned (state.scope, including one still mounting - provideBash
+    // claims the scope before its asynchronous stages) gets the denial
+    // re-attached here, so a reconcile fired by a switch flip or a re-show
+    // never leaves the pair visible.
+    if (state.scope && !state.denyOpsShell) {
+      const opsShell = names.filter((name) => OPS_SHELL_TOOLS.includes(name))
+      if (opsShell.length > 0) {
+        try {
+          const deny = agent.ctx?.tools?.restrict?.({ deny: [...opsShell] })
+          if (typeof deny === 'function') {
+            state.denyOpsShell = deny
+            log('ops shell tools denied for this agent (' + opsShell.join(', ') + ')')
+          }
+        } catch (error) {
+          log('ops shell denial failed (their shell tools stay available): ' + (error?.message ?? error))
+        }
+      }
+    }
   }
 
   const teardown = async (agent) => {
@@ -466,6 +534,7 @@ export function mountInlineTools(ctx, deps) {
     state.controller.abort(new Error('inline bash agent disposed'))
     if (state.timer) clearTimeout(state.timer)
     if (state.denyPwsh) { state.denyPwsh(); state.denyPwsh = undefined }
+    if (state.denyOpsShell) { state.denyOpsShell(); state.denyOpsShell = undefined }
     await Promise.all([state.scope?.dispose(), state.pending])
   }
 
@@ -509,6 +578,13 @@ export function mountInlineTools(ctx, deps) {
       try {
         if (exec?.name === 'pwsh' && !opsSeen && deps.pwshEnabled?.() !== true) {
           return { kind: 'deny', reason: hiddenPwshDenyReason() }
+        }
+        // v0.41.0, second independent layer for the ops shell pair: while our
+        // bash owns this agent, a call that slips past the visibility
+        // restriction is denied by name - same reasoning as the pwsh guard
+        // above.
+        if (OPS_SHELL_TOOLS.includes(exec?.name) && tracked.get(exec?.agent)?.scope) {
+          return { kind: 'deny', reason: deniedOpsShellReason() }
         }
       } catch { /* never block the waterfall */ }
       return next()

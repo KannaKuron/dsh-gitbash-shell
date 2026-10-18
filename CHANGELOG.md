@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.41.0 — 2026-10-19
+
+### feat:官方「持久终端」实验包 Git Bash 化自动接管;dsh-ops 并存时剔除其 shell 工具;terminal_* 方言说明
+
+- **持久终端自动接管(v0.41.0 主特性)**:官方实验包 `@deepseek-ai/dsh-experimental-terminal-bundle` 在 win32 上默认 `optional-terminal-bash` 禁 / `optional-terminal-pwsh` 启——开启「持久终端」后终端是 PowerShell,与本插件的 bash-first 语义相反。v0.41 起检测到 bundle 挂载后,由插件维护 profile patch(bundle 组子行按 id 覆盖,官方 `applyEntryPatches` 通道):`optional-terminal-bash` → `disabled: false` + `shellPath` 指 Git Bash;`optional-terminal-pwsh` → `disabled: true`(仅当该行不存在时写入,已存在则不动并提示并存)。用户显式配置(bash 行 `disabled: true` 或 `shellPath` 指向别处)一律尊重,不覆盖。
+- **为什么直写 patch 文件**:官方 config-editor 两个硬限制(实测 packages/boot/config-editor)——`entries()` 只寻址 include 挂载的顶层行(bundle 组内子行不可见);`edit()` 只写 config 键,写不了行级 `disabled`。bundle 子行覆盖只能落在 profile patch 文件上。安全链:`parseDocument` 保注释保 `!!js` → 变更后 re-parse 自检 → 原子写(`@deepseek-ai/dsh-atomic-write` 优先,降级 tmp+rename,mode 0600)→ 回读验证 → 失败回滚原字节。守卫测试随之演进:index.js 豁免「no fs path to the profile patch」整版禁令(bundle 接管是有意的直写,安全特征有断言),**侧栏终端接管仍走 configEditor 不变**。
+- **terminal_* 方言说明**:bundle 接管生效后(`terminalDialect.gitBash`),工具路由说明进入持久终端通道——`terminal_send`/`terminal_signal` 的命令按 Git Bash/MSYS 方言书写,与单次 bash 工具同一套提示。
+- **dsh-ops 并存时的 shell 工具剔除(用户决策定案)**:安装了本插件 = bash 用本插件方案;`ops_bash` / `ops_run` 在本插件 bash 工具在场的 agent 上默认 deny(`tools.restrict` + `tools/pre-execute` 双层),不做设置开关;ops 的 file / 后台 / PTC 增强不受影响。
+- 验证:`npm test` 263 项全绿(新增 tests/terminal-bundle.mjs 26 项:plan 矩阵 12 + writer 12 + report + detect);守卫测试演进 2 处(compatibility assemble 段参数面补 `terminalDialect`;smoke 侧栏守卫按上述范围收窄)。
+
 ## v0.40.5 — 2026-10-18
 
 ### 工具行字号跟随宿主字体设置;半像素字号归整(fix)

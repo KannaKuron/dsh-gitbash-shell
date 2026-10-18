@@ -49,6 +49,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -59,6 +60,8 @@ import { fileURLToPath } from 'node:url'
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
 import { applyToolRouting, mountInlineTools } from './inline-tools.js'
+import { adoptTerminalBundlePatch, detectTerminalBundle, terminalBundleReport, terminalDialect } from './terminal-bundle.js'
+import { resolveHostModule } from './bash-tool.js'
 import { mountFastctx } from './fastctx-bridge.js'
 
 /**
@@ -2250,6 +2253,7 @@ export async function apply(ctx, config = {}) {
             applyToolRouting(assembly.tools, {
               pwshVisible: liveSettings.pwshTool() === true,
               msys: applies && dialect.posixPaths === true,
+              terminalGitBash: terminalDialect.gitBash === true,
             })
           }
           if (applies && dialect.posixPaths === true && assembly && typeof assembly === 'object') {
@@ -2723,6 +2727,69 @@ export async function apply(ctx, config = {}) {
       })
     } catch (error) {
       console.log(`${TAG} official sidebar terminal adoption wiring failed: ${error?.message ?? error}`)
+    }
+  }
+
+  // ── OFFICIAL persistent-terminal bundle adoption (v0.41.0) ─────────────
+  // The experimental terminal bundle mounts its shell backends behind a
+  // bundle patch that on Windows enables the pwsh backend and disables the
+  // bash one — exactly backwards for a Git Bash house. The fix is a
+  // PROFILE-PATCH row edit (the host patch algorithm addresses group
+  // children by id, and bundle patches are read before the profile patch
+  // file) because configEditor can neither see bundle children nor write a
+  // row-level `disabled`. See src/terminal-bundle.js for the full
+  // rationale and safety rails. The terminal_* dialect sentence rides the
+  // existing routing block once terminalDialect.gitBash turns true.
+  if (process.platform === 'win32') {
+    try {
+      ctx.inject(['profileContext'], (patchCtx) => {
+        const run = async () => {
+          const patchPath = patchCtx.get('profileContext')?.patchPath
+          if (typeof patchPath !== 'string' || patchPath.trim() === '') {
+            console.log(`${TAG} persistent terminal: no profile patch path — nothing to adopt`)
+            return
+          }
+          let mounted = false
+          try {
+            mounted = await detectTerminalBundle(ctx)
+          } catch (error) {
+            console.log(`${TAG} persistent terminal: bundle detection failed: ${error?.message ?? error}`)
+            return
+          }
+          const resolution = readBashResolution()
+          const result = await adoptTerminalBundlePatch(
+            {
+              readFile: (file) => readFileSync(file, 'utf8'),
+              writeFileAtomic: async (file, data) => {
+                // The host's atomic write when resolvable; a same-directory
+                // tmp+rename otherwise — never a torn patch file.
+                try {
+                  const atomic = await resolveHostModule(ctx, '@deepseek-ai/dsh-atomic-write')
+                  if (typeof atomic?.writeFileAtomic === 'function') return atomic.writeFileAtomic(file, data, { mode: 0o600 })
+                } catch { /* fallback below */ }
+                const tmp = `${file}.gitbash-${Date.now()}.tmp`
+                writeFileSync(tmp, data, { mode: 0o600 })
+                renameSync(tmp, file)
+              },
+              yaml: () => resolveHostModule(ctx, 'yaml'),
+            },
+            {
+              platform: process.platform,
+              enabled: liveSettings.autoTerminalShell(),
+              mounted,
+              resolved: resolution.ok ? resolution.path : '',
+              patchPath,
+            },
+          )
+          if (result.status === 'adopted' || result.status === 'updated' || result.status === 'unchanged') {
+            terminalDialect.gitBash = true
+          }
+          console.log(`${TAG} ${terminalBundleReport(result)}`)
+        }
+        run().catch((error) => console.log(`${TAG} persistent terminal adoption failed: ${error?.message ?? error}`))
+      })
+    } catch (error) {
+      console.log(`${TAG} persistent terminal adoption wiring failed: ${error?.message ?? error}`)
     }
   }
 

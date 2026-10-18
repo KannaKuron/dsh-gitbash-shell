@@ -2254,7 +2254,13 @@ test('sidebar terminal: the host reaches configEditor, never the settings servic
 })
 
 test('sidebar terminal: writes go through the official editor only — no fs path to the profile patch', async () => {
-  const files = ['index.js', 'terminal-shell.js', 'shell.js', 'bash-path.js', 'client.js', 'compositions.js']
+  // v0.41.0: index.js is EXEMPT from the blanket ban — the persistent-terminal
+  // bundle adoption legitimately edits the profile patch file, because
+  // configEditor can neither see bundle group children nor write a row-level
+  // `disabled` (measured, packages/boot/config-editor). Its safety rails are
+  // asserted below; the OTHER files stay under the original rule, and the
+  // sidebar adopt itself must remain on configEditor.
+  const files = ['terminal-shell.js', 'shell.js', 'bash-path.js', 'client.js', 'compositions.js']
   for (const name of files) {
     const code = readFileSync(new URL('../src/' + name, import.meta.url), 'utf8')
     // The profile patch is the USER's file. We reach it only through
@@ -2266,6 +2272,16 @@ test('sidebar terminal: writes go through the official editor only — no fs pat
     const nearFs = /(writeFile|appendFile|writeFileSync|appendFileSync|createWriteStream)[^\n]*\n?[^\n]*patch/i
     assert.doesNotMatch(code, nearFs, name + ' must not fs-write anything patch-shaped')
   }
+  // index.js reaches the patch ONLY through the guarded terminal-bundle writer,
+  // and the sidebar terminal keeps riding the official editor.
+  const indexCode = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(indexCode, /adoptTerminalBundlePatch\(/, 'bundle adoption goes through the guarded writer')
+  assert.doesNotMatch(indexCode, /adoptTerminalShell\([\s\S]{0,200}(readFile|writeFile)/, 'sidebar adopt must not fs-write')
+  const bundle = readFileSync(new URL('../src/terminal-bundle.js', import.meta.url), 'utf8')
+  assert.match(bundle, /writeFileAtomic/, 'patch writes go through the atomic writer')
+  assert.match(bundle, /roll(ed)? back|rolled back/, 'verification failure rolls back to the previous bytes')
+  assert.match(bundle, /QUOTE_DOUBLE|rowFromFragment/, 'written rows keep the hand-written shape')
+  assert.match(bundle, /parseDocument/, 'edits preserve comments and !!js via document parsing')
   // the terminal module itself carries no filesystem import at all
   const terminal = readFileSync(new URL('../src/terminal-shell.js', import.meta.url), 'utf8')
   assert.doesNotMatch(terminal, /node:fs|from 'fs'/, 'terminal-shell.js performs no filesystem work')
