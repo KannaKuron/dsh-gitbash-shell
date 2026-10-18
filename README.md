@@ -52,6 +52,10 @@ POSIX 宿主上完整保留;
   自带的 `publishBashTool` 开关(经官方 configEditor 通道写为 `false`):安装本插件时 `ops_bash`
   不再出现在模型工具面;**ops 的 pwsh7 overlay(给官方 pwsh 工具供路径)与文件/后台增强不受影响**
   ——publishBashTool 的门只套在 `mountSessionBash` 上,pwsh 走 `mountBundledPwsh` 独立路径。
+  **`ops_run` 无需处理:它在 dsh-ops 的 bundle 装配中本就没有发布路径**——bundle 只有
+  shell/file/background/ptc 四行,全插件唯一一处 `new FastCtxTools` 只在 background 组件挂
+  后台四件套(`run_background`/`job_*`),前台 `ops_run` 只是未被任何调用点使用的默认参数;
+  本机 `dsh-ops-background` 行默认关闭,后台四件套同样不存在。
   **停用或卸载本插件的瞬间自动还原**(dispose 钩子撤回覆盖,同 row 的其它设置原样保留),重新启用
   又会自动接管。两个边界:①关机状态下卸载的残余覆盖,用 dsh-ops 设置卡「恢复默认」一键撤回;
   ②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它。无设置开关——想用 `ops_bash`
