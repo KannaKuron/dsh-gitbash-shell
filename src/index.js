@@ -302,6 +302,12 @@ import {
 } from './bash-path.js'
 import { adoptTerminalShell, terminalAdoptReport } from './terminal-shell.js'
 import {
+  adoptOpsBashRemoval,
+  opsAdoptReport,
+  opsRestoreReport,
+  restoreOpsBash,
+} from './ops-adopt.js'
+import {
   clearToolJob, currentToolJob, defaultRunnerIo, fenceToolRequest,
   probeToolchain, readJsonBody, startToolJob,
 } from './tool-runner.js'
@@ -2727,6 +2733,57 @@ export async function apply(ctx, config = {}) {
       })
     } catch (error) {
       console.log(`${TAG} official sidebar terminal adoption wiring failed: ${error?.message ?? error}`)
+    }
+  }
+
+  // ── dsh-ops bash removal from the agent face (v0.42.0) ────────────────
+  // ops_bash registers in each agent's OWN layer; the host restrict() only
+  // filters INHERITED surfaces (core/tools view()), so "visible but denied"
+  // (v0.41.0) can never become hidden — dsh-ops must simply not register
+  // the tool. It ships the precise switch (publishBashTool); we hold it
+  // false ONLY while this plugin is mounted, through the official
+  // configEditor channel, and the dispose hook below lifts the override
+  // when our fiber stops (disable / uninstall => dsh-ops gets its bash
+  // back). See src/ops-adopt.js for the full rationale and safety rails.
+  if (process.platform === 'win32') {
+    try {
+      ctx.inject(['configEditor'], (opsEditorCtx) => {
+        // The dsh-ops rows may activate after this plugin; retry a few
+        // times (bounded) instead of silently giving up, like the terminal row.
+        let attempts = 0
+        let watched = false
+        const run = async () => {
+          attempts += 1
+          let result
+          try {
+            result = await adoptOpsBashRemoval(opsEditorCtx.configEditor)
+          } catch (error) {
+            console.log(`${TAG} dsh-ops bash removal crashed: ${error?.message ?? error}`)
+            return
+          }
+          if (result.status === 'skip-row-absent' && attempts < 6) {
+            setTimeout(() => { run().catch((error) => console.log(`${TAG} dsh-ops bash removal retry failed: ${error?.message ?? error}`)) }, 3000)
+            return
+          }
+          console.log(`${TAG} ${opsAdoptReport(result)}`)
+          // Restore wiring: only once the removal is actually in force.
+          // The hook is idempotent (a second run finds nothing to lift),
+          // so an inject-callback re-run cannot double-lift.
+          if (!watched && (result.status === 'adopted' || result.status === 'present')) {
+            watched = true
+            ctx.effect(() => async () => {
+              try {
+                console.log(`${TAG} ${opsRestoreReport(await restoreOpsBash(opsEditorCtx.configEditor))}`)
+              } catch (error) {
+                console.log(`${TAG} dsh-ops bash restore crashed: ${error?.message ?? error}`)
+              }
+            }, 'gitbash: dsh-ops bash removal restore')
+          }
+        }
+        run().catch((error) => console.log(`${TAG} dsh-ops bash removal failed: ${error?.message ?? error}`))
+      })
+    } catch (error) {
+      console.log(`${TAG} dsh-ops bash removal wiring failed: ${error?.message ?? error}`)
     }
   }
 

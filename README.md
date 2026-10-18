@@ -47,6 +47,16 @@ POSIX 宿主上完整保留;
   `/c/` 方言统一:`ops_*` 的入参(含 `root`/`operations[].path`/`protect`)
   自动转换、返回与报错路径自动回流 `/c/`。
 
+- **与 dsh-ops 并存:bash 只留一份(v0.42.0)**:宿主机制决定「可见但拒绝」到不了「看不见」——
+  `tools.restrict` 只能过滤继承面,而 `ops_bash` 注册在 agent 自有层。于是本插件直接接管 dsh-ops
+  自带的 `publishBashTool` 开关(经官方 configEditor 通道写为 `false`):安装本插件时 `ops_bash`
+  不再出现在模型工具面;**ops 的 pwsh7 overlay(给官方 pwsh 工具供路径)与文件/后台增强不受影响**
+  ——publishBashTool 的门只套在 `mountSessionBash` 上,pwsh 走 `mountBundledPwsh` 独立路径。
+  **停用或卸载本插件的瞬间自动还原**(dispose 钩子撤回覆盖,同 row 的其它设置原样保留),重新启用
+  又会自动接管。两个边界:①关机状态下卸载的残余覆盖,用 dsh-ops 设置卡「恢复默认」一键撤回;
+  ②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它。无设置开关——想用 `ops_bash`
+  就停用本插件,还原是自动的。
+
 四个「· Git Bash」**变体 preset 仍保留,默认关闭**(`variantPresets` 开关,
 设置卡可开):开启后注册 `standard-gitbash`/`minimal-gitbash`/`code-gitbash`/
 `cordis-gitbash` 四个变体并停用官方模式的工具补位(两者互斥)。

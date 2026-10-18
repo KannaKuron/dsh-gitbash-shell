@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.42.0 — 2026-10-19
+
+### feat:dsh-ops 的 ops_bash 从模型 face 彻底移除(可见面,不再只是拒绝);插件停用/卸载自动还原该配置
+
+- **为什么 v0.41 的 deny 不够**:宿主 tools.restrict({deny}) 只过滤**继承面**(全局层+祖先层;core/tools view() 源码),而 ops_bash 由 dsh-ops 注册进每个 agent 的**自有层**——自有层注册明确在过滤范围之外,restrict 对其名甚至直接报「names unknown global tool」。所以 v0.41 的 deny 注定只剩 pre-execute 守卫兜底:工具仍可见、调用才被拒。用户要求「直接看不见,不增加模型心智负担」⇒ 可见面移除唯一路径 = 让 dsh-ops 不注册。
+- **机制**:dsh-ops 自带精确开关 publishBashTool(config 键,false ⇒ mountSessionBash 首行返回、resolveShells 报 disabled、提示词工具表自动少一行)。本插件经官方 configEditor 通道把 dsh-ops-shell 行的该键写为 false(**不碰其余键、不碰别人的设置**),ops_bash 从模型 face 消失;ops 的 file / 后台 / PTC 增强不受影响。无设置开关——产品语义:本插件在场,bash 归本插件;想用 ops_bash 就停用本插件(还原是自动的)。
+- **生命周期还原(本次主诉求)**:写 false 的同时在本插件 fiber 上注册 dispose 钩子——**停用或卸载**插件的瞬间,覆盖被撤回:override 键删除(无继承值)或赋回继承值(有),同 row 里用户自己的其它覆盖原样保留;还原后回读验证。唯一盖不到的残余:关机状态下卸载(进程已不在,钩子没机会跑)⇒ dsh-ops 设置卡「恢复默认」一键可撤,README 已写明。若 patch 覆盖是用户后来手写的 true(我们的 false 之后),停用时**不动它**——那是用户的选择,不是我们的残余。
+- **为什么写 true 的用户选择不还原、而我们的 false 要还原**:还原钩子只在「移除确实生效(adopted/present)」后才注册;运行时无法区分「present 的 false 是我们上次写的还是用户手写的」,保守取「撤掉」,README 说明边界。
+- **写通道与安全规则**:与侧栏终端接管同一纪律(官方 configEditor.edit,禁 fs 直写 patch;本插件模块守卫测试断言 ops-adopt.js 零 fs 面);edit 失败(如「overridden by a home patch」)如实报 write-failed 并给出手工路径,绝不谎报成功;每次写后回读,读到 false 才算 adopted。
+- 验证:tests/ops-adopt.mjs 11 项全绿(计划矩阵 7 态 / adopted 回读 / 三类 no-write 零编辑 / write-failed×2 / restore 继承回赋与删键 / 用户后选 true 不动 / 报告文案含安全网指引 / 模块守卫 / index.js 接线守卫),npm test 全套纳入该文件。
 ## v0.41.1 — 2026-10-19
 
 ### fix:桌面版设置页「安装 / 升级选中」无反应(栅栏 no-origin 误伤 Electron + 前端静默吞 403)
