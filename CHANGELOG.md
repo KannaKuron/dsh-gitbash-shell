@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.42.1] — 2026-10-19
+  
+  ### Guarded
+  - **dsh-ops background/file tools are contractually out of reach** (user decision, 2026-10-19): the removal
+    list `OPS_SHELL_TOOLS` is now pinned by a guard test to exactly `ops_bash` + `ops_run` — it can never
+    grow to cover `ops_run_background` / `ops_job_*` (background jobs) or the `ops_*` file tools. Users who
+    enable the dsh-ops background component keep those global tools in every session, including PTC ones.
+  - README: documented the division of labor — bash belongs to gitbash, background jobs and file/PTC
+    enhancements belong to dsh-ops; neither side denies the other.
+  
 ## v0.42.0 — 2026-10-19
 
 ### feat:dsh-ops 的 ops_bash 从模型 face 彻底移除(可见面,不再只是拒绝);插件停用/卸载自动还原该配置

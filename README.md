@@ -60,6 +60,10 @@ POSIX 宿主上完整保留;
   又会自动接管。两个边界:①关机状态下卸载的残余覆盖,用 dsh-ops 设置卡「恢复默认」一键撤回;
   ②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它。无设置开关——想用 `ops_bash`
   就停用本插件,还原是自动的。
+   **后台任务与文件/PTC 增强全部让给 dsh-ops(2026-10-19 用户决策)**:剔除清单被守卫测试
+   锁死为 `ops_bash` + `ops_run` 两项,永不含 `ops_run_background`/`ops_job_*`——你启用
+   dsh-ops 的「后台任务」组件后,这组全局工具在普通会话与 PTC 创造模式下原样可见可用,
+   本插件不做任何 deny。bash 归 gitbash,后台与增强归 dsh-ops,职责互不越界。
 
 四个「· Git Bash」**变体 preset 仍保留,默认关闭**(`variantPresets` 开关,
 设置卡可开):开启后注册 `standard-gitbash`/`minimal-gitbash`/`code-gitbash`/

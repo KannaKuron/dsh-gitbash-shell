@@ -10,6 +10,7 @@ import {
   opsAdoptReport,
   opsRestoreReport,
 } from '../src/ops-adopt.js'
+import { OPS_SHELL_TOOLS } from '../src/inline-tools.js'
 
 const rowOf = (id, override, inherited) => ({
   entry: { options: { id } },
@@ -178,4 +179,19 @@ test('ops-adopt: index.js wires the disposal restore and keeps it inside the win
   assert.match(block, /ctx\.effect\(\(\) => async \(\) => \{/)
   assert.match(block, /restoreOpsBash\(opsEditorCtx\.configEditor\)/)
   assert.match(block, /result\.status === 'adopted' \|\| result\.status === 'present'/, 'the restore hook only arms once the removal is actually in force')
+})
+
+
+test('ops-adopt: the removal list never grows into dsh-ops background or file tools (2026-10-19 user decision)', () => {
+  // gitbash owns the *bash* slot only. dsh-ops background jobs (ops_run_background /
+  // ops_job_*) and its file/PTC enhancements stay untouched and visible: users run
+  // them alongside gitbash, including inside PTC sessions (they are global tools).
+  assert.deepEqual([...OPS_SHELL_TOOLS], ['ops_bash', 'ops_run'],
+    'the removal list must stay exactly ops_bash + ops_run — never extend it without a user decision')
+  for (const keep of ['ops_run_background', 'ops_job_output', 'ops_job_list', 'ops_job_kill', 'ops_inspect_local_file', 'ops_grep', 'ops_glob', 'ops_replace']) {
+    assert.equal(OPS_SHELL_TOOLS.includes(keep), false, keep + ' must never be denied by gitbash')
+  }
+  // The deny wiring consumes exactly this list; assert the constant is what flows in.
+  const source = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  assert.match(source, /export const OPS_SHELL_TOOLS = Object\.freeze\(\['ops_bash', 'ops_run'\]\)/)
 })
