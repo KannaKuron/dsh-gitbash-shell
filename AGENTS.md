@@ -614,6 +614,44 @@
        workingDirectory。服务存在时 ensure 错误不得吞掉，只有缺服务才走旧接缝。
        companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，knownNames 可用时包含隐藏工具，旧宿主回退 schemas；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
 
+## 上游追踪纪律:dsh 终端面与 dsh-ops(2026-10-19 用户要求)
+
+本插件的三个接管面都锚在**别人的包结构**上,上游任何一侧发新版都必须主动核对并做出适配决断,
+不能等用户报障。核对触发时机:dsh 宿主发新版、dsh-ops 发新版、本插件每次发版前。
+
+### 1. dsh 宿主 — 终端/持久终端面
+
+- **experimental-terminal-bundle(持久终端)**:核对 bundle 的 `cordis.patch.yml` 四子行
+  (`optional-terminal-registry`/`optional-terminal-bash`/`optional-terminal-pwsh`/`optional-tool-terminal`)
+  的 id 与 config 键形状是否仍被 `adoptTerminalBundlePatch` 的行锚命中;`dsh-terminal-bash` 的
+  `shellPath`/`shellArgs` config 键与默认值(`DEFAULT_BASH_SHELL`/`DEFAULT_BASH_ARGS`)是否漂移;
+  `dsh-tool-terminal` 六工具(open/close/read/send/signal/list)签名是否变化(terminalDialect 常量)。
+- **terminal-controller(侧栏终端)**:官方行的 `config.shell` 形状(path/name/args)与
+  `LEGACY_TERMINAL_SHELL_NAME` 改写许可是否仍成立(terminal-shell.js 的接管假设)。
+- **工具 face 形状**:route B 补位判定(`inlineNeeds`:has pwsh && !has bash)依赖的官方 preset
+  win32 工具面若被上游重构(如官方直接提供 Git Bash face),补位条件与 addendum 注入要重审。
+
+### 2. dsh-ops — 并存边界
+
+- **剔除清单边界(守卫测试锁死)**:`OPS_SHELL_TOOLS` 必须恰好 `ops_bash` + `ops_run`;
+  `ops_run_background`/`ops_job_*`(后台四件套)与 `ops_*` 文件工具**永不剔除**(2026-10-19 用户决策)。
+  dsh-ops 新增 shell 类工具时,是否纳入剔除清单属用户决断——守卫测试会拦住顺手扩展,先问用户。
+- **ops-adopt 假设**:`publishBashTool` 键名、`mountSessionBash` 首行门、configEditor 的 edit
+  语义(整键替换+回读自检)若变化,接管/还原生命周期要重验(tests/ops-adopt.mjs 的 fake editor
+  是按当前语义建模的)。
+- **翻译桥(fastctx bridge)**:dsh-ops 的 FastCtx 工具入参形状(文件工具 path 数组、issue #21 的
+  PRIMARY 数组形)若变,参数翻译的覆盖面要重审;后台四件套的 command 参数是 bash 语义,不经
+  MSYS 翻译(dsh-ops 自带 bundled bash 执行),勿越界翻译。
+- **发布面变化**:dsh-ops 若给 background 组件外的组件发布新 shell 类工具,或 bundled bash/pwsh
+  pin 变化,核对与我们 face 的可见性交互。
+
+### 3. 决断输出
+
+- 变化**破坏接管/翻译桥** → 适配发版(测试先行,fake 与真机双验)。
+- 变化**新增 shell 类工具/边界模糊** → 先向用户呈现事实与选项,由用户决断(不擅自扩清单)。
+- 变化**仅内部实现** → 零动作,在 CHANGELOG 或本文件记录核对结论与日期。
+- 每次本插件发版前,把「上游最新版已核对」作为 checklist 项(gitbash 对 dsh 终端面 + dsh-ops)。
+
 ## 验证清单(改动后)
 
 1. `npm test` 全绿;
