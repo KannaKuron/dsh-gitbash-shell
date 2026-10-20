@@ -42,6 +42,24 @@ export const FASTCTX_FILE_TOOLS = Object.freeze(['inspect_local_file', 'grep', '
 export const GB_PREFIX = 'gb_'
 export const gbName = (raw) => GB_PREFIX + raw
 
+/**
+ * Any one of these names in the visible face means dsh-ops owns the file
+ * surface, so the whole gb_* bridge stands down. The first three are the
+ * classic markers; the 0.4.0 progressive PTC rollout (T-Auto/dsh-ops #261)
+ * keeps only `ops_read_files`/`ops_result`/`ops_load_sdk` resident in an
+ * agent's first face — checking the classic names alone let gb_* mount face 1
+ * and linger as redundant duplicates once the advanced APIs arrived a step
+ * later. Any single marker present is enough to stand down.
+ */
+export const OPS_PRESENCE_MARKERS = Object.freeze([
+  'ops_inspect_local_file',
+  'ops_grep',
+  'ops_bash',
+  'ops_read_files',
+  'ops_result',
+  'ops_load_sdk',
+])
+
 // The HOST registry rejects any tool without an `output` contract (issue #18,
 // root cause 2) — the frozen schema + text renderer the pwsh7
 // definition ships, reused so both families speak one tool-result contract.
@@ -466,7 +484,7 @@ export function mountFastctx(ctx, deps) {
     try {
       names = (tools(ctx)?.schemas?.(agent) ?? []).map((schema) => schema.name).filter((name) => typeof name === 'string')
     } catch { /* a broken face reads as empty */ }
-    if (names.some((name) => name === 'ops_inspect_local_file' || name === 'ops_grep' || name === 'ops_bash')) {
+    if (names.some((name) => OPS_PRESENCE_MARKERS.includes(name))) {
       if (!withdrawnByOps) {
         withdrawnByOps = true
         decided = true

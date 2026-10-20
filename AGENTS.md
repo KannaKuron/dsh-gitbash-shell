@@ -548,6 +548,10 @@
        (一行日志);入参(path/file_path/files[].path/绝对 pattern)与出参文本全走同一挂载表;
        `agent/created` 时见 `ops_*` 即整体撤下(dsh-ops 让位)。**gb_* 无 workspace
        confinement——每个 description 必须保留官方工具是沙箱默认的声明**,绝不替换官方工具。
+       **dsh-ops 0.4.0 渐进加载(v0.42.2)**:ops 的 PTC 面首 face 只常驻
+       `ops_read_files`/`ops_result`/`ops_load_sdk`(T-Auto/dsh-ops #261),高级 API 次步才到;
+       退避名单因此提取为 `OPS_PRESENCE_MARKERS` 六名(三个经典标记 + 三个渐进常驻),
+       任一在场即撤下——**新增 ops 常驻工具名时必须同步扩这份名单**,否则首 face 会多挂一轮 gb_*。
      - 改这一层必须跑冒烟的「inline tools:」五例 + 「fastctx bridge:」三例 + 「v0.35.0 card
        copy/package」两例;Windows 真机验证(补位激活/假 pwsh 遮蔽/pwsh7 路由/gb_* 出参)
        在 CHANGELOG v0.35.0 标注待做。

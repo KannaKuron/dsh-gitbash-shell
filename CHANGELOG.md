@@ -3,6 +3,25 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.42.2] — 2026-10-20
+
+### fix:gb_* 对 dsh-ops 0.4.0 渐进加载的退避检测(每会话首个 agent 会多挂一轮 gb_*)
+
+- **上游变化**:dsh-ops 0.4.0 把 PTC 工具面改成渐进加载(T-Auto/dsh-ops #261)——agent 的第一个
+  face 只常驻 `ops_read_files` / `ops_result` / `ops_load_sdk` 三件,`ops_inspect_local_file` /
+  `ops_grep` / `ops_bash` 等高级 API 要到「owning session 的 committed step 结束、下一次 provider
+  schema 捕获前」才发布。
+- **症状**:`src/fastctx-bridge.js` 的退避检测在 `agent/created` 时只认三个旧名字;0.4.0 下 face 1
+  三个都不在 ⇒ 检测落空 ⇒ gb_* 照发;下一步 ops 高级 API 到场后,gb_* 三件与 ops_* 文件工具冗余
+  并存(名字不冲突,但白占 token)。只有每会话第一个 agent 受影响(后续 agent 创建时旧名字已到场)。
+- **修法**:退避名单提取为导出常量 `OPS_PRESENCE_MARKERS`(六个名字:三个经典标记 + 0.4.0 的三个
+  渐进常驻),`reconcile` 改为对名单求 `some/includes`;任何一个在场即整体撤下,语义与 §4l 的
+  「见 ops_* 即让位」不变量一致。
+- **测试**:tests/bridge-regressions.mjs 新增两例——face schemas 只返回 0.4.0 渐进三件 ⇒
+  definitions 与 FastCtx payload 实例数都必须为 0(payload 不许启动);守卫锁死六个标记名。
+- **ptc-preset 侧无需跟进**:`detectOpsPresence` 只认 dsh-ops-shell / dsh-ops-file 行 id,与渐进
+  加载无关。
+
 ## [0.42.1] — 2026-10-19
   
   ### Guarded

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import * as path from 'node:path'
-import { McpStdio, mountFastctx } from '../src/fastctx-bridge.js'
+import { McpStdio, mountFastctx, OPS_PRESENCE_MARKERS } from '../src/fastctx-bridge.js'
 
 test('FastCtx: spawn failure rejects initialization and clears the transport', async (t) => {
   const client = new McpStdio({ file: join(tmpdir(), `missing-fastctx-${randomUUID()}`), timeoutMs: 1000 })
@@ -30,7 +30,7 @@ async function bridgeFixture(t, result, callbacks = {}) {
     Object.assign(McpStdio.prototype, originals)
   })
   const registry = {
-    schemas: () => [],
+    schemas: () => callbacks.faceSchemas ? callbacks.faceSchemas() : [],
     register(definition) { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) },
   }
   const ctx = { on(name, callback) { listeners.set(name, callback) }, effect(callback) { cleanups.push(callback()) } }
@@ -110,4 +110,28 @@ test('FastCtx: disposal cancels discovery and prevents late tool registration', 
   fixture.createAgent()
   await new Promise(setImmediate)
   assert.equal(fixture.instances.length, 1)
+})
+
+test('FastCtx: dsh-ops 0.4.0 progressive residents stand the bridge down in face 1', async (t) => {
+  // T-Auto/dsh-ops #261: only the reader/result/SDK-loader trio is resident in
+  // the first agent face; the classic markers arrive at the next step. Face 1
+  // must already read as dsh-ops-owned.
+  const { definitions, instances } = await bridgeFixture(t, { content: [] }, {
+    pendingBootstrap: true,
+    faceSchemas: () => [{ name: 'ops_read_files' }, { name: 'ops_result' }, { name: 'ops_load_sdk' }],
+  })
+  await new Promise(setImmediate)
+  assert.equal(definitions.size, 0, 'the 0.4.0 progressive residents own the surface, so gb_* must not mount')
+  assert.equal(instances.length, 0, 'the FastCtx payload must not even start')
+})
+
+test('FastCtx: the stand-down marker list covers the classic names and the 0.4.0 residents', () => {
+  assert.deepEqual([...OPS_PRESENCE_MARKERS], [
+    'ops_inspect_local_file',
+    'ops_grep',
+    'ops_bash',
+    'ops_read_files',
+    'ops_result',
+    'ops_load_sdk',
+  ])
 })
