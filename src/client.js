@@ -2082,7 +2082,7 @@ window.__ModuleLoader__.load({
 				setBashDraft(function (previous) {
 					// A late save only belongs to the exact draft that submitted it.
 					if (previous.scope !== scope || previous.owner !== bashState[0].owner || previous.saved === saved) return previous;
-					return Object.assign({}, previous, { saved: saved === true });
+					return Object.assign({}, previous, { saved: saved === true, dirty: saved === true ? false : previous.dirty });
 				});
 			}
 			var mirroredBashPath = snap.value && typeof snap.value.bashPath === "string" ? snap.value.bashPath : "";
