@@ -1,6 +1,6 @@
 import { registerExperimentalTool } from './experimental-tools.js'
 import { createNativeExecutor } from './native-executor.js'
-import { processJob, processSources, ringDelta } from './bash-render.js'
+import { processJob, processSources, ringDelta, renderJobRead } from './bash-render.js'
 
 const typedPath = () => ({ type: 'object', additionalProperties: false, properties: {
   kind: { type: 'string', const: 'path', required: true }, value: { type: 'string', required: true },
@@ -165,8 +165,11 @@ export function createNativeToolModule(deps) {
                 throw new Error(`native preparation timed out; job ${attached.id} was cancelled, inspect job_output before retrying`)
               }
               const read = jobs.read(attached.id, owner)
+              // A ring eviction can report gapBefore even when its pull source
+              // was lossless. This consuming read must preserve both loss facts.
+              const lostOutput = read.lossy || read.chunks.some(chunk => chunk.gapBefore)
               return { kind: 'promoted', jobId: attached.id, cwd: request.cwd, timeoutMs: request.timeoutMs,
-                output: ringDelta(read.chunks), encoding: request.output }
+                output: renderJobRead(ringDelta(read.chunks), lostOutput, read.job?.output?.spillPaths), encoding: request.output }
             }
             jobs.remove(attached.id, owner)
             if (!attached.process()) throw new Error(view.detail ?? 'native preparation failed before a process handle was available')

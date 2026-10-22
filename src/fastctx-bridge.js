@@ -117,6 +117,8 @@ export class McpStdio {
   /** Spawn the server and run the MCP initialize handshake. */
   async start() {
     const { spawn } = await import('node:child_process')
+    // close() can run while the dynamic import is pending; never resurrect it.
+    if (this.dead) throw new Error('the FastCtx bridge was stopped')
     this.child = spawn(this.file, this.args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
     this.child.stdout.setEncoding('utf8')
     this.child.stderr.setEncoding('utf8')
@@ -323,43 +325,102 @@ const FASTCTX_SANDBOX_NOTE = 'FastCtx reads the real filesystem with no workspac
  *   - echo(text)      -> result dialect echo, or undefined (off)
  *   - log(message)    -> the plugin's tagged logger
  *
- * The surface publishes at the FIRST agent creation and re-decides on every
- * later one: dsh-ops appearing (ops_* tools in the face) withdraws gb_* for
- * the rest of the process — duplicates would only teach the model two names
- * for one job.
+ * The surface publishes at the first agent creation or live switch update.
+ * User OFF/ON is reversible; dsh-ops appearing (ops_* tools in the face)
+ * independently withdraws gb_* for the rest of the process. Every call also
+ * checks the live switch and its publication generation, including old SDKs.
  */
 export function mountFastctx(ctx, deps) {
   const { platform, enabled, createRequireFrom, tools, msysToWin, echo, log } = deps
   if (platform !== 'win32') return
   let disposer = undefined
   let client = undefined
-  let decided = false
+  let unavailable = false
   let withdrawnByOps = false
+  let switchOn
+  let generation = 0
   let closed = false
   let publishing
   let connecting
   const starting = new Set()
+  const pending = new Set()
+  const agents = new Set()
+
+  const track = (promise) => {
+    pending.add(promise)
+    promise.then(() => pending.delete(promise), () => pending.delete(promise))
+    return promise
+  }
 
   const unpublish = (reason) => {
     if (disposer) {
-      try { disposer() } catch { /* already gone */ }
+      const dispose = disposer
       disposer = undefined
+      try { dispose() } catch { /* already gone */ }
     }
     if (reason) log(reason)
   }
 
-  const callWithReconnect = async (rawName, args) => {
-    if (closed || withdrawnByOps) throw new Error('the FastCtx bridge was stopped')
+  const stopConnections = () => {
+    const owned = new Set([...starting, client].filter(Boolean))
+    client = undefined
+    // Calling close immediately rejects pending requests and kills the child;
+    // track completion as well so disposal owns even superseded generations.
+    track(Promise.allSettled([...owned].map((connection) => connection.close())))
+  }
+
+  const live = (agent) => {
+    if (closed) return false
+    const next = !!enabled()
+    if (switchOn !== next) {
+      switchOn = next
+      generation++
+      unavailable = false
+      if (!next) {
+        unpublish('FastCtx bridge disabled by the fastctxTools switch')
+        stopConnections()
+      }
+    }
+    if (!withdrawnByOps) {
+      const registry = tools(ctx)
+      const faces = new Set(agent ? [agent, ...agents] : agents.size ? agents : [undefined])
+      for (const face of faces) {
+        const names = (registry?.schemas?.(face) ?? []).map((schema) => schema?.name)
+        // Any ops_* name means dsh-ops owns the file surface. Matching the
+        // prefix (rather than only the listed markers) covers the 0.4.0
+        // progressive residents AND the names the marker list does not carry
+        // yet (ops_batch / ops_glob / ops_replace / ops_run): a later caller
+        // can hand the face a name that was never resident in face 1.
+        if (names.some((name) => typeof name === 'string'
+          && (name.startsWith('ops_') || OPS_PRESENCE_MARKERS.includes(name)))) {
+          withdrawnByOps = true
+          generation++
+          unpublish('dsh-ops detected (ops_* tools present): the gb_* surface stands down')
+          stopConnections()
+          break
+        }
+      }
+    }
+    return switchOn && !withdrawnByOps
+  }
+
+  const assertLive = (owner, agent) => {
+    if (!live(agent) || owner !== generation || !disposer) throw new Error('the FastCtx bridge was stopped')
+  }
+
+  const callWithReconnect = async (rawName, args, owner, agent) => {
+    assertLive(owner, agent)
     if (client === undefined || client.isDead) {
-      if (!connecting) {
-        connecting = (async () => {
+      if (!connecting || connecting.owner !== owner) {
+        const task = { owner }
+        task.promise = track((async () => {
           const { file } = resolveFastctx(ctx, createRequireFrom)
           if (file === '') throw new Error('the FastCtx payload is not installed; repair the profile dependencies (frozen install) and retry')
           const fresh = new McpStdio({ file, log })
           starting.add(fresh)
           try {
             await fresh.start()
-            if (closed || withdrawnByOps) throw new Error('the FastCtx bridge was stopped')
+            assertLive(owner, agent)
             client = fresh
           } catch (error) {
             await fresh.close()
@@ -367,23 +428,25 @@ export function mountFastctx(ctx, deps) {
           } finally {
             starting.delete(fresh)
           }
-        })().finally(() => { connecting = undefined })
+        })().finally(() => { if (connecting === task) connecting = undefined }))
+        connecting = task
       }
-      await connecting
+      await connecting.promise
     }
-    if (closed || withdrawnByOps) throw new Error('the FastCtx bridge was stopped')
+    assertLive(owner, agent)
+    // Reconnect only BEFORE dispatch. Never replay a failed tools/call: it may
+    // already have written files even when its response is an ordinary error.
     return client.callTool(rawName, args)
   }
 
-  const publishOnce = async () => {
-    if (closed || disposer || decided && withdrawnByOps) return
+  const publishOnce = async (owner) => {
+    if (!live() || owner !== generation || disposer || unavailable) return
     const registry = tools(ctx)
     if (!registry || typeof registry.register !== 'function') return
     const { file, source } = resolveFastctx(ctx, createRequireFrom)
     if (file === '') {
       log('FastCtx payload not found (probed ' + PAYLOAD_PACKAGES.map((p) => p.pkg).join(', ') + '); gb_* tools stay unpublished')
-      decided = true
-      withdrawnByOps = true // nothing to publish either way; stop re-deciding
+      unavailable = true
       return
     }
     const fresh = new McpStdio({ file, log })
@@ -391,23 +454,30 @@ export function mountFastctx(ctx, deps) {
     let toolList
     try {
       await fresh.start()
+      if (!live() || owner !== generation) return
       toolList = await fresh.listTools()
     } catch (error) {
-      try { await fresh.close() } catch { /* best effort */ }
-      log(`FastCtx server start failed (${source}): ${error?.message ?? error}; gb_* tools stay unpublished`)
-      decided = true
-      withdrawnByOps = true
+      if (live() && owner === generation) {
+        log(`FastCtx server start failed (${source}): ${error?.message ?? error}; gb_* tools stay unpublished`)
+        unavailable = true
+      }
       return
     } finally {
+      try { await fresh.close() } catch { /* best effort */ }
       starting.delete(fresh)
     }
-    await fresh.close()
-    if (closed || withdrawnByOps) return
+    if (!live() || owner !== generation) return
     // Discovery never overwrites the independently owned lazy call client.
     const wanted = toolList.filter((tool) => FASTCTX_FILE_TOOLS.includes(String(tool?.name)))
     const registered = []
     const registeredNames = []
+    const release = () => {
+      for (const dispose of registered) {
+        try { dispose() } catch (error) { log(`FastCtx unregister failed: ${error?.message ?? error}`) }
+      }
+    }
     for (const tool of wanted) {
+      if (!live() || owner !== generation) break
       const rawName = String(tool.name)
       const schema = tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : { type: 'object', properties: {} }
       // Ignore-rule transparency (v0.38.5, the field smoke report): the three
@@ -438,6 +508,7 @@ export function mountFastctx(ctx, deps) {
             render: (_args, value) => renderTextContent(value),
           },
           async execute(args, execution) {
+            assertLive(owner, execution?.agent)
             // Preserve v0.39.1 / #21: glob accepts real string arrays,
             // while stringified arrays and malformed patterns fail loudly.
             if (args !== null && typeof args === 'object' && 'pattern' in args) {
@@ -445,7 +516,7 @@ export function mountFastctx(ctx, deps) {
               if (invalid) throw new Error(invalid)
             }
             const translated = translateFastctxArgs(args, msysToWin ? (path) => msysToWin(path, execution) : undefined)
-            const result = await callWithReconnect(rawName, translated)
+            const result = await callWithReconnect(rawName, translated, owner, execution?.agent)
             const text = renderFastctxResult(rawName, result, echo ? (value) => echo(value, execution) : undefined)
             // The host treats a returned value as success; MCP failures must
             // throw, just as its official MCP client does.
@@ -461,52 +532,51 @@ export function mountFastctx(ctx, deps) {
         log(`${gbName(rawName)} registration failed: ${error?.message ?? error}`)
       }
     }
-    if (registered.length === 0) {
-      log('FastCtx published none of the known file tools; nothing registered')
-      decided = true
-      withdrawnByOps = true
+    if (!live() || owner !== generation) {
+      release()
       return
     }
-    disposer = () => { for (const dispose of registered) dispose() }
+    if (registered.length === 0) {
+      log('FastCtx published none of the known file tools; nothing registered')
+      unavailable = true
+      return
+    }
+    disposer = release
     log(`FastCtx bridge active (${source}): ${registeredNames.join(', ')}`)
   }
 
   const publish = () => {
-    if (!publishing) publishing = publishOnce().finally(() => { publishing = undefined })
-    return publishing
+    if (!publishing || publishing.owner !== generation) {
+      const task = { owner: generation }
+      task.promise = track(publishOnce(task.owner).finally(() => { if (publishing === task) publishing = undefined }))
+      publishing = task
+    }
+    return publishing.promise
   }
 
   const reconcile = (agent) => {
-    if (closed) return
-    if (!enabled()) { unpublish('FastCtx bridge disabled by the fastctxTools switch'); decided = true; withdrawnByOps = true; return }
-    if (decided && withdrawnByOps) return
-    let names = []
     try {
-      names = (tools(ctx)?.schemas?.(agent) ?? []).map((schema) => schema.name).filter((name) => typeof name === 'string')
-    } catch { /* a broken face reads as empty */ }
-    if (names.some((name) => OPS_PRESENCE_MARKERS.includes(name))) {
-      if (!withdrawnByOps) {
-        withdrawnByOps = true
-        decided = true
-        unpublish('dsh-ops detected (ops_* tools present): the gb_* surface stands down')
-      }
-      return
+      if (!live(agent)) return
+      void publish().catch((error) => log(`FastCtx bridge mount failed: ${error?.message ?? error}`))
+    } catch (error) {
+      log(`FastCtx bridge reconcile failed: ${error?.message ?? error}`)
     }
-    void publish().catch((error) => log(`FastCtx bridge mount failed: ${error?.message ?? error}`))
   }
 
-  try {
-    ctx.on('agent/created', ({ agent } = {}) => { try { reconcile(agent) } catch { /* never break agent creation */ } })
-  } catch (error) {
-    log(`FastCtx bridge wiring failed: ${error?.message ?? error}`)
-    return
-  }
+  // Install disposal before listeners: partial wiring still owns every child.
   ctx.effect(() => async () => {
     closed = true
+    generation++
+    agents.clear()
     unpublish()
-    const owned = new Set([...starting, client].filter(Boolean))
-    await Promise.allSettled([...owned].map((connection) => connection.close()))
-    await Promise.allSettled([publishing, connecting].filter(Boolean))
-    client = undefined
+    stopConnections()
+    await Promise.allSettled([...pending])
   }, 'dsh-gitbash-shell: FastCtx bridge')
+  try {
+    ctx.on('agent/created', ({ agent } = {}) => { if (!closed && agent) agents.add(agent); reconcile(agent) })
+    ctx.on('agent/disposed', ({ agent } = {}) => { agents.delete(agent) })
+    ctx.on('loader/volatile-update', () => { reconcile() })
+  } catch (error) {
+    log(`FastCtx bridge wiring failed: ${error?.message ?? error}`)
+  }
 }

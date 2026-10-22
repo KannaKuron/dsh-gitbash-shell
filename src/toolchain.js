@@ -229,7 +229,7 @@ const EXEC_EXTS = new Set(['.exe', '.cmd', '.bat', '.com'])
  * Only EXECUTABLE entries resolve (see EXEC_EXTS): a man page (`just.1`) or a
  * document (`jq.md`) shares the stem without being the command, and issue #31
  * measured a man page winning the first-hit race over the `just.exe` beside it.
- * @param {{pathDirs: () => string[], readdir: (dir: string) => string[]}} io
+ * @param {{pathDirs: () => string[], readdir: (dir: string) => Array, isFile?: (path: string) => boolean}} io
  * @param {Array} tools - catalog entries to look for.
  * @returns {Map<string, string>} cmd → the first resolving full path.
  */
@@ -247,17 +247,23 @@ export function scanCommands(io, tools) {
     try { entries = io.readdir(dir) } catch { continue }
     if (!Array.isArray(entries)) continue
     for (const entry of entries) {
-      if (typeof entry !== 'string') continue
-      // The LAST extension decides, exactly as before — but it now has to be
-      // an executable one, so a man page/doc/directory is skipped instead of
-      // resolving to a command it merely shares a stem with.
-      const suffix = /(\.[^./\\]+)$/.exec(entry)
+      const name = typeof entry === 'string' ? entry : entry?.name
+      if (typeof name !== 'string') continue
+      const suffix = /(\.[^./\\]+)$/.exec(name)
       if (suffix !== null && !EXEC_EXTS.has(suffix[1].toLowerCase())) continue
-      const base = (suffix === null ? entry : entry.slice(0, suffix.index)).toLowerCase()
+      const base = (suffix === null ? name : name.slice(0, suffix.index)).toLowerCase()
       const cmd = wanted.get(base)
-      if (cmd !== undefined && !found.has(cmd)) {
-        found.set(cmd, dir.replace(/[\\/]+$/, '') + '\\' + entry)
-      }
+      if (cmd === undefined || found.has(cmd)) continue
+      const fullPath = dir.replace(/[\\/]+$/, '') + '\\' + name
+      try {
+        // Production IO supplies Dirents. Follow only symlink candidates to a file;
+        // directories (even make / jq.exe) and broken links never satisfy a command.
+        // String-only injected IO remains supported for legacy deterministic fixtures.
+        const file = typeof entry === 'string'
+          ? (typeof io.isFile !== 'function' || io.isFile(fullPath))
+          : (entry.isFile?.() === true || (entry.isSymbolicLink?.() === true && io.isFile?.(fullPath) === true))
+        if (file) found.set(cmd, fullPath)
+      } catch { /* an unreadable or disappearing candidate is not a command */ }
     }
   }
   return found

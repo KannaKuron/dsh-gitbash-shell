@@ -26,7 +26,8 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readdirSync, readFileSync, rmSync } from 'node:fs'
+import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -68,7 +69,10 @@ export function defaultRunnerIo() {
       return String(process.env.PATH || '').split(';').filter(Boolean)
     },
     readdir(dir) {
-      return readdirSync(dir)
+      return readdirSync(dir, { withFileTypes: true })
+    },
+    isFile(path) {
+      try { return statSync(path).isFile() } catch { return false }
     },
     readFile(path) {
       return readFileSync(path, 'utf8')
@@ -79,6 +83,27 @@ export function defaultRunnerIo() {
     remove(path) {
       try { rmSync(path, { force: true }) } catch { /* best effort */ }
     },
+  }
+}
+
+/** Export one authoritative inventory into a per-call owned path. Failure is not absence. */
+async function readWingetInventory(io) {
+  const exportPath = io.tmpFile(`dsh-gitbash-shell-wg-export-${randomUUID()}.json`)
+  try {
+    const result = await io.run('winget', exportArgv(exportPath), PROBE_TIMEOUT_MS)
+    if (result.code !== 0) throw new Error(`export exited with code ${result.code}`)
+    const text = io.readFile(exportPath)
+    const json = JSON.parse(text)
+    if (!json || !Array.isArray(json.Sources) || json.Sources.some(source =>
+      !source || typeof source.SourceDetails?.Name !== 'string' || !Array.isArray(source.Packages)
+      || source.Packages.some(pkg => !pkg || typeof pkg.PackageIdentifier !== 'string'))) {
+      throw new Error('invalid export structure')
+    }
+    return parseExportJson(text, TOOLCHAIN)
+  } catch (error) {
+    throw new Error(`winget inventory unavailable: ${error?.message ?? error}`)
+  } finally {
+    io.remove(exportPath)
   }
 }
 
@@ -108,16 +133,7 @@ export async function probeToolchain(io) {
     }
   }
 
-  const exportPath = io.tmpFile('dsh-gitbash-shell-wg-export.json')
-  let owned = new Map()
-  try {
-    await io.run('winget', exportArgv(exportPath), PROBE_TIMEOUT_MS)
-    owned = parseExportJson(io.readFile(exportPath), TOOLCHAIN)
-  } catch {
-    owned = new Map()
-  } finally {
-    io.remove(exportPath)
-  }
+  const owned = await readWingetInventory(io)
 
   let upgradable = new Set()
   try {
@@ -197,11 +213,20 @@ export async function runToolJob(io, request, onChange) {
   // the installed package id (GNU vs MSVC ripgrep), never the preferred one.
   let owned = new Map()
   if (entries.length > 0) {
-    const exportPath = io.tmpFile('dsh-gitbash-shell-wg-export.json')
     try {
-      await io.run('winget', exportArgv(exportPath), PROBE_TIMEOUT_MS)
-      owned = parseExportJson(io.readFile(exportPath), TOOLCHAIN)
-    } catch { owned = new Map() } finally { io.remove(exportPath) }
+      owned = await readWingetInventory(io)
+    } catch (error) {
+      // Do not choose a preferred build or start an installer from an unknown inventory.
+      job.results = entries.map(tool => ({
+        id: tool.id, cmd: tool.cmd, action: mode === 'upgrade' ? 'upgrade' : 'install',
+        wingetId: tool.ids[0], admin: tool.admin === true, ok: false, kind: 'failed',
+        detail: `${error?.message ?? error}; no install or upgrade was attempted`,
+      }))
+      job.done = entries.length
+      job.finished = true
+      if (onChange) onChange(job)
+      return job
+    }
   }
 
   for (const tool of entries) {

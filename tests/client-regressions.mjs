@@ -79,6 +79,181 @@ function cardFixture({ expanded = false } = {}) {
   }
 }
 
+// Unlike the observation-only card fixture above, this runner preserves hook
+// state and compares the real dependency arrays across parent-driven renders.
+function draftFixture(initial = { status: 'loading' }) {
+  let declaration, stateIndex = 0, effectIndex = 0, dirty = false, tree
+  const states = [], dependencies = [], cleanups = [], effects = [], writes = []
+  const React = {
+    Component: function () {},
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useState(initialValue) {
+      const index = stateIndex++
+      if (!(index in states)) states[index] = typeof initialValue === 'function' ? initialValue() : initialValue
+      return [states[index], (value) => {
+        const next = typeof value === 'function' ? value(states[index]) : value
+        if (!Object.is(next, states[index])) { states[index] = next; dirty = true }
+      }]
+    },
+    useEffect(callback, next) {
+      const index = effectIndex++, previous = dependencies[index]
+      if (!previous || previous.length !== next.length || next.some((value, i) => !Object.is(value, previous[i]))) {
+        dependencies[index] = next
+        effects.push(() => { cleanups[index]?.(); cleanups[index] = callback() })
+      }
+    },
+  }
+  const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  assert.ok(source.includes('return module.exports;'))
+  vm.runInNewContext(source.replace('return module.exports;', 'exports.testCard = GitBashCard; return module.exports;'), {
+    window: { __ModuleLoader__: { load(value) { declaration = value } } }, console,
+    fetch: async () => ({ ok: false, status: 503 }), setTimeout, clearTimeout,
+  })
+  const Card = declaration.factory((name) => name === 'react' ? React : {}).testCard
+  function form(snapshot) {
+    return {
+      snapshot, accepted: true,
+      getSnapshot() { return this.snapshot },
+      set(key, value) { writes.push({ scope: this, key, value }); return Promise.resolve(this.accepted) },
+    }
+  }
+  const own = form(initial)
+  const props = { scope: own, ctx: { get: () => undefined }, view: 'page', t: (key) => key }
+  function render() {
+    for (let turn = 0; turn < 20; turn++) {
+      stateIndex = effectIndex = 0; effects.length = 0; dirty = false
+      tree = Card(props)
+      for (const effect of effects) effect()
+      if (!dirty) return tree
+    }
+    assert.fail('hook fixture did not settle')
+  }
+  const nodes = () => walk(render())
+  function controls() {
+    let input = nodes().find((node) => node.type === 'input' && node.props.placeholder === 'C:/Program Files/Git/bin/bash.exe')
+    if (!input) {
+      const fold = nodes().find((node) => node.props.className === 'gb-foldHead' && walk(node).some((child) => child.children?.includes('sec.executor')))
+      assert.ok(fold)
+      fold.props.onClick()
+      input = nodes().find((node) => node.type === 'input' && node.props.placeholder === 'C:/Program Files/Git/bin/bash.exe')
+    }
+    return { input, save: nodes().find((node) => node.type === 'button' && node.props.className?.includes('gb-saveBtn')) }
+  }
+  return { own, form, writes, render, controls, nodes, setScope: (scope) => { props.scope = scope }, dispose: () => cleanups.forEach((cleanup) => cleanup?.()) }
+}
+
+function walk(node) {
+  return !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flat(Infinity).flatMap(walk)]
+}
+
+test('client: bash draft hydrates when loading first becomes ready through a parent render', async (t) => {
+  const f = draftFixture()
+  t.after(f.dispose)
+  assert.equal(f.render(), null)
+  f.own.snapshot = { status: 'ready', value: { bashPath: 'Q:/Git/bin/bash.exe' } }
+  // Core owns the ConfigForm subscription and rerenders this child on arrival.
+  f.render()
+  const { input, save } = f.controls()
+  assert.equal(input.props.value, 'Q:/Git/bin/bash.exe')
+  save.props.onClick()
+  await new Promise(setImmediate)
+  assert.equal(f.writes.at(-1).value, 'Q:/Git/bin/bash.exe', 'untouched save must not clear the existing path')
+  assert.ok(f.controls().save.props.className.includes('gb-saved'))
+})
+
+test('client: bash draft hydrates on a ready initial mount', (t) => {
+  const f = draftFixture({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+  t.after(f.dispose)
+  assert.equal(f.controls().input.props.value, 'R:/Git/bin/bash.exe')
+})
+
+test('client: pristine bash draft follows a later mirror path update', (t) => {
+  const f = draftFixture({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+  t.after(f.dispose)
+  assert.equal(f.controls().input.props.value, 'R:/Git/bin/bash.exe')
+  f.own.snapshot = { status: 'ready', value: { bashPath: 'T:/external/Git/bin/bash.exe' } }
+  assert.equal(f.controls().input.props.value, 'T:/external/Git/bin/bash.exe')
+})
+
+test('client: dirty bash draft survives later mirror refreshes', (t) => {
+  const f = draftFixture({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+  t.after(f.dispose)
+  f.controls().input.props.onChange({ target: { value: 'S:/edited/Git/bin/bash.exe' } })
+  f.own.snapshot = { status: 'ready', value: { bashPath: 'T:/external/Git/bin/bash.exe', posixPaths: true } }
+  assert.equal(f.controls().input.props.value, 'S:/edited/Git/bin/bash.exe')
+  assert.ok(!f.controls().save.props.className.includes('gb-saved'))
+})
+
+test('client: scope change discards the former scope draft and hydrates the new ready snapshot', (t) => {
+  const f = draftFixture({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+  t.after(f.dispose)
+  f.controls().input.props.onChange({ target: { value: 'S:/unsaved/Git/bin/bash.exe' } })
+  const other = f.form({ status: 'loading' })
+  f.setScope(other)
+  assert.equal(f.render(), null)
+  other.snapshot = { status: 'ready', value: { bashPath: 'U:/other/Git/bin/bash.exe' } }
+  assert.equal(f.controls().input.props.value, 'U:/other/Git/bin/bash.exe')
+  const third = f.form({ status: 'ready', value: {} })
+  f.setScope(third)
+  assert.equal(f.controls().input.props.value, '')
+})
+
+for (const newScopeSaved of [false, true]) {
+  test(`client: a pending former-scope save cannot change the new scope saved state (${newScopeSaved})`, async (t) => {
+    const f = draftFixture({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+    t.after(f.dispose)
+    let acceptOld
+    f.own.accepted = new Promise((resolve) => { acceptOld = resolve })
+    f.controls().save.props.onClick()
+    const other = f.form({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+    f.setScope(other)
+    assert.ok(!f.controls().save.props.className.includes('gb-saved'))
+    if (newScopeSaved) {
+      f.controls().save.props.onClick()
+      await new Promise(setImmediate)
+    }
+    acceptOld(true)
+    await new Promise(setImmediate)
+    assert.equal(f.controls().save.props.className.includes('gb-saved'), newScopeSaved)
+    assert.equal(f.controls().input.props.value, 'R:/Git/bin/bash.exe')
+  })
+}
+
+for (const change of ['edit', 'scope roundtrip']) {
+  test(`client: a pending save cannot mark a replacement draft saved after ${change}`, async (t) => {
+    const f = draftFixture({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+    t.after(f.dispose)
+    let acceptOld
+    f.own.accepted = new Promise((resolve) => { acceptOld = resolve })
+    f.controls().save.props.onClick()
+    if (change === 'edit') {
+      f.controls().input.props.onChange({ target: { value: 'S:/edited/Git/bin/bash.exe' } })
+    } else {
+      f.setScope(f.form({ status: 'ready', value: { bashPath: 'T:/other/Git/bin/bash.exe' } }))
+      f.render()
+      f.setScope(f.own)
+      f.render()
+    }
+    acceptOld(true)
+    await new Promise(setImmediate)
+    assert.ok(!f.controls().save.props.className.includes('gb-saved'))
+  })
+}
+
+test('client: refused bash save keeps the dirty draft and never claims success', async (t) => {
+  const f = draftFixture({ status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } })
+  t.after(f.dispose)
+  f.own.accepted = false
+  f.controls().input.props.onChange({ target: { value: '  S:/edited/Git/bin/bash.exe  ' } })
+  f.controls().save.props.onClick()
+  await new Promise(setImmediate)
+  assert.equal(f.writes.at(-1).value, 'S:/edited/Git/bin/bash.exe')
+  f.own.snapshot = { status: 'ready', value: { bashPath: 'R:/Git/bin/bash.exe' } }
+  assert.equal(f.controls().input.props.value, '  S:/edited/Git/bin/bash.exe  ')
+  assert.ok(!f.controls().save.props.className.includes('gb-saved'))
+  assert.ok(f.nodes().some((node) => node.children?.some((child) => typeof child === 'string' && child.includes('bash.saveFailed'))))
+})
+
 test('client: pending, ready and unavailable snapshots call the same hooks', () => {
   const fixture = cardFixture()
   const pending = fixture.render()

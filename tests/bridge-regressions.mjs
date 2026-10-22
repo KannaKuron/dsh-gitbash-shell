@@ -15,15 +15,25 @@ test('FastCtx: spawn failure rejects initialization and clears the transport', a
   assert.equal(client.child, undefined)
 })
 
+test('FastCtx: closing during the async spawn import prevents a late child', async () => {
+  const client = new McpStdio({ file: join(tmpdir(), `must-not-spawn-${randomUUID()}`), timeoutMs: 1000 })
+  const started = client.start()
+  const rejected = assert.rejects(started, /bridge was stopped/)
+  await client.close()
+  await rejected
+  assert.equal(client.child, undefined)
+  assert.equal(client.pending.size, 0)
+})
+
 async function bridgeFixture(t, result, callbacks = {}) {
   const originals = Object.fromEntries(['start', 'listTools', 'callTool', 'close'].map((key) => [key, McpStdio.prototype[key]]))
-  const definitions = new Map(), listeners = new Map(), cleanups = [], calls = [], instances = []
-  McpStdio.prototype.start = async function () { instances.push(this); this.dead = false; return this }
+  const definitions = new Map(), listeners = new Map(), cleanups = [], calls = [], instances = [], registrations = []
+  McpStdio.prototype.start = async function () { instances.push(this); this.dead = false; return callbacks.start ? callbacks.start(this) : this }
   McpStdio.prototype.listTools = async function () {
     if (callbacks.listTools) return callbacks.listTools(this)
     return [{ name: 'inspect_local_file', inputSchema: { type: 'object', properties: {} } }]
   }
-  McpStdio.prototype.callTool = async function (name, args) { calls.push({ name, args }); return result }
+  McpStdio.prototype.callTool = async function (name, args) { calls.push({ name, args }); return callbacks.callTool ? callbacks.callTool(name, args) : result }
   McpStdio.prototype.close = async function () { this.dead = true; callbacks.onClose?.(this) }
   t.after(async () => {
     for (const cleanup of cleanups.reverse()) await cleanup()
@@ -31,7 +41,12 @@ async function bridgeFixture(t, result, callbacks = {}) {
   })
   const registry = {
     schemas: () => callbacks.faceSchemas ? callbacks.faceSchemas() : [],
-    register(definition) { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) },
+    register(definition) {
+      assert.ok(!definitions.has(definition.name), 'the real registry rejects duplicate tool names')
+      registrations.push(definition)
+      definitions.set(definition.name, definition)
+      return () => { if (definitions.get(definition.name) === definition) definitions.delete(definition.name) }
+    },
   }
   const ctx = { on(name, callback) { listeners.set(name, callback) }, effect(callback) { cleanups.push(callback()) } }
   function createRequireFrom() {
@@ -43,13 +58,14 @@ async function bridgeFixture(t, result, callbacks = {}) {
     platform: 'win32', enabled: () => true, createRequireFrom, tools: () => registry,
     msysToWin: (value) => value, echo: (value) => value, log: () => {}, ...callbacks,
   })
-  const createAgent = () => listeners.get('agent/created')({ agent: {} })
+  const createAgent = (agent = {}) => listeners.get('agent/created')({ agent })
+  const volatileUpdate = () => listeners.get('loader/volatile-update')?.([['fastctxTools']])
   createAgent()
   if (callbacks.concurrentCreation) createAgent()
   if (!callbacks.pendingBootstrap) await new Promise(setImmediate)
   const definition = definitions.get(`gb_${callbacks.rawName || 'inspect_local_file'}`)
-  if (!callbacks.pendingBootstrap) assert.ok(definition)
-  return { definition, definitions, calls, instances, createAgent, dispose: () => Promise.all(cleanups.map((cleanup) => cleanup())) }
+  if (!callbacks.pendingBootstrap && !callbacks.unpublished) assert.ok(definition)
+  return { definition, definitions, registrations, calls, instances, createAgent, volatileUpdate, registry, dispose: () => Promise.all(cleanups.map((cleanup) => cleanup())) }
 }
 
 test('FastCtx: an MCP tool error throws rather than returning success content', async (t) => {
@@ -93,6 +109,155 @@ test('FastCtx: preserves upstream #21 real-array glob patterns through execution
   assert.deepEqual(calls[0].args.pattern, patterns)
   await assert.rejects(definition.execute({ pattern: JSON.stringify(patterns) }, { agent: {} }), /array/i)
   assert.equal(calls.length, 1, 'a stringified array must fail before reaching MCP')
+})
+
+test('FastCtx: OFF to ON publishes on volatile update without a new agent', async (t) => {
+  let enabled = false
+  const fixture = await bridgeFixture(t, {}, { enabled: () => enabled, unpublished: true })
+  assert.equal(fixture.instances.length, 0)
+  enabled = true
+  fixture.volatileUpdate()
+  await new Promise(setImmediate)
+  assert.equal(fixture.definitions.size, 1)
+  assert.equal(fixture.instances.length, 1)
+})
+
+for (const connected of [false, true]) {
+  test(`FastCtx: ON to OFF revokes old definitions (${connected ? 'connected' : 'lazy'}) and ON restores a fresh owner`, async (t) => {
+    let enabled = true
+    const fixture = await bridgeFixture(t, {}, { enabled: () => enabled })
+    if (connected) await fixture.definition.execute({}, { agent: {} })
+    const before = { starts: fixture.instances.length, calls: fixture.calls.length }
+    enabled = false
+    fixture.volatileUpdate()
+    assert.equal(fixture.definitions.size, 0, 'withdraw immediately, without agent creation')
+    await assert.rejects(fixture.definition.execute({}, { agent: {} }), /bridge was stopped/)
+    assert.equal(fixture.instances.length, before.starts, 'OFF must never spawn through a cached SDK definition')
+    assert.equal(fixture.calls.length, before.calls, 'OFF must never send tools/call')
+    assert.ok(fixture.instances.every((client) => client.isDead))
+    enabled = true
+    fixture.volatileUpdate()
+    await new Promise(setImmediate)
+    assert.equal(fixture.definitions.size, 1)
+    const current = fixture.definitions.get('gb_inspect_local_file')
+    assert.notEqual(current, fixture.definition)
+    await assert.rejects(fixture.definition.execute({}, { agent: {} }), /bridge was stopped/)
+    await current.execute({}, { agent: {} })
+    assert.equal(fixture.calls.length, before.calls + 1)
+  })
+}
+
+test('FastCtx: stale definitions recheck the live switch even before its update event', async (t) => {
+  let enabled = true
+  const fixture = await bridgeFixture(t, {}, {
+    enabled: () => enabled,
+    msysToWin: () => assert.fail('disabled old references must not even enter the dialect resolver'),
+  })
+  enabled = false
+  await assert.rejects(fixture.definition.execute({ path: '/c/fixture' }, { agent: {} }), /bridge was stopped/)
+  assert.equal(fixture.instances.length, 1)
+  assert.equal(fixture.calls.length, 0)
+})
+
+test('FastCtx: OFF during discovery cancels it; rapid ON and concurrent agents leave only one current publication', async (t) => {
+  let enabled = true, releaseDiscovery
+  const pending = new Promise((resolve) => { releaseDiscovery = resolve })
+  let discoveries = 0
+  const listed = [{ name: 'inspect_local_file', inputSchema: { type: 'object', properties: {} } }]
+  t.after(() => releaseDiscovery(listed))
+  const fixture = await bridgeFixture(t, {}, {
+    enabled: () => enabled, pendingBootstrap: true,
+    listTools: () => ++discoveries === 1 ? pending : listed,
+  })
+  await new Promise(setImmediate)
+  enabled = false
+  fixture.volatileUpdate()
+  assert.ok(fixture.instances[0].isDead, 'OFF closes pending discovery')
+  enabled = true
+  fixture.volatileUpdate()
+  fixture.createAgent({ id: 'a' })
+  fixture.createAgent({ id: 'b' })
+  await new Promise(setImmediate)
+  releaseDiscovery(listed)
+  await new Promise(setImmediate)
+  assert.equal(fixture.definitions.size, 1)
+  assert.equal(fixture.instances.length, 2, 'one discovery for each enabled generation')
+  assert.equal(fixture.registrations.length, 1, 'superseded discovery must never attempt late publication')
+  await fixture.dispose()
+  assert.equal(fixture.definitions.size, 0)
+  assert.ok(fixture.instances.every((client) => client.isDead))
+})
+
+test('FastCtx: OFF during lazy connect prevents a late call and closes its connection', async (t) => {
+  let enabled = true, releaseStart
+  let starts = 0
+  const pending = new Promise((resolve) => { releaseStart = resolve })
+  const fixture = await bridgeFixture(t, {}, {
+    enabled: () => enabled,
+    start: (client) => ++starts === 1 ? client : pending.then(() => client),
+  })
+  const execution = fixture.definition.execute({}, { agent: {} })
+  const rejected = assert.rejects(execution, /bridge was stopped/)
+  enabled = false
+  fixture.volatileUpdate()
+  releaseStart()
+  await rejected
+  assert.equal(fixture.calls.length, 0)
+  assert.ok(fixture.instances.every((client) => client.isDead))
+})
+
+test('FastCtx: disposal owns a pending lazy connection and rejects its caller', async (t) => {
+  let starts = 0, releaseStart
+  const gate = new Promise((resolve) => { releaseStart = resolve })
+  const fixture = await bridgeFixture(t, {}, {
+    start: (client) => ++starts === 1 ? client : gate.then(() => client),
+    onClose: () => { if (starts > 1) releaseStart() },
+  })
+  const call = assert.rejects(fixture.definition.execute({}, { agent: {} }), /bridge was stopped/)
+  await fixture.dispose()
+  await call
+  fixture.volatileUpdate()
+  fixture.createAgent()
+  await new Promise(setImmediate)
+  assert.equal(fixture.calls.length, 0)
+  assert.equal(fixture.instances.length, 2)
+  assert.equal(fixture.definitions.size, 0)
+  assert.ok(fixture.instances.every((client) => client.isDead))
+})
+
+test('FastCtx: ops appearing in a later caller owns the surface even without a new agent event', async (t) => {
+  let enabled = true
+  const fixture = await bridgeFixture(t, {}, { enabled: () => enabled })
+  fixture.registry.schemas = (agent) => agent?.ops ? [{ name: 'ops_replace' }] : []
+  await assert.rejects(fixture.definition.execute({}, { agent: { ops: true } }), /bridge was stopped/)
+  assert.equal(fixture.definitions.size, 0)
+  assert.equal(fixture.calls.length, 0)
+  assert.equal(fixture.instances.length, 1)
+  enabled = false; fixture.volatileUpdate()
+  enabled = true; fixture.volatileUpdate()
+  fixture.createAgent({ ops: true })
+  await new Promise(setImmediate)
+  assert.equal(fixture.definitions.size, 0, 'user ON cannot undo peer stand-down')
+})
+
+test('FastCtx: a concurrent ops agent cancels pending discovery before publication', async (t) => {
+  let releaseDiscovery
+  const pending = new Promise((resolve) => { releaseDiscovery = resolve })
+  const fixture = await bridgeFixture(t, {}, { pendingBootstrap: true, listTools: () => pending })
+  await new Promise(setImmediate)
+  fixture.registry.schemas = (agent) => agent?.ops ? [{ name: 'ops_grep' }] : []
+  fixture.createAgent({ ops: true })
+  releaseDiscovery([{ name: 'inspect_local_file' }])
+  await new Promise(setImmediate)
+  assert.equal(fixture.definitions.size, 0)
+  assert.ok(fixture.instances.every((client) => client.isDead))
+})
+
+test('FastCtx: ordinary backend failure is never automatically replayed', async (t) => {
+  const fixture = await bridgeFixture(t, {}, { callTool: () => { throw new Error('fixture replace failed after a possible write') } })
+  await assert.rejects(fixture.definition.execute({}, { agent: {} }), /possible write/)
+  assert.equal(fixture.calls.length, 1)
+  assert.equal(fixture.instances.length, 2)
 })
 
 test('FastCtx: disposal cancels discovery and prevents late tool registration', async (t) => {
