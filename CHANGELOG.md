@@ -3,6 +3,46 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.43.0] — 2026-10-23
+
+### feat:终端工具任务的取消能力与可观测性(#35,@youyv 报告)
+
+- **背景**:#35(高质量报告,代码事实逐行核验全部准确):winget 安装/升级任务「只进不出」——
+  下载卡住时卡片停在「处理中」,没有取消按钮、看不到已用时与 winget 的重试输出、单条目最长干等
+  15 分钟(`INSTALL_TIMEOUT_MS`,为 UAC 等待保留,不动),唯一出路是重启 DSH;`clear` 只丢
+  `activeJob` 锁不杀进程,第二个任务能与仍在跑的 winget 并发(半装状态风险)。
+- **取消(主诉求)**:新路由 `POST ?action=cancel`(`index.js`,与 `run`/`clear` 同一 fence);
+  `cancelToolJob()` 标记 job 并经 `io.cancelActive()` **杀整个进程树**——win32 用
+  `taskkill /PID <pid> /T /F`(winget 会派发 forwarder/msiexec/DeliveryOptimization 子进程,
+  只杀父进程留孤儿),POSIX 用 SIGKILL。进行中的条目 verdict 归 `cancelled`,剩余条目归
+  `skipped`(用户要求的是停止,不是失败);任务留在「已取消」终态直到卡片关闭。取消落在
+  inventory 读取期间时全部条目 skipped(什么都没尝试,什么都不报失败);落在 winget 已正常
+  退出之后时不改写已完成条目的 verdict(只信 run 自己的 `cancelled` 标志,不信 job 级兜底)。
+- **clear 语义修正(堵并发洞)**:任务未完成时 `clearToolJob()` 现在**等价于取消**(杀树 + 标记),
+  不再丢锁放行第二个任务;已完成任务照旧忘记。
+- **runner 流式改造**:`defaultRunnerIo` 的 `execFile` 换 `spawn`(stdio pipe,16MiB 输出上限
+  语义保留):`hooks.onOutput` 逐行送出最新一行(300 字符截断),job 快照新增
+  `startedAt` / `currentSince` / `lastOutput` / `cancelled`(`index.js` snapshot 显式挑字段,
+  io 引用不上线路)。超时、取消、看门狗三种终止都走进程树击杀,并以
+  `timedOut` / `cancelled` / `networkRetry` 标志区分——`execFile` 时代 ETIMEDOUT 被压成
+  `code=-1` 归「一般失败」的问题一并修正。
+- **卡死下载看门狗**:`NETWORK_RETRY_PATTERN`(`/failed to download, waiting a bit and
+  retry|0x80072ee2|0x80072efd/i`,#35 实测的 DO→WinINet 重试循环信号)首次命中起计时,一个
+  窗口(默认 120s,`defaultRunnerIo({networkRetryWindowMs})` 可注入)后进程仍在即杀树,verdict
+  归 `network` 并附最后一行——不再静默烧完 15 分钟。健康下载永远不会碰到它(窗口只从首个
+  retry 行起算,且只触发一次)。
+- **UI**:进行中行新增**已用时**(`currentSince` 起算,`2m13s` 数字形,随 1.2s 轮询刷新)、
+  **取消按钮**与最新 winget 行(单行灰色 `gb-toolTail`);badge 按 verdict 归类——已取消 /
+  已跳过(中性 `–` + `gb-st-skip`)/ 超时 / 网络失败 与 成功/失败 区分;skipped 条目不打失败
+  明细行;任务被取消后在卡片上显示总况行。21 门词典各新增 6 键
+  (`tools.cancel` / `tools.cancelledNote` / `tools.kind.cancelled|skipped|timeout|network`)。
+- **测试**:新 `tests/terminal-cancel.mjs` 11 项(取消状态机三条路径 / clear 等价 / timeout 与
+  networkRetry 归类 / watchdog / onOutput / spawn 失败兼容 / 路由与卡片源码断言);全量 334 项
+  333 pass + 1 平台 skip + 0 fail。win32 的进程树击杀(taskkill 路径)本机(macOS)只能验证
+  SIGKILL 分支,**Windows 真机复验待做**(卡死下载场景:装一个 GitHub 源包,断网点「取消」,
+  看树是否全灭、卡片是否显示已取消)。
+- UAC 提示:杀树后系统 consent.exe 弹窗一般随之撤下;若残留,手动关掉即可,不影响已取消的判定。
+
 ## [0.42.3] — 2026-10-23
 
 ### fix:全仓严格 review 的十项修复(PR #34,@KouzakiUmi 贡献;16 文件 +1229/−123)

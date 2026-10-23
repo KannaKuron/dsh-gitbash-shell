@@ -1,6 +1,6 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.42.3",
+  "version": "0.43.0",
   "description": "Windows 上给 agent 一个真正的 Git Bash 命令工具:私有 Git Bash 执行器实例(官方 PowerShell 执行器原样保留),统一 MSYS 盘根路径方言,官方 pwsh 工具默认隐藏可开关,物化四个内置预设的 Git Bash 变体,侧栏终端接管可开关。· Give agents a real Git Bash tool on Windows: a private Git Bash executor instance (the official PowerShell executor stays untouched), a unified MSYS drive-root path dialect, an opt-in official pwsh tool, and four Git Bash preset variants.",
   "type": "module",
   "repository": {
@@ -57,7 +57,7 @@
     "icon.svg"
   ],
   "scripts": {
-    "test": "node --test tests/smoke.mjs tests/private-executor.mjs tests/client-regressions.mjs tests/bridge-regressions.mjs tests/runtime-regressions.mjs tests/host-regressions.mjs tests/compatibility-regressions.mjs tests/path-tool.mjs tests/native-output.mjs tests/native-executor.mjs tests/ops-adopt.mjs tests/review-core-regressions.mjs tests/review-native-regressions.mjs",
+    "test": "node --test tests/smoke.mjs tests/private-executor.mjs tests/client-regressions.mjs tests/bridge-regressions.mjs tests/runtime-regressions.mjs tests/host-regressions.mjs tests/compatibility-regressions.mjs tests/path-tool.mjs tests/native-output.mjs tests/native-executor.mjs tests/ops-adopt.mjs tests/terminal-cancel.mjs tests/review-core-regressions.mjs tests/review-native-regressions.mjs",
     "test:preview": "node --import ./tests/host-loader.mjs --import ./tests/preview-env.mjs --test tests/preview.mjs tests/bridge-preview.mjs tests/runtime-preview.mjs tests/host-preview.mjs tests/path-preview.mjs tests/native-output-preview.mjs tests/native-preview.mjs tests/native-integration-preview.mjs tests/review-native-preview.mjs",
     "version": "node -e \"const fs=require('fs');const m=JSON.parse(fs.readFileSync('dsh.plugin.json','utf8'));const v=JSON.parse(fs.readFileSync('package.json','utf8')).version;m.version=v;fs.writeFileSync('dsh.plugin.json',JSON.stringify(m,null,2)+'\\n')\" && git add dsh.plugin.json"
   },

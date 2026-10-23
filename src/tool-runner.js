@@ -25,7 +25,7 @@
  * module is testable without winget, Windows, or a network.
  */
 
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
@@ -42,6 +42,46 @@ import {
 const PROBE_TIMEOUT_MS = 60_000
 const INSTALL_TIMEOUT_MS = 15 * 60_000
 
+/** winget's own download-retry chatter (issue #35): when this shows up and the
+ *  process is STILL running one window later, the download is wedged — DO
+ *  falls back to WinINet, retries, and would otherwise burn the whole 15-minute
+ *  ceiling in silence. */
+export const NETWORK_RETRY_PATTERN = /failed to download, waiting a bit and retry|0x80072ee2|0x80072efd/i
+const NETWORK_RETRY_WINDOW_MS = 120_000
+/** Hard cap on the collected output of one run (mirrors the old maxBuffer). */
+const OUTPUT_CAP_BYTES = 16 * 1024 * 1024
+
+/** Kill a whole process tree. */
+function killTree(child) {
+  try {
+    if (!child || child.pid === undefined) return
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+    } else {
+      child.kill('SIGKILL')
+    }
+  } catch { /* best effort — the verdict does not depend on the kill landing */ }
+}
+
+/** Sort a run result that ended through cancel / hard timeout / wedged
+ *  download from an ordinary winget failure (issue #35).
+ *  Only the run's OWN `cancelled` flag counts here: a cancel that lands AFTER
+ *  winget already exited must not rewrite a finished install into a cancelled
+ *  one — the loop skips the remaining entries instead. */
+function verdictFrom(result) {
+  if (result && result.cancelled === true) return { ok: false, kind: 'cancelled', detail: 'cancelled by the user' }
+  if (result && result.timedOut === true) return { ok: false, kind: 'timeout', detail: tailLine(result.output) || 'hard timeout' }
+  if (result && result.networkRetry === true) return { ok: false, kind: 'network', detail: tailLine(result.output) || 'download retried without progress' }
+  return classifyWingetResult(result.code, result.output)
+}
+
+/** The freshest full line of a run's output, capped — the one signal a stuck
+ *  download actually prints ("Failed to download, waiting a bit and retry"). */
+function tailLine(text) {
+  const lines = String(text || '').trimEnd().split(/\r?\n/)
+  return (lines[lines.length - 1] || '').slice(0, 300)
+}
+
 /** Only one job at a time: winget serializes on its own state anyway, and two
  *  concurrent installs is how a half-applied catalog happens. */
 let activeJob = null
@@ -49,21 +89,100 @@ let activeJob = null
 /**
  * The real IO. `run` never rejects: a non-zero exit is data, and a spawn
  * failure becomes a synthetic exit code so callers have one shape to handle.
+ *
+ * v0.43.0 (issue #35): the old `execFile` buffered the child's whole output,
+ * so a wedged winget download looked like "processing" for 15 minutes with
+ * nothing to watch and no way out. `spawn` streams instead: `hooks.onOutput`
+ * receives each line as it arrives, a hard timeout, an external
+ * `cancelActive()` and the download-retry watchdog below all end the run by
+ * killing the WHOLE process tree (winget dispatches forwarders / msiexec /
+ * DeliveryOptimization children — killing only the parent leaves them), and
+ * the result carries `cancelled` / `timedOut` / `networkRetry` so callers can
+ * sort those endings from ordinary failures.
+ * @param {{ networkRetryWindowMs?: number }} [options]
  * @returns {object}
  */
-export function defaultRunnerIo() {
+export function defaultRunnerIo(options = {}) {
+  const networkRetryWindowMs = Number(options.networkRetryWindowMs) > 0
+    ? Number(options.networkRetryWindowMs)
+    : NETWORK_RETRY_WINDOW_MS
+  /** The in-flight run: `{ child, flags }`, or null between runs. */
+  let current = null
   return {
-    run(file, args, timeoutMs) {
+    run(file, args, timeoutMs, hooks) {
+      const onOutput = hooks && typeof hooks.onOutput === 'function' ? hooks.onOutput : null
       return new Promise((resolve) => {
-        execFile(file, args, { windowsHide: true, timeout: timeoutMs || PROBE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
-          const output = String(stdout || '') + String(stderr || '')
-          if (error) {
-            const code = typeof error.code === 'number' ? error.code : -1
-            return resolve({ code, output: output || String(error.message || '') })
+        let settled = false
+        const flags = {}
+        const child = spawn(file, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+        current = { child, flags }
+        let output = ''
+        let bytes = 0
+        const swallow = (chunk) => {
+          bytes += chunk.length
+          if (bytes <= OUTPUT_CAP_BYTES) output += chunk.toString('utf8')
+          if (onOutput !== null) {
+            // Keep only the freshest line (a 300-char tail): the card shows one
+            // grey line under the progress, not a log.
+            const line = String(chunk).split(/\r?\n/).filter(Boolean).pop()
+            if (line) onOutput(line.slice(0, 300))
           }
-          resolve({ code: 0, output })
+        }
+        child.stdout.on('data', swallow)
+        child.stderr.on('data', swallow)
+        // The wedged-download watchdog: from the FIRST retry line, a process
+        // still alive one window later is not making progress (winget cycles
+        // DO → WinINet → "waiting a bit and retry" for minutes). One window,
+        // once — a slow but working download never sees it.
+        let retryTimer = null
+        child.stderr.on('data', (chunk) => {
+          if (settled || flags.networkRetry || flags.timedOut || flags.cancelled || retryTimer !== null) return
+          if (NETWORK_RETRY_PATTERN.test(String(chunk))) {
+            retryTimer = setTimeout(() => {
+              retryTimer = null
+              if (settled || flags.timedOut || flags.cancelled) return
+              flags.networkRetry = true
+              killTree(child)
+            }, networkRetryWindowMs)
+          }
+        })
+        const timer = setTimeout(() => {
+          if (settled || flags.networkRetry || flags.cancelled) return
+          flags.timedOut = true
+          killTree(child)
+        }, timeoutMs || PROBE_TIMEOUT_MS)
+        child.on('error', (error) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null }
+          if (current !== null && current.child === child) current = null
+          resolve({ code: -1, output: output || String((error && error.message) || error) })
+        })
+        child.on('close', (code) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null }
+          if (current !== null && current.child === child) current = null
+          resolve({
+            code: typeof code === 'number' ? code : -1,
+            output,
+            ...(flags.cancelled === true ? { cancelled: true } : {}),
+            ...(flags.timedOut === true ? { timedOut: true } : {}),
+            ...(flags.networkRetry === true ? { networkRetry: true } : {}),
+          })
         })
       })
+    },
+    /** Abort the in-flight run (issue #35). A no-op between runs; the run
+     *  resolves with `cancelled: true` once the tree is down. */
+    cancelActive() {
+      const entry = current
+      if (!entry || entry.child.exitCode !== null || entry.child.signalCode !== null) return false
+      entry.flags.cancelled = true
+      killTree(entry.child)
+      return true
     },
     pathDirs() {
       return String(process.env.PATH || '').split(';').filter(Boolean)
@@ -204,8 +323,18 @@ export async function runToolJob(io, request, onChange) {
     total: entries.length,
     done: 0,
     current: '',
+    // v0.43.0 (issue #35): observability + cancellation. `currentSince` times
+    // the entry in flight, `lastOutput` mirrors the freshest winget line,
+    // `cancelled` is set by cancelToolJob(), and `io` is kept so the cancel
+    // path can reach the process tree. The route's snapshot picks fields
+    // explicitly, so the io reference never reaches the wire.
+    startedAt: Date.now(),
+    currentSince: 0,
+    lastOutput: '',
+    cancelled: false,
     finished: false,
     results: [],
+    io,
   }
   activeJob = job
 
@@ -216,6 +345,20 @@ export async function runToolJob(io, request, onChange) {
     try {
       owned = await readWingetInventory(io)
     } catch (error) {
+      if (job.cancelled) {
+        // The cancel landed while the inventory was being read: nothing was
+        // attempted, so nothing may be reported as a failure.
+        job.results = entries.map((tool) => ({
+          id: tool.id, cmd: tool.cmd, action: mode === 'upgrade' ? 'upgrade' : 'install',
+          wingetId: tool.ids[0], admin: tool.admin === true, ok: false, kind: 'skipped',
+          detail: 'cancelled before this entry started',
+        }))
+        job.done = entries.length
+        job.current = ''
+        job.finished = true
+        if (onChange) onChange(job)
+        return job
+      }
       // Do not choose a preferred build or start an installer from an unknown inventory.
       job.results = entries.map(tool => ({
         id: tool.id, cmd: tool.cmd, action: mode === 'upgrade' ? 'upgrade' : 'install',
@@ -230,34 +373,42 @@ export async function runToolJob(io, request, onChange) {
   }
 
   for (const tool of entries) {
-    job.current = tool.cmd
-    if (onChange) onChange(job)
     const installed = owned.get(tool.id)
     const useUpgrade = mode === 'upgrade' || (mode === 'auto' && !!installed)
-    const argv = useUpgrade ? upgradeArgv(tool, installed && installed.pkgId) : installArgv(tool)
-    let verdict
-    try {
-      const result = await io.run('winget', argv, INSTALL_TIMEOUT_MS)
-      verdict = classifyWingetResult(result.code, result.output)
-      // An explicit "install" on something winget already owns is really an
-      // upgrade request; retry as one so the user's click does the obvious thing.
-      if (!verdict.ok && !useUpgrade && verdict.kind === 'not-found' && installed) {
-        const retry = await io.run('winget', upgradeArgv(tool, installed.pkgId), INSTALL_TIMEOUT_MS)
-        verdict = classifyWingetResult(retry.code, retry.output)
-      }
-    } catch (error) {
-      verdict = { ok: false, kind: 'failed', detail: String((error && error.message) || error) }
-    }
-    job.results.push({
+    const base = {
       id: tool.id,
       cmd: tool.cmd,
       action: useUpgrade ? 'upgrade' : 'install',
       wingetId: installed ? installed.pkgId : tool.ids[0],
       admin: tool.admin === true,
-      ok: verdict.ok,
-      kind: verdict.kind,
-      detail: verdict.detail,
-    })
+    }
+    // A cancel lands between entries too: the remaining ones are skipped, not
+    // failed (issue #35) — the user asked to stop, not to be told it broke.
+    if (job.cancelled) {
+      job.results.push({ ...base, ok: false, kind: 'skipped', detail: 'cancelled before this entry started' })
+      job.done += 1
+      if (onChange) onChange(job)
+      continue
+    }
+    job.current = tool.cmd
+    job.currentSince = Date.now()
+    if (onChange) onChange(job)
+    const argv = useUpgrade ? upgradeArgv(tool, installed && installed.pkgId) : installArgv(tool)
+    const hooks = { onOutput: (line) => { job.lastOutput = line } }
+    let verdict
+    try {
+      const result = await io.run('winget', argv, INSTALL_TIMEOUT_MS, hooks)
+      verdict = verdictFrom(result)
+      // An explicit "install" on something winget already owns is really an
+      // upgrade request; retry as one so the user's click does the obvious thing.
+      if (!verdict.ok && !useUpgrade && verdict.kind === 'not-found' && installed && !job.cancelled) {
+        const retry = await io.run('winget', upgradeArgv(tool, installed.pkgId), INSTALL_TIMEOUT_MS, hooks)
+        verdict = verdictFrom(retry)
+      }
+    } catch (error) {
+      verdict = { ok: false, kind: 'failed', detail: String((error && error.message) || error) }
+    }
+    job.results.push({ ...base, ok: verdict.ok, kind: verdict.kind, detail: verdict.detail })
     job.done += 1
     if (onChange) onChange(job)
   }
@@ -282,9 +433,34 @@ export function currentToolJob() {
   return activeJob
 }
 
-/** Forget a finished job (called when the card closes the progress view). */
+/**
+ * Cancel the active job: mark it, then kill the whole winget process tree so
+ * the in-flight entry ends immediately and the loop marks the rest skipped
+ * (issue #35). A no-op on a finished or missing job, or on an id mismatch.
+ * @param {string} [id] - when given, only that job is cancelled.
+ * @returns {object} the (possibly unchanged) current job.
+ */
+export function cancelToolJob(id) {
+  const job = activeJob
+  if (!job || job.finished) return currentToolJob()
+  if (id && job.id !== id) return job
+  job.cancelled = true
+  try { if (job.io && typeof job.io.cancelActive === 'function') job.io.cancelActive() } catch { /* best effort */ }
+  return job
+}
+
+/** Forget a finished job (called when the card closes the progress view).
+ *  Closing it MID-RUN now cancels instead: the old clear just dropped the
+ *  activeJob lock and let a second job race the still-running winget — a
+ *  half-applied catalog was one click away (issue #35). */
 export function clearToolJob(id) {
-  if (activeJob && (!id || activeJob.id === id)) activeJob = null
+  const job = activeJob
+  if (!job) return
+  if (!job.finished) {
+    cancelToolJob(id)
+    return
+  }
+  if (!id || job.id === id) activeJob = null
 }
 
 // ── request fencing ─────────────────────────────────────────────────────────

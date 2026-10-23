@@ -132,6 +132,12 @@ window.__ModuleLoader__.load({
 			"tools.state.current": "已是最新",
 			"tools.adminHint": "需要管理员权限:会弹出 UAC 窗口,请在电脑上确认",
 			"tools.working": "处理中",
+			"tools.cancel": "取消",
+			"tools.cancelledNote": "已取消:完成的条目保留结果,其余已跳过。",
+			"tools.kind.cancelled": "已取消",
+			"tools.kind.skipped": "已跳过",
+			"tools.kind.timeout": "超时",
+			"tools.kind.network": "网络失败",
 			"tools.resultOk": "成功",
 			"tools.resultFail": "失败",
 			"tools.installing": "安装中…",
@@ -212,6 +218,12 @@ window.__ModuleLoader__.load({
 			"tools.state.current": "Up to date",
 			"tools.adminHint": "Needs administrator: a UAC prompt will appear — accept it on this machine",
 			"tools.working": "Working",
+			"tools.cancel": "取消",
+			"tools.cancelledNote": "已取消:完成的条目保留结果,其余已跳过。",
+			"tools.kind.cancelled": "已取消",
+			"tools.kind.skipped": "已跳过",
+			"tools.kind.timeout": "超时",
+			"tools.kind.network": "网络失败",
 			"tools.resultOk": "succeeded",
 			"tools.resultFail": "failed",
 			"tools.installing": "Installing…",
@@ -302,6 +314,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "محدَّث",
 				"tools.adminHint": "يتطلب صلاحيات المسؤول: ستظهر نافذة UAC — أكّدها على هذا الجهاز",
 				"tools.working": "جارٍ العمل",
+				"tools.cancel": "إلغاء",
+				"tools.cancelledNote": "تم الإلغاء: تحتفظ الإدخالات المكتملة بنتائجها، وتخطّي الباقي.",
+				"tools.kind.cancelled": "أُلغي",
+				"tools.kind.skipped": "تم التخطي",
+				"tools.kind.timeout": "انتهت المهلة",
+				"tools.kind.network": "فشل الشبكة",
 				"tools.resultOk": "نجح",
 				"tools.resultFail": "فشل",
 				"tools.installing": "جارٍ التثبيت…",
@@ -382,6 +400,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Aktuell",
 				"tools.adminHint": "Erfordert Administratorrechte: Ein UAC-Fenster erscheint — bitte an diesem Rechner bestätigen",
 				"tools.working": "Läuft",
+				"tools.cancel": "Abbrechen",
+				"tools.cancelledNote": "Abgebrochen: abgeschlossene Einträge behalten ihr Ergebnis, der Rest wurde übersprungen.",
+				"tools.kind.cancelled": "Abgebrochen",
+				"tools.kind.skipped": "Übersprungen",
+				"tools.kind.timeout": "Timeout",
+				"tools.kind.network": "Netzwerkfehler",
 				"tools.resultOk": "erfolgreich",
 				"tools.resultFail": "fehlgeschlagen",
 				"tools.installing": "Wird installiert…",
@@ -462,6 +486,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "À jour",
 				"tools.adminHint": "Nécessite les droits administrateur : une fenêtre UAC va s'afficher — validez-la sur cette machine",
 				"tools.working": "En cours",
+				"tools.cancel": "Annuler",
+				"tools.cancelledNote": "Annulé : les entrées terminées conservent leur résultat, les autres ont été ignorées.",
+				"tools.kind.cancelled": "Annulé",
+				"tools.kind.skipped": "Ignoré",
+				"tools.kind.timeout": "Expiré",
+				"tools.kind.network": "Échec réseau",
 				"tools.resultOk": "réussi",
 				"tools.resultFail": "échec",
 				"tools.installing": "Installation…",
@@ -542,6 +572,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "अद्यतन",
 				"tools.adminHint": "व्यवस्थापक अनुमति चाहिए: एक UAC विंडो दिखेगी — इस मशीन पर पुष्टि करें",
 				"tools.working": "चल रहा है",
+				"tools.cancel": "रद्द करें",
+				"tools.cancelledNote": "रद्द: पूर्ण प्रविष्टियाँ अपना परिणाम रखती हैं; शेष छोड़ दिए गए।",
+				"tools.kind.cancelled": "रद्द",
+				"tools.kind.skipped": "छोड़ा गया",
+				"tools.kind.timeout": "समय समाप्त",
+				"tools.kind.network": "नेटवर्क विफल",
 				"tools.resultOk": "सफल",
 				"tools.resultFail": "विफल",
 				"tools.installing": "इंस्टॉल हो रहा है…",
@@ -622,6 +658,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Terbaru",
 				"tools.adminHint": "Perlu administrator: jendela UAC akan muncul — setujui di komputer ini",
 				"tools.working": "Memproses",
+				"tools.cancel": "Batalkan",
+				"tools.cancelledNote": "Dibatalkan: entri yang selesai tetap berhasil; sisanya dilewati.",
+				"tools.kind.cancelled": "Dibatalkan",
+				"tools.kind.skipped": "Dilewati",
+				"tools.kind.timeout": "Habis waktu",
+				"tools.kind.network": "Kegagalan jaringan",
 				"tools.resultOk": "berhasil",
 				"tools.resultFail": "gagal",
 				"tools.installing": "Memasang…",
@@ -702,6 +744,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Aggiornato",
 				"tools.adminHint": "Richiede privilegi di amministratore: apparirà una finestra UAC — confermala su questo computer",
 				"tools.working": "In corso",
+				"tools.cancel": "Annulla",
+				"tools.cancelledNote": "Annullato: le voci completate conservano l'esito; le altre sono state saltate.",
+				"tools.kind.cancelled": "Annullato",
+				"tools.kind.skipped": "Saltato",
+				"tools.kind.timeout": "Timeout",
+				"tools.kind.network": "Errore di rete",
 				"tools.resultOk": "riuscito",
 				"tools.resultFail": "non riuscito",
 				"tools.installing": "Installazione…",
@@ -782,6 +830,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "最新",
 				"tools.adminHint": "管理者権限が必要です。UAC の画面が表示されるので、この PC で承認してください",
 				"tools.working": "処理中",
+				"tools.cancel": "キャンセル",
+				"tools.cancelledNote": "中止しました:完了した項目の結果は保持され、残りはスキップされました。",
+				"tools.kind.cancelled": "中止",
+				"tools.kind.skipped": "スキップ",
+				"tools.kind.timeout": "タイムアウト",
+				"tools.kind.network": "ネットワーク失敗",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
 				"tools.installing": "インストール中…",
@@ -862,6 +916,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "최신",
 				"tools.adminHint": "관리자 권한이 필요합니다. UAC 창이 뜨면 이 PC에서 승인하세요",
 				"tools.working": "처리 중",
+				"tools.cancel": "취소",
+				"tools.cancelledNote": "취소됨: 완료된 항목의 결과는 유지되고 나머지는 건너뛰었습니다.",
+				"tools.kind.cancelled": "취소됨",
+				"tools.kind.skipped": "건너뜀",
+				"tools.kind.timeout": "시간 초과",
+				"tools.kind.network": "네트워크 실패",
 				"tools.resultOk": "성공",
 				"tools.resultFail": "실패",
 				"tools.installing": "설치 중…",
@@ -942,6 +1002,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Bijgewerkt",
 				"tools.adminHint": "Vereist beheerdersrechten: er verschijnt een UAC-venster — bevestig dat op deze computer",
 				"tools.working": "Bezig",
+				"tools.cancel": "Annuleren",
+				"tools.cancelledNote": "Geannuleerd: voltooide items behouden hun resultaat; de rest is overgeslagen.",
+				"tools.kind.cancelled": "Geannuleerd",
+				"tools.kind.skipped": "Overgeslagen",
+				"tools.kind.timeout": "Time-out",
+				"tools.kind.network": "Netwerkfout",
 				"tools.resultOk": "geslaagd",
 				"tools.resultFail": "mislukt",
 				"tools.installing": "Installeren…",
@@ -1022,6 +1088,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Aktualne",
 				"tools.adminHint": "Wymaga uprawnień administratora: pojawi się okno UAC — potwierdź je na tym komputerze",
 				"tools.working": "Przetwarzanie",
+				"tools.cancel": "Anuluj",
+				"tools.cancelledNote": "Anulowano: ukończone pozycje zachowują wynik, pozostałe pominięto.",
+				"tools.kind.cancelled": "Anulowano",
+				"tools.kind.skipped": "Pominięto",
+				"tools.kind.timeout": "Przekroczono czas",
+				"tools.kind.network": "Błąd sieci",
 				"tools.resultOk": "sukces",
 				"tools.resultFail": "niepowodzenie",
 				"tools.installing": "Instalowanie…",
@@ -1102,6 +1174,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Atualizado",
 				"tools.adminHint": "Requer administrador: aparecerá uma janela UAC — confirme-a neste computador",
 				"tools.working": "A processar",
+				"tools.cancel": "Cancelar",
+				"tools.cancelledNote": "Cancelado: as entradas concluídas mantêm o resultado; as restantes foram ignoradas.",
+				"tools.kind.cancelled": "Cancelado",
+				"tools.kind.skipped": "Ignorado",
+				"tools.kind.timeout": "Tempo esgotado",
+				"tools.kind.network": "Falha de rede",
 				"tools.resultOk": "com êxito",
 				"tools.resultFail": "falhou",
 				"tools.installing": "A instalar…",
@@ -1182,6 +1260,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Актуально",
 				"tools.adminHint": "Нужны права администратора: появится окно UAC — подтвердите его на этом компьютере",
 				"tools.working": "Выполняется",
+				"tools.cancel": "Отмена",
+				"tools.cancelledNote": "Отменено: завершённые пункты сохраняют результат, остальные пропущены.",
+				"tools.kind.cancelled": "Отменено",
+				"tools.kind.skipped": "Пропущено",
+				"tools.kind.timeout": "Превышено время",
+				"tools.kind.network": "Сбой сети",
 				"tools.resultOk": "успешно",
 				"tools.resultFail": "ошибка",
 				"tools.installing": "Установка…",
@@ -1262,6 +1346,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Senaste",
 				"tools.adminHint": "Kräver administratör: ett UAC-fönster visas — bekräfta det på den här datorn",
 				"tools.working": "Arbetar",
+				"tools.cancel": "Avbryt",
+				"tools.cancelledNote": "Avbruten: färdiga poster behåller sitt resultat; resten hoppades över.",
+				"tools.kind.cancelled": "Avbruten",
+				"tools.kind.skipped": "Hoppade över",
+				"tools.kind.timeout": "Tidsgräns",
+				"tools.kind.network": "Nätverksfel",
 				"tools.resultOk": "lyckades",
 				"tools.resultFail": "misslyckades",
 				"tools.installing": "Installerar…",
@@ -1342,6 +1432,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "ล่าสุดแล้ว",
 				"tools.adminHint": "ต้องใช้สิทธิ์ผู้ดูแลระบบ จะมีหน้าต่าง UAC ขึ้นมา กรุณายืนยันบนเครื่องนี้",
 				"tools.working": "กำลังดำเนินการ",
+				"tools.cancel": "ยกเลิก",
+				"tools.cancelledNote": "ยกเลิกแล้ว: รายการที่เสร็จแล้วคงผลลัพธ์ไว้ ส่วนที่เหลือถูกข้าม",
+				"tools.kind.cancelled": "ยกเลิกแล้ว",
+				"tools.kind.skipped": "ข้ามไว้",
+				"tools.kind.timeout": "หมดเวลา",
+				"tools.kind.network": "เครือข่ายล้มเหลว",
 				"tools.resultOk": "สำเร็จ",
 				"tools.resultFail": "ล้มเหลว",
 				"tools.installing": "กำลังติดตั้ง…",
@@ -1422,6 +1518,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Güncel",
 				"tools.adminHint": "Yönetici izni gerekir: bir UAC penceresi açılır — bu bilgisayarda onaylayın",
 				"tools.working": "İşleniyor",
+				"tools.cancel": "İptal",
+				"tools.cancelledNote": "İptal edildi: tamamlanan girdiler sonuçlarını korur; kalanlar atlandı.",
+				"tools.kind.cancelled": "İptal edildi",
+				"tools.kind.skipped": "Atlandı",
+				"tools.kind.timeout": "Zaman aşımı",
+				"tools.kind.network": "Ağ hatası",
 				"tools.resultOk": "başarılı",
 				"tools.resultFail": "başarısız",
 				"tools.installing": "Kuruluyor…",
@@ -1502,6 +1604,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "Mới nhất",
 				"tools.adminHint": "Cần quyền quản trị: cửa sổ UAC sẽ hiện ra — hãy xác nhận trên máy này",
 				"tools.working": "Đang xử lý",
+				"tools.cancel": "Hủy bỏ",
+				"tools.cancelledNote": "Đã hủy: các mục đã xong giữ nguyên kết quả; phần còn lại đã bỏ qua.",
+				"tools.kind.cancelled": "Đã hủy",
+				"tools.kind.skipped": "Đã bỏ qua",
+				"tools.kind.timeout": "Hết thời gian",
+				"tools.kind.network": "Lỗi mạng",
 				"tools.resultOk": "thành công",
 				"tools.resultFail": "thất bại",
 				"tools.installing": "Đang cài…",
@@ -1582,6 +1690,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "已經最新",
 				"tools.adminHint": "需要管理員權限:會彈出 UAC 視窗,請喺電腦度確認",
 				"tools.working": "處理緊",
+				"tools.cancel": "取消",
+				"tools.cancelledNote": "已取消:完成的項目保留結果,其餘已跳過。",
+				"tools.kind.cancelled": "已取消",
+				"tools.kind.skipped": "已跳過",
+				"tools.kind.timeout": "逾時",
+				"tools.kind.network": "網絡失敗",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
 				"tools.installing": "安裝緊…",
@@ -1662,6 +1776,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "已經最新",
 				"tools.adminHint": "需要管理員權限:會彈出 UAC 視窗,請喺電腦度確認",
 				"tools.working": "處理緊",
+				"tools.cancel": "取消",
+				"tools.cancelledNote": "已取消:完成的項目保留結果,其餘已跳過。",
+				"tools.kind.cancelled": "已取消",
+				"tools.kind.skipped": "已跳過",
+				"tools.kind.timeout": "逾時",
+				"tools.kind.network": "網絡失敗",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
 				"tools.installing": "安裝緊…",
@@ -1742,6 +1862,12 @@ window.__ModuleLoader__.load({
 				"tools.state.current": "已是最新",
 				"tools.adminHint": "需要管理員權限:會彈出 UAC 視窗,請在這台電腦上確認",
 				"tools.working": "處理中",
+				"tools.cancel": "取消",
+				"tools.cancelledNote": "已取消:完成的項目保留結果,其餘已跳過。",
+				"tools.kind.cancelled": "已取消",
+				"tools.kind.skipped": "已跳過",
+				"tools.kind.timeout": "逾時",
+				"tools.kind.network": "網路失敗",
 				"tools.resultOk": "成功",
 				"tools.resultFail": "失敗",
 				"tools.installing": "安裝中…",
@@ -1761,6 +1887,15 @@ window.__ModuleLoader__.load({
 
 		function hasOwnKey(bag, key) {
 			return Object.prototype.hasOwnProperty.call(bag, key);
+		}
+
+		/* Issue #35: how long the entry in flight has been running, in the
+		   locale-neutral "2m13s" / "47s" form — a duration needs no words. */
+		function formatElapsed(ms) {
+			var total = Math.max(0, Math.round(ms / 1000));
+			var m = Math.floor(total / 60);
+			var s = total % 60;
+			return m > 0 ? m + "m" + (s < 10 ? "0" + s : "" + s) + "s" : s + "s";
 		}
 
 		/* Resolve one locale tag against what this plugin ships: the exact tag,
@@ -1890,6 +2025,10 @@ window.__ModuleLoader__.load({
 			".gb-toolState.gb-st-running{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);display:inline-flex;align-items:center;gap:5px}",
 			".gb-st-ok{border-color:var(--dsw-alias-state-success-primary,#3fb950);color:var(--dsw-alias-state-success-primary,#3fb950)}",
 			".gb-st-fail{border-color:var(--dsw-alias-status-danger,#e5484d);color:var(--dsw-alias-status-danger,#e5484d)}",
+			".gb-st-skip{color:var(--dsw-alias-label-tertiary)}",
+			".gb-toolElapsed{flex:none;font-size:calc(11px + var(--dsh-content-font-delta-secondary, 0px));color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}",
+			".gb-toolCancel{flex:none;padding:1px 10px}",
+			".gb-toolTail{margin:0 0 4px;font-size:calc(11px + var(--dsh-content-font-delta-secondary, 0px));line-height:1.4;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 			".gb-spin{flex:none;display:inline-block;width:10px;height:10px;border:2px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);border-radius:50%;animation:gb-spin .8s linear infinite}",
 			".gb-toolBar{flex:1 1 auto;min-width:32px;height:4px;border-radius:2px;background:var(--dsw-alias-border-l2);overflow:hidden}",
 			".gb-toolBarFill{display:block;height:100%;width:38%;border-radius:2px;background:var(--dsw-alias-brand-primary);animation:gb-slide 1.15s ease-in-out infinite}",
@@ -2570,6 +2709,19 @@ window.__ModuleLoader__.load({
 					.then(function () { setToolBusy(false); });
 			}
 
+			function cancelTools() {
+				// Issue #35: the host kills the whole winget process tree; the job
+				// stays current (finished, cancelled) so the card can show what
+				// happened, and `clear` forgets it when the view closes.
+				return fetch(TOOLS_URL + "?action=cancel", { method: "POST", headers: { "content-type": "application/json" } })
+					.then(function (res) {
+						if (!res.ok) throw new Error("HTTP " + res.status);
+						return res.json();
+					})
+					.then(function (data) { setToolJob(data !== null && typeof data === "object" && data.job ? data.job : null); })
+					.catch(function (err) { setToolErr(String((err && err.message) || err)); });
+			}
+
 			var toolsSection = fold("sec.tools",
 					toolsData === null && toolErr === "" ? E("p", { className: "gb-hint" }, t("tools.loading")) : null,
 					toolErr !== "" ? E("p", { className: "gb-error" }, toolErr) : null,
@@ -2590,8 +2742,19 @@ window.__ModuleLoader__.load({
 									E("span", { className: "gb-spin" }),
 									t(isUpgrade ? "tools.updating" : "tools.installing"));
 							} else if (entry !== undefined) {
-								badge = E("span", { className: "gb-toolState " + (entry.ok ? "gb-st-ok" : "gb-st-fail") },
-									(entry.ok ? "✓ " : "✗ ") + t(entry.ok ? "tools.resultOk" : "tools.resultFail"));
+								/* Issue #35: the ending matters — cancelled/skipped are not
+								   failures, a timeout and a wedged download are not the
+								   same as winget saying no. Skipped entries are neutral. */
+								var okBadge = entry.ok === true;
+								var kindKey = okBadge ? "tools.resultOk"
+									: entry.kind === "cancelled" ? "tools.kind.cancelled"
+									: entry.kind === "skipped" ? "tools.kind.skipped"
+									: entry.kind === "timeout" ? "tools.kind.timeout"
+									: entry.kind === "network" ? "tools.kind.network"
+									: "tools.resultFail";
+								var mark = okBadge ? "✓ " : (entry.kind === "skipped" ? "– " : "✗ ");
+								var stateClass = okBadge ? "gb-st-ok" : (entry.kind === "skipped" ? "gb-st-skip" : "gb-st-fail");
+								badge = E("span", { className: "gb-toolState " + stateClass }, mark + t(kindKey));
 							} else {
 								badge = E("span", { className: "gb-toolState gb-st-" + row.state }, t("tools.state." + row.state));
 							}
@@ -2611,7 +2774,9 @@ window.__ModuleLoader__.load({
 								active ? E("span", { className: "gb-toolBar" }, E("span", { className: "gb-toolBarFill" })) : null,
 								E("span", { className: "gb-toolSrc" }, (row.version !== "" ? row.version + " · " : "") + (row.provider !== "" ? row.provider : row.source) + (row.admin ? " · " + t("tools.adminHint") : "")),
 							));
-							if (entry !== undefined && entry.ok !== true) {
+							/* Skipped entries have nothing to explain ("cancelled before
+							   this entry started") — only real verdicts print a line. */
+							if (entry !== undefined && entry.ok !== true && entry.kind !== "skipped") {
 								acc.push(E("p", { key: row.id + ":fail", className: "gb-toolFail" },
 									t(entry.action === "upgrade" ? "tools.updating" : "tools.installing") + " — " + t("tools.resultFail") + ": " + (entry.detail || "")));
 							}
@@ -2636,11 +2801,26 @@ window.__ModuleLoader__.load({
 							E("span", { className: "gb-spin" }),
 							E("span", { className: "gb-rowLabel" }, (activeCmd !== "" ? activeCmd + " · " : "") + t("tools.working") + ":"),
 							E("span", { className: "gb-rowValue" }, toolJob.done + " / " + toolJob.total),
+							/* Issue #35: how long the entry in flight has been running —
+							   the difference between "slow UAC wait" and "wedged download"
+							   is exactly this number. Locale-neutral 2m13s form; refreshed
+							   by the 1.2s poll, so no timer of its own. */
+							E("span", { className: "gb-toolElapsed" }, formatElapsed(Date.now() - (toolJob.currentSince || toolJob.startedAt || Date.now()))),
+							E("button", {
+								type: "button",
+								className: "gb-segBtn gb-toolCancel",
+								onClick: cancelTools,
+							}, t("tools.cancel")),
 						),
+						/* The freshest winget line ("Failed to download, waiting a bit
+						   and retry"): the one signal that distinguishes a wedged
+						   download from a quiet UAC wait. One grey line, not a log. */
+						typeof toolJob.lastOutput === "string" && toolJob.lastOutput !== "" ? E("p", { className: "gb-toolTail" }, toolJob.lastOutput) : null,
 						E("div", { className: "gb-jobBar" },
 							E("div", { className: "gb-jobBarFill", style: { width: jobPct + "%" } }),
 						),
 					) : null,
+					toolJob !== null && toolJob.finished === true && toolJob.cancelled === true ? E("p", { className: "gb-hint" }, t("tools.cancelledNote")) : null,
 					E("p", { className: "gb-hint" }, t("tools.hint")),
 			);
 

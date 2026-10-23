@@ -308,7 +308,7 @@ import {
   restoreOpsBash,
 } from './ops-adopt.js'
 import {
-  clearToolJob, currentToolJob, defaultRunnerIo, fenceToolRequest,
+  cancelToolJob, clearToolJob, currentToolJob, defaultRunnerIo, fenceToolRequest,
   probeToolchain, readJsonBody, startToolJob,
 } from './tool-runner.js'
 
@@ -2660,6 +2660,10 @@ export async function apply(ctx, config = {}) {
             return {
               id: job.id, action: job.action, total: job.total, done: job.done,
               current: job.current, finished: job.finished, results: job.results.slice(),
+              // v0.43.0 (issue #35): elapsed time, the freshest winget line,
+              // and the cancelled state, so the card can show them.
+              startedAt: job.startedAt, currentSince: job.currentSince,
+              lastOutput: job.lastOutput, cancelled: job.cancelled === true,
             }
           }
           const handler = async (req, res) => {
@@ -2675,6 +2679,14 @@ export async function apply(ctx, config = {}) {
             try {
               if (method === 'POST') {
                 const action = query.get('action') || ''
+                if (action === 'cancel') {
+                  // v0.43.0 (issue #35): kill the in-flight tree, mark the rest
+                  // skipped. The cancelled job stays current until finished so
+                  // the card can show what happened; `clear` then forgets it.
+                  cancelToolJob('')
+                  send(res, 200, { ok: true, job: snapshot() })
+                  return
+                }
                 if (action === 'clear') {
                   clearToolJob('')
                   send(res, 200, { ok: true, job: null })
