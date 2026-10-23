@@ -3,6 +3,22 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.43.2] — 2026-10-23
+
+### fix:被我们杀掉的 run 统一归 `code=-1`(Windows `taskkill /F` 退出码语义)
+
+- **0.43.1 的 CI(windows-latest)仍红,这次咬到的是生产代码**:`taskkill /F` 强杀的进程在
+  Windows 上 exit code 是 **1**(POSIX 是 signal → null → 我们的 `-1`)。超时/取消/看门狗三种
+  被击杀结局在 win 上会报告 `code=1`——读起来像 winget 失败,实际是被我们杀掉的,verdict 也
+  因此可能被外部观察者误读(verdictFrom 本身只信标志,不受影响)。
+- **修法**:`defaultRunnerIo` 的 `close` 处理里,任一击杀标志(cancelled / timedOut /
+  networkRetry)命中时 `code` 统一归 `-1`——被我们杀掉的 run 没有「自然退出码」,跨平台语义
+  一致。自然退出(包括失败)的 code 透传不变。
+- 教训:win32 分支的**杀进程退出码**语义 macOS 不可见——本仓库第三次被同一类问题咬
+  (v0.39.4 ns 字面量 → v0.43.0/1 pathname 双盘符 → 本次 taskkill 退出码);CI windows 矩阵
+  是唯一能看到它们的场合,发版纪律「CI 全绿才收口」的价值再次实证。
+- 全量 334 项本机 0 fail;以 CI(ubuntu+windows × Node 22/24)全绿为收口门。
+
 ## [0.43.1] — 2026-10-23
 
 ### fix:测试装置的 Windows 路径 bug(v0.43.0 的 CI 修复,无功能变化)

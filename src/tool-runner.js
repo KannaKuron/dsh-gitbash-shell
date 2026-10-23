@@ -165,8 +165,13 @@ export function defaultRunnerIo(options = {}) {
           clearTimeout(timer)
           if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null }
           if (current !== null && current.child === child) current = null
+          // A run WE killed has no meaningful exit code. POSIX reports null
+          // (→ -1 below), but Windows' taskkill /F makes the victim exit 1 —
+          // which would read as a winget failure instead of the kill it was,
+          // so any flagged ending normalizes to -1.
+          const killed = flags.cancelled === true || flags.timedOut === true || flags.networkRetry === true
           resolve({
-            code: typeof code === 'number' ? code : -1,
+            code: typeof code === 'number' && !killed ? code : -1,
             output,
             ...(flags.cancelled === true ? { cancelled: true } : {}),
             ...(flags.timedOut === true ? { timedOut: true } : {}),
