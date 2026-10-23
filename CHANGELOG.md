@@ -3,6 +3,49 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.42.3] — 2026-10-23
+
+### fix:全仓严格 review 的十项修复(PR #34,@KouzakiUmi 贡献;16 文件 +1229/−123)
+
+- **R01(P2,路径字面量扫描器)**:ASI 后的合法语句正则(`/.../`)曾被误判成字符串并把其中的
+  路径改写成 Windows 形态——**静默改变程序语义**。现在闭组符之后、与下一个 `/` 之间隔着换行且
+  无法确定是除法还是正则时,整份 no-op(铁律:任何不确定 = 整份 no-op);行终止符判定从 `\n`
+  扩到 `\r\n\u2028\u2029` 全集。主扫描与模板插值共用同一守卫。
+- **R02(P2,pathEcho)**:whole-value 分支不再做无前缀要求的 TEMP 根映射——`D:/backup/c/Temp/result.txt`
+  这类备份树内嵌副本是数据,不再被改写;只有从开头开始且有段边界的真实 TEMP 根才映射到 `/tmp`。
+- **R03(P2,绝对 glob 拆分)**:`{}` 加入 `GLOB_META`,brace alternatives 整体留在 pattern 中,
+  不再被目录/basename 拆分散架。
+- **R04(P2,promotion 缺口传播)**:后台输出只检查 `lossy`、丢弃 `chunks[].gapBefore`,模型不知道
+  ring 驱逐留下缺口。native promotion 复用 `renderJobRead`,同时传播 `lossy`/`gapBefore` 与可用
+  spill 路径;`bash-tool.js` 镜像的同款遗漏一并修正。
+- **R05(P2,winget 清单可信化)**:`winget export` 原用固定共享临时路径且静默吞异常——无法建立
+  可信清单时仍可能启动安装。现在每次导出用 UUID 独立路径、只清理本次;检查退出码/JSON/清单结构;
+  清单不可信时可见失败,**绝不启动任何安装/升级**。状态路由对 probe 失败返回 500+详情(fail-loud
+  优于假「全没装」)。
+- **R06(P2,FastCtx 桥生命周期)**:①用户开关 OFF/ON **可逆**(旧实现首次 OFF 即永久判死);
+  ②dsh-ops 让位独立且不可逆;③payload 不可用独立记录,开关翻转可重试;④publication/discovery/
+  lazy connect 全程代际所有权约束(generation owner),旧代际的挂起任务不覆盖新状态;⑤`close()`
+  后动态 import 晚到的 spawn 被 `this.dead` 守卫拒绝(不再复活已停桥);⑥**`tools/call` 失败不
+  自动重放**——调用可能已写文件;⑦dispose 先于 listeners 安装,部分 wiring 也拥有子进程;⑧ops
+  检测扫描全体存活 agent 的 face(不再只看当前),渐进加载不再漏检。
+- **R07(P2,设置卡草稿所有权)**:scope/ready 变化时初始化干净草稿但保留用户 dirty 编辑;保存回包
+  用 scope + 不透明 draft owner 绑定,迟到的保存不再误标新 scope 的状态;镜像 hydration 不覆盖
+  本地编辑。
+- **R08(P2,命令扫描)**:readdir 改用 Dirent(`withFileTypes`),同名目录(含 `make/`、`jq.exe` 同目录
+  骗局)不再被当成命令;仅对符号链接候选检查文件目标(`issue #31` 同源补遗:符号链接与无扩展名场景)。
+- **R09(P2,诚实退出码)**:`proc.exitCode ?? 0` 把合法 `null` 伪造成「exit code: 0」。现在缺字段
+  显示 `unknown`,真实 0/非零/kill 原样。官方 `tool-bash` 存在同款(已另行报告官方),官方修复后
+  我们镜像跟进。
+- **R10(P3,typed native path)**:展开拒绝正则整体锚定 `^`——只拒绝 `~`/`$`/`%VAR%` **展开前缀**,
+  绝对路径内部的 `%`/`$`(如 `C:/data/100%.txt`)保持数据语义,不再误拒。
+- **R06 合并时的实质判断(贡献者)**:`OPS_PRESENCE_MARKERS` 六名不全(dsh-ops 实际 10 个 `ops_*`
+  工具,`ops_batch`/`ops_glob`/`ops_replace`/`ops_run` 未收录),改为**前缀匹配 + 常量兜底**——
+  评审接受:对任何 `ops_*` 名字让位只会少发布一个重复文件面,方向保守,无误伤性后果。
+- **测试**:新增 `tests/review-core-regressions.mjs` / `review-native-regressions.mjs` /
+  `review-native-preview.mjs` 并扩充 client/bridge 回归,全部纳入 test 脚本;先红后绿(旧代码
+  39 处 fail),修复后 323 项全绿(贡献者 Windows Node 24.13.0;维护者 macOS 322 pass + 1 平台
+  门控 skip)。修复前 review 快照保留在下方「全仓严格 review」一节。
+
 ## [0.42.2] — 2026-10-20
 
 ### fix:gb_* 对 dsh-ops 0.4.0 渐进加载的退避检测(每会话首个 agent 会多挂一轮 gb_*)
