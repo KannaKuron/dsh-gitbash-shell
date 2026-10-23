@@ -26,9 +26,8 @@ import {
   defaultRunnerIo, runToolJob,
 } from '../src/tool-runner.js'
 
-const here = new URL('.', import.meta.url).pathname
-const indexSource = readFileSync(here + '../src/index.js', 'utf8')
-const clientSource = readFileSync(here + '../src/client.js', 'utf8')
+const indexSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+const clientSource = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
 
 /** A minimal winget export that parseExportJson accepts. */
 const EXPORT_JSON = JSON.stringify({
@@ -77,7 +76,7 @@ const TOOL_IDS = require_catalog_ids()
 
 function require_catalog_ids() {
   // The catalog is the closed vocabulary; pick two real ids from it.
-  const source = readFileSync(here + '../src/toolchain.js', 'utf8')
+  const source = readFileSync(new URL('../src/toolchain.js', import.meta.url), 'utf8')
   const ids = [...source.matchAll(/\{ id: '([a-z0-9-]+)', cmd:/g)].map((m) => m[1])
   assert.ok(ids.length >= 2, 'the catalog must expose at least two ids')
   return ids.slice(0, 2)

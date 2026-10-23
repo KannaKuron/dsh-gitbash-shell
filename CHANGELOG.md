@@ -3,6 +3,21 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.43.1] — 2026-10-23
+
+### fix:测试装置的 Windows 路径 bug(v0.43.0 的 CI 修复,无功能变化)
+
+- **0.43.0 的 CI(windows-latest × Node 22/24)红了**:新 `tests/terminal-cancel.mjs` 用
+  `new URL('.', import.meta.url).pathname` 拼源码路径——Windows 上 pathname 带前导 `/`,拼出
+  `D:\D:\a\...` 双盘符 → ENOENT。macOS 的 `/Users/...` 永远暴露不了这个。**生产代码零变化**
+  (发布的 0.43.0 包不受影响:tests 不在发布面,失败仅是仓库 CI),修法是回归仓库惯例
+  `readFileSync(new URL('../src/x.js', import.meta.url), 'utf8')`(直接接受 URL,跨平台正确)。
+- **教训入库**:同一仓库里 `align-official.mjs` / `client-regressions.mjs` /
+  `compatibility-regressions.mjs` 早就是惯例写法——新测试文件开写前应先看同目录既有文件的
+  装置惯例,而不是自造。win32 门控路径在 macOS 上不可见,这是本仓库第二次被同一类问题咬
+  (第一次:v0.39.4 smoke stub 的 ns 字面量)。
+- 全量 334 项本机 0 fail;以 CI(ubuntu+windows × Node 22/24)全绿为发版门。
+
 ## [0.43.0] — 2026-10-23
 
 ### feat:终端工具任务的取消能力与可观测性(#35,@youyv 报告)
