@@ -163,7 +163,7 @@ function sandboxNotes(sandbox, escalationModes) {
 export function processOutcome(proc, escalationModes = []) {
   const base = proc.status === 'killed'
     ? { status: 'killed', detail: proc.signal !== null && proc.signal !== undefined ? `signal: ${proc.signal}` : 'killed before exit' }
-    : { status: 'completed', detail: `exit code: ${proc.exitCode ?? 0}` }
+    : { status: 'completed', detail: `exit code: ${proc.exitCode === undefined ? 'unknown' : proc.exitCode}` }
   const notes = sandboxNotes(proc.sandbox, escalationModes)
   return notes.length === 0 ? base : { ...base, detail: `${base.detail}; ${notes.join(' ')}` }
 }

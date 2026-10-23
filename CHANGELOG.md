@@ -61,6 +61,106 @@
 - **dsh-ops 并存时的 shell 工具剔除(用户决策定案)**:安装了本插件 = bash 用本插件方案;`ops_bash` / `ops_run` 在本插件 bash 工具在场的 agent 上默认 deny(`tools.restrict` + `tools/pre-execute` 双层),不做设置开关;ops 的 file / 后台 / PTC 增强不受影响。
 - 验证:`npm test` 263 项全绿(新增 tests/terminal-bundle.mjs 26 项:plan 矩阵 12 + writer 12 + report + detect);守卫测试演进 2 处(compatibility assemble 段参数面补 `terminalDialect`;smoke 侧栏守卫按上述范围收窄)。
 
+## Unreleased — 2026-10-18
+
+### 严格 review 的 R01–R10 已修复（fix / test，未发布）
+
+- **R01**：[路径字面量扫描](src/index.js) 为换行后的含混 slash 添加整份 no-op 守卫，主扫描与模板插值共用；覆盖 LF / CRLF / Unicode 行分隔符、跨行注释、let/var、带标签 break/continue 与模板内声明，保留同一行除法和明确正则的原行为。仍是保守扫描器，不宣称成为完整 JS parser，也不改变已知的路径状业务字符串启发式边界。
+- **R02 / R03**：[whole-value TEMP 回显与绝对 glob 拆分](src/index.js) 分别改为仅匹配真实 TEMP 根前缀，以及把 brace alternatives 留在 pattern 中。补备份路径/UNC/相对值/大小写/目录段边界与 brace 目录回归；没有改宿主搜索工具的根锚定规则。
+- **R04**：[native promotion](src/native-tool.js) 复用 `renderJobRead`，消费 read 时同时传播 `lossy` 与 `chunks[].gapBefore`，附带可用 spill 路径；没有恢复路径时明确显示 unavailable。合并验收时也修正了 [Bash promotion](src/bash-tool.js) 同一类只检查 lossy 的遗漏，补有缺口/无缺口负控。保留原输出片段、消费次数、闭合 DTO、producer 结局与权限/取消契约，不重跑命令。
+- **R05**：[winget inventory](src/tool-runner.js) 每次导出使用 UUID 独立路径，仅清理本次路径；检查 export 退出码、JSON 和清单结构。状态探测失败直接报错，不伪造 missing；安装/升级任务在无法建立可信 inventory 时结成可见失败，**不启动任何安装/升级**。并发状态探测 + auto 升级回归保留已安装的 GNU 构建，不改装首选 MSVC；合法空清单的正常安装路径仍通过。所有 winget 回归均为受控 IO，无真实软件安装。
+- **R06**：[FastCtx bridge](src/fastctx-bridge.js) 分离用户开关、peer 让位与载荷不可用状态，监听 volatile 更新双向协调；publication / discovery / lazy connect 用代际所有权约束，OFF 撤名、关闭连接并拒绝旧 SDK。异步 spawn import 后也重验 stopped，避免 dispose 后晚 spawn；后端已发出的 tools/call 不自动重试。默认 OFF、弃用定位、无 OS confinement 声明与 ops_* 让位不变。
+- **R07**：[设置卡](src/client.js) 在 scope / ready 状态 / 镜像值变化时初始化干净草稿，保留用户 dirty 编辑；用 scope + 不透明 draft owner 绑定保存状态，迟到的保存回包不能误标新 scope、继续编辑或 scope 往返后的新草稿。拒绝保存仍不显示成功，21 语言词典和宿主父层订阅方式不变。
+- **R08**：[默认目录 IO](src/tool-runner.js) 使用 Dirent，[命令扫描](src/toolchain.js) 排除同名目录，并仅对候选符号链接检查文件目标；保留真实无扩展名文件、有效文件链接、扩展名白名单和首个 PATH 命中顺序。字符串式注入 IO 兼容旧确定性夹具，生产 IO 始终提供文件类型。
+- **R09 / R10**：[后台结局](src/bash-render.js) 对 null 保留 null、缺字段显示 unknown，真实 0/非零/kill 原样；[typed native path](src/native-executor.js) 仅拒绝展开前缀，绝对路径内部百分号、美元符号和波浪号保持数据语义，不新增变量展开。
+- **先红后绿**：首批核心回归旧代码 11 fail、native 普通回归 19 fail、设置卡/桥回归 9 fail；随后追加的 scope 迟到保存与 Bash source-gap 回归也在修复前各捕获 1 fail。真实 Core native 新 preview 旧代码 1 pass / 2 fail（大输出缺警示、百分号路径误拒），修复后同组全部通过。没有降低已有断言或禁用检查。
+- **最终验证**：Windows / Node 24.13.0，`npm test` **309/309**，0 fail / skip / cancel；原版 `npm run test:preview` 在隔离的实际 **Core 0.2.1-rc.2** 依赖快照上 **89/89**，0 fail / skip / cancel。新增 [核心回归](tests/review-core-regressions.mjs)、[native 回归](tests/review-native-regressions.mjs)、[真实 Core native preview](tests/review-native-preview.mjs)，扩充 [设置卡回归](tests/client-regressions.mjs) 与 [桥回归](tests/bridge-regressions.mjs)，均接入 [测试脚本](package.json)。所有产品 JS / 新增测试语法检查、`npm pack --dry-run --ignore-scripts` 与 `git diff --check` 通过。
+- **实际 Core 重点补验**：1 MiB producer 的首次 read 仍为 `lossy=false / gapBefore=true`、64000 字符尾部，修复后另带丢失警示且只有 1 个 producer；无缺口负控不误警示。真实 Node/fs 在 native 与 MSYS argv/cwd 两种路径中读回含 `%fixed% / $literal / ~literal` 的自有 sentinel；根 shell/subprocess provider 未被替换。未知退出码、UNC 解析、FastCtx 开关/取消、winget 并发与 GUI 草稿使用各自受控夹具验证，不冒充真实软件安装或生产 GUI 验收。
+- **边界**：未操作生产 GUI、未安装/部署、未改生产 profile、未重启宿主；真实受限 token/ACL/IPC 围栏、每个旧 Core、非 CRT 任意解释器、真实磁盘耗尽与跨任务 quota 仍未覆盖。没有提交、推送、版本号变更或发布。下面保留修复前的 review 快照供追溯。
+
+### 全仓严格 review：9 项 P2、1 项 P3（test / docs，修复前快照）
+
+审查快照为 [v0.40.5 / 6c5f1cd](https://github.com/KannaKuron/dsh-gitbash-shell/commit/6c5f1cda5828ee5cbd5dba1aa704496f69e34412)。范围是当前全仓，不只本次同步增量；覆盖全部 19 个产品 JS 模块的行为实现（客户端词典按键集/结构检查，未逐条人工审译），以及组合、patch、包清单、发布/CI 脚本与相关测试。结论为 **10 项确认问题：9 项 P2、1 项 P3；未确认 P0/P1**。其中 R08/R09 是上一轮已记录问题，其余为本轮补充，不表示均由 v0.40.5 引入；以下未执行修复。
+
+#### R01 · P2：路径扫描器将 ASI 后的正则内容改成 Windows 路径
+
+- 定位：[scanCodeLiterals](src/index.js#L1393-L1424)。Windows 方言与 `codePaths` 开启时，合法程序 `let x\n/['/c/foo']/.test('C') && (x=true); return x ?? false` 中的 regexp 起始 `/` 被误当除法，其字符类里的引号又被当作 JS 字符串。
+- 实际改写为 `/['C:/foo']/`；分别用 `new Function` 执行，原程序返回 `false`，改写程序返回 `true`。这不是已知的“路径状业务字符串启发式”边界，而是正则被错误识别为字符串，违反“正则不改/不确定整份 no-op”的约束。
+- 建议：补声明/ASI 与 regexp 的判定；不能确定时整份跳过。回归应覆盖 let/var 声明后的正则与原有除法负控，不以仅锁定这个样例替代词法验证。
+
+#### R02 · P2：TEMP 回显会改写非 TEMP 路径的中间子串
+
+- 定位：[pathEcho](src/index.js#L756-L760) 将 whole-value 路径交给 [mountTempRoot](src/index.js#L709-L714) 全串替换，仅检查匹配后侧边界，不要求真实根前缀。
+- `rewriteResultPaths('read', {path:'D:/backup/c/Temp/result.txt'}, {tmpDir:'C:/Temp'})` 实际返回 `/d/backup/tmp/result.txt`，正确值应为 `/d/backup/c/Temp/result.txt`。备份树复刻真实用户 TEMP 路径时同样可触发；后续文件操作与 UI 链接可能指向另一位置。
+- 建议：whole-value 只做从开头开始且有段边界的 TEMP 根映射；散文内嵌诊断另保留有边界的全文逻辑。覆盖备份目录、UNC 与相对结果路径的负控。
+
+#### R03 · P2：绝对 glob 的目录 brace alternatives 被当成实体目录
+
+- 定位：[GLOB_META 与 splitGlobPrefix](src/index.js#L1506-L1522) 没将 `{` 识别为 glob 元字符。`/c/project/{src,test}/*.js` 被拆为 `path='C:/project/{src,test}'`、`pattern='*.js'`，表达式错误进入文件系统根路径。
+- 唯一临时目录内创建两目录/两文件，同一真实 ripgrep 从 fixture cwd 以 `{foo,bar}/*.js` 搜索返回 2 项；用插件拆分产物执行则 exit 2、根目录不存在。这里确认的是 brace 被移入 path，不把 Core 绝对搜索根与带斜杠 pattern 自身的锚定语义混为同一个问题。
+- 建议：仅提取确定的字面目录前缀，完整识别支持的 glob 目录元字符，并对照真实搜索工具补 brace 目录回归。
+
+#### R04 · P2：native 超时提升消费输出后丢掉缺口事实
+
+- 定位：[native promotion](src/native-tool.js#L167-L169) 仅保留 `ringDelta(read.chunks)`，既不保留 `read.lossy`，也不检查 `chunks[].gapBefore` 或呈现可用的完整输出路径。[promoted renderer](src/native-tool.js#L96-L99) 也没有对应警示。
+- **真实 Core 补证**：Core 0.2.1-rc.2 的真实 ToolRuntime / LocalJobRegistry / LocalSubprocessRuntime 下，运行一个仅输出 1 MiB 固定字符及 tail sentinel、随后等待的 Node producer，700ms 前台等待后提升。实际消费 read 为 `lossy=false`、`gapBefore=true`，DTO 仅留 64000 字符且带 tail sentinel，模型文本没有 dropped/truncated/gap/full-output 提示。只看 `read.lossy` 同样修不全；该次 chunk 缺口已随消费游标前移，不能指望下一次 read 重现同一告警。进程由自有 Jobs 显式取消并等待结束。
+- 建议：在消费 read 的同一位置综合 ring eviction 与 source gap，并携带可用恢复路径或闭合 DTO 元数据；补真实 source-gap 与 ring-loss 两种提升回归。最终输出事实可能另外说明 loss，不能替代首次提升时的即时警示。
+
+#### R05 · P2：并发 winget 探测与安装共用导出文件，可能装错构建
+
+- 定位：[状态探测的临时清单](src/tool-runner.js#L111-L119) 与 [安装任务的临时清单](src/tool-runner.js#L198-L204) 均使用固定文件名，读取后各自删除，且导出失败后把清单缺失当作空清单继续动作。
+- 受控异步 IO 调度中，两次 export 都已写完，状态请求先读并删除，安装任务后取结果时读到 ENOENT；原来 `BurntSushi.ripgrep.GNU` 已安装且可升级，`auto` 任务却生成 `install --id BurntSushi.ripgrep.MSVC`，而不是升级已安装 GNU 构建。正常的另一设置页刷新即可与任务重叠；单个 activeJob 锁不覆盖状态请求。
+- 建议：每次导出使用自有唯一临时目录/文件并仅清理自己；检查 export 结局，无法建立可信 inventory 时不应静默把升级意图变成安装。证据为受控 IO 时序与实际 runner 决策，无真实 winget 安装。
+
+#### R06 · P2：FastCtx 的 volatile 开关不能双向生效
+
+- 定位：[FastCtx reconcile](src/fastctx-bridge.js#L461-L477) 仅在 agent/created 时读取开关；OFF 还将 `withdrawnByOps` 永久设为 true。[调用路径](src/fastctx-bridge.js#L333-L357) 不重验 enabled。
+- 受控 transport 复现：ON 时发布 `gb_replace` → 将权威开关置 OFF，现有工具仍在且旧定义仍成功 dispatch → 下一次创建 agent 才撤下 → 再置 ON 并创建 agent，工具仍不回来。默认 OFF 已被观察过的进程也无法仅靠设置卡重新开启。
+- 建议：把用户 OFF 与 peer 让位分成不同状态；监听开关并重新协调，同时阻止 OFF 后未启动的新调用。不要将此项描述成提供了 FastCtx OS confinement；它只涉及所承诺的开关行为。
+
+#### R07 · P2：设置卡首次 loading→ready 竞态可清空有效 bashPath
+
+- 定位：[bashDraft 初始化 effect](src/client.js#L2077-L2082) 使用空依赖数组；[保存](src/client.js#L2308-L2310) 写入当前草稿，而不是权威配置。
+- 当插件 inventory 先到、own ConfigForm 仍 loading 时卡片首次挂载，初始化跳过；设置镜像随后 ready、宿主父组件正常重渲染也不会重跑 effect。原 Client 函数配合受控 Hook 渲染复现：权威值为 `Q:/Git/bin/bash.exe`，输入框仍空，用户未编辑直接保存会写 `bashPath:''`，意外切回自动探测。
+- 已核 Core 0.2.1-rc.2 的真实父层契约：PluginManagerPage 的 loaded 只等待插件 inventory，PackageDetail 对 configured slot 的挂载不等待 ConfigForm ready，父页订阅 settings namespace 后会正常重渲染。因此不是“自身未订阅导致整个 GUI 永不更新”；后者是已排除的初始误判。本项证据为真实契约 + 原函数受控渲染，未做生产 GUI 延迟注入。
+- 建议：首次 ready 后初始化草稿，并用 dirty 状态防止后续镜像刷新覆盖用户正在编辑的值。
+
+#### R08 · P2：PATH 同名目录误报为命令（上一轮已知遗留）
+
+- 定位：[scanCommands](src/toolchain.js#L236-L263) 与 [默认 readdir IO](src/tool-runner.js#L67-L72)。真实临时 PATH 只有 `make` 目录时仍判定命令存在，winget 可用且清单为空时得到 `external` / `actionable:false`，安装入口被错误关闭。
+- v0.40.4 已明确保留目录类型区分为后续项，本轮不冒充新增。应补类型验证且保留真实无扩展名文件/可执行文件符号链接。
+
+#### R09 · P2：未知后台退出码被报告为 0（上一轮已确认）
+
+- 定位：[processOutcome](src/bash-render.js#L163-L168)。真实 Cordis 挂载自有 bash 模块，以受控已结束句柄 `exitCode:null` 执行后台路径，detail 被 `?? 0` 写成 `exit code: 0`；同一结果的前台仍为 `[exit code: null]`。
+- Core 0.2.1-rc.2 官方 tool-bash 同样含此表达式，属于镜像继承问题，不是本次 UI 更新新引入。应保留未知值，而非将 Job 的 completed 词汇与命令成功混同；本项未用真实 OS 子进程制造缺失退出码结局。
+
+#### R10 · P3：typed absolute path 误拒合法百分号文件名
+
+- 定位：[nativePath](src/native-executor.js#L24-L34) 的 `%[^%]+%` 无位置限制，在确认原生绝对路径前就拒绝字面百分号片段。
+- 唯一临时目录内 `%fixed%.txt` 为真实文件，普通 Node fs 能读回 sentinel，Windows absolute 判定为真；相同值传 kind:path 仍报“需要 absolute path / 不支持变量展开”，literal argv 则接受。若 executable 或 cwd 目录包含同类合法名字，没有改用 literal 的入口。
+- 建议：拒绝真正依赖展开的相对/前缀变量输入；已经是绝对路径中的 `%` 应保留为数据。发生频率低于上述问题，按 P3 排序；不涉及越权。
+
+#### 验证、反证与范围边界
+
+- **便携全量回归**：Windows / Node 24.13.0，重新执行 `npm test`，**237/237**，0 fail / skip / cancel。语法与发布清单检查沿用同一产品快照上一轮通过的 `node --check` / `npm pack --dry-run --ignore-scripts`。
+- **完整原版 preview**：从现有桌面 ASAR 只读复制所需依赖到唯一临时目录，保持原有嵌套依赖布局，记录包版本/来源/manifest SHA256；不安装、不改宿主。普通 Node 24.13.0 + Core 0.2.1-rc.2 下，**原版 `npm run test:preview` 86/86**，0 fail / skip / cancel。包含真实 native argv、独立编码/原始字节、PTC→Node/fs、后台/超时/取消/卸载、policy负控和 provider 所有权。复制件是当前安装代码的隔离验证，不等于更新了正在运行的产品。
+- **补充审查**：两项独立专项回归分别 62/62 与 49/49，与全量重叠，不累加成额外通过数；96 次真实 dispatch listener 门控矩阵通过。上述确认问题的临时复现由主审逐项复跑；R04 另有真实 Core + 真 producer 补证，其余按各条注明的受控层级解释。
+- **失败尝试保留**：Electron Node 24.21 的原 loader 重入递归属于该启动路线的测试装置问题，不据此报产品失效；临时 ASAR 复制最初遇到目录 cp 不支持与嵌套 yaml 副本，改逐文件复制且保留嵌套布局；首完整预览 85/86 唯一失败是复制件缺少只用于打印 Core 版本的 manifest，补原始 manifest 后完整重跑通过。没有把这些失败尝试计入成功次数。
+- **已排除**：自身 ConfigForm 未 subscribe 并不导致当前宿主设置卡永不刷新（父组件订阅）；终端未清理 retry timer 的一次迟到回调，在真实 Cordis dispose 后被 inactive-context 检查拒绝，受控 editor **0 次写入**，不报告“卸载后覆盖配置”。
+- **未确认候选**：percent-encoded 非 UUID sessionId 二次编码的正常可达性；旧 Core minimal compaction 探针区分度；status 路由与外层认证的远程部署组合；`virtualMounts` OFF 的 NUL 设备特例。没有证据前不归入上述 10 项。
+- **明确不覆盖**：生产 GUI 延迟/视觉验收、真实 LLM 自主选路、真实受限 token/ACL/IPC 围栏正负验收、每个旧 Core 版本实机、非 CRT 任意解释器 quoting、真实磁盘耗尽/RSS/跨任务 quota。已有默认 fail-closed、用户显式关闭后的 legacy UNCONFINED、codePaths 路径状业务字符串启发式与动态拼接边界均按既定产品约束评价，未冒充新增漏洞。
+- 本轮只更新审查记录；未改产品源码、未提交/推送、未安装/部署、未改生产 profile、未重启宿主。
+
+### 同步 v0.40.5 后的功能审查（test / docs，未修复）
+
+- 审查基线：[v0.40.5（6c5f1cd）](https://github.com/KannaKuron/dsh-gitbash-shell/commit/6c5f1cda5828ee5cbd5dba1aa704496f69e34412)。相对本地原基线快进 8 个提交，无合并冲突；本条只记录检查，未修改产品源码。
+- **P2，已知遗留复现：PATH 同名目录仍会阻止安装。** [scanCommands](src/toolchain.js#L236-L263) 只收到字符串文件名，扩展名白名单不能区分目录与文件。[默认 IO](src/tool-runner.js#L67-L72) 的真实 `readdirSync` 读取一个仅含 `make` 目录的临时 PATH 目录时仍返回命中；在 winget 可用、清单为空的受控装置中，[probeToolchain](src/tool-runner.js#L91-L162) 将该行判为 `external` / `actionable: false`，实际没有命令却不提供安装操作。与 v0.40.4 记载的目录类型区分遗留项相同，不是本次同步新引入。需后续补文件类型判定，同时保留无扩展名真实可执行文件与可执行文件符号链接。
+- **P2，后台退出事实丢失：未知退出码被写成 0。** [processOutcome](src/bash-render.js#L163-L168) 的 `proc.exitCode ?? 0` 把合法的 `null` 改成成功退出码。真实 Cordis 挂载自有 bash 模块、以受控已结束进程句柄执行 `run_in_background: true` 后，[Jobs 接线](src/bash-tool.js#L389-L414) 产出的终态 detail 为 `exit code: 0`；同一结果的前台渲染为 `[exit code: null]`。这不是「completed 应等于 failed」的问题，而是具体退出码被捏造；应保留未知值。当前桌面 Core 0.2.1-rc.2 的官方 tool-bash 同样含此表达式，属于镜像继承问题；未用真实 OS 子进程制造无退出码结局。
+- **验证：** Windows / Node 24.13.0，`npm test` **237/237**，0 fail / skip / cancel；全部产品 JS 的 `node --check` 与 `npm pack --dry-run --ignore-scripts` 通过。两个针对性复现均 exit 0：目录案例使用真实文件系统与受控 winget 清单，后台案例使用真实 Cordis 与受控进程/Jobs，不执行 winget 安装或真实异常进程。
+- **实际 Core 的有界补验：** 桌面壳 2.0.19-next / Core 0.2.1-rc.2 / Electron Node 24.21.0，从现有 ASAR 只读解析依赖；[基础预览](tests/preview.mjs)、[桥预览](tests/bridge-preview.mjs)、[运行时预览](tests/runtime-preview.mjs)、[宿主预览](tests/host-preview.mjs) 合计 **30/30**，0 fail / skip / cancel。覆盖真实 Git Bash / PowerShell、根执行器保留、可见性开关、拒绝时序与卸载。原版 [host-loader](tests/host-loader.mjs#L10-L17) 在该 Electron Node 环境内 `hostRequire.resolve` 重入自身解析钩子，首跑 4 个测试文件均因 `RangeError: Maximum call stack size exceeded` 未进入用例；改用临时目录内的防重入解析器后通过，仓库加载器未修改。不能将补验称为原版 `test:preview` 全套通过。
+- **未覆盖：** 完整 native/path/输出 preview、生产 GUI、模式选择器与 PTY、真实 LLM 自主选路、真实受限 OS 围栏。未安装或部署插件，未改生产配置，未重启宿主。
+
 ## v0.40.5 — 2026-10-18
 
 ### 工具行字号跟随宿主字体设置;半像素字号归整(fix)

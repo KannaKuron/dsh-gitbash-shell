@@ -455,7 +455,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
               timeoutMs,
               // Preserve ring/spill notices; sandbox notes belong to the final renderer.
               output: renderJobRead(
-                ringDelta(read.chunks), read.lossy, read.job.output.spillPaths ?? [], undefined, escalationModes,
+                ringDelta(read.chunks), read.lossy || read.chunks.some(chunk => chunk.gapBefore), read.job.output.spillPaths ?? [], undefined, escalationModes,
               ),
               ...(sandbox === undefined ? {} : { sandbox }),
             }

@@ -766,7 +766,12 @@ function pathEcho(value, env) {
   const out = driveToMsys(value)
   if (typeof out !== 'string' || out.length === 0) return out
   const tempRoot = env && env.tmpDir ? driveToMsys(env.tmpDir) : ''
-  return tempRoot ? mountTempRoot(out, tempRoot) : out
+  // A whole path has exactly one root; an embedded copy in a backup tree is data.
+  if (tempRoot && out.slice(0, tempRoot.length).toLowerCase() === tempRoot.toLowerCase()
+    && (out.length === tempRoot.length || out[tempRoot.length] === '/')) {
+    return '/tmp' + out.slice(tempRoot.length)
+  }
+  return out
 }
 
 /**
@@ -1251,6 +1256,12 @@ function regexCanStart(previous) {
   return previous.length === 1 && '(,=:[!&|?{;+-*%<>~^'.includes(previous)
 }
 
+/** A newline may end a declaration before a statement regexp; do not guess ASI. */
+function ambiguousSlash(code, index, previous, previousEnd) {
+  return previous === ')' || previous === '}'
+    || (!regexCanStart(previous) && /[\r\n\u2028\u2029]/.test(code.slice(previousEnd, index)))
+}
+
 /** Read an identifier as ONE token: keyword-led regexes are not division. */
 function codeWordAt(code, index) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(code.slice(index))?.[0]
@@ -1263,7 +1274,7 @@ function skipQuotedLiteral(code, index) {
   while (i < code.length) {
     const c = code[i]
     if (c === '\\') { i += 2; continue }
-    if (c === '\n') return -1
+    if (/[\r\n\u2028\u2029]/.test(c)) return -1
     if (c === quote) return i + 1
     i += 1
   }
@@ -1277,7 +1288,7 @@ function skipRegexLiteral(code, index) {
   while (i < code.length) {
     const c = code[i]
     if (c === '\\') { i += 2; continue }
-    if (c === '\n') return -1
+    if (/[\r\n\u2028\u2029]/.test(c)) return -1
     if (c === '[') inClass = true
     else if (c === ']') inClass = false
     else if (c === '/' && inClass === false) {
@@ -1295,11 +1306,13 @@ function skipBracedExpression(code, index) {
   let depth = 1
   let i = index
   let last = ''
+  let previousEnd = 0
   while (i < code.length) {
     const c = code[i]
     const next = code[i + 1]
     if (c === '/' && next === '/') {
-      const nl = code.indexOf('\n', i)
+      const lineEnd = /[\r\n\u2028\u2029]/.exec(code.slice(i))
+      const nl = lineEnd ? i + lineEnd.index : -1
       if (nl === -1) return -1
       i = nl
       continue
@@ -1315,6 +1328,7 @@ function skipBracedExpression(code, index) {
       if (end === -1) return -1
       i = end
       last = 'x'
+      previousEnd = i
       continue
     }
     if (c === '`') {
@@ -1322,15 +1336,17 @@ function skipBracedExpression(code, index) {
       if (inner === null) return -1
       i = inner.end
       last = 'x'
+      previousEnd = i
       continue
     }
     // A slash after a closing group may start a statement regex OR division.
     // Without a parser that distinction is uncertain: abort the WHOLE scan.
-    if (c === '/' && (last === ')' || last === '}')) return -1
+    if (c === '/' && ambiguousSlash(code, i, last, previousEnd)) return -1
     const word = codeWordAt(code, i)
     if (word) {
       last = last === '.' ? 'x' : word
       i += word.length
+      previousEnd = i
       continue
     }
     if (c === '/' && regexCanStart(last)) {
@@ -1338,6 +1354,7 @@ function skipBracedExpression(code, index) {
       if (end === -1) return -1
       i = end
       last = 'x'
+      previousEnd = i
       continue
     }
     if (c === '{') depth += 1
@@ -1345,7 +1362,7 @@ function skipBracedExpression(code, index) {
       depth -= 1
       if (depth === 0) return i + 1
     }
-    if (c.trim() !== '') last = c
+    if (c.trim() !== '') { last = c; previousEnd = i + 1 }
     i += 1
   }
   return -1
@@ -1383,11 +1400,13 @@ export function scanCodeLiterals(code) {
   const spans = []
   let i = 0
   let last = ''
+  let previousEnd = 0
   while (i < code.length) {
     const c = code[i]
     const next = code[i + 1]
     if (c === '/' && next === '/') {
-      const nl = code.indexOf('\n', i)
+      const lineEnd = /[\r\n\u2028\u2029]/.exec(code.slice(i))
+      const nl = lineEnd ? i + lineEnd.index : -1
       // A line comment may legally terminate at EOF (outside interpolation).
       if (nl === -1) break
       i = nl
@@ -1405,6 +1424,7 @@ export function scanCodeLiterals(code) {
       spans.push({ start: i + 1, end: end - 1 })
       i = end
       last = 'x'
+      previousEnd = i
       continue
     }
     if (c === '`') {
@@ -1418,15 +1438,17 @@ export function scanCodeLiterals(code) {
       }
       i = template.end
       last = 'x'
+      previousEnd = i
       continue
     }
     // A slash after a closing group may start a statement regex OR division.
     // Without a parser that distinction is uncertain: abort the WHOLE scan.
-    if (c === '/' && (last === ')' || last === '}')) return null
+    if (c === '/' && ambiguousSlash(code, i, last, previousEnd)) return null
     const word = codeWordAt(code, i)
     if (word) {
       last = last === '.' ? 'x' : word
       i += word.length
+      previousEnd = i
       continue
     }
     if (c === '/' && regexCanStart(last)) {
@@ -1434,9 +1456,10 @@ export function scanCodeLiterals(code) {
       if (end === -1) return null
       i = end
       last = 'x'
+      previousEnd = i
       continue
     }
-    if (c.trim() !== '') last = c
+    if (c.trim() !== '') { last = c; previousEnd = i + 1 }
     i += 1
   }
   return spans
@@ -1512,7 +1535,7 @@ export function rewriteCodePaths(code, env) {
 // path WITHOUT wildcards splits into directory + basename. Runs only for
 // the glob tool and only for patterns that start absolute.
 
-const GLOB_META = /[*?\[\]]/
+const GLOB_META = /[*?\[\]{}]/
 
 /** Split an absolute glob pattern into { prefix, rest }; null when relative. */
 function splitGlobPrefix(pattern) {

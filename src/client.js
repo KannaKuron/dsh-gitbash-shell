@@ -2068,18 +2068,33 @@ window.__ModuleLoader__.load({
 				} catch (error_) { /* keep the switch usable */ }
 			}, []);
 
-		var bashState = useState("");
-		var bashDraft = bashState[0];
-		var setBashDraft = bashState[1];
-		var bashSavedState = useState(false);
-		var bashSaved = bashSavedState[0];
-		var setBashSaved = bashSavedState[1];
-		useEffect(function () {
+			var scope = props.scope;
+			var snap = { status: "unavailable" };
 			try {
-				var s0 = scope && typeof scope.getSnapshot === "function" ? scope.getSnapshot() : null;
-				if (s0 && s0.value && typeof s0.value.bashPath === "string") setBashDraft(s0.value.bashPath)
-			} catch (e) { /* keep empty draft */ }
-		}, []);
+				if (scope && typeof scope.getSnapshot === "function") snap = scope.getSnapshot();
+			} catch (error_) { /* keep unavailable */ }
+
+			var bashState = useState({ scope: scope, value: "", dirty: false, owner: {} });
+			var bashDraft = bashState[0].scope === scope ? bashState[0].value : "";
+			var setBashDraft = bashState[1];
+			var bashSaved = bashState[0].scope === scope && bashState[0].saved === true;
+			function setBashSaved(saved) {
+				setBashDraft(function (previous) {
+					// A late save only belongs to the exact draft that submitted it.
+					if (previous.scope !== scope || previous.owner !== bashState[0].owner || previous.saved === saved) return previous;
+					return Object.assign({}, previous, { saved: saved === true, dirty: saved === true ? false : previous.dirty });
+				});
+			}
+			var mirroredBashPath = snap.value && typeof snap.value.bashPath === "string" ? snap.value.bashPath : "";
+			useEffect(function () {
+				// Core's parent rerenders on mirror arrival. Hydrate once ready (or
+				// for a new scope), but never replace this scope's local edits.
+				setBashDraft(function (previous) {
+					if (previous.scope !== scope) return { scope: scope, value: snap.status === "ready" ? mirroredBashPath : "", dirty: false, owner: {} };
+					if (snap.status !== "ready" || previous.dirty || previous.value === mirroredBashPath) return previous;
+					return { scope: scope, value: mirroredBashPath, dirty: false, owner: {} };
+				});
+			}, [scope, snap.status, mirroredBashPath]);
 
 			/* v0.38.0: the card's sections are FOLDERS. All seven stay collapsed
 			   by default — the user scans seven labelled header rows, expands the
@@ -2097,13 +2112,6 @@ window.__ModuleLoader__.load({
 					return next;
 				});
 			}
-
-			var scope = props.scope;
-
-			var snap = { status: "unavailable" };
-			try {
-				if (scope && typeof scope.getSnapshot === "function") snap = scope.getSnapshot();
-			} catch (error_) { /* keep unavailable */ }
 
 			var pageView = props.view === "page";
 
@@ -2301,7 +2309,7 @@ window.__ModuleLoader__.load({
 					E("span", { className: "gb-rowLabel" }, t("bash.label") + ":"),
 				),
 				E("div", { className: "gb-seg" },
-					E("input", { className: "gb-input", type: "text", spellCheck: false, placeholder: "C:/Program Files/Git/bin/bash.exe", value: bashDraft, onChange: function (e) { setBashDraft(e.target.value); setBashSaved(false); } }),
+					E("input", { className: "gb-input", type: "text", spellCheck: false, placeholder: "C:/Program Files/Git/bin/bash.exe", value: bashDraft, onChange: function (e) { setBashDraft({ scope: scope, value: e.target.value, dirty: true, owner: {} }); } }),
 					E("button", {
 						type: "button",
 						className: "gb-saveBtn" + (bashSaved ? " gb-saved" : ""),

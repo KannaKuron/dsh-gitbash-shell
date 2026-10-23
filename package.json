@@ -57,8 +57,8 @@
     "icon.svg"
   ],
   "scripts": {
-    "test": "node --test tests/smoke.mjs tests/private-executor.mjs tests/client-regressions.mjs tests/bridge-regressions.mjs tests/runtime-regressions.mjs tests/host-regressions.mjs tests/compatibility-regressions.mjs tests/path-tool.mjs tests/native-output.mjs tests/native-executor.mjs tests/ops-adopt.mjs",
-    "test:preview": "node --import ./tests/host-loader.mjs --import ./tests/preview-env.mjs --test tests/preview.mjs tests/bridge-preview.mjs tests/runtime-preview.mjs tests/host-preview.mjs tests/path-preview.mjs tests/native-output-preview.mjs tests/native-preview.mjs tests/native-integration-preview.mjs",
+    "test": "node --test tests/smoke.mjs tests/private-executor.mjs tests/client-regressions.mjs tests/bridge-regressions.mjs tests/runtime-regressions.mjs tests/host-regressions.mjs tests/compatibility-regressions.mjs tests/path-tool.mjs tests/native-output.mjs tests/native-executor.mjs tests/ops-adopt.mjs tests/review-core-regressions.mjs tests/review-native-regressions.mjs",
+    "test:preview": "node --import ./tests/host-loader.mjs --import ./tests/preview-env.mjs --test tests/preview.mjs tests/bridge-preview.mjs tests/runtime-preview.mjs tests/host-preview.mjs tests/path-preview.mjs tests/native-output-preview.mjs tests/native-preview.mjs tests/native-integration-preview.mjs tests/review-native-preview.mjs",
     "version": "node -e \"const fs=require('fs');const m=JSON.parse(fs.readFileSync('dsh.plugin.json','utf8'));const v=JSON.parse(fs.readFileSync('package.json','utf8')).version;m.version=v;fs.writeFileSync('dsh.plugin.json',JSON.stringify(m,null,2)+'\\n')\" && git add dsh.plugin.json"
   },
   "keywords": [

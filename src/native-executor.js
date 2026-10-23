@@ -25,7 +25,8 @@ export function nativePath(input, translateMsysPath, platform = process.platform
   object(input, label, new Set(['kind', 'value']))
   if (input.kind !== 'path') throw new TypeError(`${label}: kind must be path`)
   const value = string(input.value, label)
-  if (/^[~$]|%[^%]+%/.test(value)) throw new TypeError(`${label}: variable and home expansion are not supported; use an absolute path`)
+  // Reject expansion prefixes, not literal characters inside absolute paths.
+  if (/^(?:[~$]|%[^%]+%)/.test(value)) throw new TypeError(`${label}: variable and home expansion are not supported; use an absolute path`)
   if (platform !== 'win32') throw new Error('gitbash_native currently supports only the Windows local execution world')
   // A rooted Windows path without a drive is not absolute in this contract.
   const absolute = v => /^[a-z]:[\\/]/i.test(v) || /^\\\\[^\\]+\\[^\\]+/.test(v) || /^\/\/[^/]+\/[^/]+/.test(v)
