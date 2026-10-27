@@ -3,6 +3,33 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [Unreleased]
+
+### fix:工具面晚于 `agent/created` 落定时,bash 补位永久错过(真机复现)
+
+- **症状**:冷启动后某个会话既没有 `bash`、又留着一个被拦截的 `pwsh`。插件日志里**没有**
+  `own bash tool activated`,但 `tools/pre-execute` 的拒绝句照旧生效——两层里只有调用层活着,
+  「注册 bash + 遮蔽 pwsh」那一次 `reconcile` 从没跑成。
+- **根因**:`reconcile` 只由 `agent/created`、挂载时的存量 sweep 和设置开关变化触发;面为空时
+  250ms×5 有界重试,**过期即终局**。桌面端启动要先挂 profile 级插件再挂预设行,这个窗口很容易
+  被跨过去,而宿主其实有 `tools/change` 事件——本插件没监听,也没有第二个落点。
+- **修法**:在 `tools/pre-execute` 里做一次**惰性再对账**——该 agent 还没有 bash scope 时重跑
+  决策。第一次工具调用是"面一定已落定"的最早时刻;`state.scope` 一旦存在即永久跳过,幂等,
+  且不监听 `tools/change`(不会自己触发自己)。
+- **真机验证**:Windows 桌面端(bash 5.3,`pwshTool` 关闭),重启后日志出现
+  `own bash tool ready (private Git Bash executor at C:/Program Files/Git/bin/bash.exe)` 与
+  `own bash tool activated for this agent`,`bash` 工具可用、`uname -s` 返回 `MINGW64_NT-*`。
+
+### fix:面里没有 pwsh 时撤掉自己注册的 bash(遮蔽型 preset 不再漏 shell)
+
+- 自有 bash 注册在 **agent 自有 scope**;宿主契约写明掩码只裁全局工具、**scope 注册保持可见**,
+  所以一旦注册成功,任何 preset 的 `restrict({ allow })` 都拿不回来。若在面还没落定时抢注,
+  纯聊天类 preset(只放行两个工具的白名单)会凭空多出一条命令通道。
+- 修法:`reconcile` 观测到的 `names` 是**解开自身 pwsh 掩码之后**的面,权威;只要它非空且不含
+  `pwsh`,就 dispose 自己那个 scope 并撤掉 ops shell 遮蔽,下一轮再按真实面决策。
+  `names.length > 0` 兜住"注册表读不到/读到空"的情形,避免把读取失败误判成"被掩码"。
+- 与上一条互为正反面:一条负责"该有时一定要有",一条负责"不该有时一定没有"。
+
 ## [0.43.2] — 2026-10-23
 
 ### fix:被我们杀掉的 run 统一归 `code=-1`(Windows `taskkill /F` 退出码语义)
