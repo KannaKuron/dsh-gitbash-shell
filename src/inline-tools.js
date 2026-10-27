@@ -502,6 +502,21 @@ export function mountInlineTools(ctx, deps) {
         }
       }
     }
+    // A face WITHOUT pwsh is not the official win32 composition: something
+    // masked the host tool away, and the only such mask in the wild is a
+    // preset gate (`tools.restrict({ allow })`, e.g. the pure-chat preset).
+    // Our bash lives in an AGENT-OWNED scope, and scoped registrations stay
+    // visible through masks by contract — so a registration made while the
+    // face was still settling would leak a shell into that preset for the
+    // rest of the agent's life. `names` above is the PRE-MASK observation
+    // (our own deny was lifted first), so it is authoritative: stand down.
+    if (names.length > 0 && !names.includes('pwsh') && state.scope) {
+      const withdrawn = state.scope
+      state.scope = undefined
+      if (state.denyOpsShell) { state.denyOpsShell(); state.denyOpsShell = undefined }
+      void Promise.resolve(withdrawn.dispose()).catch((error) => log(`own bash withdrawal failed: ${error?.message ?? error}`))
+      log('own bash tool withdrawn for this agent (the tool face carries no pwsh: a preset mask owns the tool set)')
+    }
     if (needs.needsBash && !state.scope) {
       startBash(agent, state)
     }
@@ -576,6 +591,19 @@ export function mountInlineTools(ctx, deps) {
     // ON the REAL tool answers for itself.
     ctx.on('tools/pre-execute', (exec, next) => {
       try {
+        // THE FACE CAN SETTLE AFTER `agent/created` (Unreleased). Preset rows
+        // and plugin tools keep registering while the Loader walks the tree,
+        // so on a slow boot the bounded retry above can burn through its five
+        // 250ms attempts on an empty face and be FINAL: the agent then never
+        // gets its bash and keeps a visible (but denied) pwsh. The first tool
+        // call is the first moment the face is guaranteed to be settled, so
+        // re-run the decision there while this agent still owns no bash scope.
+        // Idempotent: once the scope exists this branch never fires again.
+        const lazyAgent = exec?.agent
+        const lazyState = lazyAgent ? tracked.get(lazyAgent) : undefined
+        if (lazyState && !lazyState.scope && !lazyState.pending) {
+          try { reconcile(lazyAgent) } catch (error) { log(`lazy re-reconcile failed: ${error?.message ?? error}`) }
+        }
         if (exec?.name === 'pwsh' && !opsSeen && deps.pwshEnabled?.() !== true) {
           return { kind: 'deny', reason: hiddenPwshDenyReason() }
         }
