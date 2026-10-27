@@ -76,6 +76,38 @@ test('host: all full Win32 variants use the inline private-executor face; minima
   assert.equal(persistent.find((row) => row.id === 'persistent-pwsh').disabled, true)
 })
 
+test('host: a pwsh-less face is never a bash verdict (the PR #36 stand-down never re-registers)', () => {
+  // The stand-down withdraws our scoped bash when the settled face carries no
+  // pwsh (a preset mask owns the tool set). The withdrawal only holds because
+  // needsBash demands pwsh: with pwsh gone the very next check in reconcile
+  // cannot re-register what was just withdrawn.
+  assert.equal(inlineNeeds(['bash']).needsBash, false, 'bash alone must not re-arm the patch')
+  assert.equal(inlineNeeds([]).needsBash, false, 'an empty face carries no verdict')
+  assert.equal(inlineNeeds(['pwsh', 'bash']).needsBash, false, 'the official face with our patch needs nothing')
+  assert.equal(inlineNeeds([], { pwshVisible: true }).hidePwsh, false, 'nothing to hide on an empty face')
+})
+
+test('host: the tool-face settle race has a lazy re-reconcile and a mask stand-down (PR #36)', () => {
+  const src = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  // Lazy re-reconcile: the boot retry is 250ms×5 and FINAL, so the first tool
+  // call — the first moment the face is guaranteed settled — re-runs the
+  // decision while the agent owns no bash scope. Idempotent by scope/pending.
+  assert.match(src, /const lazyAgent = exec\?\.agent/, 'the pre-execute hook is the late-settle re-entry point')
+  assert.match(src, /if \(lazyState && !lazyState\.scope && !lazyState\.pending\) \{\n\s*try \{ reconcile\(lazyAgent\) \} catch/, 'lazy re-reconcile is guarded by scope/pending and never breaks the tool call')
+  // Stand-down: `names` is observed AFTER lifting our own deny (and schemas()
+  // filters preset-restricted tools), so a non-empty pwsh-less face means a
+  // preset mask owns the set — our scoped registration stays visible through
+  // masks by contract and must be withdrawn before the needsBash check.
+  const start = src.indexOf('if (names.length > 0 && !names.includes(\'pwsh\') && state.scope)')
+  const stop = src.indexOf('if (needs.needsBash')
+  assert.ok(start !== -1, 'the stand-down branch exists with its exact conservative condition')
+  assert.ok(start < stop, 'the stand-down runs BEFORE the needsBash check')
+  const standdown = src.slice(start, stop)
+  assert.match(standdown, /state\.scope = undefined/, 'the scope is dropped so the next check cannot re-register it')
+  assert.match(standdown, /withdrawn\.dispose\(\)/, 'the registration is disposed, not merely forgotten')
+  assert.match(standdown, /own bash tool withdrawn for this agent/, 'the withdrawal is logged for diagnosis')
+})
+
 test('host: dispose drains pending registration and awaits its late unregister', async (t) => {
   const registering = deferred(), retiring = deferred()
   const f = await fixture(t, { registerGate: registering, retireGate: retiring })

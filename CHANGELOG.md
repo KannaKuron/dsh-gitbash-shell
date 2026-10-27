@@ -3,9 +3,9 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## [Unreleased]
+## [0.43.3] — 2026-10-27
 
-### fix:工具面晚于 `agent/created` 落定时,bash 补位永久错过(真机复现)
+### fix:工具面晚于 `agent/created` 落定时,bash 补位永久错过(真机复现;PR #36,致谢 @qiantao448-ux 首次贡献)
 
 - **症状**:冷启动后某个会话既没有 `bash`、又留着一个被拦截的 `pwsh`。插件日志里**没有**
   `own bash tool activated`,但 `tools/pre-execute` 的拒绝句照旧生效——两层里只有调用层活着,
@@ -29,6 +29,14 @@
   `pwsh`,就 dispose 自己那个 scope 并撤掉 ops shell 遮蔽,下一轮再按真实面决策。
   `names.length > 0` 兜住"注册表读不到/读到空"的情形,避免把读取失败误判成"被掩码"。
 - 与上一条互为正反面:一条负责"该有时一定要有",一条负责"不该有时一定没有"。
+
+### 补充(维护者):回归测试锁定两处新行为
+
+- `tests/host-regressions.mjs` 新增两测试:①`inlineNeeds` 对 pwsh-less/空面的负例(撤回永不
+  重建的直接依据:`needsBash` 要求 `pwsh` 在场);②源码断言锁 lazy 再对账的守卫形状
+  (scope/pending 幂等 + try/catch 不破坏工具调用)与 stand-down 分支的位置与顺序
+  (条件 `names.length > 0 && !names.includes('pwsh') && state.scope`,scope 置空先于
+  `needsBash` 判断,dispose 真实发生并留日志)。全量 336 项 0 fail。
 
 ## [0.43.2] — 2026-10-23
 

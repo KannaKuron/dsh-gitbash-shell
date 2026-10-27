@@ -1,6 +1,6 @@
 {
   "id": "dsh-external/dsh-gitbash-shell",
-  "version": "0.43.2",
+  "version": "0.43.3",
   "main": "./src/index.js",
   "description": "Windows 全模式 Git Bash:自带 bash 工具(私有 Git Bash 执行器实例,官方 PowerShell 执行器原样保留),官方四个模式经行内工具补位直接获得 Git Bash(v0.35.0 起;v0.39.0 起不再替换宿主执行器),四个 *·Git Bash 变体 preset 可开关;官方 pwsh 工具默认隐藏、开关可见(真 PowerShell);附带 gb_* FastCtx 文件工具,检测到 dsh-ops 自动让位。联动:dsh-ptc-cordis-preset(PTC 创造模式带 Git Bash 行且可去重)+ dsh-better-sidebar(终端标签自动切 Git Bash)。",
   "engines": {
