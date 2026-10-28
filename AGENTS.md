@@ -450,6 +450,18 @@
       `settings` 服务方法面(`get(ns)` 是否存在)。**这类契约验证不需要 Windows**:用宿主构建里的
       真实类 + 打桩 spawn 驱动即可(`apps/desktop/.desktop-build/targets/*/dsh/node_modules/
       @deepseek-ai/dsh-bash-*`),CHANGELOG v0.24.4 记录的 12 项集成检查就是这么跑的。
+   ⑥ **执行器/呈现架构与 prompt 装配面是独立漂移源(0.2.2-alpha.2 立,v0.44.0 教训)**:
+      dsh 0.2.2-alpha.2 把工具执行模式从 `dsh-tools` 配置改成显式执行器行(`tool-executor-native`
+      / `tool-executor-ptc`,`dsh-tools` 的 `mode`/`maxParallelSubCalls` 改 `z.never()` 直接拒绝),
+      同时动了三处只影响"组合形状"的地方:`tool-subagent-list-agents` 行被删除(list_agents 并进
+      `tool-subagent-control` 主行)、subagent 的 `modelSelectionSettings` 改名
+      `modelSelection` + `modelDiscovery`、`tool-presentation` 被 `tool-executor-ptc` 取代。
+      每次跟随升级必须额外核对:①`packages/core/tool-executor-*` 是否新增/改名(新宿主上 PTC
+      形必须挂执行器行,旧行在旧宿主上保留);②`packages/bundle/web-app/presets/*.patch.yml`
+      里 `!!js` 条件行(如 `!!js "!ctx.get('profileContext')"`)对应的服务是否可从 ctx 读到
+      ——声明式组合没有 `!!js`,必须改成注册时求值的 hostExtras 布尔;③`system-prompt/assemble`
+      携带的字段集(`PromptAssembly` 拆分后不再带 `tools`,工具面要从 `ctx.get('tools').schemas(agent)`
+      读回);④工具渲染文案(`renderPromoted` 等)是否又内联了已由 system-prompt 段落承载的指引。
 
 4j. **原生右侧栏的文件路径救援(v0.31.0,用户报告)**:本插件的方言第一次伸到**浏览器 UI**。
      症状:点开对话里的文件链接(链接文本来自 shell 输出,是 `/c/Users/...`),官方右侧栏
