@@ -47,23 +47,26 @@ POSIX 宿主上完整保留;
   `/c/` 方言统一:`ops_*` 的入参(含 `root`/`operations[].path`/`protect`)
   自动转换、返回与报错路径自动回流 `/c/`。
 
-- **与 dsh-ops 并存:bash 只留一份(v0.42.0)**:宿主机制决定「可见但拒绝」到不了「看不见」——
+- **与 dsh-ops 并存:bash 只留一份(v0.42.0;v0.46.0 跟随 0.4.3 行集)**:宿主机制决定「可见但拒绝」到不了「看不见」——
   `tools.restrict` 只能过滤继承面,而 `ops_bash` 注册在 agent 自有层。于是本插件直接接管 dsh-ops
   自带的 `publishBashTool` 开关(经官方 configEditor 通道写为 `false`):安装本插件时 `ops_bash`
   不再出现在模型工具面;**ops 的 pwsh7 overlay(给官方 pwsh 工具供路径)与文件/后台增强不受影响**
   ——publishBashTool 的门只套在 `mountSessionBash` 上,pwsh 走 `mountBundledPwsh` 独立路径。
-  **`ops_run` 无需处理:它在 dsh-ops 的 bundle 装配中本就没有发布路径**——bundle 只有
-  shell/file/background/ptc 四行,全插件唯一一处 `new FastCtxTools` 只在 background 组件挂
-  后台四件套(`run_background`/`job_*`),前台 `ops_run` 只是未被任何调用点使用的默认参数;
-  本机 `dsh-ops-background` 行默认关闭,后台四件套同样不存在。
+  **行集随 dsh-ops 0.4.3 变化**:旧版开关在 `dsh-ops-shell` 组件行上;0.4.3 起该行消失,改成四个
+  preset-mode 行 `dsh-ops-mode-minimal` / `-standard` / `-ptc` / `-cordis`(四行的执行计划都含
+  Windows shell,都能发 `ops_bash`),本插件对**在场的每一行**都写 `false`,旧行仍在的混合 profile
+  也照样处理。**`ops_run` 无需处理:它在 dsh-ops 的 bundle 装配中本就没有发布路径**——bundle 只有
+  mode/discovery/compat/panel/tui 八行,前台 `ops_run` 只是未被任何调用点使用的默认参数。
   **停用或卸载本插件的瞬间自动还原**(dispose 钩子撤回覆盖,同 row 的其它设置原样保留),重新启用
-  又会自动接管。两个边界:①关机状态下卸载的残余覆盖,用 dsh-ops 设置卡「恢复默认」一键撤回;
-  ②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它。无设置开关——想用 `ops_bash`
-  就停用本插件,还原是自动的。
-   **后台任务与文件/PTC 增强全部让给 dsh-ops(2026-10-19 用户决策)**:剔除清单被守卫测试
-   锁死为 `ops_bash` + `ops_run` 两项,永不含 `ops_run_background`/`ops_job_*`——你启用
-   dsh-ops 的「后台任务」组件后,这组全局工具在普通会话与 PTC 创造模式下原样可见可用,
-   本插件不做任何 deny。bash 归 gitbash,后台与增强归 dsh-ops,职责互不越界。
+  又会自动接管。三个边界:①关机状态下卸载的残余覆盖,用 dsh-ops 设置卡「恢复默认」一键撤回;
+  ②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它;③**dsh-ops 0.4.3 起按 preset id
+  门控**:它只认官方四个 preset,本插件的 `ptc-cordis` 与「· Git Bash」变体 id 不在其中——那些
+  会话里 dsh-ops 什么也不发布(也不隐藏官方 pwsh/read/glob/grep),我们的 bash 是唯一命令工具。
+  无设置开关——想用 `ops_bash` 就停用本插件,还原是自动的。
+  **后台任务与文件/PTC 增强全部让给 dsh-ops(2026-10-19 用户决策)**:剔除清单被守卫测试
+  锁死为 `ops_bash` + `ops_run` 两项,永不含 `ops_run_background`/`ops_job_*`——你启用
+  dsh-ops 的「后台任务」组件后,这组全局工具在普通会话与 PTC 创造模式下原样可见可用,
+  本插件不做任何 deny。bash 归 gitbash,后台与增强归 dsh-ops,职责互不越界。
 
 四个「· Git Bash」**变体 preset 仍保留,默认关闭**(`variantPresets` 开关,
 设置卡可开):开启后注册 `standard-gitbash`/`minimal-gitbash`/`code-gitbash`/

@@ -2,13 +2,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
+  OPS_MODE_ROW_IDS,
   OPS_SHELL_ROW_ID,
+  OPS_SHELL_ROW_IDS,
   effectivePublishBashTool,
   planOpsAdopt,
   adoptOpsBashRemoval,
   restoreOpsBash,
   opsAdoptReport,
   opsRestoreReport,
+  opsRowList,
 } from '../src/ops-adopt.js'
 import { OPS_SHELL_TOOLS } from '../src/inline-tools.js'
 
@@ -66,7 +69,8 @@ test('ops-adopt: planOpsAdopt covers the full decision matrix', () => {
 test('ops-adopt: adoption writes through the editor and reads the value back', async () => {
   const editor = fakeOpsEditor({ rows: [rowOf(OPS_SHELL_ROW_ID, { promptPolicy: true }, { publishBashTool: true })] })
   const result = await adoptOpsBashRemoval(editor)
-  assert.deepEqual(result, { status: 'adopted' })
+  assert.equal(result.status, 'adopted')
+  assert.deepEqual(result.rows, [{ id: OPS_SHELL_ROW_ID, action: 'adopt', reason: result.rows[0].reason }])
   assert.deepEqual(editor.state.edits, [OPS_SHELL_ROW_ID])
   const after = editor.state.rows.find((candidate) => candidate.entry.options.id === OPS_SHELL_ROW_ID)
   assert.equal(after.override.publishBashTool, false)
@@ -104,14 +108,16 @@ test('ops-adopt: a refused or non-sticking write is reported, never claimed', as
 test('ops-adopt: restore lifts our false back to the inherited value and nothing else', async () => {
   const withInherited = rowOf(OPS_SHELL_ROW_ID, { publishBashTool: false, promptPolicy: true }, { publishBashTool: true, promptPolicy: false })
   const editorA = fakeOpsEditor({ rows: [withInherited] })
-  assert.deepEqual(await restoreOpsBash(editorA), { status: 'restored' })
+  const restoredA = await restoreOpsBash(editorA)
+  assert.equal(restoredA.status, 'restored')
+  assert.deepEqual(restoredA.rows, [{ id: OPS_SHELL_ROW_ID, action: 'restore' }])
   const afterA = editorA.state.rows[0]
   assert.equal(afterA.override.publishBashTool, true, 'restored to the inherited value')
   assert.equal(afterA.override.promptPolicy, true, 'the user\'s own override keys are untouched')
 
   const withoutInherited = rowOf(OPS_SHELL_ROW_ID, { publishBashTool: false, shellPolicy: 'advise' }, {})
   const editorB = fakeOpsEditor({ rows: [withoutInherited] })
-  assert.deepEqual(await restoreOpsBash(editorB), { status: 'restored' })
+  assert.equal((await restoreOpsBash(editorB)).status, 'restored')
   const afterB = editorB.state.rows[0]
   assert.equal('publishBashTool' in afterB.override, false, 'no inherited value means the key goes away again')
   assert.equal(afterB.override.shellPolicy, 'advise')
@@ -194,4 +200,75 @@ test('ops-adopt: the removal list never grows into dsh-ops background or file to
   // The deny wiring consumes exactly this list; assert the constant is what flows in.
   const source = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   assert.match(source, /export const OPS_SHELL_TOOLS = Object\.freeze\(\['ops_bash', 'ops_run'\]\)/)
+})
+
+// ── dsh-ops 0.4.3+ (v0.46.0) ────────────────────────────────────────────────
+// 0.4.3 replaced the component roster with preset-mode switches: the legacy
+// `dsh-ops-shell` row is gone and four `dsh-ops-mode-*` rows every one of
+// which plans a Windows shell. The removal must walk the whole set.
+
+test('ops-adopt: the row set spans the legacy row and all four mode rows', () => {
+  assert.deepEqual([...OPS_MODE_ROW_IDS], [
+    'dsh-ops-mode-minimal',
+    'dsh-ops-mode-standard',
+    'dsh-ops-mode-ptc',
+    'dsh-ops-mode-cordis',
+  ], 'dsh-ops 0.4.3 cordis.patch.yml row ids')
+  assert.deepEqual([...OPS_SHELL_ROW_IDS], [OPS_SHELL_ROW_ID, ...OPS_MODE_ROW_IDS],
+    'the legacy row stays first so a mixed profile writes both eras')
+  const source = readFileSync(new URL('../src/ops-adopt.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  assert.match(source, /MODE_PLANS\[\*\]\.shell/, 'the module records WHY every mode row can publish bash')
+})
+
+test('ops-adopt: a 0.4.3 profile disables publishBashTool on every mode row', async () => {
+  const rows = OPS_MODE_ROW_IDS.map((id) => rowOf(id, {}, { promptPolicy: true }))
+  const editor = fakeOpsEditor({ rows })
+  const result = await adoptOpsBashRemoval(editor)
+  assert.equal(result.status, 'adopted')
+  assert.deepEqual(editor.state.edits, [...OPS_MODE_ROW_IDS], 'one official editor write per mode row')
+  for (const row of editor.state.rows) assert.equal(row.override.publishBashTool, false, row.entry.options.id)
+  assert.equal(opsRowList(result), OPS_MODE_ROW_IDS.join(', '), 'the log names every row it touched')
+})
+
+test('ops-adopt: a mixed profile adopts the live rows and respects the settled ones', async () => {
+  const editor = fakeOpsEditor({ rows: [
+    rowOf(OPS_SHELL_ROW_ID, { publishBashTool: false, promptPolicy: true }, { publishBashTool: true }),
+    rowOf('dsh-ops-mode-standard', {}, { publishBashTool: true }),
+    rowOf('dsh-ops-mode-ptc', {}, { publishBashTool: false }),
+  ] })
+  const result = await adoptOpsBashRemoval(editor)
+  assert.equal(result.status, 'adopted')
+  assert.deepEqual(editor.state.edits, ['dsh-ops-mode-standard'], 'only the row that still publishes is written')
+  const byId = Object.fromEntries(result.rows.map((row) => [row.id, row.action]))
+  assert.equal(byId[OPS_SHELL_ROW_ID], 'present')
+  assert.equal(byId['dsh-ops-mode-standard'], 'adopt')
+  assert.equal(byId['dsh-ops-mode-ptc'], 'unchanged-inherited-off')
+})
+
+test('ops-adopt: a disabled mode row is never written, and all-disabled settles quietly', async () => {
+  const disabledRow = { entry: { options: { id: 'dsh-ops-mode-ptc', disabled: true } }, override: {}, inherited: {} }
+  assert.equal(planOpsAdopt(disabledRow).action, 'skip-disabled', 'a disabled row publishes nothing to remove')
+  const editor = fakeOpsEditor({ rows: [disabledRow] })
+  const result = await adoptOpsBashRemoval(editor)
+  assert.equal(result.status, 'skip-disabled-rows')
+  assert.deepEqual(editor.state.edits, [])
+  assert.match(opsAdoptReport(result), /every dsh-ops shell row is disabled/)
+})
+
+test('ops-adopt: restore lifts our value from every mode row and leaves the user\'s earlier ON alone', async () => {
+  const editor = fakeOpsEditor({ rows: [
+    rowOf('dsh-ops-mode-minimal', { publishBashTool: false, promptPolicy: true }, { publishBashTool: true, promptPolicy: false }),
+    rowOf('dsh-ops-mode-cordis', { publishBashTool: false }, {}),
+    rowOf('dsh-ops-mode-standard', { publishBashTool: true }, { publishBashTool: true }),
+  ] })
+  const result = await restoreOpsBash(editor)
+  assert.equal(result.status, 'restored')
+  assert.deepEqual(editor.state.edits, ['dsh-ops-mode-minimal', 'dsh-ops-mode-cordis'])
+  const minimal = editor.state.rows.find((row) => row.entry.options.id === 'dsh-ops-mode-minimal')
+  assert.equal(minimal.override.publishBashTool, true, 'restored to the inherited value')
+  assert.equal(minimal.override.promptPolicy, true, 'the user\'s own keys survive')
+  const cordis = editor.state.rows.find((row) => row.entry.options.id === 'dsh-ops-mode-cordis')
+  assert.equal('publishBashTool' in cordis.override, false, 'no inherited value: the key goes away')
+  const standard = editor.state.rows.find((row) => row.entry.options.id === 'dsh-ops-mode-standard')
+  assert.equal(standard.override.publishBashTool, true, 'the user\'s later ON choice is left alone')
 })

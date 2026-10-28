@@ -3,6 +3,32 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.46.0] — 2026-10-28
+
+### fix:跟随 dsh-ops 0.4.3 的 preset-mode 行集(ops_bash 剥离不再失效)
+
+- **背景(dsh-ops 0.4.3 Breaking change)**:dsh-ops 把七个组件行换成了八行 preset-mode 开关
+  (`dsh-ops-mode-minimal` / `-standard` / `-ptc` / `-cordis` / `dsh-ops-discovery` /
+  `dsh-ops-compat` / `dsh-ops-panel` / `dsh-ops-tui`),旧的 `dsh-ops-shell` / `dsh-ops-file` /
+  `dsh-ops-ptc` / `dsh-ops-hide-official` 行在 bundle 中不再存在。v0.42.0 的剥离逻辑只认
+  `dsh-ops-shell` 一行,升级 0.4.3 后 `planOpsAdopt` 恒为 `skip-row-absent`——配置层的
+  `ops_bash` 剥离静默失效(可见性层面只剩本插件对 `ops_bash`/`ops_run` 的逐 agent deny 兜底)。
+- **修复**:`src/ops-adopt.js` 的行集扩为 `OPS_SHELL_ROW_IDS`(旧行 + 四个 mode 行)。四行都
+  可能发 Windows shell(dsh-ops `MODE_PLANS[*].shell = true`),因此对**在场的每一行**都写
+  `publishBashTool=false`;行不存在绝不写,混合 profile(旧行 + 新行同时在场,或只装旧版 dsh-ops)
+  也能正确处理。写入/回读/还原仍是官方 `configEditor` 通道,回读逐行验证;`disabled` 的 mode 行
+  不写(它本来就不发布),但还原仍会撤回我们留在其上的值。日志行会列出实际处理的每个行 id。
+- **还原**:dispose 钩子逐行撤回我们写的 `false`(恢复 inherited 值或删键),用户自己把值改回
+  `true` 的行视为其选择、不动(与 v0.42.0 同规则)。
+- **边界(写进 README)**:dsh-ops 0.4.3+ 还按 **preset id** 门控工具,只认官方四个 preset;
+  本插件的 `ptc-cordis` 与「· Git Bash」变体 id 不在其中 → 那些会话里 dsh-ops 既不发布也不隐藏
+  任何工具,我们的 bash 是唯一命令工具,四条 mode 行的开关在那里不会触发。旧版 dsh-ops 升级到
+  0.4.3 时,profile patch 里遗留的旧行覆盖会产生 dsh-ops 自己的 `patch: entry ... not found`
+  警告——那是 dsh-ops 官方升级须知里要求手动删除的残留,与本插件的写入无关(我们只写活行)。
+- **测试(343 项:342 pass + 1 平台 skip)**:`tests/ops-adopt.mjs` 新增四组 case——行集完整性
+  (旧行 + 四 mode 行、顺序)、0.4.3 profile 逐行写入 + 日志行 id、混合 profile 只写仍在发布的行、
+  disabled 行不写且全 disabled 静默收口、逐行还原(恢复 inherited / 删键 / 保留用户改成 true 的行)。
+
 ## [0.45.0] — 2026-10-28
 
 ### feat:bash 初始化脚本 `initScript`(BASH_ENV;issue #37 的 fnm/nvm 场景)

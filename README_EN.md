@@ -215,6 +215,32 @@ Two boundaries: whatever the script prints lands in the command's output (do not
 in it), and the file must exist — bash silently ignores a missing `BASH_ENV`, so a typo
 behaves exactly like "not set". `~` expands to the home directory.
 
+## Cooperation with dsh-ops: one bash per face (v0.42.0; rows follow 0.4.3)
+
+The host cannot turn "visible but denied" into "hidden": `tools.restrict` filters
+only the inherited surface, while dsh-ops registers `ops_bash` in each agent's
+OWN layer. So this plugin drives dsh-ops's own `publishBashTool` switch instead —
+`false`, through the official `configEditor` channel — and `ops_bash` stops
+being registered at all. dsh-ops keeps its pwsh7 overlay, file tools and
+background jobs (`publishBashTool` gates `mountSessionBash` only).
+
+**dsh-ops 0.4.3 replaced the component roster with preset-mode rows.** The
+switch used to live on the single `dsh-ops-shell` row; today four rows carry it —
+`dsh-ops-mode-minimal`, `-standard`, `-ptc`, `-cordis` — and every one of them
+plans a Windows shell (`MODE_PLANS[*].shell`), so every one can publish
+`ops_bash`. v0.46.0 walks the whole set: the legacy row when an older dsh-ops is
+mounted, the four mode rows on 0.4.3+, and a mixed profile handles whichever
+rows are actually mounted. Disabling or uninstalling this plugin lifts the
+override again (dispose hook) and leaves every unrelated setting in the same row
+untouched.
+
+Two edges: (1) an override left behind by uninstalling while dsh was shut down
+is one click away from gone — dsh-ops's own settings card offers "restore
+defaults" for each row; (2) dsh-ops 0.4.3+ also gates its tools on the agent's
+preset id and knows only the four official ones — this plugin's `ptc-cordis`
+preset and the `· Git Bash` variant ids match no mode, so dsh-ops publishes
+nothing there (and hides nothing either): our bash is the only command tool.
+
 ## Cooperation with dsh-ptc-cordis-preset
 
 This plugin publishes a `gitBash` host capability (`{ active, bashPath }`,

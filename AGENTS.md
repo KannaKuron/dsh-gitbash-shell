@@ -655,6 +655,12 @@
 - **ops-adopt 假设**:`publishBashTool` 键名、`mountSessionBash` 首行门、configEditor 的 edit
   语义(整键替换+回读自检)若变化,接管/还原生命周期要重验(tests/ops-adopt.mjs 的 fake editor
   是按当前语义建模的)。
+- **行集/门控(0.4.3 实证,2026-10-28)**:`OPS_SHELL_ROW_IDS` = 旧 `dsh-ops-shell` + 四个
+  `dsh-ops-mode-*`。dsh-ops 每次改行名或增删「会发 Windows shell 的行」都要跟:`MODE_PLANS[*].shell`
+  为 true 的行全部要写 `publishBashTool=false`;0.4.3 起工具发布按 **preset id** 门控(只认官方
+  四个 id),本插件的 `ptc-cordis`/变体 id 不在其中 → 那些会话里 dsh-ops 不发布也不隐藏任何工具,
+  逐 agent 的 `OPS_SHELL_TOOLS` deny 仍是兜底。升级 dsh-ops 大版本后,profile patch 里旧行覆盖
+  会留下 `patch: entry ... not found` 警告(官方升级须知要求手动删),与本插件无关。
 - **翻译桥(fastctx bridge)**:dsh-ops 的 FastCtx 工具入参形状(文件工具 path 数组、issue #21 的
   PRIMARY 数组形)若变,参数翻译的覆盖面要重审;后台四件套的 command 参数是 bash 语义,不经
   MSYS 翻译(dsh-ops 自带 bundled bash 执行),勿越界翻译。
