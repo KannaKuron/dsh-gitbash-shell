@@ -197,6 +197,24 @@ registry `InstallPath` → the registry `Path`. Resolution is re-read live per
 consumer (never frozen at boot, v0.33.0), and only Git for Windows' own bash
 counts — WSL / MSYS2 / Cygwin are refused with guidance, never substituted.
 
+### Bash init script: `initScript` (empty = off, v0.45.0, issue #37)
+
+```yaml
+- id: gitbash-shell
+  config:
+    initScript: "~/.dsh/bash-env.sh"   # default ""; point it at a script
+```
+
+When set, every bash command this plugin runs gets it as `BASH_ENV` — bash's own hook
+for **non-interactive** shells, so `bash -c` sources it first with none of `-l`'s side
+effects (no `cd $HOME`, no PATH reordering, no profile output in stdout). The reported
+use case is fnm / nvm-style node managers: put `eval "$(fnm env)"` in that file and
+`node` / `npm` become visible to every tool call.
+
+Two boundaries: whatever the script prints lands in the command's output (do not `echo`
+in it), and the file must exist — bash silently ignores a missing `BASH_ENV`, so a typo
+behaves exactly like "not set". `~` expands to the home directory.
+
 ## Cooperation with dsh-ptc-cordis-preset
 
 This plugin publishes a `gitBash` host capability (`{ active, bashPath }`,

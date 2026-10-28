@@ -481,6 +481,18 @@ export const Config = Schema === null ? undefined : Schema.object({
   subagentDialect: live(Schema.boolean().default(true)),
   gitAutocrlf: live(Schema.boolean().default(true)),
   bashPath: live(Schema.string().default('')),
+  /**
+   * Bash init script (issue #37, v0.45.0): path of a file every `bash -c`
+   * must source before running the command. Implemented as `BASH_ENV`, the
+   * shell's OWN hook for non-interactive shells — `bash -c` sources it once,
+   * with none of `-l`'s side effects (no `cd $HOME`, no PATH reordering, no
+   * profile output in stdout). The reported case is fnm/nvm-style node
+   * managers: `eval "$(fnm env)"` in that file makes node/npm visible to every
+   * tool call. Empty (default) = BASH_ENV is never set, behavior unchanged.
+   * `~` expands to the home directory; the path must exist (a missing file is
+   * silently ignored by bash, so a typo looks like "not set").
+   */
+  initScript: live(Schema.string().default('')),
   adoptSidebar: live(Schema.boolean().default(true)),
   /**
    * Whether the OFFICIAL sidebar terminal ("new terminal") is switched to the

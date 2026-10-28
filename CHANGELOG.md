@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.45.0] — 2026-10-28
+
+### feat:bash 初始化脚本 `initScript`(BASH_ENV;issue #37 的 fnm/nvm 场景)
+
+- **背景(issue #37,@cwt9562)**:反馈「执行 bash 时没执行 `~/.bash_profile`,行为近似 `bash -c`」。调查确认这是 `bash -c` 的 POSIX 语义、与官方严格一致(官方 tool-bash 描述原文即 `bash -c`,bash-local/bash-sandbox 都是 `['bash','-c',command]`),不是缺陷;`-lc` 会 `cd $HOME`、重排 PATH、把 profile 输出混进 stdout。对方确认真实诉求是 **fnm(类似 nvm)初始化** ⇒ 用 bash 自己的非交互钩子 `BASH_ENV` 解决,既达到目的又不引入登录 shell 的副作用。
+- **新增设置**:`initScript`(字符串,默认 `''` = 从不设置,行为逐字节不变)。填写后,本插件每次执行 bash 命令都把 `BASH_ENV=<路径>` 合并进受信任的 `dshEnv` 层 —— `execute` / `run` / `start` 三个入口都合并(不是只覆盖新宿主);`~` 展开为家目录,粘贴带来的首尾引号会被去掉。两个边界写进设置卡与 README:脚本的 stdout 会混进命令输出(勿在脚本里 `echo`);bash 对不存在的 `BASH_ENV` 静默忽略,填错看起来像「没启用」。
+- **设置卡**:执行器分区新增「bash 初始化脚本」输入行,与「Git Bash 路径」同款草稿/保存语义(草稿按 scope 绑定、只对提交它的那份草稿报告已保存);21 门词典补 `init.label` / `init.hint`。
+- **测试(338 项:337 pass + 1 平台 skip)**:新增 `the bash init script rides BASH_ENV` —— schema 形状、三个入口都合并、未设置时 spec 不变、`~`/引号展开、与 Linux 行尾 env 合并而非覆盖、`describe()` 抛错降级、设置卡渲染与写键;hooks 计数测试 +1(草稿水合)。
+
 ## [0.44.0] — 2026-10-28
 
 ### feat:跟随 dsh 0.2.2-alpha.2 的工具执行器架构(executor 行、subagent 模型键、assemble 事件收窄、promoted 文案精简)

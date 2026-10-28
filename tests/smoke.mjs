@@ -871,6 +871,57 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
   assert.deepEqual(settled, [], 'an already-adopted sidebar is left alone')
 })
 
+test('the bash init script rides BASH_ENV (issue #37, v0.45.0)', () => {
+  const host = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
+  const client = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  // The row Config exposes the setting: live, default '' = never set.
+  assert.match(host, /initScript: live\(Schema\.string\(\)\.default\(''\)\)/)
+  // The hook is bash's own BASH_ENV, never a login shell: `-l` would cd $HOME,
+  // reorder PATH and mix profile output into stdout (the issue #37 answer).
+  assert.match(shell, /BASH_ENV: configured/)
+  assert.doesNotMatch(shell, /'(?:-l|-lc|--login)'/, 'no login-shell argv anywhere')
+  // Every execution entry point merges it, not just the modern one.
+  assert.equal((shell.match(/withInitScript\(this\.withParityEnv\(spec\)\)/g) || []).length, 3,
+    'execute/run/start must all merge the init script')
+
+  const stripped = stripModule(shell)
+  const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', 'homedir', 'join',
+    stripped + '\nreturn { GitBashSandboxExecutor, expandHomePath }')
+  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
+  const mod = scope('C:/Program Files/Git/bin/bash.exe', resolveBashStub, effectiveBashStub, settingsBashStub, bashReportStub, chain, chain, { platform: 'win32' }, () => '/home/kanna', (...parts) => parts.join('/'))
+  const build = (settings) => {
+    const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
+    ex.config = { bashPath: 'X:/git/bin/bash.exe' }
+    ex.ctx = settings === undefined ? {} : { get: (name) => (name === 'settings' ? settings : undefined) }
+    return ex
+  }
+  const row = (value) => ({ describe: () => [{ ns: 'gitbash-shell', value }] })
+  const spec = () => ({ command: 'echo hi' })
+
+  // Unset = byte-identical spec: this setting cannot change existing behavior.
+  assert.equal(build(row({})).withInitScript(spec()).dshEnv, undefined)
+  assert.equal(build(row({ initScript: '' })).withInitScript(spec()).dshEnv, undefined)
+  assert.equal(build(undefined).withInitScript(spec()).dshEnv, undefined)
+  // Set: exported as BASH_ENV on the trusted env layer.
+  assert.equal(build(row({ initScript: 'C:/Users/kanna/.dsh/bash-env.sh' })).withInitScript(spec()).dshEnv.BASH_ENV,
+    'C:/Users/kanna/.dsh/bash-env.sh')
+  // ~ expands against the home directory; pasted quotes are trimmed.
+  assert.equal(mod.expandHomePath('~/.dsh/bash-env.sh'), '/home/kanna/.dsh/bash-env.sh')
+  assert.equal(mod.expandHomePath('"C:/Users/kanna/env.sh"'), 'C:/Users/kanna/env.sh')
+  assert.equal(build(row({ initScript: '~/env.sh' })).withInitScript(spec()).dshEnv.BASH_ENV, '/home/kanna/env.sh')
+  // It composes with the Linux-parity env instead of replacing it.
+  const both = build(row({ posixPaths: true, gitAutocrlf: true, initScript: 'C:/env.sh' }))
+  const merged = both.withInitScript(both.withParityEnv(spec())).dshEnv
+  assert.equal(merged.BASH_ENV, 'C:/env.sh')
+  assert.equal(merged.GIT_CONFIG_VALUE_0, 'input')
+  // A describe() that throws degrades to "unset" — the command still runs.
+  assert.equal(build({ describe: () => { throw new Error('boom') } }).withInitScript(spec()).dshEnv, undefined)
+  // The settings card renders the field and writes the row key.
+  assert.match(client, /t\("init\.label"\)/)
+  assert.match(client, /writeField\("initScript", initDraft\.trim\(\)\)/)
+})
+
 test('run_code program literals ride the same MSYS mount table (v0.20.0)', async () => {
   const { _internal } = await import('../src/index.js')
   const { rewriteCodePaths, scanCodeLiterals } = _internal

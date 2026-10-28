@@ -204,6 +204,18 @@ dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。�
     default: ptc-cordis   # 或 standard-gitbash / minimal-gitbash
 ```
 
+### bash 初始化脚本:`initScript`(默认空 = 不启用,v0.45.0,issue #37)
+
+```yaml
+- id: gitbash-shell
+  config:
+    initScript: "~/.dsh/bash-env.sh"   # 默认 "";填一个脚本路径即可
+```
+
+填写后,本插件每次执行 bash 命令都会把它作为 `BASH_ENV` 传给 Git Bash —— 这是 bash 自己为**非交互 shell** 准备的钩子:`bash -c` 会先 source 它,而且没有 `-l`(登录 shell)的任何副作用(`cd $HOME`、PATH 重排、profile 输出混进 stdout 都不会发生)。典型用途是 fnm / nvm 这类需要初始化的 node 管理器:在脚本里写一行 `eval "$(fnm env)"`,`node` / `npm` 就会在每条工具命令里可见。
+
+两点边界:①脚本自身打印的任何内容都会混进命令输出,请不要在脚本里 `echo`;②路径必须存在——bash 对不存在的 `BASH_ENV` 静默忽略,所以填错的效果看起来和"没启用"一样。`~` 会展开为家目录。
+
 ## bash 从哪里来:解析链与失败引导(v0.28.0,issue #11;懒化与 exec-path 层 v0.33.0,issue #13)
 
 `bashPath` **默认留空 = 自动探测**;解析顺序就是契约:

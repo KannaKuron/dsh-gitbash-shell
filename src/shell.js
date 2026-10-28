@@ -38,6 +38,9 @@
 
 import { SandboxBashExecutor } from '@deepseek-ai/dsh-bash-sandbox'
 
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
 import { DEFAULT_GIT_BASH, bashResolutionReport, effectiveConfiguredBashPath, resolveGitBashCached, settingsBashPath } from './bash-path.js'
 
 /** Re-exported for callers that historically read it here (the value now lives in bash-path.js). */
@@ -50,6 +53,22 @@ import { loadSchemastery } from './schemastery.js'
  * as the row-config namespace on 0.1.7+ (same string by design).
  */
 const SETTINGS_NAMESPACE = 'gitbash-shell'
+
+/**
+ * Expand one configured path for the init-script setting (issue #37): trim,
+ * drop surrounding quotes a pasted Windows path may carry, and resolve a
+ * leading `~` against the home directory. Anything else is returned verbatim —
+ * the file is bash's to read, not ours to rewrite.
+ * @param value - the raw configured `initScript` string.
+ * @returns the path to export as BASH_ENV, or '' when unset.
+ */
+export function expandHomePath(value) {
+  const raw = typeof value === 'string' ? value.trim().replace(/^["']|["']$/g, '') : ''
+  if (raw === '') return ''
+  if (raw === '~') return homedir()
+  if (raw.startsWith('~/') || raw.startsWith('~\\')) return join(homedir(), raw.slice(2))
+  return raw
+}
 
 /**
  * Mark one schema field live-editable when the HOST's schemastery supports it.
@@ -312,7 +331,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   async execute(spec) {
     if (typeof super.execute !== 'function') return this.run(spec)
     const route = this.gitBashRoute(spec)
-    const routed = this.withParityEnv(spec)
+    const routed = this.withInitScript(this.withParityEnv(spec))
     if (route === undefined) return super.execute(routed)
     const argv = [this.requireBashPath(), '-c', routed.command]
     const sandbox = this.routeSandbox(route)
@@ -380,6 +399,33 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   }
 
   /**
+   * Merge the user's bash init script into the trusted env as `BASH_ENV`
+   * (issue #37, v0.45.0). `bash -c` sources `BASH_ENV` for every
+   * non-interactive shell — the shell's own hook, so no `-l` and none of its
+   * side effects (cd $HOME, PATH reordering, profile output in stdout). The
+   * reported case is fnm/nvm initialization: `eval "$(fnm env)"` in the file
+   * makes node/npm visible to every tool call.
+   *
+   * Empty = never set (default, behavior unchanged). `~` expands to the home
+   * directory; a missing file is silently ignored by bash, so nothing here
+   * fails a command because the setting points at a typo — the command simply
+   * runs without the hook, exactly as before this setting existed.
+   * @param spec the shell request
+   * @returns the request with BASH_ENV merged in when a script is configured
+   */
+  withInitScript(spec) {
+    try {
+      const value = this.dialectSettings()
+      const configured = value && typeof value.initScript === 'string' ? expandHomePath(value.initScript) : ''
+      if (configured === '') return spec
+      const dshEnv = { ...(spec.dshEnv === undefined ? {} : spec.dshEnv), BASH_ENV: configured }
+      return { ...spec, dshEnv }
+    } catch {
+      return spec
+    }
+  }
+
+  /**
    * 0.1.6-era full-access path with Git Bash argv: the parent's full-access
    * branch delegates to LocalBashExecutor.run, which hardcodes the bare `bash`
    * name, so override that branch here and keep everything else inherited.
@@ -388,7 +434,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
    */
   async run(spec) {
     const route = this.gitBashRoute(spec)
-    spec = this.withParityEnv(spec)
+    spec = this.withInitScript(this.withParityEnv(spec))
     if (route === undefined) return super.run(spec)
     if (route.unconfined) this.warnConfinedUnconfined(route.mode)
     const { result, spawnRequested } = GitBashSandboxExecutor.unwrapRunArgv(
@@ -403,7 +449,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
       if (GitBashSandboxExecutor.baseStartIsAsync()) return Promise.reject(error)
       throw error
     }
-    spec = this.withParityEnv(spec)
+    spec = this.withInitScript(this.withParityEnv(spec))
     if (route === undefined) return super.start(spec)
     const proc = this.startArgv(spec, [this.requireBashPath(), '-c', spec.command])
     const label = (handle) => { handle.sandbox = this.routeSandbox(route); return handle }

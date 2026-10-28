@@ -107,6 +107,8 @@ window.__ModuleLoader__.load({
 			"bash.saveFailed": "保存未生效:宿主拒绝了这次写入 —— 确认路径存在且是 Git for Windows 的 bash,或查看宿主日志",
 			"bash.save": "保存",
 			"bash.saved": "已保存",
+			"init.label": "bash 初始化脚本",
+			"init.hint": "留空不启用:填一个脚本路径后,本插件每次执行 bash 命令都会按 bash 自己的 BASH_ENV 机制先 source 它——适合 fnm / nvm 这类需要初始化的工具(写入 eval \"$(fnm env)\" 即可让 node/npm 在每条命令里可见)。脚本里的输出会混进命令输出,请勿在脚本里 echo。改动立即生效,无需重启。",
 			"adopt.label": "接管侧栏终端",
 			"adopt.hint": "开启时把 dsh-better-sidebar 的终端 shell 写成 Git Bash(默认开启);关闭后恢复接管前的值,已手动改过的终端设置不会被碰。模型侧的 bash 工具不受此开关影响——那由插件本体提供。",
 			"sec.dedupe": "与 PTC 创造模式去重",
@@ -193,6 +195,8 @@ window.__ModuleLoader__.load({
 			"bash.saveFailed": "The save did not take effect: the host refused the write — check that the path exists and points at Git for Windows’ bash, or read the host log",
 			"bash.save": "Save",
 			"bash.saved": "Saved",
+			"init.label": "Bash init script",
+			"init.hint": "Empty = off. Point this at a script and every bash command this plugin runs sources it first, through bash's own BASH_ENV hook — the right place for fnm/nvm initialisation (write eval \"$(fnm env)\" there and node/npm become visible to every command). Anything the script prints lands in the command's output, so do not echo in it. Applies immediately, no restart.",
 			"adopt.label": "Adopt sidebar terminal",
 			"adopt.hint": "On (default) writes Git Bash into dsh-better-sidebar's terminal shell; turning it off restores the pre-adoption value and never touches a manually chosen one. The model-side bash tool is unaffected — the plugin itself provides that.",
 			"sec.dedupe": "Dedupe with PTC creation mode",
@@ -289,6 +293,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "لم يُطبَّق الحفظ: رفض المضيف هذه الكتابة — تحقق من وجود المسار وأنه bash الخاص بـ Git for Windows، أو راجع سجل المضيف",
 				"bash.save": "حفظ",
 				"bash.saved": "تم الحفظ",
+				"init.label": "سكربت تهيئة bash",
+				"init.hint": "فارغ = معطّل. عند إدخال مسار سكربت، يقوم كل أمر bash تشغّله الإضافة بتحميله أولًا عبر آلية BASH_ENV الأصلية في bash — المكان المناسب لتهيئة fnm/nvm (اكتب فيه eval \"$(fnm env)\" ليظهر node/npm في كل أمر). أي إخراج من السكربت يظهر ضمن مخرجات الأمر، لذا لا تستخدم echo فيه. يسري فورًا دون إعادة تشغيل.",
 				"adopt.label": "تبنّي طرفية الشريط الجانبي",
 				"adopt.hint": "عند التفعيل (افتراضي) تُكتب Git Bash كـ shell لطرفية dsh-better-sidebar؛ وعند التعطيل تُستعاد القيمة السابقة ولا تُلمس القيمة المختارة يدويًا أبدًا. أداة bash الخاصة بالنموذج لا تتأثر — الإضافة نفسها توفرها.",
 				"sec.dedupe": "إزالة التكرار مع وضع PTC الإبداعي",
@@ -375,6 +381,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Speichern ohne Wirkung: Der Host hat den Schreibvorgang abgelehnt — prüfe, ob der Pfad existiert und zu Git for Windows gehört, oder lies das Host-Protokoll",
 				"bash.save": "Speichern",
 				"bash.saved": "Gespeichert",
+				"init.label": "Bash-Init-Skript",
+				"init.hint": "Leer = aus. Mit einem Skriptpfad lädt jeder von diesem Plugin ausgeführte Bash-Befehl es zuerst über die BASH_ENV-Mechanik von bash — der richtige Ort für fnm/nvm-Initialisierung (dort eval \"$(fnm env)\" eintragen, dann ist node/npm bei jedem Befehl sichtbar). Ausgaben des Skripts landen in der Befehlsausgabe, daher kein echo darin. Gilt sofort, kein Neustart nötig.",
 				"adopt.label": "Sidebar-Terminal übernehmen",
 				"adopt.hint": "Ein (Standard) schreibt Git Bash als Shell des dsh-better-sidebar-Terminals; Aus stellt den vorherigen Wert wieder her und fasst nie eine manuell gewählte Einstellung an. Das bash-Werkzeug des Modells bleibt unberührt — das liefert das Plugin selbst.",
 				"sec.dedupe": "Deduplizierung mit dem PTC-Kreativmodus",
@@ -461,6 +469,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "L’enregistrement n’a pas pris effet : l’hôte a refusé l’écriture — vérifiez que le chemin existe et correspond au bash de Git for Windows, ou consultez le journal de l’hôte",
 				"bash.save": "Enregistrer",
 				"bash.saved": "Enregistré",
+				"init.label": "Script d'initialisation bash",
+				"init.hint": "Vide = désactivé. Indiquez un chemin de script : chaque commande bash lancée par ce plugin le sourcera d'abord via le mécanisme BASH_ENV natif de bash — l'endroit idéal pour l'initialisation de fnm/nvm (y écrire eval \"$(fnm env)\" rend node/npm visible à chaque commande). Ce que le script imprime s'ajoute à la sortie de la commande : n'y mettez pas d'echo. Prise en compte immédiate, sans redémarrage.",
 				"adopt.label": "Adopter le terminal latéral",
 				"adopt.hint": "Activé (par défaut) : écrit Git Bash comme shell du terminal dsh-better-sidebar ; désactivé : restaure la valeur davant et ne touche jamais un choix manuel. Loutil bash du modèle nest pas concerné — le plugin le fournit lui-même.",
 				"sec.dedupe": "Dédoublonnage avec le mode création PTC",
@@ -547,6 +557,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "सहेजना लागू नहीं हुआ: होस्ट ने यह लेखन अस्वीकार किया — जाँचें कि पाथ मौजूद है और Git for Windows का bash है, या होस्ट लॉग देखें",
 				"bash.save": "सहेजें",
 				"bash.saved": "सहेजा गया",
+				"init.label": "bash प्रारंभ स्क्रिप्ट",
+				"init.hint": "खाली = बंद। स्क्रिप्ट का पथ दें तो यह प्लगइन जो भी bash कमांड चलाएगा, वह पहले इसे bash के मूल BASH_ENV तंत्र से source करेगा — fnm/nvm इनिशियलाइज़ेशन के लिए सही जगह (वहाँ eval \"$(fnm env)\" लिखें, फिर हर कमांड में node/npm दिखेंगे)। स्क्रिप्ट का कोई भी आउटपुट कमांड के आउटपुट में जुड़ जाएगा, इसलिए उसमें echo न करें। बदलाव तुरंत लागू होता है, पुनः आरंभ की ज़रूरत नहीं।",
 				"adopt.label": "साइडबार टर्मिनल अपनाएँ",
 				"adopt.hint": "चालू (डिफ़ॉल्ट) होने पर dsh-better-sidebar के टर्मिनल में Git Bash लिखा जाता है; बंद करने पर पहले वाली मान बहाल होती है और मैन्युअल चुनी गई सेटिंग कभी नहीं छुई जाती। मॉडल का bash टूल अप्रभावित रहता है — वह प्लगइन स्वयं देता है।",
 				"sec.dedupe": "PTC क्रिएशन मोड के साथ डुप्लीकेट हटाना",
@@ -633,6 +645,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Penyimpanan tidak berlaku: host menolak penulisan ini — pastikan path ada dan menunjuk ke bash Git for Windows, atau baca log host",
 				"bash.save": "Simpan",
 				"bash.saved": "Tersimpan",
+				"init.label": "Skrip inisialisasi bash",
+				"init.hint": "Kosong = nonaktif. Isi path skrip dan setiap perintah bash dari plugin ini akan memuatnya lebih dulu lewat mekanisme BASH_ENV bawaan bash — tempat tepat untuk inisialisasi fnm/nvm (tulis eval \"$(fnm env)\" di sana agar node/npm terlihat di setiap perintah). Apa pun yang dicetak skrip ikut masuk ke keluaran perintah, jadi jangan memakai echo di dalamnya. Berlaku segera, tanpa restart.",
 				"adopt.label": "Adopsi terminal sidebar",
 				"adopt.hint": "Nyala (bawaan) menulis Git Bash sebagai shell terminal dsh-better-sidebar; dimatikan memulihkan nilai sebelumnya dan tidak pernah menyentuh pilihan manual. Alat bash sisi model tak terpengaruh — plugin sendiri yang menyediakannya.",
 				"sec.dedupe": "Deduplikasi dengan mode kreatif PTC",
@@ -719,6 +733,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Salvataggio non applicato: l’host ha rifiutato la scrittura — verifica che il percorso esista e sia la bash di Git for Windows, oppure leggi il log dell’host",
 				"bash.save": "Salva",
 				"bash.saved": "Salvato",
+				"init.label": "Script di inizializzazione bash",
+				"init.hint": "Vuoto = disattivato. Indica un percorso di script e ogni comando bash eseguito da questo plugin lo caricherà prima tramite il meccanismo BASH_ENV nativo di bash — il posto giusto per l'inizializzazione di fnm/nvm (scrivi lì eval \"$(fnm env)\" e node/npm sarà visibile a ogni comando). Qualsiasi output dello script finisce nell'output del comando: non usare echo al suo interno. Ha effetto immediato, senza riavvio.",
 				"adopt.label": "Adotta il terminale laterale",
 				"adopt.hint": "Attivo (predefinito) imposta Git Bash come shell del terminale di dsh-better-sidebar; disattivo ripristina il valore precedente e non tocca mai una scelta manuale. Lo strumento bash del modello non è interessato — lo fornisce il plugin stesso.",
 				"sec.dedupe": "Deduplicazione con la modalità creazione PTC",
@@ -805,6 +821,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "保存が反映されません:ホストがこの書き込みを拒否しました —— パスが存在し Git for Windows の bash か確認するか、ホストログを見てください",
 				"bash.save": "保存",
 				"bash.saved": "保存済み",
+				"init.label": "bash 初期化スクリプト",
+				"init.hint": "空 = 無効。スクリプトのパスを入れると、このプラグインが実行するすべての bash コマンドが bash 標準の BASH_ENV 機構で最初にそれを読み込みます — fnm / nvm の初期化に最適な場所です(そこに eval \"$(fnm env)\" と書けば、どのコマンドでも node/npm が見えるようになります)。スクリプトの出力はコマンドの出力に混ざるので、中で echo しないでください。再起動不要で即時反映されます。",
 				"adopt.label": "サイドバーターミナルを引き継ぐ",
 				"adopt.hint": "オン(既定)では dsh-better-sidebar のターミナルシェルに Git Bash を書き込みます。オフにすると以前の値へ戻し、手動で選択した設定には決して触れません。モデル側の bash ツールには影響しません——それはプラグイン本体が提供します。",
 				"sec.dedupe": "PTC 創造モードとの重複排除",
@@ -891,6 +909,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "저장이 반영되지 않았습니다: 호스트가 이 쓰기를 거부했습니다 — 경로가 존재하고 Git for Windows의 bash인지 확인하거나 호스트 로그를 보세요",
 				"bash.save": "저장",
 				"bash.saved": "저장됨",
+				"init.label": "bash 초기화 스크립트",
+				"init.hint": "비우면 꺼짐. 스크립트 경로를 넣으면 이 플러그인이 실행하는 모든 bash 명령이 bash 고유의 BASH_ENV 메커니즘으로 먼저 이 파일을 source 합니다 — fnm/nvm 초기화에 맞는 자리입니다(거기에 eval \"$(fnm env)\"를 적으면 모든 명령에서 node/npm이 보입니다). 스크립트가 출력하는 내용은 명령 출력에 섞이므로 echo를 넣지 마세요. 재시작 없이 즉시 적용됩니다.",
 				"adopt.label": "사이드바 터미널 인수",
 				"adopt.hint": "켜짐(기본)이면 dsh-better-sidebar 터미널 셸에 Git Bash를 기록하고, 끄면 이전 값을 복원하며 수동으로 고른 설정은 절대 건드리지 않습니다. 모델 측 bash 도구에는 영향이 없습니다 — 플러그인이 직접 제공합니다.",
 				"sec.dedupe": "PTC 창조 모드와 중복 제거",
@@ -977,6 +997,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Opslaan had geen effect: de host weigerde deze schrijfactie — controleer of het pad bestaat en naar Git for Windows’ bash wijst, of lees het hostlogboek",
 				"bash.save": "Opslaan",
 				"bash.saved": "Opgeslagen",
+				"init.label": "bash-initialisatiescript",
+				"init.hint": "Leeg = uit. Vul een scriptpad in en elke bash-opdracht die deze plug-in uitvoert, laadt het eerst via het eigen BASH_ENV-mechanisme van bash — de juiste plek voor fnm/nvm-initialisatie (zet daar eval \"$(fnm env)\" en node/npm is bij elke opdracht zichtbaar). Wat het script print komt in de uitvoer van de opdracht terecht, dus geen echo erin. Geldt direct, zonder herstart.",
 				"adopt.label": "Zijbalkterminal overnemen",
 				"adopt.hint": "Aan (standaard) schrijft Git Bash als shell van de dsh-better-sidebar-terminal; uit herstelt de vorige waarde en raakt nooit een handmatige keuze aan. De bash-tool van het model blijft buiten beschouwing — die levert de plugin zelf.",
 				"sec.dedupe": "Deduplicatie met de PTC-creatiemodus",
@@ -1063,6 +1085,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Zapis nie został zastosowany: host odrzucił ten zapis — sprawdź, czy ścieżka istnieje i wskazuje bash Git for Windows, albo przeczytaj log hosta",
 				"bash.save": "Zapisz",
 				"bash.saved": "Zapisano",
+				"init.label": "Skrypt inicjalizacyjny bash",
+				"init.hint": "Puste = wyłączone. Wskaż ścieżkę skryptu, a każde polecenie bash uruchamiane przez tę wtyczkę najpierw go wczyta przez natywny mechanizm BASH_ENV basha — właściwe miejsce na inicjalizację fnm/nvm (wpisz tam eval \"$(fnm env)\", a node/npm będzie widoczny w każdym poleceniu). Cokolwiek skrypt wypisze, trafi do wyjścia polecenia, więc nie używaj w nim echo. Działa od razu, bez restartu.",
 				"adopt.label": "Przejmij terminal boczny",
 				"adopt.hint": "Włączony (domyślnie) zapisuje Git Bash jako shell terminala dsh-better-sidebar; wyłączony przywraca poprzednią wartość i nigdy nie narusza ręcznie wybranego ustawienia. Narzędzie bash po stronie modelu jest nietknięte — zapewnia je sama wtyczka.",
 				"sec.dedupe": "Deduplikacja z trybem tworzenia PTC",
@@ -1149,6 +1173,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "A gravação não teve efeito: o anfitrião recusou esta escrita — confirme que o caminho existe e é o bash do Git for Windows, ou veja o registo do anfitrião",
 				"bash.save": "Salvar",
 				"bash.saved": "Salvo",
+				"init.label": "Script de inicialização do bash",
+				"init.hint": "Vazio = desligado. Informe um caminho de script e todo comando bash executado por este plugin o carregará primeiro pelo mecanismo BASH_ENV nativo do bash — o lugar certo para inicialização de fnm/nvm (escreva eval \"$(fnm env)\" nele e node/npm fica visível em todo comando). Qualquer saída do script vai para a saída do comando, então não use echo nele. Vale na hora, sem reiniciar.",
 				"adopt.label": "Adotar o terminal lateral",
 				"adopt.hint": "Ligado (padrão) grava o Git Bash como shell do terminal do dsh-better-sidebar; desligado restaura o valor anterior e nunca altera uma escolha manual. A ferramenta bash do modelo não é afetada — o próprio plug-in a fornece.",
 				"sec.dedupe": "Desduplicação com o modo de criação PTC",
@@ -1235,6 +1261,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Сохранение не применилось: хост отклонил эту запись — проверьте, что путь существует и указывает на bash из Git for Windows, или посмотрите журнал хоста",
 				"bash.save": "Сохранить",
 				"bash.saved": "Сохранено",
+				"init.label": "Скрипт инициализации bash",
+				"init.hint": "Пусто = выключено. Укажите путь к скрипту — и каждая команда bash, запускаемая этим плагином, сначала загрузит его через штатный механизм BASH_ENV bash — подходящее место для инициализации fnm/nvm (впишите туда eval \"$(fnm env)\", и node/npm будет виден в каждой команде). Всё, что скрипт печатает, попадает в вывод команды, поэтому не используйте в нём echo. Действует сразу, без перезапуска.",
 				"adopt.label": "Перехватывать терминал боковой панели",
 				"adopt.hint": "Включено (по умолчанию): Git Bash записывается как shell терминала dsh-better-sidebar; выключено — восстанавливается прежнее значение, вручную выбранные настройки не трогаются. Инструмент bash у модели не затронут — его предоставляет сам плагин.",
 				"sec.dedupe": "Удаление дубликата с творческим режимом PTC",
@@ -1321,6 +1349,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Sparandet slog inte igenom: värden avvisade skrivningen — kontrollera att sökvägen finns och är Git for Windows bash, eller läs värdens logg",
 				"bash.save": "Spara",
 				"bash.saved": "Sparat",
+				"init.label": "bash-initieringsskript",
+				"init.hint": "Tomt = av. Ange en sökväg till ett skript så läser varje bash-kommando som pluginets kör in det först via bash egen BASH_ENV-mekanism — rätt plats för fnm/nvm-initiering (skriv eval \"$(fnm env)\" där så blir node/npm synligt i varje kommando). Allt skriptet skriver hamnar i kommandots utdata, så använd inte echo i det. Gäller direkt, ingen omstart.",
 				"adopt.label": "Överta sidolistterminal",
 				"adopt.hint": "På (standard) skriver Git Bash som terminal-shell i dsh-better-sidebar; av återställer det tidigare värdet och rör aldrig ett manuellt val. Modellens bash-verktyg påverkas inte — det tillhandahålls av pluginet självt.",
 				"sec.dedupe": "Deduplicering med PTC-skaparläget",
@@ -1407,6 +1437,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "การบันทึกไม่เกิดผล: โฮสต์ปฏิเสธการเขียนนี้ — ตรวจสอบว่าพาธมีอยู่และเป็น bash ของ Git for Windows หรือดูบันทึกของโฮสต์",
 				"bash.save": "บันทึก",
 				"bash.saved": "บันทึกแล้ว",
+				"init.label": "สคริปต์เริ่มต้น bash",
+				"init.hint": "เว้นว่าง = ปิด เมื่อใส่พาทสคริปต์ ทุกคำสั่ง bash ที่ปลั๊กอินนี้รันจะโหลดสคริปต์นั้นก่อนผ่านกลไก BASH_ENV ของ bash เอง — จุดที่เหมาะสำหรับการเริ่มต้น fnm/nvm (เขียน eval \"$(fnm env)\" ไว้ในนั้น แล้ว node/npm จะมองเห็นได้ในทุกคำสั่ง) ข้อความที่สคริปต์พิมพ์จะปนไปกับเอาต์พุตของคำสั่ง จึงอย่าใช้ echo ในสคริปต์ มีผลทันที ไม่ต้องรีสตาร์ต",
 				"adopt.label": "รับช่วงเทอร์มินัลแถบข้าง",
 				"adopt.hint": "เปิด (ค่าเริ่มต้น) จะเขียน Git Bash เป็น shell ของเทอร์มินัล dsh-better-sidebar; ปิดแล้วคืนค่าเดิมและไม่แตะการตั้งค่าที่เลือกเอง เครื่องมือ bash ของโมเดลไม่กระทบ — ปลั๊กอินจัดหาเอง",
 				"sec.dedupe": "ตัดรายการซ้ำกับโหมดสร้างสรรค์ PTC",
@@ -1493,6 +1525,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Kaydetme etkili olmadı: ana makine bu yazmayı reddetti — yolun var olduğunu ve Git for Windows bash’i olduğunu doğrulayın ya da host günlüğüne bakın",
 				"bash.save": "Kaydet",
 				"bash.saved": "Kaydedildi",
+				"init.label": "bash başlatma betiği",
+				"init.hint": "Boş = kapalı. Bir betik yolu girin; bu eklentinin çalıştırdığı her bash komutu önce onu bash'in kendi BASH_ENV mekanizmasıyla yükler — fnm/nvm başlatması için doğru yer (oraya eval \"$(fnm env)\" yazın, node/npm her komutta görünür olur). Betiğin yazdırdığı her şey komut çıktısına karışır, bu yüzden içinde echo kullanmayın. Yeniden başlatma gerekmeden hemen geçerli olur.",
 				"adopt.label": "Kenar çubuğu terminalini devral",
 				"adopt.hint": "Açık (varsayılan) Git Bashi dsh-better-sidebar terminalinin shelli olarak yazar; kapalı önceki değeri geri getirir ve elle seçilmiş bir ayara asla dokunmaz. Model tarafındaki bash aracı etkilenmez — onu eklentinin kendisi sağlar.",
 				"sec.dedupe": "PTC yaratma moduyla yinelenen kaydı kaldırma",
@@ -1579,6 +1613,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "Lưu không có hiệu lực: máy chủ đã từ chối lần ghi này — kiểm tra đường dẫn tồn tại và là bash của Git for Windows, hoặc xem nhật ký máy chủ",
 				"bash.save": "Lưu",
 				"bash.saved": "Đã lưu",
+				"init.label": "Tập lệnh khởi tạo bash",
+				"init.hint": "Để trống = tắt. Nhập đường dẫn tập lệnh và mọi lệnh bash do tiện ích này chạy sẽ nạp nó trước qua cơ chế BASH_ENV của chính bash — nơi phù hợp để khởi tạo fnm/nvm (ghi eval \"$(fnm env)\" vào đó để node/npm hiển thị trong mọi lệnh). Bất cứ gì tập lệnh in ra sẽ lẫn vào đầu ra của lệnh, nên đừng dùng echo trong đó. Có hiệu lực ngay, không cần khởi động lại.",
 				"adopt.label": "Tiếp nhận terminal thanh bên",
 				"adopt.hint": "Bật (mặc định) ghi Git Bash làm shell terminal của dsh-better-sidebar; tắt khôi phục giá trị trước đó và không bao giờ đụng tới lựa chọn thủ công. Công cụ bash phía mô hình không bị ảnh hưởng — chính plugin cung cấp nó.",
 				"sec.dedupe": "Loại bỏ trùng lặp với chế độ sáng tạo PTC",
@@ -1665,6 +1701,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "保存未生效:宿主拒絕咗今次寫入 —— 確認路徑存在而且係 Git for Windows 嘅 bash,或者睇宿主日誌",
 				"bash.save": "儲存",
 				"bash.saved": "已儲存",
+				"init.label": "bash 初始化腳本",
+				"init.hint": "留空不啟用:填一個腳本路徑後,本外掛每次執行 bash 命令都會按 bash 自己的 BASH_ENV 機制先 source 它——適合 fnm / nvm 這類需要初始化的工具(寫入 eval \"$(fnm env)\" 即可讓 node/npm 在每條命令裡可見)。腳本裡的輸出會混進命令輸出,請勿在腳本裡 echo。改動立即生效,無需重啟。",
 				"adopt.label": "接管側欄終端",
 				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
 				"sec.dedupe": "與 PTC 創造模式去重",
@@ -1751,6 +1789,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "保存未生效:宿主拒絕咗今次寫入 —— 確認路徑存在而且係 Git for Windows 嘅 bash,或者睇宿主日誌",
 				"bash.save": "儲存",
 				"bash.saved": "已儲存",
+				"init.label": "bash 初始化腳本",
+				"init.hint": "留空不啟用:填一個腳本路徑後,本外掛每次執行 bash 命令都會按 bash 自己的 BASH_ENV 機制先 source 它——適合 fnm / nvm 這類需要初始化的工具(寫入 eval \"$(fnm env)\" 即可讓 node/npm 在每條命令裡可見)。腳本裡的輸出會混進命令輸出,請勿在腳本裡 echo。改動立即生效,無需重啟。",
 				"adopt.label": "接管側欄終端",
 				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
 				"sec.dedupe": "與 PTC 創造模式去重",
@@ -1837,6 +1877,8 @@ window.__ModuleLoader__.load({
 				"bash.saveFailed": "儲存未生效:宿主拒絕了這次寫入 —— 確認路徑存在且為 Git for Windows 的 bash,或查看宿主日誌",
 				"bash.save": "儲存",
 				"bash.saved": "已儲存",
+				"init.label": "bash 初始化腳本",
+				"init.hint": "留空不啟用:填一個腳本路徑後,此外掛每次執行 bash 命令都會按 bash 自己的 BASH_ENV 機制先 source 它——適合 fnm / nvm 這類需要初始化的工具(寫入 eval \"$(fnm env)\" 即可讓 node/npm 在每條命令裡可見)。腳本裡的輸出會混進命令輸出,請勿在腳本裡 echo。改動立即生效,無需重啟。",
 				"adopt.label": "接管側欄終端機",
 				"adopt.hint": "開啟(預設)會把 dsh-better-sidebar 的終端機 shell 寫成 Git Bash;關閉後還原接管前的值,手動改過的設定永不被碰。模型側的 bash 工具不受影響——由插件本身提供。",
 				"sec.dedupe": "與 PTC 創造模式去重",
@@ -2235,6 +2277,29 @@ window.__ModuleLoader__.load({
 				});
 			}, [scope, snap.status, mirroredBashPath]);
 
+			/* v0.45.0 (issue #37): the bash init script draft. Same lifecycle as
+			   the bash-path draft above — hydrate from the mirror once ready,
+			   never replace this scope's local edits, and only report "saved"
+			   for the exact draft that submitted it. */
+			var initState = useState({ scope: scope, value: "", dirty: false, owner: {} });
+			var initDraft = initState[0].scope === scope ? initState[0].value : "";
+			var setInitDraft = initState[1];
+			var initSaved = initState[0].scope === scope && initState[0].saved === true;
+			function setInitSaved(saved) {
+				setInitDraft(function (previous) {
+					if (previous.scope !== scope || previous.owner !== initState[0].owner || previous.saved === saved) return previous;
+					return Object.assign({}, previous, { saved: saved === true, dirty: saved === true ? false : previous.dirty });
+				});
+			}
+			var mirroredInitScript = snap.value && typeof snap.value.initScript === "string" ? snap.value.initScript : "";
+			useEffect(function () {
+				setInitDraft(function (previous) {
+					if (previous.scope !== scope) return { scope: scope, value: snap.status === "ready" ? mirroredInitScript : "", dirty: false, owner: {} };
+					if (snap.status !== "ready" || previous.dirty || previous.value === mirroredInitScript) return previous;
+					return { scope: scope, value: mirroredInitScript, dirty: false, owner: {} };
+				});
+			}, [scope, snap.status, mirroredInitScript]);
+
 			/* v0.38.0: the card's sections are FOLDERS. All seven stay collapsed
 			   by default — the user scans seven labelled header rows, expands the
 			   one theme they recognise, and finds the switch inside it (user
@@ -2459,6 +2524,21 @@ window.__ModuleLoader__.load({
 					}, bashSaved ? t("bash.saved") : t("bash.save")),
 				),
 				E("p", { className: "gb-hint" }, t("bash.hint")),
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("init.label") + ":"),
+				),
+				E("div", { className: "gb-seg" },
+					E("input", { className: "gb-input", type: "text", spellCheck: false, placeholder: "~/.dsh/bash-env.sh", value: initDraft, onChange: function (e) { setInitDraft({ scope: scope, value: e.target.value, dirty: true, owner: {} }); } }),
+					E("button", {
+						type: "button",
+						className: "gb-saveBtn" + (initSaved ? " gb-saved" : ""),
+						onClick: function () {
+							setInitSaved(false);
+							writeField("initScript", initDraft.trim()).then(function (accepted) { setInitSaved(accepted === true); });
+						},
+					}, initSaved ? t("bash.saved") : t("bash.save")),
+				),
+				E("p", { className: "gb-hint" }, t("init.hint")),
 			);
 
 			var terminalSection = fold("sec.terminal",
