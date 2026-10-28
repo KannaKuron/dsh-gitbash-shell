@@ -1791,22 +1791,32 @@ function cleanupLegacyTrees(presetIds) {
 }
 
 /**
- * Probe the dsh 0.2.1 host additions for the variant compositions: every
- * full-tool official preset gained a `time-context` row (durable clock
- * readings) and a `tool-schedule` row (the reminder tools). A preset row whose
- * package is absent rejects the WHOLE mount, so the rows ride this probe: each
- * is added only when its package resolves from the HOST's module base —
- * `ctx.baseUrl`, the exact base `prepareProfileEntries` mounts preset rows
- * from, so the probe can never disagree with the mounter. On dsh <= 0.2.0 all
- * stay false and the row set stays byte-identical to the 0.1.7 mirror. Probed
- * once per boot; the profile's package set does not change under a running
- * host. `compaction` is the one flag minimal consumes (the official
- * 0.2.1-alpha.3 minimal rows); the rest only shape the full variants.
+ * Probe the dsh host additions for the variant compositions.
+ *
+ * `timeContext` / `toolSchedule` / `pluginMarket` / `compaction` are the
+ * 0.2.1 rows (durable clock readings, reminder tools, the plugin market row,
+ * the minimal tool-fs + compaction delta). `executorPlugin` marks the
+ * 0.2.2-alpha.2 tool-execution architecture: the packages tool-executor-native
+ * and tool-executor-ptc exist, the official presets mount the latter for PTC,
+ * the subagent config renamed `modelSelectionSettings` to
+ * `modelSelection` + `modelDiscovery`, and list-agents folded into the control
+ * row. `profileContext` is the host fact the manager/market rows gate on since
+ * alpha.2 (`!!js "!ctx.get('profileContext')"`) — computed from the live
+ * service, not the package set.
+ *
+ * A preset row whose package is absent rejects the WHOLE mount, so every row
+ * rides this probe: each is added only when its package resolves from the
+ * HOST's module base — `ctx.baseUrl`, the exact base `prepareProfileEntries`
+ * mounts preset rows from, so the probe can never disagree with the mounter.
+ * On older hosts all stay false and the row set stays byte-identical to the
+ * earlier mirror. Probed once per boot; the profile's package set does not
+ * change under a running host.
  * @param {object} ctx - cordis context (any fiber of the running host).
  * @param {Function} [resolve] - predicate override for tests; receives a
  *   package specifier, resolves like `require.resolve`, returns boolean.
  * @returns {Promise<{timeContext: boolean, toolSchedule: boolean,
- *   pluginMarket: boolean, compaction: boolean}>}
+ *   pluginMarket: boolean, compaction: boolean, executorPlugin: boolean,
+ *   profileContext: boolean}>}
  */
 export async function probeHostExtras(ctx, resolve) {
   let ok = resolve
@@ -1821,13 +1831,20 @@ export async function probeHostExtras(ctx, resolve) {
       ok = () => false
     }
   }
-  const [timeContext, toolSchedule, pluginMarket, compaction] = await Promise.all([
+  const [timeContext, toolSchedule, pluginMarket, compaction, executorPlugin] = await Promise.all([
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-time-context')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-schedule')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-plugin-market/tools')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-compaction-basic')).then(Boolean),
+    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-executor-ptc')).then(Boolean),
   ])
-  return { timeContext, toolSchedule, pluginMarket, compaction }
+  let profileContext = false
+  try {
+    profileContext = ctx?.get?.('profileContext') !== undefined
+  } catch {
+    profileContext = false
+  }
+  return { timeContext, toolSchedule, pluginMarket, compaction, executorPlugin, profileContext }
 }
 
 /** Run one probe predicate; ANY failure reads as "absent" (a throwing
@@ -2274,12 +2291,25 @@ export async function apply(ctx, config = {}) {
              no run_code hint — so they meet the shell they were composed for. */
           const dialect = liveSettings.dialect()
           const applies = dialectApplies(dialect, assembleContext && assembleContext.agent)
+          // dsh 0.2.2-alpha.2 narrowed this event to prompt PRESENTATION: it no
+          // longer carries `tools` ("tool declarations remain provider-owned"),
+          // so read the same list back from the tools service; older hosts keep
+          // handing it over on the assembly.
+          const offeredTools = Array.isArray(assembly && assembly.tools)
+            ? assembly.tools
+            : (() => {
+                try {
+                  return ctx.get('tools')?.schemas?.(assembleContext && assembleContext.agent) ?? []
+                } catch {
+                  return []
+                }
+              })()
           // Routing is dialect-independent and follows actual offered tools.
           // PTC may expose only run_code here: its generic SDK decision rule
           // relies on the registered bindings' own descriptions, not guessed
           // hidden names. Replace our block on reassembly/visibility changes.
           if (assembly && typeof assembly === 'object') {
-            applyToolRouting(assembly.tools, {
+            applyToolRouting(offeredTools, {
               pwshVisible: liveSettings.pwshTool() === true,
               msys: applies && dialect.posixPaths === true,
               terminalGitBash: terminalDialect.gitBash === true,
@@ -2302,7 +2332,7 @@ export async function apply(ctx, config = {}) {
             // v0.20.1: the run_code sentence rides the SAME context entry, but
             // only when this assembly actually offers the tool (see
             // runCodeHintFor) — every other mode stays quiet.
-            const hint = runCodeHintFor(assembly.tools, dialect.codePaths === true)
+            const hint = runCodeHintFor(offeredTools, dialect.codePaths === true)
             if (hint !== '') {
               for (const assembled of Array.isArray(assembly.contexts) ? assembly.contexts : []) {
                 if (assembled && assembled.name === 'gitbash-shell:posix-paths' && typeof assembled.text === 'string') {

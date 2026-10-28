@@ -3,6 +3,16 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.44.0] — 2026-10-28
+
+### feat:跟随 dsh 0.2.2-alpha.2 的工具执行器架构(executor 行、subagent 模型键、assemble 事件收窄、promoted 文案精简)
+
+- **背景**:官方 0.2.2-alpha.2 重做了工具执行架构(`docs/upgrade-guide/v0.2.1-rc.2/tool-executor-plugins/`):`dsh-tools` 的 `mode`/`maxParallelSubCalls` 配置被 `z.never()` 拒绝,执行模式改由显式 `tool-executor-native` / `tool-executor-ptc` 行承载(base 已挂 native,PTC 侧需 preset 级覆盖);`dsh-agent-tool-presentation` 仍支持但已弃用。同期 preset 还有三处形状变化,官方 preset 逐行对齐面因此多了一个代际。
+- **组合跟随(探测门控)**:`probeHostExtras` 增加 `executorPlugin`(`@deepseek-ai/dsh-tool-executor-ptc` 可解析)与 `profileContext`(live 服务读取)。新宿主上:PTC 变体改挂 `tool-executor-ptc`,不再挂 `tool-presentation(mode: ptc)`;`tool-subagent-list-agents` 行删除(list_agents 已并入 `tool-subagent-control` 主行);subagent 配置键 `modelSelectionSettings` → `modelSelection` + `modelDiscovery`;plugin-manager / plugin-market 两行改由 `profileContext` 门控(官方 `!!js "!ctx.get('profileContext')"` 语义,三个变体一致)。旧宿主全部保持原行集不变——组合对齐的向后兼容纪律照旧。
+- **assemble 事件收窄**:0.2.2-alpha.2 的 `system-prompt/assemble` 只带 prompt presentation,不再带 `tools`(`PromptAssembly` 拆分,工具声明改由 provider 持有)。`applyToolRouting` 与 `runCodeHintFor` 因此改为:宿主给了工具列表就用宿主的,否则从 `ctx.get('tools').schemas(agent)` 读回——新老宿主都拿到真实工具面,方言路由与 run_code 提示句不受影响。
+- **promoted 文案精简**:测试钩子 `renderPromoted` 跟随官方简化——只留 `[still running after Nms; moved to background job id]`,跟随指引(读输出/停止)改由官方 `tool:jobs` 段落统一承载,不再重复。
+- **测试(337 项:336 pass + 1 skip)**:`probeHostExtras` 断言扩到新字段(含 live 服务读取与抛错降级);新增 alpha.2 组合形态测试(executor 行/无 list-agents 行/新 subagent 键/profile 门控/旧宿主不变);源码断言与新工具列表回退路径。
+
 ## [0.43.3] — 2026-10-27
 
 ### fix:工具面晚于 `agent/created` 落定时,bash 补位永久错过(真机复现;PR #36,致谢 @qiantao448-ux 首次贡献)

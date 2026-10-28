@@ -927,7 +927,11 @@ test('the run_code literal rewrite has its own switch (codePaths)', async () => 
   assert.ok(strict !== null, 'strict directive text is gone')
   assert.doesNotMatch(strict[1], /run_code/, 'the strict directive must not talk about run_code either')
   assert.match(text, /const RUN_CODE_DIRECTIVE_TEXT = '/, 'the conditional run_code sentence is gone')
-  assert.match(text, /runCodeHintFor\(assembly\.tools, dialect\.codePaths === true\)/, 'the assembly hook must gate on the tool list and live codePaths state')
+  assert.match(text, /runCodeHintFor\(offeredTools, dialect\.codePaths === true\)/, 'the assembly hook must gate on the tool list and live codePaths state')
+  // dsh 0.2.2-alpha.2: the event no longer carries tools — the same list is
+  // read back from the tools service, and an older host's assembly still wins.
+  assert.match(text, /Array\.isArray\(assembly && assembly\.tools\)/, 'the host-assembled tool list must be preferred when present')
+  assert.match(text, /ctx\.get\('tools'\)\?\.schemas\?\.\(assembleContext && assembleContext\.agent\)/, 'alpha.2+ hosts must read the offered tools from the service')
 })
 
 test('the run_code sentence is injected only where the tool exists (v0.20.1)', async () => {
@@ -1167,14 +1171,48 @@ test('compositions: dsh 0.2.1 host additions ride the probe, never the default',
   assert.equal(base.some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
 })
 
+test('compositions: dsh 0.2.2-alpha.2 reworked the executors, the subagent config and the profile gate', async () => {
+  const { pluginsFor } = await import('../src/compositions.js')
+  const row = (rows, id) => rows.find((r) => r.id === id)
+  const ids = (rows) => rows.map((r) => r.id)
+  // Executor architecture: list-agents folded into the control row, the
+  // subagent config renamed its model keys, and PTC mounts the explicit
+  // executor row instead of the deprecated presentation selector.
+  const ptc = pluginsFor({ kind: 'ptc', gitBash: true, skillsDir: undefined, hostExtras: { executorPlugin: true, profileContext: true } })
+  const delegation = row(ptc, 'delegation').config
+  assert.equal(ids(delegation).includes('tool-subagent-list-agents'), false, 'alpha.2 has no separate list-agents row')
+  assert.deepEqual(row(delegation, 'tool-subagent').config, { provider: 'spawn', toolName: 'subagent', modelSelection: true, modelDiscovery: true, backgroundMode: 'continuable' })
+  assert.equal(row(delegation, 'tool-subagent').config.modelSelectionSettings, undefined, 'the old config key is gone on alpha.2')
+  assert.equal(row(ptc, 'tool-presentation'), undefined)
+  assert.deepEqual(row(ptc, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
+  // The manager/market rows gate on the profile context for every variant.
+  for (const kind of ['standard', 'ptc', 'cordis']) {
+    const withProfile = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: true, pluginMarket: true } })
+    assert.equal(row(withProfile, 'tool-plugin-manager').disabled, undefined, kind)
+    assert.equal(row(withProfile, 'tool-plugin-market').disabled, undefined, kind)
+    const without = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: false, pluginMarket: true } })
+    assert.equal(row(without, 'tool-plugin-manager').disabled, true, kind)
+    assert.equal(row(without, 'tool-plugin-market').disabled, true, kind)
+  }
+  // Older hosts keep the earlier shape byte-identical.
+  const old = pluginsFor({ kind: 'ptc', gitBash: true, skillsDir: undefined, hostExtras: {} })
+  assert.ok(ids(row(old, 'delegation').config).includes('tool-subagent-list-agents'))
+  assert.equal(row(row(old, 'delegation').config, 'tool-subagent').config.modelSelectionSettings, true)
+  assert.equal(row(old, 'tool-presentation').config.mode, 'ptc')
+  assert.equal(row(old, 'tool-plugin-manager').disabled, true)
+})
+
 test('probeHostExtras resolves from the host base and degrades to false', async () => {
   const { probeHostExtras } = await import('../src/index.js')
-  assert.deepEqual(await probeHostExtras(undefined, () => true), { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true })
-  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { timeContext: false, toolSchedule: true, pluginMarket: false, compaction: false })
+  assert.deepEqual(await probeHostExtras(undefined, () => true), { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, executorPlugin: true, profileContext: false })
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { timeContext: false, toolSchedule: true, pluginMarket: false, compaction: false, executorPlugin: false, profileContext: false })
   // a throwing resolver reads as "absent" — never rejects the boot
-  assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false })
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, executorPlugin: false, profileContext: false })
   // default resolver from this test file's base: official host packages absent → all false
-  assert.deepEqual(await probeHostExtras({}), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false })
+  assert.deepEqual(await probeHostExtras({}), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, executorPlugin: false, profileContext: false })
+  // profileContext is a LIVE service read, not a package fact (alpha.2 rows gate on it)
+  assert.deepEqual(await probeHostExtras({ get: (name) => (name === 'profileContext' ? {} : undefined) }, () => false), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, executorPlugin: false, profileContext: true })
+  assert.deepEqual(await probeHostExtras({ get: () => { throw new Error('boom') } }, () => false), { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, executorPlugin: false, profileContext: false })
 })
 
 test('host half: lazy Config with volatile probing and the era branch', async () => {
@@ -3045,8 +3083,10 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   assert.match(hostSource, /fastctxTools: valueOf\(config\.fastctxTools\) === true/)
   // Routing rides applyToolRouting (inline-tools.js) since the native RFC:
   // the sentence is picked from the actual offered face, and the pwsh-visible
-  // / msys facts still flow from the live settings read here.
-  assert.match(hostSource, /applyToolRouting\(assembly\.tools,/)
+  // / msys facts still flow from the live settings read here. The list comes
+  // from the assembly on older hosts and from the tools service on
+  // 0.2.2-alpha.2+ (the event stopped carrying declarations).
+  assert.match(hostSource, /applyToolRouting\(offeredTools,/)
   assert.match(hostSource, /pwshVisible: liveSettings\.pwshTool\(\) === true/)
   assert.match(hostSource, /msys: applies && dialect\.posixPaths === true/)
   // The desired set collapses to [] while the switch is off — the cleanup
@@ -3281,7 +3321,10 @@ test('bash render: the official marker contract survives verbatim', async () => 
   assert.match(mod.renderResult({ stdout: { text: '', truncated: false }, stderr: { text: '', truncated: false }, exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1 }), /^\(no output\)$/)
   // renderPromoted hands the job over in the official words.
   assert.match(mod.renderPromoted({ jobId: 'j9', timeoutMs: 1000, output: 'part' }), /\[still running after 1000ms; moved to background job j9\]/)
-  assert.match(mod.renderPromoted({ jobId: 'j9', timeoutMs: 1000, output: 'part' }), /job_output, stop it with job_kill/)
+  // 0.2.2-alpha.2 simplified the promoted marker: the follow-up guidance now
+  // lives in the shared tool:jobs section, so the sentence is NOT repeated.
+  assert.doesNotMatch(mod.renderPromoted({ jobId: 'j9', timeoutMs: 1000, output: 'part' }), /job_output|job_kill/)
+  assert.ok(mod.renderPromoted({ jobId: 'j9', timeoutMs: 1000, output: 'part' }).endsWith(']'))
 })
 
 test('bash background adapter: outcomes, ring reads, and cancellation map onto the jobs vocabulary', async () => {
