@@ -1807,14 +1807,12 @@ function cleanupLegacyTrees(presetIds) {
  *
  * `timeContext` / `toolSchedule` / `pluginMarket` / `compaction` are the
  * 0.2.1 rows (durable clock readings, reminder tools, the plugin market row,
- * the minimal tool-fs + compaction delta). `executorPlugin` marks the
- * 0.2.2-alpha.2 tool-execution architecture: the packages tool-executor-native
- * and tool-executor-ptc exist, the official presets mount the latter for PTC,
- * the subagent config renamed `modelSelectionSettings` to
- * `modelSelection` + `modelDiscovery`, and list-agents folded into the control
- * row. `profileContext` is the host fact the manager/market rows gate on since
- * alpha.2 (`!!js "!ctx.get('profileContext')"`) — computed from the live
- * service, not the package set.
+ * the minimal tool-fs + compaction delta). The 0.2.2-alpha.2 tool-execution
+ * architecture is unconditional: the official presets mount
+ * tool-executor-ptc for PTC, the subagent config uses `modelSelection` +
+ * `modelDiscovery`, and list-agents folded into the control row.
+ * `profileContext` is the live host fact the manager/market rows gate on
+ * (`!!js "!ctx.get('profileContext')"`).
  *
  * A preset row whose package is absent rejects the WHOLE mount, so every row
  * rides this probe: each is added only when its package resolves from the
@@ -1827,8 +1825,7 @@ function cleanupLegacyTrees(presetIds) {
  * @param {Function} [resolve] - predicate override for tests; receives a
  *   package specifier, resolves like `require.resolve`, returns boolean.
  * @returns {Promise<{timeContext: boolean, toolSchedule: boolean,
- *   pluginMarket: boolean, compaction: boolean, executorPlugin: boolean,
- *   profileContext: boolean}>}
+ *   pluginMarket: boolean, compaction: boolean, profileContext: boolean}>}
  */
 export async function probeHostExtras(ctx, resolve) {
   let ok = resolve
@@ -1843,12 +1840,11 @@ export async function probeHostExtras(ctx, resolve) {
       ok = () => false
     }
   }
-  const [timeContext, toolSchedule, pluginMarket, compaction, executorPlugin] = await Promise.all([
+  const [timeContext, toolSchedule, pluginMarket, compaction] = await Promise.all([
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-time-context')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-schedule')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-plugin-market/tools')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-compaction-basic')).then(Boolean),
-    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-executor-ptc')).then(Boolean),
   ])
   let profileContext = false
   try {
@@ -1856,7 +1852,7 @@ export async function probeHostExtras(ctx, resolve) {
   } catch {
     profileContext = false
   }
-  return { timeContext, toolSchedule, pluginMarket, compaction, executorPlugin, profileContext }
+  return { timeContext, toolSchedule, pluginMarket, compaction, profileContext }
 }
 
 /** Run one probe predicate; ANY failure reads as "absent" (a throwing
@@ -2304,18 +2300,18 @@ export async function apply(ctx, config = {}) {
           const dialect = liveSettings.dialect()
           const applies = dialectApplies(dialect, assembleContext && assembleContext.agent)
           // dsh 0.2.2-alpha.2 narrowed this event to prompt PRESENTATION: it no
-          // longer carries `tools` ("tool declarations remain provider-owned"),
-          // so read the same list back from the tools service; older hosts keep
-          // handing it over on the assembly.
-          const offeredTools = Array.isArray(assembly && assembly.tools)
-            ? assembly.tools
-            : (() => {
-                try {
-                  return ctx.get('tools')?.schemas?.(assembleContext && assembleContext.agent) ?? []
-                } catch {
-                  return []
-                }
-              })()
+          // longer carries `tools` ("tool declarations remain provider-owned").
+          // Read the step's admitted set back from the tools service — the same
+          // toolSet the agent loop resolved for this step, so conditional tools
+          // are judged exactly as execution will judge them.
+          const toolSet = assembleContext && assembleContext.toolSet
+          const offeredTools = (() => {
+            try {
+              return ctx.get('tools')?.schemas?.(assembleContext && assembleContext.agent, toolSet) ?? []
+            } catch {
+              return []
+            }
+          })()
           // Routing is dialect-independent and follows actual offered tools.
           // PTC may expose only run_code here: its generic SDK decision rule
           // relies on the registered bindings' own descriptions, not guessed

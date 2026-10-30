@@ -83,12 +83,15 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   assert.ok(start >= 0 && end > start)
   let handler
   let dialect = { posixPaths: true, codePaths: true, subagentDialect: true }
-  const ctx = { on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn } }
+  const ctx = {
+    on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn },
+    get(name) { assert.equal(name, 'tools'); return { schemas: () => [{ name: 'run_code' }] } },
+  }
   new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', source.slice(start, end))(
     ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting, terminalDialect)
   const assemble = agent => {
-    const assembly = { tools: [{ name: 'run_code' }], contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [] }
-    handler(assembly, { agent }, () => {})
+    const assembly = { contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [] }
+    handler(assembly, { agent, toolSet: {} }, () => {})
     return assembly.contexts[0].text
   }
   assert.match(assemble(), /best-effort/)

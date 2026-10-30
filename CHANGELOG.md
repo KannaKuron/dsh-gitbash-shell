@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [0.47.0] — 2026-10-30
+
+### feat:适配 dsh 0.2.2-alpha.2(下限抬到 alpha.2,清旧宿主回退)
+
+- **宿主下限**:`engines.dsh`、peer `@deepseek-ai/dsh`、`dsh.compatibility.dsh` 统一到 `>=0.2.2-alpha.2`,`dshReleases` 只保留 alpha.2。本版组合只产出 alpha.2 形状,不再为 0.1.7–0.2.1 保留 `tool-presentation(mode: ptc)` 回退。
+- **组合跟随(无条件)**:PTC 变体固定挂 `tool-executor-ptc`;`tool-subagent-list-agents` 行删除(list_agents 已并入 `tool-subagent-control`);`tool-subagent` 固定 `modelSelection` + `modelDiscovery`;`tool-plugin-manager` / `tool-plugin-market` 随 `profileContext` live 服务启停。time-context / tool-schedule / plugin-market 的包探针保留:包缺失只少行、不拒绝整棵挂载。
+- **assemble 工具面**:0.2.2-alpha.2 的 `system-prompt/assemble` 只带 `toolSet`,不再带 `tools`;`runCodeHintFor` / `applyToolRouting` 改为读 `assembleContext.toolSet` 并调用 `ctx.get('tools').schemas(agent, toolSet)`,不再回退全量 `schemas(agent)`。
+- **测试(342 pass + 1 平台 skip)**:compatibility-regressions 的监听器夹具改为 `toolSet` + `ctx.get('tools').schemas`;smoke 的旧宿主回退断言替换为 alpha.2 无条件形态;market 在无 profileContext 时默认 disabled。
+
 ## [0.46.0] — 2026-10-28
 
 ### fix:跟随 dsh-ops 0.4.3 的 preset-mode 行集(ops_bash 剥离不再失效)

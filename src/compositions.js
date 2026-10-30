@@ -90,19 +90,18 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
   // toolFilter deny from the subagent/subagent_fork configs (official
   // reminders reach subagents again — the deny was never load-bearing,
   // nothing replaces it); alpha.4 added a tool-plugin-market row to every
-  // full preset. 0.2.2-alpha.2 then reworked the tool execution architecture
-  // (`executorPlugin`): the official executors moved into explicit
-  // tool-executor-native/-ptc rows, the subagent config renamed
-  // `modelSelectionSettings` to `modelSelection` + opt-in `modelDiscovery`,
-  // list-agents folded into the tool-subagent-control row itself (its
-  // separate row is gone), and the manager/market rows enable under a
-  // profile context instead of staying off outside cordis. A preset row whose
-  // package is absent rejects the WHOLE mount, so these ride a host probe
-  // (index.js probeHostExtras, resolved from ctx.baseUrl — the base rows
-  // mount from); absent/older hosts keep the byte-identical earlier row set.
-  // The minimal variant carries its own 0.2.1-alpha.3 delta (tool-fs +
-  // compaction) behind the compaction flag.
-  const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false, executorPlugin = false, profileContext = false } = hostExtras
+  // full preset. 0.2.2-alpha.2 then reworked the tool execution architecture:
+  // the official executors moved into explicit tool-executor-native/-ptc
+  // rows, the subagent config renamed `modelSelectionSettings` to
+  // `modelSelection` + opt-in `modelDiscovery`, list-agents folded into the
+  // tool-subagent-control row itself (its separate row is gone), and the
+  // manager/market rows enable only under a profile context. That shape is
+  // unconditional now — the plugin's lower bound is 0.2.2-alpha.2. Optional
+  // 0.2.1 additions still ride a host probe (index.js probeHostExtras,
+  // resolved from ctx.baseUrl — the base rows mount from). The minimal
+  // variant carries its own 0.2.1-alpha.3 delta (tool-fs + compaction) behind
+  // the compaction flag.
+  const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false, profileContext = false } = hostExtras
   const rows = [
     {
       id: 'persona',
@@ -176,14 +175,11 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
       config: [
         { id: 'tool-subagent-control', name: '@deepseek-ai/dsh-tool-subagent-control' },
         // 0.2.2-alpha.2 folded list_agents into the control row itself; the
-        // separate child row is gone, so alpha.2+ hosts must not mount it.
-        ...(executorPlugin ? [] : [{ id: 'tool-subagent-list-agents', name: '@deepseek-ai/dsh-tool-subagent-control/list-agents' }]),
+        // separate child row is gone.
         {
           id: 'tool-subagent',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: executorPlugin
-            ? { provider: 'spawn', toolName: 'subagent', modelSelection: true, modelDiscovery: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }) }
-            : { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }) },
+          config: { provider: 'spawn', toolName: 'subagent', modelSelection: true, modelDiscovery: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }) },
         },
         {
           id: 'tool-subagent-fork',
@@ -221,10 +217,8 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
     // 0.2.2-alpha.2 replaced the deprecated presentation selector with the
     // explicit PTC executor row (the base deployment keeps
     // tool-executor-native; a scoped executor row overrides it for this
-    // agent). Older hosts keep the presentation row they ship.
-    rows.push(executorPlugin
-      ? { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' }
-      : { id: 'tool-presentation', name: '@deepseek-ai/dsh-agent-tool-presentation', config: { mode: 'ptc' } })
+    // agent).
+    rows.push({ id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
   }
   if (kind === 'cordis') {
     rows.push({ id: 'tool-cordis', name: '@deepseek-ai/dsh-tool-cordis' })
@@ -237,20 +231,15 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
   rows.push({
     id: 'tool-plugin-manager',
     name: '@deepseek-ai/dsh-plugin-manager/tools',
-    // The official rows: before 0.2.2-alpha.2 ptc/standard ship it disabled and
-    // cordis keeps it on (every web deployment has a profile context). From
-    // 0.2.2-alpha.2 on every preset enables it exactly when a profile context
-    // exists, so the probe decides for all three variants.
-    ...(executorPlugin ? off(!profileContext) : off(kind !== 'cordis')),
+    // Every preset enables it exactly when a profile context exists.
+    ...off(!profileContext),
   })
   if (pluginMarket) {
     rows.push({
-      // The official 0.2.1-alpha.4 rows, following the manager's split on
-      // both architectures (alpha.4: disabled on standard/ptc, profile-gated
-      // on cordis; alpha.2 of 0.2.2: profile-gated everywhere).
+      // The official 0.2.1-alpha.4 row, profile-gated like the manager.
       id: 'tool-plugin-market',
       name: '@deepseek-ai/dsh-plugin-market/tools',
-      ...(executorPlugin ? off(!profileContext) : off(kind !== 'cordis')),
+      ...off(!profileContext),
     })
   }
   return rows
