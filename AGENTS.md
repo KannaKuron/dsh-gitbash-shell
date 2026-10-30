@@ -10,6 +10,13 @@
   workflow 用 `id-token: write` + 无令牌 `npm publish`(见 .github/workflows/npm-publish.yml,
   npm 包设置里须登记同名 workflow 为 trusted publisher)。
 
+## 适配分支纪律(2026-10-30 起)
+
+- 每轮适配 dsh 新版本,都从最新 `main` 开分支 `alpha适配`;本轮所有适配改动只提交到该分支,不直接推 `main`。
+- 在该分支跑完 `npm test` 与隔离实例真机验证,确认没问题后再合并回 `main`、再发版本。
+- 下一轮适配重新从 `main` 开同名 `alpha适配` 分支,不复用上一轮的分支;已合并的旧分支可删。
+- 本纪律与各仓库的「变更记录纪律」并列:CHANGELOG 记录改了什么,分支记录这一轮改动的边界。
+
 ## 变更记录纪律(2026-09-13 起)
 
 - **所有版本发布、修复、事故复盘、复现/验证记录一律写进本仓库 `CHANGELOG.md`**,不再追加进本文件;
