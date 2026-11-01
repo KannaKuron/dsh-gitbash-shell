@@ -3,6 +3,18 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.47.2 — 2026-11-01
+
+### fix:兼容下限回落到 0.1.7-rc,恢复旧宿主的执行器形状与工具面回退
+
+- **背景**:0.47.0 为了跟随 alpha.2 的执行器架构,把下限抬到 `>=0.2.2-alpha.2`,并删掉了旧宿主的组合分支。还在 0.1.7–0.2.1 的用户因此装不上,而 0.47.1 的 #38 修复本身并不依赖 alpha.2 独占 API。按「能体验的先放开、不能体验的内部检查」的原则,下限回到 0.1.7-rc。
+- **组合按代际自动选择**:`probeHostExtras` 恢复 `executorPlugin`(探测 `@deepseek-ai/dsh-tool-executor-ptc` 是否可解析)。探到 alpha.2 执行器架构时,PTC 挂 `tool-executor-ptc`、subagent 用 `modelSelection` + `modelDiscovery`、list-agents 并入 control 行、manager/market 随 `profileContext`;旧宿主保持原行集(`tool-presentation(mode: ptc)`、独立的 list-agents 行、`modelSelectionSettings`、manager/market 按 cordis/其它变体分档)。两套形状互斥,绝不混挂。
+- **assemble 工具面回退**:alpha.2 的 `system-prompt/assemble` 只带 `toolSet`,继续用 `ctx.get('tools').schemas(agent, toolSet)` 读本步工具面;旧宿主仍在 assembly 上给 `tools`,且 `schemas` 可能只接受一个参数,此时优先用宿主给的列表,不再向旧签名要第二个参数。
+- **native 槽位**:依旧只在 `agent/created` 同步注册,并且只在宿主提供 `jobs` 与预解析契约时宣告;旧宿主没有该契约就不出现 `gitbash_native`,不会留下幽灵工具。
+- **声明**:`engines.dsh`、peer `@deepseek-ai/dsh`、`dsh.compatibility.dsh` 三处回到 `>=0.1.7-rc`;dshReleases 恢复 0.2.0-rc.2 至 0.2.1-rc.1 并追加 0.2.2-alpha.2。
+- **测试(345 项:344 pass + 1 平台 skip)**:组合测试覆盖两代形状与 manager/market 的两种分档;probeHostExtras 断言 `executorPlugin` 键;compatibility-regressions 增加旧宿主 assembly.tools 回退(用一个拒绝第二参数的 `schemas` 证明没有走新签名)。
+- **验证**:隔离 DSH 0.2.2-alpha.2 实例安装 0.47.2 后插件正常挂载、无 `data-slot-error`;macOS 上 Git Bash 专用路径(win32 门控)与 native 槽位不适用,本轮未在 Windows 真机复验——按仓库纪律如实标注为待验证;旧宿主(0.1.7–0.2.1)由组合/回退测试覆盖,未在真机安装复验。
+
 ## v0.47.1 — 2026-11-01
 
 ### fix:稳定 gitbash_native 的工具面(issue #38);接受自定义 Git for Windows 版本指纹(issue #39)

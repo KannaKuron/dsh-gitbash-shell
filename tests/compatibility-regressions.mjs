@@ -85,7 +85,7 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   let dialect = { posixPaths: true, codePaths: true, subagentDialect: true }
   const ctx = {
     on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn },
-    get(name) { assert.equal(name, 'tools'); return { schemas: () => [{ name: 'run_code' }] } },
+    get(name) { assert.equal(name, 'tools'); return { schemas: (_agent, toolSet) => toolSet === undefined ? [] : [{ name: 'run_code' }] } },
   }
   new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', source.slice(start, end))(
     ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting, terminalDialect)
@@ -95,6 +95,11 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
     return assembly.contexts[0].text
   }
   assert.match(assemble(), /best-effort/)
+  // Older hosts hand the list over on the assembly and expose a one-argument
+  // schemas(); the fallback must use their list instead of asking the service.
+  const legacy = { contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [], tools: [{ name: 'run_code' }] }
+  handler(legacy, { agent: undefined }, () => {})
+  assert.match(legacy.contexts[0].text, /best-effort/)
   dialect = { ...dialect, codePaths: false }
   assert.match(assemble(), /rewriting is OFF/)
   dialect = { ...dialect, posixPaths: false }
