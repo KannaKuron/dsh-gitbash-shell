@@ -3,7 +3,7 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## [Unreleased]
+## v0.48.0 — 2026-11-02
 
 ### fix:工具面开关改为「重启生效」——不再在存活会话上重建工具面
 
@@ -22,12 +22,16 @@
     (`tool-face switch changed (pwshTool): running agents keep their tool face; ...`),
     不再重建任何存活 agent 的工具面;
   - `tools/pre-execute` 的 pwsh 拒绝判定跟随该 agent 的快照(保留 `deps.pwshEnabled?.() !== true` 字面量);
-  - 设置卡四个工具面开关(`variant`/`experimental`/`pwsh`/`fctx`)的中英 hint 增加
-    「改动需重启 DSH 后生效;本插件会冻结运行中会话的工具面」提示。
-- **行为契约变化**:开关不再对已存在的会话生效——新会话或重启后生效。README 原写「切换 `pwshTool`
-  会改 bash description、一次性作废缓存」,现改为「保存后需重启」,不再发生中途的工具面重建。
-- **测试(345 项)**:`runtime-regressions` 的「活体跟随两次翻转」改为「冻结 + 只记日志」,
-  并新增「翻转只对 NEW agent 生效」用例(fixture 的 mask 改为 per-agent)。
+    `ensureNativeSlot` / `nativeWanted` 也改为按快照的 `experimental` 创建/保留 native 槽,不再被 live 开关中途撤掉;
+  - 设置卡只给 `pwshTool` / `experimentalNative` 两个开关加「工具面可见性需重启」的中英提示
+    (`variantPresets` / `fastctxTools` 维持原语义);`experimentalNative` 的原生工具执行门禁仍按当前开关立即生效。
+- **行为契约变化**:这两个开关的**工具面可见性/注册**不再对已存在会话生效,新会话或重启后应用新值;
+  执行门禁仍可立即生效。README 原写「切换 `pwshTool` 会改 bash description、一次性作废缓存」,
+  现改为「工具面保存后需重启」,不再发生中途的工具面重建。
+- **测试(346 项:345 pass + 1 平台 skip)**:`runtime-regressions` 的「活体跟随两次翻转」改为「冻结 + 只记日志」,
+  并新增「翻转只对 NEW agent 生效」用例(fixture 的 mask 改为 per-agent);macOS 全量通过,PR 作者在
+  Windows 0.2.1-rc.5 真机复验原补丁。本次合入后的补丁未再上 Windows,Windows 侧仍需按 #38 的
+  `request/header` 方法复验一次。
 - **未覆盖**:没能定位宿主侧「preset 工具整批消失」的完整链路(丢掉的 29 个工具超出本插件可影响的
   范围);本改动消除插件侧触发点并让 UI 说明真实生效时机,宿主侧重组时序仍需宿主日志才能确认。
 

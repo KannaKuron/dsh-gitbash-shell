@@ -8,8 +8,8 @@ import { registerExperimentalTool } from '../src/experimental-tools.js'
 function inlineFixture({ visible = false, names = ['bash', 'pwsh'], externalDeny = [] } = {}) {
   const listeners = new Map()
   const effects = []
-  // FORK PATCH: masks are per agent (a scope mask never leaks to a sibling),
-  // so a NEW agent can observe a switch value the old one is frozen out of.
+  // Masks are per agent (a scope mask never leaks to a sibling), so a NEW
+  // agent can observe a switch value the old one is frozen out of.
   const masks = new Map()
   const makeAgent = () => {
     const owner = {}
@@ -54,7 +54,7 @@ test('runtime: a live agent KEEPS its switch face; a flip only logs a restart no
   try {
     assert.deepEqual(f.names(), ['bash'])
     assert.equal(f.gate().kind, 'deny')
-    // FORK PATCH: a volatile flip no longer reshapes a running agent.
+    // A volatile flip no longer reshapes a running agent.
     f.set(true)
     assert.deepEqual(f.names(), ['bash'], 'a live flip must not surface pwsh mid-session')
     assert.equal(f.gate().kind, 'deny')

@@ -262,8 +262,8 @@ export function mountInlineTools(ctx, deps) {
   let closed = false
   const isLive = (agent, state) => !closed && tracked.get(agent) === state && !state.controller.signal.aborted
   const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, native: undefined, nativeFailed: false, controller: new AbortController(), toolFace: undefined })
-  // LOCAL PATCH: toolFace freezes the volatile switch values this agent was created under,
-  // so a live settings edit cannot reshape a running face.
+  // toolFace freezes the switch values this agent was created under, so a live
+  // settings edit cannot reshape a running face.
   const experimentalEnabled = () => deps.experimentalEnabled?.() !== false
   // Loader imports cannot be cancelled, but no continuation may outlive its
   // owner. Join our cancelled continuations without waiting on a stuck loader.
@@ -498,7 +498,7 @@ export function mountInlineTools(ctx, deps) {
   })
 
   const ensureNativeSlot = (agent, state) => {
-    if (state.native || state.nativeFailed || !deps.nativeContract || !experimentalEnabled()) return
+    if (state.native || state.nativeFailed || !deps.nativeContract || state.toolFace?.experimental === false) return
     let jobs
     try { jobs = agent.ctx?.get?.('jobs') } catch { jobs = undefined }
     if (!jobs) return
@@ -620,8 +620,8 @@ export function mountInlineTools(ctx, deps) {
       state = newState()
       tracked.set(agent, state)
     }
-    // LOCAL PATCH: freeze the tool-face switches at this agent's first observation.
-    // They are volatile row fields, so the host hands an edit to the LIVE row;
+    // Freeze the face-shaping switches at this agent's first observation. They
+    // are volatile row fields, so the host hands an edit to the LIVE row;
     // re-reading them here reshaped faces that were already in use (turning the
     // pwsh switch off withdrew the own bash tool). The frozen value lasts for this
     // agent's whole life; the settings card asks for a restart.
@@ -670,7 +670,7 @@ export function mountInlineTools(ctx, deps) {
     // tool exists before step 1 assembles its face. Once created it is kept
     // stable for the agent's lifetime; a face that no longer needs our bash
     // withdraws it.
-    const nativeWanted = experimentalEnabled() && (needs.needsBash || state.scope !== undefined || state.pending !== undefined)
+    const nativeWanted = state.toolFace?.experimental !== false && (needs.needsBash || state.scope !== undefined || state.pending !== undefined)
     if (!nativeWanted) disposeNativeSlot(state)
     else if (!state.native && !state.nativeFailed) ensureNativeSlot(agent, state)
     if (needs.needsBash && !state.scope) {
@@ -730,9 +730,9 @@ export function mountInlineTools(ctx, deps) {
     ctx.on('agent/disposed', ({ agent } = {}) => teardown(agent).catch((error) => {
       log(`agent bash tool cleanup failed: ${error?.message ?? error}`)
     }))
-    // LOCAL PATCH: a tool-face switch edit arrives as a volatile update on the
-    // LIVE row. Re-reconciling every tracked agent from here reshaped faces that
-    // were already in use (it could withdraw the own bash tool). Keep the face an
+    // A tool-face switch edit arrives as a volatile update on the LIVE row.
+    // Re-reconciling every tracked agent from here reshaped faces that were
+    // already in use (it could withdraw the own bash tool). Keep the face an
     // agent was created with and say what applies a new one.
     ctx.on('loader/volatile-update', (paths) => {
       if (!Array.isArray(paths)) return
@@ -767,8 +767,8 @@ export function mountInlineTools(ctx, deps) {
         if (lazyState && !lazyState.scope && !lazyState.pending) {
           try { reconcile(lazyAgent) } catch (error) { log(`lazy re-reconcile failed: ${error?.message ?? error}`) }
         }
-        // LOCAL PATCH: judge the call by the face this agent was created with,
-        // never by the live switch.
+        // Judge the call by the face this agent was created with, never by the
+        // live switch.
         const livePwshOff = deps.pwshEnabled?.() !== true
         const frozenFace = exec?.agent ? tracked.get(exec.agent)?.toolFace : undefined
         const pwshOff = frozenFace === undefined ? livePwshOff : frozenFace.pwshVisible !== true

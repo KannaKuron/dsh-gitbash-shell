@@ -62,9 +62,11 @@ The old "replace the executor" three-step patch became runtime work:
    (`src/inline-tools.js`) registers the own bash tool per agent whenever the
    tool face says "pwsh yes / bash no"; the official `pwsh` tool (REAL
    PowerShell) stays hidden behind the `pwshTool` switch (off by default).
-   Toggling `pwshTool` applies to NEW sessions (or after a DSH restart) only: a
-   running session keeps the tool face it was created with, and saving the
-   switch just writes one host-log line instead of rebuilding that face. The `gb_*`
+   Toggling `pwshTool` or `experimentalNative` changes the tool face (visibility/
+   registration) for NEW sessions or after a DSH restart only: a running session
+   keeps the face it was created with, and saving just writes one host-log line
+   instead of rebuilding that face. The native tools' execution gate still
+   follows the current switch immediately. The `gb_*`
    FastCtx tools (`src/fastctx-bridge.js`) publish alongside — **retired to
    an explicit opt-in from v0.39.4** (dsh-ops 0.3.0 replaced FastCtx with
    native `ops_*` file tools; when dsh-ops is present the bridge stands down
