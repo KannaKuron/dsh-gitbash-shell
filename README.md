@@ -37,7 +37,8 @@ POSIX 宿主上完整保留;
   原生操作(cmdlet/注册表/服务/WMI)。默认关闭(`pwshTool` 开关):该工具对本插件
   会话隐藏,主机保持 bash 优先;开启后它直接可见可用——无需安装任何额外组件。
   旧 PowerShell 7 旁路工具(v0.37–v0.38.5 的独立工具)已随 v0.39.0 新架构退役;
-  命令仍然首选 bash 工具。
+  命令仍然首选 bash 工具。切换 `pwshTool` 会同时改 bash 工具的 description(路由句随开关
+  出现/消失),下一次请求会作废一次前缀缓存;工具名与 parameters 不变。
 - **`gb_*` FastCtx 文件工具(默认关,v0.39.4 起弃用)**:`gb_inspect_local_file`/`gb_grep`/
   `gb_glob`/`gb_replace`(Rust 实现:批量范围读取带 token 预算、grep 截断
   标注、编码探测)。它们是官方 read/grep/glob/edit 的**补充**——官方工具接
@@ -487,7 +488,9 @@ return await fs.readFile(resolved.native_path, 'utf8');
   本机已验证 `ipconfig //all`、`cmd //c` 或单命令
   `MSYS2_ARG_CONV_EXCL='/all' ipconfig /all` 可保留开关。
   排除值是前缀:排除 `/c` 也会影响真正的 `/c/...` 路径,该次原生调用应明确用
-  Windows drive-letter 路径。不要全局设置 `MSYS2_ARG_CONV_EXCL='*'`。
+  Windows drive-letter 路径。例如 `schtasks /run /tn X` 的 `/run` 会被改写成
+  `C:/Program Files/Git/run`;此时用逐命令 `MSYS2_ARG_CONV_EXCL='*' schtasks /run /tn X`,
+  或改用 `gitbash_native` 直接执行原生程序。不要把 `MSYS2_ARG_CONV_EXCL='*'` 写进全局环境。
   `cmd /c` 被转换后可能 exit0 却没有执行所需命令,应检查预期效果而非只看退出码。
 - **输出编码**:宿主按 UTF-8 解码;原生 Windows 程序可能输出 CP936/GBK 或其他代码页。
   先使用程序自己的 UTF-8 输出选项,或在捕获前按已知编码显式转换字节,保持原退出状态。

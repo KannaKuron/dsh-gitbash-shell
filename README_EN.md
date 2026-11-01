@@ -61,8 +61,10 @@ The old "replace the executor" three-step patch became runtime work:
    (`variantPresets: false`) it registers NO variants: the inline tool patch
    (`src/inline-tools.js`) registers the own bash tool per agent whenever the
    tool face says "pwsh yes / bash no"; the official `pwsh` tool (REAL
-   PowerShell) stays hidden behind the `pwshTool` switch (off by default);
-   the `gb_*`
+   PowerShell) stays hidden behind the `pwshTool` switch (off by default).
+   Toggling `pwshTool` also changes the bash tool's description (the routing
+   sentence appears/disappears), invalidating one prompt-prefix cache entry on
+   the next request; the tool name and parameters stay unchanged. The `gb_*`
    FastCtx tools (`src/fastctx-bridge.js`) publish alongside — **retired to
    an explicit opt-in from v0.39.4** (dsh-ops 0.3.0 replaced FastCtx with
    native `ops_*` file tools; when dsh-ops is present the bridge stands down
@@ -140,7 +142,10 @@ output encodings.
   Tested alternatives are `ipconfig //all`, `cmd //c`, or a per-command
   `MSYS2_ARG_CONV_EXCL='/all' ipconfig /all`. Exclusions match prefixes: excluding
   `/c` also excludes `/c/...` file paths, so explicitly use native drive-letter
-  paths for those arguments. Do not set `MSYS2_ARG_CONV_EXCL='*'` globally.
+  paths for those arguments. Example: `schtasks /run /tn X` becomes
+  `... 'C:/Program Files/Git/run'`; use the per-command
+  `MSYS2_ARG_CONV_EXCL='*' schtasks /run /tn X`, or `gitbash_native` to execute
+  the native program directly. Do not export `MSYS2_ARG_CONV_EXCL='*'` globally.
   A converted `cmd /c` may exit0 without performing the intended action; verify
   the expected effect, not only the exit code.
 - **Output encodings**: the host decodes UTF-8. Native programs may emit CP936/GBK

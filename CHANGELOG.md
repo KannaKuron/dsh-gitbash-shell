@@ -13,7 +13,7 @@
 - **native 槽位**:依旧只在 `agent/created` 同步注册,并且只在宿主提供 `jobs` 与预解析契约时宣告;旧宿主没有该契约就不出现 `gitbash_native`,不会留下幽灵工具。
 - **声明**:`engines.dsh`、peer `@deepseek-ai/dsh`、`dsh.compatibility.dsh` 三处回到 `>=0.1.7-rc`;dshReleases 恢复 0.2.0-rc.2 至 0.2.1-rc.1 并追加 0.2.2-alpha.2。
 - **测试(345 项:344 pass + 1 平台 skip)**:组合测试覆盖两代形状与 manager/market 的两种分档;probeHostExtras 断言 `executorPlugin` 键;compatibility-regressions 增加旧宿主 assembly.tools 回退(用一个拒绝第二参数的 `schemas` 证明没有走新签名)。
-- **验证**:隔离 DSH 0.2.2-alpha.2 实例安装 0.47.2 后插件正常挂载、无 `data-slot-error`;macOS 上 Git Bash 专用路径(win32 门控)与 native 槽位不适用,本轮未在 Windows 真机复验——按仓库纪律如实标注为待验证;旧宿主(0.1.7–0.2.1)由组合/回退测试覆盖,未在真机安装复验。
+- **验证**:隔离 DSH 0.2.2-alpha.2 实例安装 0.47.2 后插件正常挂载、无 `data-slot-error`;macOS 上 Git Bash 专用路径(win32 门控)与 native 槽位不适用。**后续 Windows 复验(issue #38 作者,2026-11-01)**:dsh 0.2.1-rc.5 + 0.47.2,step 1 的 36 个工具已含 `gitbash_native`,5 个 step 只有一次 `request/header`,无 step 1/step 2 churn。另记录两条缓存提示:`dsh-unlag` 的 `unlag_refresh` 会在会话中段加入(非本插件);切换 `pwshTool` 会改 bash description,一次性作废缓存。旧宿主(0.1.7–0.2.1)由组合/回退测试覆盖,未在真机安装复验。
 
 ## v0.47.1 — 2026-11-01
 
