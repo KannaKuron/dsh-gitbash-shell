@@ -261,7 +261,9 @@ export function mountInlineTools(ctx, deps) {
   const controller = new AbortController()
   let closed = false
   const isLive = (agent, state) => !closed && tracked.get(agent) === state && !state.controller.signal.aborted
-  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, native: undefined, nativeFailed: false, controller: new AbortController() })
+  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, native: undefined, nativeFailed: false, controller: new AbortController(), toolFace: undefined })
+  // LOCAL PATCH: toolFace freezes the volatile switch values this agent was created under,
+  // so a live settings edit cannot reshape a running face.
   const experimentalEnabled = () => deps.experimentalEnabled?.() !== false
   // Loader imports cannot be cancelled, but no continuation may outlive its
   // owner. Join our cancelled continuations without waiting on a stuck loader.
@@ -612,15 +614,24 @@ export function mountInlineTools(ctx, deps) {
       else tracked.set(agent, { ...newState(), timer })
       return
     }
-    const pwshVisible = deps.pwshEnabled?.() === true
-    const needs = inlineNeeds(names, { pwshVisible })
-    if (needs.opsPresent) opsSeen = true
     let state = tracked.get(agent)
     if (state?.timer) { clearTimeout(state.timer); state.timer = undefined }
     if (!state) {
       state = newState()
       tracked.set(agent, state)
     }
+    // LOCAL PATCH: freeze the tool-face switches at this agent's first observation.
+    // They are volatile row fields, so the host hands an edit to the LIVE row;
+    // re-reading them here reshaped faces that were already in use (turning the
+    // pwsh switch off withdrew the own bash tool). The frozen value lasts for this
+    // agent's whole life; the settings card asks for a restart.
+    if (state.toolFace === undefined) state.toolFace = {
+      pwshVisible: deps.pwshEnabled?.() === true,
+      experimental: deps.experimentalEnabled?.() !== false,
+    }
+    const pwshVisible = state.toolFace.pwshVisible === true
+    const needs = inlineNeeds(names, { pwshVisible })
+    if (needs.opsPresent) opsSeen = true
     // The pwsh face (route B): the host tool is REAL PowerShell now, so the
     // default is a product-level HIDE, not a safety denial.
     //   dsh-ops present  -> hands off entirely (their host-pwsh story stands).
@@ -719,11 +730,17 @@ export function mountInlineTools(ctx, deps) {
     ctx.on('agent/disposed', ({ agent } = {}) => teardown(agent).catch((error) => {
       log(`agent bash tool cleanup failed: ${error?.message ?? error}`)
     }))
+    // LOCAL PATCH: a tool-face switch edit arrives as a volatile update on the
+    // LIVE row. Re-reconciling every tracked agent from here reshaped faces that
+    // were already in use (it could withdraw the own bash tool). Keep the face an
+    // agent was created with and say what applies a new one.
     ctx.on('loader/volatile-update', (paths) => {
-      if (!Array.isArray(paths) || !paths.some((path) => Array.isArray(path) && ['pwshTool', 'experimentalNative'].includes(path[0]))) return
-      for (const agent of tracked.keys()) {
-        try { reconcile(agent) } catch (error) { log(`pwsh switch update failed: ${error?.message ?? error}`) }
-      }
+      if (!Array.isArray(paths)) return
+      const flipped = paths
+        .filter((path) => Array.isArray(path) && ['pwshTool', 'experimentalNative'].includes(path[0]))
+        .map((path) => path[0])
+      if (flipped.length === 0) return
+      log(`tool-face switch changed (${flipped.join(', ')}): running agents keep their tool face; a new session or a DSH restart applies the new value`)
     })
     // MOUNT-TIME SWEEP (v0.35.2): agents that already exist when this row
     // mounts never fire agent/created. Same shape the proven dsh-ops denial
@@ -750,7 +767,12 @@ export function mountInlineTools(ctx, deps) {
         if (lazyState && !lazyState.scope && !lazyState.pending) {
           try { reconcile(lazyAgent) } catch (error) { log(`lazy re-reconcile failed: ${error?.message ?? error}`) }
         }
-        if (exec?.name === 'pwsh' && !opsSeen && deps.pwshEnabled?.() !== true) {
+        // LOCAL PATCH: judge the call by the face this agent was created with,
+        // never by the live switch.
+        const livePwshOff = deps.pwshEnabled?.() !== true
+        const frozenFace = exec?.agent ? tracked.get(exec.agent)?.toolFace : undefined
+        const pwshOff = frozenFace === undefined ? livePwshOff : frozenFace.pwshVisible !== true
+        if (exec?.name === 'pwsh' && !opsSeen && pwshOff) {
           return { kind: 'deny', reason: hiddenPwshDenyReason() }
         }
         // v0.41.0, second independent layer for the ops shell pair: while our

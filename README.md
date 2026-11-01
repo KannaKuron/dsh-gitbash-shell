@@ -37,8 +37,8 @@ POSIX 宿主上完整保留;
   原生操作(cmdlet/注册表/服务/WMI)。默认关闭(`pwshTool` 开关):该工具对本插件
   会话隐藏,主机保持 bash 优先;开启后它直接可见可用——无需安装任何额外组件。
   旧 PowerShell 7 旁路工具(v0.37–v0.38.5 的独立工具)已随 v0.39.0 新架构退役;
-  命令仍然首选 bash 工具。切换 `pwshTool` 会同时改 bash 工具的 description(路由句随开关
-  出现/消失),下一次请求会作废一次前缀缓存;工具名与 parameters 不变。
+  命令仍然首选 bash 工具。切换 `pwshTool` 只影响**新会话**或重启后的会话:运行中的会话会保持它创建时
+  的工具面,保存开关只在宿主日志留一行提示,不会中途重建工具面。
 - **`gb_*` FastCtx 文件工具(默认关,v0.39.4 起弃用)**:`gb_inspect_local_file`/`gb_grep`/
   `gb_glob`/`gb_replace`(Rust 实现:批量范围读取带 token 预算、grep 截断
   标注、编码探测)。它们是官方 read/grep/glob/edit 的**补充**——官方工具接

@@ -3,6 +3,34 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## [Unreleased]
+
+### fix:工具面开关改为「重启生效」——不再在存活会话上重建工具面
+
+- **背景(真机事故)**:在设置卡把 `pwshTool` 关掉的同一条消息之后,正在运行的会话工具面被清空——
+  `request/header.tools` 从 59 个掉到 31 个,丢掉的 29 个正是官方 preset 的工具
+  (`read`/`write`/`edit`/`glob`/`grep`/`bash`/`gitbash_native`/`pwsh`/`web_search`/`web_fetch`/
+  `todo_write`/`exit_plan_mode`/`schedule_*`/`skill`/`present` 等),只剩 profile 级插件工具;
+  重启 DSH 后恢复。环境:dsh 0.2.1-rc.5 + 本插件 0.47.2,win32 真机。
+- **插件侧成因**:`pwshTool`/`experimentalNative` 是 volatile 字段,宿主把编辑实时交给运行中的行;
+  本插件在 `loader/volatile-update` 上对**每个存活 agent** 重跑 `reconcile()`,而 `reconcile()`
+  会先解除自己的 pwsh mask 再读工具面——这次读取与宿主重组的时序不保证稳定,既可能把「face 不含 pwsh」
+  误判成「preset mask 接管」而撤掉自己注册的 bash,也让一次纯展示开关的改动触发工具面重建。
+- **改动**:
+  - 每个 agent 在**首次观测**时快照 `{ pwshVisible, experimental }`,此后一律按快照判定,不再读 live 开关;
+  - `loader/volatile-update` 命中这两个开关时**只写一行日志**
+    (`tool-face switch changed (pwshTool): running agents keep their tool face; ...`),
+    不再重建任何存活 agent 的工具面;
+  - `tools/pre-execute` 的 pwsh 拒绝判定跟随该 agent 的快照(保留 `deps.pwshEnabled?.() !== true` 字面量);
+  - 设置卡四个工具面开关(`variant`/`experimental`/`pwsh`/`fctx`)的中英 hint 增加
+    「改动需重启 DSH 后生效;本插件会冻结运行中会话的工具面」提示。
+- **行为契约变化**:开关不再对已存在的会话生效——新会话或重启后生效。README 原写「切换 `pwshTool`
+  会改 bash description、一次性作废缓存」,现改为「保存后需重启」,不再发生中途的工具面重建。
+- **测试(345 项)**:`runtime-regressions` 的「活体跟随两次翻转」改为「冻结 + 只记日志」,
+  并新增「翻转只对 NEW agent 生效」用例(fixture 的 mask 改为 per-agent)。
+- **未覆盖**:没能定位宿主侧「preset 工具整批消失」的完整链路(丢掉的 29 个工具超出本插件可影响的
+  范围);本改动消除插件侧触发点并让 UI 说明真实生效时机,宿主侧重组时序仍需宿主日志才能确认。
+
 ## v0.47.2 — 2026-11-01
 
 ### fix:兼容下限回落到 0.1.7-rc,恢复旧宿主的执行器形状与工具面回退

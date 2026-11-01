@@ -145,13 +145,13 @@ window.__ModuleLoader__.load({
 			"tools.installing": "安装中…",
 			"tools.updating": "更新中…",
 			"variant.label": "四个「·Git Bash」变体模式",
-			"variant.hint": "默认关闭:官方四个模式经行内工具补位直接获得 Git Bash,模式列表保持官方原样。开启后注册四个变体(standard/minimal/ptc/cordis · Git Bash)并停用官方模式的工具补位——两者互斥。钉在变体 id 上的旧会话在关闭升级后需重新选择模式;变更对新会话生效。",
+			"variant.hint": "默认关闭:官方四个模式经行内工具补位直接获得 Git Bash,模式列表保持官方原样。开启后注册四个变体(standard/minimal/ptc/cordis · Git Bash)并停用官方模式的工具补位——两者互斥。钉在变体 id 上的旧会话在关闭升级后需重新选择模式;变更对新会话生效。  ⚠ 工具面开关：改动**需重启 DSH 后生效**；本插件会把运行中会话的工具面冻结在原值，不会热切——所以保存后当前会话不会丢工具，也不会立刻变。",
 			"experimental.label": "实验原生执行 / fail-closed",
-			"experimental.hint": "默认开启：Windows 受限或未确定访问模式拒绝 Git Bash，并提供 gitbash_native / gitbash_to_native_path。修改立即作用于现有会话的后续调用。关闭会隐藏并禁用两个工具，恢复明确标注 UNCONFINED 的旧版 Bash：不执行 shell 文件写入限制。如保留拒绝机制，请由用户在会话访问模式控件中选择 danger-full-access。",
+			"experimental.hint": "默认开启：Windows 受限或未确定访问模式拒绝 Git Bash，并提供 gitbash_native / gitbash_to_native_path。修改立即作用于现有会话的后续调用。关闭会隐藏并禁用两个工具，恢复明确标注 UNCONFINED 的旧版 Bash：不执行 shell 文件写入限制。如保留拒绝机制，请由用户在会话访问模式控件中选择 danger-full-access。  ⚠ 工具面开关：改动**需重启 DSH 后生效**；本插件会把运行中会话的工具面冻结在原值，不会热切——所以保存后当前会话不会丢工具，也不会立刻变。",
 			"pwsh.label": "pwsh 工具(官方 PowerShell)",
-			"pwsh.hint": "默认关闭:开启后宿主官方的 pwsh 工具对会话可见——它是真正的 PowerShell(官方解析器自动优先 PowerShell 7),可直接用于 Windows 原生操作(注册表/服务/WMI)。关闭(默认)时该工具被隐藏,主机保持 bash 优先。无需安装任何额外组件;旧 PowerShell 7 旁路工具已随新架构退役。命令仍然首选 bash 工具。",
+			"pwsh.hint": "默认关闭:开启后宿主官方的 pwsh 工具对会话可见——它是真正的 PowerShell(官方解析器自动优先 PowerShell 7),可直接用于 Windows 原生操作(注册表/服务/WMI)。关闭(默认)时该工具被隐藏,主机保持 bash 优先。无需安装任何额外组件;旧 PowerShell 7 旁路工具已随新架构退役。命令仍然首选 bash 工具。  ⚠ 工具面开关：改动**需重启 DSH 后生效**；本插件会把运行中会话的工具面冻结在原值，不会热切——所以保存后当前会话不会丢工具，也不会立刻变。",
 			"fctx.label": "FastCtx 文件工具(gb_*)",
-			"fctx.hint": "默认关闭(v0.39.4 起弃用,可显式开启):发布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 实现:批量读取带 token 预算、编码探测)。它们是官方 read/grep/glob/edit 的补充——官方工具接文件沙箱,仍是默认推荐;检测到 dsh-ops(ops_* 工具)时本组自动让位。",
+			"fctx.hint": "默认关闭(v0.39.4 起弃用,可显式开启):发布 gb_inspect_local_file / gb_grep / gb_glob / gb_replace(Rust 实现:批量读取带 token 预算、编码探测)。它们是官方 read/grep/glob/edit 的补充——官方工具接文件沙箱,仍是默认推荐;检测到 dsh-ops(ops_* 工具)时本组自动让位。  ⚠ 工具面开关：改动**需重启 DSH 后生效**；本插件会把运行中会话的工具面冻结在原值，不会热切——所以保存后当前会话不会丢工具，也不会立刻变。",
 		};
 
 		var en = {
@@ -233,13 +233,13 @@ window.__ModuleLoader__.load({
 			"tools.installing": "Installing…",
 			"tools.updating": "Updating…",
 			"variant.label": "The four \"· Git Bash\" variant presets",
-			"variant.hint": "Off by default: the four OFFICIAL presets get Git Bash through the inline tool patch and the roster stays official. On: register the four variants (standard/minimal/ptc/cordis · Git Bash) and stop patching the official presets — the two are exclusive. A session pinned to a variant id must re-select a preset after upgrading with the switch off. Applies to new sessions.",
+			"variant.hint": "Off by default: the four OFFICIAL presets get Git Bash through the inline tool patch and the roster stays official. On: register the four variants (standard/minimal/ptc/cordis · Git Bash) and stop patching the official presets — the two are exclusive. A session pinned to a variant id must re-select a preset after upgrading with the switch off. Applies to new sessions.  ⚠ Tool-face switch: takes effect only after a DSH restart. This plugin freezes a running session’s tool face instead of reshaping it live, so saving never drops tools mid-session.",
 			"experimental.label": "Experimental native execution / fail-closed",
-			"experimental.hint": "Default ON: refuse Windows Git Bash in restricted or unresolved access modes and offer gitbash_native / gitbash_to_native_path. Changes apply to subsequent calls in existing sessions. OFF hides and disables both tools and restores legacy explicitly UNCONFINED Bash; shell file-write restrictions are NOT enforced. To keep refusal enabled, select danger-full-access in the session access-mode control yourself.",
+			"experimental.hint": "Default ON: refuse Windows Git Bash in restricted or unresolved access modes and offer gitbash_native / gitbash_to_native_path. Changes apply to subsequent calls in existing sessions. OFF hides and disables both tools and restores legacy explicitly UNCONFINED Bash; shell file-write restrictions are NOT enforced. To keep refusal enabled, select danger-full-access in the session access-mode control yourself.  ⚠ Tool-face switch: takes effect only after a DSH restart. This plugin freezes a running session’s tool face instead of reshaping it live, so saving never drops tools mid-session.",
 			"pwsh.label": "pwsh tool (official PowerShell)",
-			"pwsh.hint": "Off by default: when on, the host's official pwsh tool becomes visible to sessions — REAL PowerShell (the official resolver prefers PowerShell 7 automatically) for Windows-native work (registry/services/WMI). Off (the default) hides it and keeps the host bash-first. Nothing extra to install; the retired PowerShell 7 side-channel tool is gone. Commands still prefer the bash tool.",
+			"pwsh.hint": "Off by default: when on, the host's official pwsh tool becomes visible to sessions — REAL PowerShell (the official resolver prefers PowerShell 7 automatically) for Windows-native work (registry/services/WMI). Off (the default) hides it and keeps the host bash-first. Nothing extra to install; the retired PowerShell 7 side-channel tool is gone. Commands still prefer the bash tool.  ⚠ Tool-face switch: takes effect only after a DSH restart. This plugin freezes a running session’s tool face instead of reshaping it live, so saving never drops tools mid-session.",
 			"fctx.label": "FastCtx file tools (gb_*)",
-			"fctx.hint": "Off by default since v0.39.4 (deprecated; re-enable explicitly): publishes gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batched reads with a token budget, encoding detection). ADDITIONS to the official read/grep/glob/edit — the official tools keep the file sandbox and stay the default. Stands down automatically when dsh-ops is installed.",
+			"fctx.hint": "Off by default since v0.39.4 (deprecated; re-enable explicitly): publishes gb_inspect_local_file / gb_grep / gb_glob / gb_replace (Rust: batched reads with a token budget, encoding detection). ADDITIONS to the official read/grep/glob/edit — the official tools keep the file sandbox and stay the default. Stands down automatically when dsh-ops is installed.  ⚠ Tool-face switch: takes effect only after a DSH restart. This plugin freezes a running session’s tool face instead of reshaping it live, so saving never drops tools mid-session.",
 		};
 
 		/* Third-language dictionaries: one entry per language, each preceded

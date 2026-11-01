@@ -8,13 +8,21 @@ import { registerExperimentalTool } from '../src/experimental-tools.js'
 function inlineFixture({ visible = false, names = ['bash', 'pwsh'], externalDeny = [] } = {}) {
   const listeners = new Map()
   const effects = []
-  const masks = new Set([new Set(externalDeny)])
-  const agent = { ctx: { tools: { restrict({ deny }) {
-    const mask = new Set(deny)
-    masks.add(mask)
-    return () => masks.delete(mask)
-  } } } }
-  const registry = { schemas: () => names.filter(name => [...masks].every(mask => !mask.has(name))).map(name => ({ name })) }
+  // FORK PATCH: masks are per agent (a scope mask never leaks to a sibling),
+  // so a NEW agent can observe a switch value the old one is frozen out of.
+  const masks = new Map()
+  const makeAgent = () => {
+    const owner = {}
+    owner.ctx = { tools: { restrict({ deny }) {
+      masks.set(owner, new Set(deny))
+      return () => masks.delete(owner)
+    } } }
+    return owner
+  }
+  const agent = makeAgent()
+  if (externalDeny.length > 0) masks.set(agent, new Set(externalDeny))
+  const agents = [agent]
+  const registry = { schemas: (who) => names.filter(name => !masks.get(who)?.has(name)).map(name => ({ name })) }
   const ctx = {
     on(name, callback) { listeners.set(name, callback) },
     effect(callback) { effects.push(callback()) },
@@ -22,36 +30,52 @@ function inlineFixture({ visible = false, names = ['bash', 'pwsh'], externalDeny
   let enabled = visible
   const logs = []
   mountInlineTools(ctx, {
-    tools: () => registry, agents: () => ({ list: () => [agent] }),
+    tools: () => registry, agents: () => ({ list: () => agents }),
     pwshEnabled: () => enabled, log: message => logs.push(message),
     createScope() { throw new Error('an existing bash must not mount an executor') },
   })
   return {
     agent, logs,
-    names: () => registry.schemas(agent).map(schema => schema.name),
+    names: (who = agent) => registry.schemas(who).map(schema => schema.name),
     set: value => { enabled = value; listeners.get('loader/volatile-update')([['pwshTool']]) },
-    gate: () => listeners.get('tools/pre-execute')({ agent, name: 'pwsh' }, () => ({ kind: 'allow' })),
+    gate: (who = agent) => listeners.get('tools/pre-execute')({ agent: who, name: 'pwsh' }, () => ({ kind: 'allow' })),
     dispose: async () => { for (const effect of effects.reverse()) await effect() },
+    createNew() {
+      const next = makeAgent()
+      agents.push(next)
+      listeners.get('agent/created')({ agent: next })
+      return next
+    },
   }
 }
 
-test('runtime: a live agent follows both pwsh switch directions, including repeated flips', async () => {
+test('runtime: a live agent KEEPS its switch face; a flip only logs a restart notice', async () => {
   const f = inlineFixture()
   try {
     assert.deepEqual(f.names(), ['bash'])
     assert.equal(f.gate().kind, 'deny')
+    // FORK PATCH: a volatile flip no longer reshapes a running agent.
     f.set(true)
-    assert.deepEqual(f.names(), ['bash', 'pwsh'])
-    assert.equal(f.gate().kind, 'allow')
-    f.set(false)
-    assert.deepEqual(f.names(), ['bash'])
+    assert.deepEqual(f.names(), ['bash'], 'a live flip must not surface pwsh mid-session')
     assert.equal(f.gate().kind, 'deny')
+    assert.equal(f.logs.length, 1)
+    assert.match(f.logs[0], /tool-face switch changed \(pwshTool\): running agents keep their tool face/)
     f.set(false)
-    f.set(true)
-    assert.deepEqual(f.names(), ['bash', 'pwsh'])
-    assert.deepEqual(f.logs, [])
+    assert.equal(f.logs.length, 2)
+    assert.deepEqual(f.names(), ['bash'])
   } finally { await f.dispose() }
-  assert.deepEqual(f.names(), ['bash', 'pwsh'])
+})
+
+test('runtime: the flip reaches a NEW agent (restart or next session applies it)', async () => {
+  const f = inlineFixture()
+  try {
+    assert.deepEqual(f.names(), ['bash'])
+    f.set(true)
+    const next = f.createNew()
+    // The new agent observes the new value: pwsh stays visible for it.
+    assert.deepEqual(f.names(next), ['bash', 'pwsh'])
+    assert.equal(f.gate(next).kind, 'allow')
+  } finally { await f.dispose() }
 })
 
 test('runtime: pwsh switch/disposal never undo another owner\'s restriction', async () => {
