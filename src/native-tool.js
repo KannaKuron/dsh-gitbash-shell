@@ -2,6 +2,12 @@ import { registerExperimentalTool } from './experimental-tools.js'
 import { createNativeExecutor } from './native-executor.js'
 import { processJob, processSources, ringDelta, renderJobRead } from './bash-render.js'
 
+/** The stable model-facing name shared by the eager slot and the real module. */
+export const NATIVE_TOOL_NAME = 'gitbash_native'
+
+/** The model-facing description shared by the eager slot and the real module. */
+export const NATIVE_TOOL_DESCRIPTION = "Choose this tool BEFORE execution for a Windows-native .exe that needs exact literal argv (for example /all or /c without MSYS conversion) or explicitly known independent stdout/stderr encodings. Use an offered shell tool instead for pipelines, redirection, globbing, shell expansion or POSIX scripts; this is direct typed argv through the host managed executor, not shell source. Supply an absolute executable, mark literal arguments unchanged and path arguments explicitly; do not put a whole shell command into argv. Prefer a producer UTF-8 option; declare gbk/utf16le only when known, raw for unknown or mixed bytes. In PTC call this offered SDK binding from inside run_code, not as a direct model tool call. Only actual danger-full-access standing policy is supported; missing/restricted policy is rejected before execution. A policy/access denial is a stop condition, never permission for another-tool retry. Decoding/storage failure preserves producer exit: never blindly repeat side effects. No user env, implicit scripts, .cmd/.bat wrappers, path guessing or encoding auto-detection. Known interpreters require explicit entrypoint:interpreter; common CRT/Node argv is supported, arbitrary interpreter quoting is not guaranteed."
+
 const typedPath = () => ({ type: 'object', additionalProperties: false, properties: {
   kind: { type: 'string', const: 'path', required: true }, value: { type: 'string', required: true },
 } })
@@ -93,6 +99,29 @@ export const NATIVE_OUTPUT_SCHEMA = {
   ],
 }
 
+/** The present-call card shared by the eager slot and the real module. */
+export function presentNativeCall(args) {
+  return { card: 'generic', title: args.description, kind: 'execute', content: [{ type: 'text', text: args.executable.value }] }
+}
+
+/**
+ * Build one full tool definition through the HOST's own defineTool. Both the
+ * eager slot (agent/created) and the real native module use this exact
+ * builder, so their name/description/parameters/output stay byte-identical.
+ * @param {{ toolsModule: object, background: boolean, execute: Function }} options
+ */
+export function nativeToolDefinition({ toolsModule, background = false, execute }) {
+  if (typeof toolsModule?.defineTool !== 'function') throw new Error('gitbash_native: host defineTool capability unavailable')
+  return toolsModule.defineTool({
+    name: NATIVE_TOOL_NAME,
+    description: NATIVE_TOOL_DESCRIPTION,
+    parameters: nativeParameters({ background, promote: background }),
+    output: { schema: NATIVE_OUTPUT_SCHEMA, render: (_args, value) => [{ type: 'text', text: renderNativeResult(value) }], presentationMeta: (_args, value) => ({ cwd: value.cwd }) },
+    execute,
+    presentCall: presentNativeCall,
+  })
+}
+
 export function renderNativeResult(value) {
   if (value.kind !== 'foreground') return `Native command ${value.kind === 'promoted' ? 'continues after the wait deadline' : 'admitted to managed Jobs'}; job id: ${value.jobId}. Collect with job_output, stop with job_kill.\n${value.output ?? ''}\n[requested encoding: ${JSON.stringify(value.encoding)}; final producer/output facts arrive in job output]`
   const text = value.stdout.text + (value.stderr.text ? `\n[stderr]\n${value.stderr.text}` : '')
@@ -112,8 +141,11 @@ export function createNativeToolModule(deps) {
       // follows the job registry's presence alone; the user-level kill switch
       // is experimentalNative (the official tool-bash keeps its own live
       // enableRunInBackground/promoteOnTimeout on its row).
-      const definition = jobs => {
-        const background = jobs !== undefined
+      const definition = ({ jobs, slot }) => {
+        // In eager-slot mode the schema was fixed at agent/created; the real
+        // module must keep the exact same background surface instead of
+        // re-deriving it from a jobs service that may have arrived later.
+        const background = slot ? slot.background : jobs !== undefined
         const promote = background
         const startJob = (request, exec) => {
           let proc
@@ -178,16 +210,29 @@ export function createNativeToolModule(deps) {
           const proc = await executor.execute(request, exec)
           return { kind: 'foreground', ...await proc.result() }
         }
-        return deps.toolsModule.defineTool({ name: 'gitbash_native',
-          description: 'Choose this tool BEFORE execution for a Windows-native .exe that needs exact literal argv (for example /all or /c without MSYS conversion) or explicitly known independent stdout/stderr encodings. Use an offered shell tool instead for pipelines, redirection, globbing, shell expansion or POSIX scripts; this is direct typed argv through the host managed executor, not shell source. Supply an absolute executable, mark literal arguments unchanged and path arguments explicitly; do not put a whole shell command into argv. Prefer a producer UTF-8 option; declare gbk/utf16le only when known, raw for unknown or mixed bytes. In PTC call this offered SDK binding from inside run_code, not as a direct model tool call. Only actual danger-full-access standing policy is supported; missing/restricted policy is rejected before execution. A policy/access denial is a stop condition, never permission for another-tool retry. Decoding/storage failure preserves producer exit: never blindly repeat side effects. No user env, implicit scripts, .cmd/.bat wrappers, path guessing or encoding auto-detection. Known interpreters require explicit entrypoint:interpreter; common CRT/Node argv is supported, arbitrary interpreter quoting is not guaranteed.',
-          parameters: nativeParameters({ background, promote }),
-          output: { schema: NATIVE_OUTPUT_SCHEMA, render: (_args, value) => [{ type: 'text', text: renderNativeResult(value) }], presentationMeta: (_args, value) => ({ cwd: value.cwd }) },
-          execute,
-          presentCall: args => ({ card: 'generic', title: args.description, kind: 'execute', content: [{ type: 'text', text: args.executable.value }] }),
+        return nativeToolDefinition({ toolsModule: deps.toolsModule, background, execute })
+      }
+      const slot = deps.slot
+      if (slot) {
+        // EAGER SLOT (issue #38): the stable registration already exists from
+        // agent/created. Never register a second definition; install the real
+        // executor behind the same name/schema/description so the model-facing
+        // tool face does not change between steps.
+        const install = jobs => {
+          if (slot.installed || slot.disposed) return
+          slot.install(definition({ jobs, slot }))
+        }
+        let currentJobs
+        try { currentJobs = ctx.get?.('jobs') } catch { currentJobs = undefined }
+        if (currentJobs !== undefined) install(currentJobs)
+        ctx.inject(['jobs'], jobCtx => {
+          currentJobs = jobCtx.jobs
+          install(currentJobs)
         })
+        return
       }
       let currentJobs
-      const refresh = registerExperimentalTool(ctx, () => definition(currentJobs), deps.experimentalEnabled, { scope: deps.scope, log: deps.log })
+      const refresh = registerExperimentalTool(ctx, () => definition({ jobs: currentJobs }), deps.experimentalEnabled, { scope: deps.scope, log: deps.log })
       ctx.inject(['jobs'], jobCtx => {
         currentJobs = jobCtx.jobs
         refresh()

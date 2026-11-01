@@ -437,6 +437,12 @@ PTC/创造及用户自建模式一律覆盖。
 provider，已有同名工具不覆盖。旧 Core 缺少公开 native executor/OutputCollector 能力时不
 注册 native 工具，bash/path 不受影响；minimal 的持久终端不通过此补位通道。
 
+`gitbash_native` 从 `agent/created` 起就同步注册稳定槽位：挂载期预解析宿主的 `defineTool`
+与 native 能力，槽位与真实 executor 使用同一个 `nativeToolDefinition()` 构造器；真实模块
+到达后只在同一条注册下换实现，不做 remove/add，所以每一步的工具名、描述与 schema 一致
+（issue #38）。宿主没有 jobs 或预检失败时不宣告槽位，保留旧的晚挂载路径；`experimentalNative`
+关闭、agent 销毁或工具面不再需要时注销。
+
 - **`gitbash_to_native_path`**：`{ msys_path: 完整值 } → { native_path }`，复用共享且新鲜的
   挂载事实；Windows/cwd-relative 值可原样，未知 MSYS 根/缺 mount、URL、空值/NUL 显式拒绝。
   独立于自动方言与 `codePaths` 开关，不猜程序字符串用途、不授文件权限。

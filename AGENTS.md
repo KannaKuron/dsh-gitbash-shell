@@ -637,6 +637,24 @@
        workingDirectory。服务存在时 ensure 错误不得吞掉，只有缺服务才走旧接缝。
        companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，knownNames 可用时包含隐藏工具，旧宿主回退 schemas；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
 
+4m. **native 工具首步稳定(v0.47.1,issue #38)**:任何模型可见工具都不允许在 `agent/created`
+     之后才异步注册——step 1 少一个、step 2 补上会重写 provider 前缀,把整段会话缓存打掉
+     (issue #38 实测 215/215 次 removal 在 step1、229/229 次 addition 在 step2,额外约
+     79.4M 未缓存 tokens)。现行契约:
+     - win32 挂载前预解析 `@deepseek-ai/dsh-tools` 的 `defineTool`、`@deepseek-ai/dsh-bash-local`
+       的 `LocalBashExecutor`、`@deepseek-ai/dsh-subprocess-local/output` 的 `OutputCollector`;
+       缺任何一项就不宣告槽位(不留幽灵工具),真实模块继续走旧晚挂载路径。
+     - `agent/created` 在 `reconcile` 内同步调用 `agent.ctx.tools.register(definition)`;槽位
+       schema **固定** `run_in_background`(真实模块用 `slot.background` 而不是到达时的 jobs
+       状态重新推导)。槽位与真实 executor 必须共用 `src/native-tool.js` 的
+       `nativeToolDefinition()`,name/description/parameters/output/presentCall 逐字节一致。
+     - 真实模块只允许 `slot.install(definition)` 换实现,绝不二次 register;槽位在
+       `experimentalNative` 关闭、agent dispose、face 不再需要 bash 时 `dispose`。调用早于
+       真实 executor 时等待就绪(15s 上限 + 可取消),不把未初始化调用当成功。
+     - 回归:smoke 的 #38 源码断言 + native-executor 的定义一致性;真实 ToolRuntime 预览
+       `tests/runtime-preview.mjs` 的 eager-slot 用例需要已安装宿主(host-loader),不在
+       `npm test` 内。本机无 Windows 时不得声称真机通过,CHANGELOG 必须写明该边界。
+
 ## 上游追踪纪律:dsh 终端面与 dsh-ops(2026-10-19 用户要求)
 
 本插件的三个接管面都锚在**别人的包结构**上,上游任何一侧发新版都必须主动核对并做出适配决断,

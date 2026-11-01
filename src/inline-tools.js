@@ -261,7 +261,7 @@ export function mountInlineTools(ctx, deps) {
   const controller = new AbortController()
   let closed = false
   const isLive = (agent, state) => !closed && tracked.get(agent) === state && !state.controller.signal.aborted
-  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, controller: new AbortController() })
+  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, native: undefined, nativeFailed: false, controller: new AbortController() })
   const experimentalEnabled = () => deps.experimentalEnabled?.() !== false
   // Loader imports cannot be cancelled, but no continuation may outlive its
   // owner. Join our cancelled continuations without waiting on a stuck loader.
@@ -341,6 +341,7 @@ export function mountInlineTools(ctx, deps) {
               localBashModule, createScope, translateMsysPath: deps.translatePath,
               createNativeOutputAdapter, outputOptions: { OutputCollector: outputModule?.OutputCollector },
               createArtifactDirectory: deps.createArtifactDirectory, experimentalEnabled, log, scope,
+              slot: tracked.get(scope)?.native,
             }) })
           } catch (error) {
             if (controller.signal.aborted) throw error
@@ -409,6 +410,9 @@ export function mountInlineTools(ctx, deps) {
           if (!isLive(agent, state)) return
           await extraFiber?.dispose()
           log(`${extra.name} activation failed; bash remains available: ${error?.message ?? error}`)
+          // A failed native mount must not leave the eager slot behind: the
+          // tool would be visible but unusable for the agent's whole life.
+          if (extra.name === 'gitbash_native') failNativeSlot(state, error)
         }
       }
       // v0.41.0 (owner decision): while OUR bash owns the session, the ops
@@ -434,13 +438,147 @@ export function mountInlineTools(ctx, deps) {
       retained = true
       log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {
-      if (isLive(agent, state)) log(`own bash tool activation failed for this agent: ${error?.message ?? error}`)
+      if (isLive(agent, state)) {
+        log(`own bash tool activation failed for this agent: ${error?.message ?? error}`)
+        // The eager slot advertised the native tool before this mount. If the
+        // mount itself failed, withdraw it instead of keeping a ghost.
+        failNativeSlot(state, error)
+      }
     } finally {
       if (scope && !retained) {
         if (state.scope === scope) state.scope = undefined
         await scope.dispose()
       }
     }
+  }
+
+  /**
+   * EAGER STABLE SLOT (issue #38). The native tool used to be registered only
+   * after an async module mount, so step 1 of every turn saw one tool fewer
+   * than step 2 and the provider prompt prefix was invalidated. This registers
+   * the real host definition synchronously at agent/created; the real native
+   * module later installs its executor UNDER THE SAME REGISTRATION. The name,
+   * schema and description are produced by the same nativeToolDefinition()
+   * builder in both places, so the model-facing face never changes.
+   *
+   * Only created when the host already exposes the jobs service: the
+   * background surface must be fixed before step 1, and re-registering later
+   * is exactly the churn this fixes. If native capability is missing we
+   * advertise nothing.
+   */
+  const NATIVE_SLOT_WAIT_MS = 15000
+  const waitForNativeSlot = (slot, signal) => new Promise((resolve, reject) => {
+    if (slot.impl) return resolve()
+    if (slot.error) return reject(slot.error)
+    if (signal?.aborted) return reject(signal.reason ?? new Error('tool call aborted'))
+    let settled = false
+    let timer
+    const onAbort = () => fail(signal.reason ?? new Error('tool call aborted'))
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener?.('abort', onAbort)
+    }
+    const fail = (error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    timer = setTimeout(() => fail(new Error('gitbash_native is still initializing; retry after this step')), NATIVE_SLOT_WAIT_MS)
+    timer.unref?.()
+    signal?.addEventListener?.('abort', onAbort, { once: true })
+    slot.ready.then(() => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve()
+    }, fail)
+  })
+
+  const ensureNativeSlot = (agent, state) => {
+    if (state.native || state.nativeFailed || !deps.nativeContract || !experimentalEnabled()) return
+    let jobs
+    try { jobs = agent.ctx?.get?.('jobs') } catch { jobs = undefined }
+    if (!jobs) return
+    // A foreign or earlier owner of the name wins: never shadow a tool we did
+    // not create.
+    if (faceNames(agent).includes('gitbash_native')) return
+    let resolveReady
+    let rejectReady
+    const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject })
+    ready.catch(() => { /* a slot nobody calls must not become an unhandled rejection */ })
+    let slot
+    const execute = async (args, exec) => {
+      if (slot.error) throw slot.error
+      if (!slot.impl) await waitForNativeSlot(slot, exec?.signal)
+      if (slot.error) throw slot.error
+      if (!slot.impl) throw new Error('gitbash_native is not ready in this session')
+      return slot.impl(args, exec)
+    }
+    let definition
+    try {
+      definition = deps.nativeContract({ background: true, execute })
+    } catch (error) {
+      state.nativeFailed = true
+      log('gitbash_native eager slot creation failed; the legacy late path stays in use: ' + (error?.message ?? error))
+      return
+    }
+    let disposer
+    try {
+      disposer = agent.ctx.tools.register(definition)
+      if (typeof disposer !== 'function') throw new Error('tools.register returned no disposer')
+    } catch (error) {
+      state.nativeFailed = true
+      log('gitbash_native eager slot registration failed; the legacy late path stays in use: ' + (error?.message ?? error))
+      return
+    }
+    slot = {
+      background: true, impl: null, error: null, installed: false, disposed: false,
+      ready,
+      install(realDefinition) {
+        if (slot.disposed || slot.installed) return
+        const realExecute = realDefinition?.execute
+        if (typeof realExecute !== 'function') {
+          slot.fail(new Error('gitbash_native real executor definition is invalid'))
+          return
+        }
+        slot.impl = realExecute
+        slot.installed = true
+        resolveReady()
+      },
+      fail(error) {
+        if (slot.disposed || slot.error) return
+        slot.error = error instanceof Error ? error : new Error(String(error))
+        rejectReady(slot.error)
+      },
+      dispose() {
+        if (slot.disposed) return
+        slot.disposed = true
+        try { disposer() } catch { /* registration already gone */ }
+        rejectReady(new Error('gitbash_native was withdrawn from this session'))
+      },
+    }
+    state.native = slot
+    log('gitbash_native eager slot registered for this agent (stable from step 1; the real executor installs behind it)')
+  }
+
+  const disposeNativeSlot = (state) => {
+    const slot = state.native
+    if (!slot) return
+    state.native = undefined
+    slot.dispose()
+  }
+
+  /** A broken native mount must never leave a ghost tool in the face. */
+  const failNativeSlot = (state, reason) => {
+    const slot = state.native
+    if (!slot) return
+    state.native = undefined
+    state.nativeFailed = true
+    const error = reason instanceof Error ? reason : new Error(String(reason))
+    slot.fail(error)
+    slot.dispose()
+    log('gitbash_native eager slot withdrawn: ' + error.message)
   }
 
   const startBash = (agent, state) => {
@@ -517,6 +655,13 @@ export function mountInlineTools(ctx, deps) {
       void Promise.resolve(withdrawn.dispose()).catch((error) => log(`own bash withdrawal failed: ${error?.message ?? error}`))
       log('own bash tool withdrawn for this agent (the tool face carries no pwsh: a preset mask owns the tool set)')
     }
+    // Eager native slot: create it while the agent is still settling, so the
+    // tool exists before step 1 assembles its face. Once created it is kept
+    // stable for the agent's lifetime; a face that no longer needs our bash
+    // withdraws it.
+    const nativeWanted = experimentalEnabled() && (needs.needsBash || state.scope !== undefined || state.pending !== undefined)
+    if (!nativeWanted) disposeNativeSlot(state)
+    else if (!state.native && !state.nativeFailed) ensureNativeSlot(agent, state)
     if (needs.needsBash && !state.scope) {
       startBash(agent, state)
     }
@@ -547,6 +692,7 @@ export function mountInlineTools(ctx, deps) {
     if (!state) return
     tracked.delete(agent)
     state.controller.abort(new Error('inline bash agent disposed'))
+    disposeNativeSlot(state)
     if (state.timer) clearTimeout(state.timer)
     if (state.denyPwsh) { state.denyPwsh(); state.denyPwsh = undefined }
     if (state.denyOpsShell) { state.denyOpsShell(); state.denyOpsShell = undefined }

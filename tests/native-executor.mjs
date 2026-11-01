@@ -1,11 +1,29 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { nativePath, parseNativeRequest, requireNativePolicy, createNativeExecutor } from '../src/native-executor.js'
-import { nativeParameters, NATIVE_OUTPUT_SCHEMA } from '../src/native-tool.js'
+import { nativeParameters, nativeToolDefinition, presentNativeCall, NATIVE_OUTPUT_SCHEMA, NATIVE_TOOL_DESCRIPTION } from '../src/native-tool.js'
 
 const translateMsysPath = value => value.startsWith('/c/') ? `C:/${value.slice(3)}` : value === '/tmp' ? 'C:/Native Sentinel Temp' : value
 const options = { translateMsysPath, platform: 'win32', sessionCwd: 'C:/Native Sentinel' }
 const request = patch => ({ description: 'Inspect fixed sentinel arguments', executable: { kind: 'path', value: 'C:/Native Sentinel/producer.exe' }, argv: [], ...patch })
+
+test('native definition: the eager slot and the real module build the exact same face', () => {
+  const built = nativeToolDefinition({
+    toolsModule: { defineTool: definition => definition },
+    background: true,
+    execute: async () => ({ kind: 'foreground' }),
+  })
+  assert.equal(built.name, 'gitbash_native')
+  assert.equal(built.description, NATIVE_TOOL_DESCRIPTION)
+  assert.deepEqual(built.parameters, nativeParameters({ background: true, promote: true }))
+  assert.equal(built.output.schema, NATIVE_OUTPUT_SCHEMA)
+  assert.equal(built.presentCall, presentNativeCall)
+  const card = built.presentCall({ description: 'Inspect sentinel', executable: { value: 'C:/sentinel.exe' } })
+  assert.deepEqual(card, { card: 'generic', title: 'Inspect sentinel', kind: 'execute', content: [{ type: 'text', text: 'C:/sentinel.exe' }] })
+  // No host defineTool means no advertised slot at all (fail closed, never a
+  // hand-built approximation of the host contract).
+  assert.throws(() => nativeToolDefinition({ toolsModule: {}, background: true, execute() {} }), /defineTool/)
+})
 
 test('native typed argv: slash switches, empty, quotes, Unicode and meta stay literal', () => {
   const values = ['/all', '/c', '/c/FILE', '', '"quoted"', 'tail\\', '中文😀', '&|<>^%NAME%!x!', 'https://sentinel.invalid/a']

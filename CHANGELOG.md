@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.47.1 — 2026-11-01
+
+### fix:稳定 gitbash_native 的工具面(issue #38);接受自定义 Git for Windows 版本指纹(issue #39)
+
+- **#38 背景**:native 工具此前由异步模块挂载完成之后才注册。Windows 0.43.2 + dsh 0.2.0-rc.2 的日志里,215/215 次 tool-removal 都发生在 step 1,229/229 次 tool-addition 都发生在 step 2;255 个紧随该抖动的请求缓存命中率低于 50%,额外未缓存输入约 79.4M tokens(约 40M/天,占该机 745 个会话全部未缓存输入的 6.1%)。
+- **#38 修复**:win32 挂载时先预解析宿主 `@deepseek-ai/dsh-tools` 的 `defineTool` 与 native 能力;在 `agent/created` 同步用**同一个** `nativeToolDefinition()` 注册完整的 `gitbash_native` 槽位(schema 固定 background/promotion),真实 executor 到位后只 `slot.install` 替换实现,既不二次注册也不 remove/add。宿主没有 jobs、预检失败或 native 包缺失时**不宣告槽位**(不留幽灵工具),`experimentalNative` 关闭、agent 销毁或工具面不再需要时注销。
+- **#38 等待语义**:槽位被调用而真实 executor 尚未就绪时等待(15s 上限,可被调用 signal 取消),不会把一个未初始化的调用静默当成成功。
+- **#39**:Git for Windows 指纹从 `.windows.` 放宽为 `.windows` + `/\.windows(?:[.-]|$)/`;正常 `2.54.0.windows.1` 与自定义 `2026.01.12.windows-dceep` 都接受,纯 `2.43.0` 和 `.windowsfoo` 仍拒绝;布局、`cmd/git.exe`/`usr/bin/bash.exe` 与 `uname` 的 MINGW 双重校验不变。
+- **测试(345 项:344 pass + 1 平台 skip)**:新增 eager-slot 运行时预览(真实 ToolRuntime:agent/created 同步出现、真实模块到达后 native 条目不变、关闭开关后撤槽)、native 定义一致性、#38 源码回归、#39 指纹矩阵;完整 `npm test` 通过。
+- **边界**:本轮在 macOS 开发,没有 Windows 真机;Windows 端仍需按 issue #38 的场景复验 step 1/step 2 工具数一致与 `gitbash_native` 可调用,结果补进本条目。
+
 ## [0.47.0] — 2026-10-30
 
 ### feat:适配 dsh 0.2.2-alpha.2(下限抬到 alpha.2,清旧宿主回退)

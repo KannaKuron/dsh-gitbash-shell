@@ -3219,6 +3219,29 @@ test('inline tools: the three issue-#18 root causes stay fixed (route B forms)',
   assert.doesNotMatch(toolsSource, /tools\(ctx\)\?\.restrict/)
 })
 
+
+test('native tool: the eager slot keeps the tool face stable from agent creation (issue #38)', () => {
+  const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const toolsSource = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
+  const nativeSource = readFileSync(new URL('../src/native-tool.js', import.meta.url), 'utf8')
+  // The host half resolves defineTool before mounting inline tools, so the
+  // slot can be announced synchronously at agent/created.
+  assert.match(hostSource, /nativeContract/)
+  assert.match(hostSource, /nativeModule\.nativeToolDefinition/)
+  assert.match(hostSource, /nativeContract,/)
+  // The eager slot must be an agent-scoped registration, and the real module
+  // must install behind it rather than register a second time.
+  assert.match(toolsSource, /const ensureNativeSlot = \(agent, state\) =>/)
+  assert.match(toolsSource, /agent\.ctx\.tools\.register\(definition\)/)
+  assert.match(toolsSource, /slot: tracked\.get\(scope\)\?\.native/)
+  assert.doesNotMatch(toolsSource, /tracked\.get\(agent\)\?\.native/, 'the create callback has no outer agent binding; use its scope argument')
+  assert.match(toolsSource, /const nativeWanted = experimentalEnabled\(\)/)
+  assert.match(toolsSource, /const failNativeSlot = \(state, reason\) =>/)
+  assert.match(nativeSource, /export function nativeToolDefinition\(/)
+  assert.match(nativeSource, /export const NATIVE_TOOL_NAME = 'gitbash_native'/)
+  assert.match(nativeSource, /slot\.install\(definition\(\{ jobs, slot \}\)\)/)
+})
+
 test('inline tools: resolveHostModule tries the HOST loader before a plain require (v0.38.1 channel, v0.39 shape)', async () => {
   const { resolveHostModule } = await import('../src/inline-tools.js')
   const officialMod = { marker: 'official' }

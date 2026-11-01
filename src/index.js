@@ -2955,6 +2955,28 @@ export async function apply(ctx, config = {}) {
   // Full Windows variants keep the same pwsh-only face as official presets,
   // so they receive this same private-executor patch. Minimal stays persistent.
   if (process.platform === 'win32') {
+    // Eager native slot (issue #38): resolve the host builder and the native
+    // capability BEFORE any agent can exist, so agent/created can register a
+    // stable gitbash_native definition synchronously. This is deliberately a
+    // mount-time preflight: if the public native packages are unavailable we
+    // advertise no slot at all instead of leaving a ghost tool behind.
+    let nativeContract
+    try {
+      const [toolsModule, localBashModule, outputModule, nativeModule] = await Promise.all([
+        resolveHostModule(ctx, '@deepseek-ai/dsh-tools'),
+        resolveHostModule(ctx, '@deepseek-ai/dsh-bash-local'),
+        resolveHostModule(ctx, '@deepseek-ai/dsh-subprocess-local/output'),
+        import('./native-tool.js'),
+      ])
+      if (typeof toolsModule?.defineTool === 'function'
+        && typeof localBashModule?.LocalBashExecutor === 'function'
+        && typeof outputModule?.OutputCollector === 'function'
+        && typeof nativeModule?.nativeToolDefinition === 'function') {
+        nativeContract = ({ background, execute }) => nativeModule.nativeToolDefinition({ toolsModule, background, execute })
+      }
+    } catch (error) {
+      console.log(TAG + ' eager native slot unavailable; gitbash_native stays on the legacy late path: ' + (error?.message ?? error))
+    }
     try {
       mountInlineTools(ctx, {
         tools: (c) => { try { return c.get('tools') } catch { return undefined } },
@@ -2976,6 +2998,7 @@ export async function apply(ctx, config = {}) {
         },
         pwshEnabled: () => liveSettings.pwshTool() === true,
         experimentalEnabled: () => liveSettings.experimentalNative(),
+        nativeContract,
         // Explicit conversion does not rewrite source or change auto-dialect
         // settings. The same lazy, verified mount facts are used each call.
         translatePath: (value) => translateMsysPath(value, buildTranslateEnv(readConfiguredBashPath())),

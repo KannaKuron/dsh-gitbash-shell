@@ -33,7 +33,7 @@ function createScope(parent) {
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
 
-async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true, workingDirectory = { ensure: async () => process.cwd() }, sessionCwd, policyWorkspaceRoot = process.cwd() } = {}) {
+async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true, nativeContract, workingDirectory = { ensure: async () => process.cwd() }, sessionCwd, policyWorkspaceRoot = process.cwd() } = {}) {
   const root = new Context()
   const cleanups = []
   const logs = []
@@ -63,7 +63,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     await fiber
     return fiber
   }
-  for (const module of [SystemPrompt, ToolRuntime, shellEnv]) await mount(module, module === ToolRuntime ? { mode: ptc ? 'ptc' : 'native' } : undefined)
+  for (const module of [SystemPrompt, ToolRuntime, shellEnv]) await mount(module, undefined)
   let agentParent
   await mount({ inject: ['tools'], apply(ctx) {
     agentParent = ctx
@@ -79,6 +79,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     tools: ctx => ctx.get('tools'), agents: () => ({ list: () => [agent] }),
     pwshEnabled: () => pwshVisible,
     experimentalEnabled: () => experimental,
+    ...(nativeContract ? { nativeContract } : {}),
     ...(explicitTools ? {
       translatePath: value => dialectHelpers.translateMsysPath(value, { home: 'D:/compat-home', tmpDir: 'D:/compat-temp', gitRoot: 'C:/Program Files/Git' }),
       createArtifactDirectory() { throw new Error('registration/refusal fixture must not create artifacts') },
@@ -588,6 +589,45 @@ for (const layer of ['global', 'agent']) for (const name of ['gitbash_to_native_
     assert.deepEqual(f.names(), ['pwsh']);
   });
 }
+
+test('runtime preview: the eager native slot fixes the tool face from agent creation (issue #38)', { timeout: 10000 }, async t => {
+  const calls = []
+  const nativeContract = ({ background, execute }) => {
+    calls.push({ background, execute })
+    return defineTool({
+      name: 'gitbash_native',
+      description: 'eager slot fixture',
+      parameters: {},
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
+      execute,
+    })
+  }
+  const f = await fixture(t, { explicitTools: true, pauseModules: true, nativeContract })
+  await bounded(f.entered.promise, 'pause before the native module mount')
+  // Simulate the host service being ready at agent/created (the real host
+  // always has jobs). The slot must be registered RIGHT HERE, synchronously.
+  const removeJobs = f.root.provide('jobs', {})
+  t.after(() => removeJobs())
+  f.root.emit('agent/created', { agent: f.agent })
+  const face = () => f.tools.schemas(f.agent).map(schema => ({ name: schema.name, description: schema.description, parameters: schema.parameters }))
+  const initial = face()
+  assert.ok(initial.some(tool => tool.name === 'gitbash_native'), JSON.stringify({ names: initial.map(tool => tool.name), logs: f.logs }))
+  assert.ok(!initial.some(tool => tool.name === 'bash'), 'the real mount is still paused, so only the slot can explain the native entry')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].background, true)
+  // Let the real native module mount. It installs behind the SAME
+  // registration: no removal/addition, so the provider prefix is unchanged.
+  f.release.resolve()
+  await bounded(f.activated.promise, 'bash activation after the eager slot')
+  const nativeFace = () => face().filter(tool => tool.name === 'gitbash_native')
+  assert.equal(nativeFace().length, 1)
+  assert.deepEqual(nativeFace(), initial.filter(tool => tool.name === 'gitbash_native'), 'the native entry must not be removed/re-added when the real executor arrives: ' + JSON.stringify(f.logs))
+  // Withdrawing the capability must remove the slot rather than leave a ghost.
+  f.deps.nativeContract = undefined
+  f.setExperimental(false)
+  assert.ok(!f.names().includes('gitbash_native'))
+  await f.patch.dispose()
+})
 
 test('runtime preview: native Jobs reload preserves a foreign owner without blocking its scope', { timeout: 10000 }, async t => {
   const f = await fixture(t, { explicitTools: true, experimental: false });
