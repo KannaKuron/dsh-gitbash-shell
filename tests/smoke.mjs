@@ -2099,10 +2099,21 @@ test('bash resolution: ONLY Git for Windows counts — WSL, MSYS2, Cygwin and no
   }
   assert.equal(resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], uname: () => 'MINGW64_NT-10.0-22631' }) }).ok, true)
   assert.equal(resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], uname: () => 'MINGW32_NT-10.0' }) }).ok, true)
-  // the git version fingerprint must say `.windows.`
+  // the git version fingerprint must carry `.windows`; custom builds may replace
+  // the trailing `.1` with a hyphenated suffix (issue #39)
+  for (const version of ['git version 2.54.0.windows.1', 'git version 2026.01.12.windows-dceep']) {
+    assert.equal(
+      resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], version: () => version }) }).ok,
+      true,
+      'Git for Windows version: ' + version,
+    )
+  }
   const notWindowsGit = resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], version: () => 'git version 2.43.0' }) })
   assert.equal(notWindowsGit.ok, false)
   assert.equal(notWindowsGit.tried[0].code, 'not-windows-git')
+  const lookalike = resolveGitBash({ configured: '', io: fakeIo(gitTree('Q:/Git'), { defaults: ['Q:/Git/bin/bash.exe'], version: () => 'git version 2.54.0.windowsfoo' }) })
+  assert.equal(lookalike.ok, false, 'a bare .windows prefix without a separator is not a Git for Windows marker')
+  assert.equal(lookalike.tried[0].code, 'not-windows-git')
   // …and the Git layout itself must be complete
   for (const missing of ['Q:/Git/usr/bin/bash.exe', 'Q:/Git/cmd/git.exe']) {
     const io = fakeIo(gitTree('Q:/Git').filter((path) => path !== missing), { defaults: ['Q:/Git/bin/bash.exe'] })

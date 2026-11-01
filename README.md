@@ -242,7 +242,7 @@ dsh-ptc-cordis-preset 报告它的 `PTC 创造模式` 已经是 Git Bash 版。�
 
 > **只认 Git for Windows 的 bash。** WSL(`C:\Windows\System32\bash.exe`,永远在 PATH 且排序靠前)、
 > WindowsApps 别名、MSYS2、Cygwin 的 bash **一律拒绝**;候选还要通过 Git 布局(`usr/bin` + `cmd\git.exe` +
-> `mingw64`)、`git --version` 的 `.windows.` 指纹,以及**实跑 `bash -c "uname -s"` 必须是 `MINGW*_NT-*`**。
+> `mingw64`)、`git --version` 的 `.windows` 指纹(`.windows.1` 与自定义构建的 `-` 后缀都接受),以及**实跑 `bash -c "uname -s"` 必须是 `MINGW*_NT-*`**。
 >
 > **本插件不会回退到 PowerShell / cmd / 任何其它 shell。** 找不到 Git Bash 就是找不到:设计如此 ——
 > 装了本插件就是要用 Git Bash,偷偷换一个能跑的顶上是错的。失败时弹窗给两件事:在弹窗里**直接填 bashPath**

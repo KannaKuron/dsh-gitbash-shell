@@ -314,7 +314,7 @@
        宿主日志 —— reg 的 GBK 错误文本以乱码刷屏,v0.33.0 实测修正。)
      - **判据(缺一不可)**:黑名单(`system32`/`windowsapps`/`msys`/`cygwin`/`wsl`,归一化后逐段匹配,先于探测)
        → 形状 `<root>/bin/bash.exe` → `<root>/cmd/git.exe|bin/git.exe` → `<root>/usr/bin/bash.exe` →
-       (`<root>/mingw64` 或 `<root>/usr/bin/msys-2.0.dll`) → `<git> --version` 含 **`.windows.`** →
+       (`<root>/mingw64` 或 `<root>/usr/bin/msys-2.0.dll`) → `<git> --version` 含 **`.windows`**(`.windows.` 或自定义 `.windows-` 后缀)→
        **一票否决**:实跑候选 `bash -c "uname -s"` 必须是 `MINGW32_NT-*`/`MINGW64_NT-*`。
      - **失败的用户可见面**:① 启动日志打印完整报告(当前值/逐条探测/去哪改/下载链接/"不回退"声明);
        ② win32 注册 `GET /dsh-gitbash-shell/api/status`(可选服务 `ctx.inject(['webServer'])`,绝不硬 inject);

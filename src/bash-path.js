@@ -37,8 +37,10 @@ export const GIT_BASH_DOWNLOAD_URL = 'https://git-scm.com/download/win'
  */
 export const REJECTED_BASH_MARKERS = ['system32', 'windowsapps', 'msys', 'cygwin', 'wsl']
 
-/** `git version 2.54.0.windows.1` — only Git for Windows prints this. */
-export const GIT_WINDOWS_VERSION_MARKER = '.windows.'
+/** Git for Windows carries `.windows` (`2.54.0.windows.1`, `2026.01.12.windows-dceep`). */
+export const GIT_WINDOWS_VERSION_MARKER = '.windows'
+/** Accept the normal dotted suffix and the hyphenated custom-build suffix. */
+export const GIT_WINDOWS_VERSION_PATTERN = /\.windows(?:[.-]|$)/
 
 /** The final veto: what `bash -c 'uname -s'` must print on Git for Windows. */
 export const GIT_BASH_UNAME = /^MINGW(32|64)_NT-/
@@ -119,9 +121,10 @@ export function classifyBashCandidate(candidate, io) {
   if (!(io.exists(root + '/mingw64') || io.exists(root + '/usr/bin/msys-2.0.dll'))) {
     return { ok: false, code: 'no-mingw', detail: 'no mingw64/ and no usr/bin/msys-2.0.dll under ' + root }
   }
-  // Version fingerprint: only Git for Windows prints `.windows.`.
+  // Version fingerprint: Git for Windows prints `.windows`; custom builds may
+  // replace the trailing `.1` with e.g. `-dceep`, so the separator is not fixed.
   const version = io.gitVersion(gitExe)
-  if (typeof version !== 'string' || !version.includes(GIT_WINDOWS_VERSION_MARKER)) {
+  if (typeof version !== 'string' || !GIT_WINDOWS_VERSION_PATTERN.test(version)) {
     return { ok: false, code: 'not-windows-git', detail: (version === undefined ? 'git --version failed' : 'git --version = "' + version + '"') + ' (no "' + GIT_WINDOWS_VERSION_MARKER + '" marker)' }
   }
   // The final veto: run the candidate itself.

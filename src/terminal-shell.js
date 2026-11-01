@@ -34,7 +34,7 @@
  *      unresolvable path with `SubprocessExecutableNotFoundError` and has NO
  *      fallback, so a bad write would break the new-terminal button outright.
  *      The path written here is always the one `src/bash-path.js` verified
- *      (exists + Git-for-Windows layout + `.windows.` fingerprint + `uname -s`
+ *      (exists + Git-for-Windows layout + `.windows` fingerprint + `uname -s`
  *      = MINGW*_NT-*).
  *   3. NEVER claim success without reading the value back. `edit()` resolving
  *      is not proof the row carries our shell, so `adoptTerminalShell` re-reads
