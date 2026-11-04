@@ -8,18 +8,18 @@ export function registerExperimentalTool(ctx, definition, enabled, { scope, log 
     unregister = undefined
     if (enabled?.() === false) return
     const candidate = definition()
-    // Inspect AFTER removing only our registration. Include restricted names
-    // when the host exposes them: a hidden foreign tool is still another owner.
+    // Inspect AFTER removing only our registration. dsh 0.2.2 made
+    // ctx.tools.view private, so read the public listings instead. They omit
+    // names restricted away from this scope; a hidden foreign owner then
+    // surfaces through register()'s own conflict error below, which is why the
+    // inspection is a fast path rather than the ownership authority.
     let occupied
     try {
-      const view = typeof ctx.tools.view === 'function' ? ctx.tools.view(scope) : undefined
-      if (typeof view?.knownNames?.has === 'function') {
-        occupied = view.knownNames.has(candidate.name)
-      } else if (typeof ctx.tools.schemas === 'function') {
-        occupied = ctx.tools.schemas(scope).some(tool => tool.name === candidate.name)
-      } else {
-        throw new Error('tool ownership inspection unavailable')
-      }
+      const listed = typeof ctx.tools.schemas === 'function'
+        ? ctx.tools.schemas(scope)
+        : (typeof ctx.tools.definitions === 'function' ? ctx.tools.definitions(scope) : undefined)
+      if (listed === undefined) throw new Error('tool ownership inspection unavailable')
+      occupied = listed.some(tool => tool.name === candidate.name)
     } catch (error) {
       log(`${candidate.name} registration skipped: ${error?.message ?? error}`)
       return

@@ -241,6 +241,9 @@ test('runtime: a registration failure is logged without aborting another compani
   const listeners = [], cleanups = [], definitions = new Map(), logs = [];
   let enabled = false, fail = true;
   const ctx = { tools: {
+    // dsh 0.2.2 made tools.view private; touching it would be the regression
+    // this trap catches.
+    get view() { throw new Error('private tools.view must not be read') },
     schemas: () => [...definitions.keys()].map(name => ({ name })),
     register(definition) {
       if (fail && definition.name === 'path') throw new Error('tool path is already registered in this scope');
@@ -257,4 +260,20 @@ test('runtime: a registration failure is logged without aborting another compani
   assert.deepEqual([...definitions.keys()], ['path', 'native']);
   for (const cleanup of cleanups.reverse()) cleanup();
   assert.equal(definitions.size, 0);
+});
+
+test('runtime: ownership inspection falls back to the public definitions listing', () => {
+  const definitions = new Map();
+  const logs = [];
+  const ctx = { tools: {
+    get view() { throw new Error('private tools.view must not be read') },
+    definitions: () => [...definitions.values()],
+    register(definition) {
+      definitions.set(definition.name, definition);
+      return () => definitions.delete(definition.name);
+    },
+  }, effect: () => {}, on: () => {} };
+  registerExperimentalTool(ctx, () => ({ name: 'native' }), () => true, { log: message => logs.push(message) });
+  assert.deepEqual([...definitions.keys()], ['native']);
+  assert.ok(logs.some(line => line.includes('native registered')));
 });

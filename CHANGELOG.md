@@ -3,6 +3,14 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.48.3 — 2026-11-04
+
+**类型**:fix(移除对 dsh 0.2.2 私有 `ctx.tools.view` 的依赖)
+
+- **背景**:0.2.2-rc.1 把 `ToolsRuntime.view()` 改为 private,公开面是 `schemas()` / `definitions()` / `get()` / `executable()` / `resolve()`。本插件的实验工具注册在探测工具名占用时仍读 `ctx.tools.view(scope).knownNames`,虽然当前运行时属性还在、真机未报错,但已属于私有 API 依赖,后续版本可能直接移除。
+- **改动**:`src/experimental-tools.js` 改为优先用 `ctx.tools.schemas(scope)`、其次 `ctx.tools.definitions(scope)` 列举本作用域可见工具;两者都缺时才报 `tool ownership inspection unavailable`。列举不到被 scope 隐藏的 foreign owner 时,由 `ctx.tools.register()` 自己的冲突错误兜底,所以列举只是快速路径,不再承担所有权判定。
+- **测试**:`tests/runtime-regressions.mjs` 的注册用例给 `ctx.tools` 加了 `get view() { throw ... }` 陷阱,证明代码不再触碰私有属性;新增 `runtime: ownership inspection falls back to the public definitions listing` 覆盖 `definitions()` 回退。`npm test` 347 项(346 pass + 1 平台 skip);`node tests/align-official.mjs` 四份 preset SHA 与行对齐全部通过。
+
 ## v0.48.2 — 2026-11-04
 
 **类型**:fix(对齐 dsh 0.2.2-rc.1 的 preset 行与插件管理门控)
