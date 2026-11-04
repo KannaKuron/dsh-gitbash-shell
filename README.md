@@ -101,6 +101,12 @@ image-only `tool-fs` 与专属 compaction 组,alpha.4 给全工具 preset 加了
 (全工具三变体随探针取 `time-context`/`tool-schedule`/`tool-plugin-market`,极简
 变体只取 compaction 增量,与官方一致);旧宿主行为逐字节不变,**无需为此升级 dsh**。
 
+**dsh 0.2.2-rc.1 对齐(v0.48.2)**:官方全工具 preset 的 `tool-fs` 行新增
+`config: { applyPatch: false }`(新的 apply_patch 工具默认关闭),本插件的
+standard/cordis/ptc 变体同步补上,极简变体不加;插件管理/市场行按 rc.1 的门控
+重排(cordis 两者跟 `profileContext`,standard 仅 manager 跟 `profileContext`,
+ptc 两者恒禁用)。`dsh.compatibility.dshReleases` 已登记 0.2.2-rc.1。
+
 ## 安装(公开 npm 插件,推荐)
 
 npm: [dsh-gitbash-shell](https://www.npmjs.com/package/dsh-gitbash-shell)，

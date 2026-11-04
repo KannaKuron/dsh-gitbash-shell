@@ -126,7 +126,10 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
     ...(timeContext ? [{ id: 'time-context', name: '@deepseek-ai/dsh-time-context' }] : []),
     { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash', ...off(bashDisabled) },
     { id: 'tool-pwsh', name: '@deepseek-ai/dsh-tool-pwsh', ...off(pwshDisabled) },
-    { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
+    // 0.2.2-rc.1 ships every full-tool preset with the new apply_patch tool
+    // explicitly OFF beside edit. Keep the earlier generations byte-identical
+    // (the key did not exist there) and mirror the shipped default on 0.2.2.
+    { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs', ...(executorPlugin ? { config: { applyPatch: false } } : {}) },
     {
       id: 'tool-fs-search',
       name: '@deepseek-ai/dsh-tool-fs-search',
@@ -237,20 +240,20 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
   rows.push({
     id: 'tool-plugin-manager',
     name: '@deepseek-ai/dsh-plugin-manager/tools',
-    // The official rows: before 0.2.2-alpha.2 ptc/standard ship it disabled and
-    // cordis keeps it on (every web deployment has a profile context). From
-    // 0.2.2-alpha.2 on every preset enables it exactly when a profile context
-    // exists, so the probe decides for all three variants.
-    ...(executorPlugin ? off(!profileContext) : off(kind !== 'cordis')),
+    // Official rows: before 0.2.2-alpha.2 only cordis keeps it on. In
+    // 0.2.2-rc.1 cordis/standard gate it on the live profile context while
+    // ptc keeps it off outright.
+    ...(executorPlugin ? off(kind === 'ptc' ? true : !profileContext) : off(kind !== 'cordis')),
   })
   if (pluginMarket) {
     rows.push({
-      // The official 0.2.1-alpha.4 rows, following the manager's split on
-      // both architectures (alpha.4: disabled on standard/ptc, profile-gated
-      // on cordis; alpha.2 of 0.2.2: profile-gated everywhere).
+      // Official 0.2.1-alpha.4 added the market beside the manager. In
+      // 0.2.2-rc.1 cordis gates it on the profile context, standard keeps it
+      // off outright (the union side owns the market there) and ptc keeps it
+      // off too.
       id: 'tool-plugin-market',
       name: '@deepseek-ai/dsh-plugin-market/tools',
-      ...(executorPlugin ? off(!profileContext) : off(kind !== 'cordis')),
+      ...(executorPlugin ? off(kind !== 'cordis' ? true : !profileContext) : off(kind !== 'cordis')),
     })
   }
   return rows

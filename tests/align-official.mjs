@@ -21,24 +21,25 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { minimalPluginsFor, pluginsFor } from '../src/compositions.js'
 
-/** dsh-v0.2.1-alpha.5, packages/bundle/web-app/presets/*.patch.yml.
+/** dsh-v0.2.2-rc.1, packages/bundle/web-app/presets/*.patch.yml.
  * Across 0.2.1-alpha.3..alpha.5 (all row-id-stable): the schedule_* subagent
  * deny was DELETED (alpha.3 — official reminders reach subagents again), a
  * tool-plugin-market row joined every full preset right after
- * tool-plugin-manager (alpha.4 — disabled on standard/ptc,
- * `!!js !ctx.get('profileContext')` on cordis), and minimal gained an
- * image-read-only tool-fs row plus its own compaction group (no pruner row,
- * isolate carries compaction alone). Earlier, 0.2.1-alpha.2 removed the
+ * tool-plugin-manager (alpha.4), and minimal gained an image-read-only tool-fs
+ * row plus its own compaction group (no pruner row, isolate carries compaction
+ * alone). 0.2.2-rc.1 adds the explicit `config: { applyPatch: false }` to the
+ * full presets' tool-fs row (never minimal) and moves the manager/market gates
+ * onto the live profile context. Earlier, 0.2.1-alpha.2 removed the
  * retired persona suffix, the three disabled provider placeholder rows and
  * the subagent `backgroundMode: 'continuable'`, rephrased the plan-mode
  * first sentence, and added time-context + tool-schedule. The plugin mirrors
  * the era-specific shapes ONLY via the host probe (hostExtras in oursOf
  * below), so the alignment target is the full-probe row set against the
- * alpha.5 text. */
+ * rc.1 text (including the 0.2.2 executor architecture). */
 const PRESET_SHA256 = {
-  standard: '0d398d2a6872a73a106cb3bd19303ecccf1637e1fcad4d0bf9d8a72d2c2c68f5',
-  cordis: '01b0fc94fd49136b332254a7ae5658e43ffe646f7248047dba65d499cfc74596',
-  ptc: '9e355c947bf61c3d2fe9bf3214b386f83c0d99d37579ce22576d4b82cb6e1a2c',
+  standard: '3006cc3780cddaa7fb0089e5854e6bbef4409cf1d425930fd835226b95660afd',
+  cordis: '0e8f611644b3c36249808c4d7eb7a40d78006d04da6b55eef1a42797a5a34355',
+  ptc: 'ce02148b1fd575cc93071744180468cd305bdcd50dbfdd3b9b0605c5281d283d',
   minimal: 'a2a9ba1c9c392a45466708f18bc0aefbf300577f9b544dc06049f73a8a5b3267',
 }
 
@@ -143,7 +144,7 @@ function oursOf(variant, platform) {
   // audit. This pure composition module has no imports or runtime effects.
   const source = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8').replace(/^export /gm, '')
   const compose = new Function('process', source + '\nreturn pluginsFor')({ platform: platform === 'win32' ? 'win32' : 'linux' })
-  return flatten(compose({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true } }))
+  return flatten(compose({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, executorPlugin: true, profileContext: true } }))
 }
 
 const reported = []

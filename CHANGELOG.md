@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.48.2 — 2026-11-04
+
+**类型**:fix(对齐 dsh 0.2.2-rc.1 的 preset 行与插件管理门控)
+
+- **tool-fs 显式关闭 apply_patch**:0.2.2-rc.1 给全工具 preset 的 `tool-fs` 行加了 `config: { applyPatch: false }`(新的 apply_patch 工具默认不暴露)。本插件的 standard/cordis/ptc 三个全工具变体在 `executorPlugin` 代补上同一 config;0.2.2 之前的行集保持逐字节不变(当时没有这个键,Schemastery 对未知键也只是透传)。
+- **插件管理/市场门控按 rc.1 修正**:cordis 的 manager 与 market 都跟 `profileContext`;standard 的 manager 跟 `profileContext`、market 恒 disabled(市场由 union 侧承载);ptc 两者恒 disabled。旧代(`executorPlugin=false`)仍按 0.2.1 的固定分侧,不受影响。
+- **兼容登记**:`dsh.compatibility.dshReleases` 增加 `0.2.2-rc.1: compatible`;`tests/align-official.mjs` 的官方 baseline 注释、四份 preset SHA-256 与 `oursOf` 探针同步到 rc.1,对齐审计通过。
+- **验证**:`npm test` 346 项(345 pass + 1 平台 skip);`node --check` 与对齐审计通过。隔离实例(dsh 0.2.2-rc.1)中五个插件全部加载,Git Bash 面板与预设变体正常;macOS 上「未找到 Git Bash」提示符合设计。
+
 ## v0.48.1 — 2026-11-04
 
 ### chore:宿主半拆出 MSYS 路径方言模块

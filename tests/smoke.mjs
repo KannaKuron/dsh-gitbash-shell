@@ -1258,13 +1258,18 @@ test('compositions: alpha.2 executor shape and the older-host fallback', async (
   assert.deepEqual(row(legacy, 'tool-presentation'), { id: 'tool-presentation', name: '@deepseek-ai/dsh-agent-tool-presentation', config: { mode: 'ptc' } })
   assert.equal(row(legacy, 'tool-executor-ptc'), undefined)
 
-  // Manager/market: alpha.2 gates every variant on the live profile context;
-  // the older architecture keeps the shipped split (off on standard/ptc, on
-  // for cordis, which every web deployment backs with a profile context).
+  // 0.2.2-rc.1 manager/market: cordis gates both on the live profile
+  // context; standard gates the manager but keeps the market off outright;
+  // ptc keeps both off. The older architecture keeps the shipped split (off
+  // on standard/ptc, on for cordis, which every web deployment backs with a
+  // profile context).
   for (const kind of ['standard', 'ptc', 'cordis']) {
     const withProfile = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: true, pluginMarket: true } })
-    assert.equal(row(withProfile, 'tool-plugin-manager').disabled, undefined, kind)
-    assert.equal(row(withProfile, 'tool-plugin-market').disabled, undefined, kind)
+    const managerOn = kind === 'cordis' || kind === 'standard'
+    const marketOn = kind === 'cordis'
+    assert.equal(row(withProfile, 'tool-plugin-manager').disabled, managerOn ? undefined : true, kind)
+    assert.equal(row(withProfile, 'tool-plugin-market').disabled, marketOn ? undefined : true, kind)
+    assert.deepEqual(row(withProfile, 'tool-fs').config, { applyPatch: false }, kind + ' ships apply_patch off')
     const without = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: false, pluginMarket: true } })
     assert.equal(row(without, 'tool-plugin-manager').disabled, true, kind)
     assert.equal(row(without, 'tool-plugin-market').disabled, true, kind)
@@ -1272,6 +1277,7 @@ test('compositions: alpha.2 executor shape and the older-host fallback', async (
     const legacyWithProfile = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: false, profileContext: true, pluginMarket: true } })
     assert.equal(row(legacyWithProfile, 'tool-plugin-manager').disabled, kind === 'cordis' ? undefined : true, kind)
     assert.equal(row(legacyWithProfile, 'tool-plugin-market').disabled, kind === 'cordis' ? undefined : true, kind)
+    assert.equal(row(legacyWithProfile, 'tool-fs').config, undefined, kind + ' keeps the pre-0.2.2 tool-fs row byte-identical')
   }
 })
 
