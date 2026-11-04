@@ -256,10 +256,9 @@ export function bashResolutionReport(resolution) {
 
 
 /**
- * The explicit `bashPath` a SETTINGS row carries, read the era-aware way (the
- * exact double shape src/index.js uses for better-sidebar's namespace): on
- * dsh <= 0.1.6 through `settings.get(ns).bashPath`, on >= 0.1.7 through
- * `settings.describe()`'s own row. Never throws; a missing service reads ''.
+ * The explicit `bashPath` a SETTINGS row carries, read through
+ * `settings.describe()`'s own row (dsh >=0.2.2-rc.1 dropped `get(ns)`).
+ * Never throws; a missing service reads ''.
  * @param {object} ctx - a context exposing `settings`.
  * @param {string} [ns] - the settings namespace/row id (default this plugin's).
  * @returns {string} the configured path, '' when unset or unreadable.
@@ -267,17 +266,10 @@ export function bashResolutionReport(resolution) {
 export function settingsBashPath(ctx, ns = 'gitbash-shell') {
   try {
     const settings = ctx && typeof ctx.get === 'function' ? ctx.get('settings') : undefined
-    if (!settings) return ''
-    if (typeof settings.get === 'function') {
-      const value = settings.get(ns)
-      return value && typeof value === 'object' && typeof value.bashPath === 'string' ? value.bashPath : ''
-    }
-    if (typeof settings.describe === 'function') {
-      const entry = settings.describe().find((row) => row !== null && typeof row === 'object' && row.ns === ns)
-      const value = entry === undefined ? undefined : entry.value
-      return value && typeof value === 'object' && typeof value.bashPath === 'string' ? value.bashPath : ''
-    }
-    return ''
+    if (!settings || typeof settings.describe !== 'function') return ''
+    const entry = settings.describe().find((row) => row !== null && typeof row === 'object' && row.ns === ns)
+    const value = entry === undefined ? undefined : entry.value
+    return value && typeof value === 'object' && typeof value.bashPath === 'string' ? value.bashPath : ''
   } catch {
     return ''
   }
@@ -309,14 +301,9 @@ export function effectiveConfiguredBashPath(ownRowValue, settingsValue) {
  * back then must keep winning over a silent auto-chain. Absent row / absent
  * config / any loader shape change reads ''.
  *
- * TWO access paths, because hosts differ (issue #13, measured on 0.2.0-rc.2):
- * bundle-patched rows live in the OWNING PLUGIN'S SUBTREE there, so a bare
- * `resolve('gitbash-executor')` throws from the root tree FOREVER (not just
- * at boot) — the explicit tier silently read '' while the executor's own lazy
- * `this.config.bashPath` worked, i.e. the two halves of this plugin disagreed
- * about the user's explicit answer. `entries()` iterates subtrees as well, so
- * it finds the row on both layouts; the direct resolve stays as the first try
- * for older hosts where the row sits in the root tree.
+ * The row lives in the OWNING PLUGIN'S SUBTREE, so resolving it from the
+ * root tree always throws. `entries()` iterates subtrees too, so it finds the
+ * row on every current layout; a loader without `entries()` reads ''.
  * @param {object} ctx - a context exposing `loader`.
  * @returns {string} the row's configured path, '' when unset.
  */
@@ -326,28 +313,15 @@ export function executorConfiguredBashPath(ctx) {
     return value && typeof value.bashPath === 'string' ? value.bashPath : ''
   }
   const loader = ctx && ctx.loader
-  if (!loader) return ''
-  // Subtree walk: finds the row wherever the host nests bundle-patched rows.
-  const walk = () => {
-    try {
-      if (typeof loader.entries !== 'function') return undefined
-      for (const entry of loader.entries()) {
-        if (entry && entry.options && entry.options.id === 'gitbash-executor') return entry
-      }
-      return undefined
-    } catch {
-      return undefined
-    }
-  }
+  if (!loader || typeof loader.entries !== 'function') return ''
   try {
-    // Direct resolve first: the row sits in the ROOT tree on older hosts, and
-    // an EMPTY string it may carry is a real answer (= run the automatic
-    // chain) — only a throw (subtree row, newer hosts) falls through.
-    if (typeof loader.resolve === 'function') {
-      return read(loader.resolve('gitbash-executor'))
+    for (const entry of loader.entries()) {
+      if (entry && entry.options && entry.options.id === 'gitbash-executor') return read(entry)
     }
-  } catch { /* not in the root tree — walk the subtrees below */ }
-  return read(walk())
+    return ''
+  } catch {
+    return ''
+  }
 }
 
 /**

@@ -17,6 +17,13 @@
 - 下一轮适配重新从 `main` 开同名 `alpha适配` 分支,不复用上一轮的分支;已合并的旧分支可删。
 - 本纪律与各仓库的「变更记录纪律」并列:CHANGELOG 记录改了什么,分支记录这一轮改动的边界。
 
+## 单代基线与大版本清理纪律(2026-11-05 起)
+
+- 运行时只服务 `engines.dsh` 声明的下限(当前 `0.2.2-rc.1`);不为更老宿主保留分支、探测、回退或测试夹具。抬升下限时同步 `package.json` / `dsh.plugin.json` / README / AGENTS / CHANGELOG 与测试,不保留双代。
+- 每次 dsh 大版本或破坏性 rc 适配,重做全仓单代审计:删除只为旧宿主存在的设置面、版本探测、物化资产与测试夹具;旧注释也改写成当前契约,不把历史当现状。
+- 必须保留并写明理由:用户数据迁移(旧物化树、旧 profile 行字段)、跨插件主动兼容(dsh-ops / FastCtx / dsh-ptc-cordis-preset / better-sidebar / terminal bundle)、平台分支、可选官方能力的按包探测与降级。
+- 清理不得改变用户数据:只删 marker 判定为 unmodified 的旧物化树;用户手改或外来目录绝不碰。
+
 ## 变更记录纪律(2026-09-13 起)
 
 - **所有版本发布、修复、事故复盘、复现/验证记录一律写进本仓库 `CHANGELOG.md`**,不再追加进本文件;
@@ -45,7 +52,7 @@
 4) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
-0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.1.7-rc`(兼容门禁 `plugin-compatibility.ts` 读 peer `@deepseek-ai/dsh`,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 必须标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),没有「旧宿主分支」可回退。要点:四个变体由 `pluginsFor({ kind, gitBash, skillsDir, pythonActive, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,双态镜像官方 standard/minimal/ptc/cordis + Git Bash 增量:`hostExtras` 缺省 ↔ 0.1.7 行集,`{ timeContext, toolSchedule, pluginMarket }` ↔ 0.2.1 全工具行集(v0.40.2 起 alpha.3 已删 subagent 的 schedule_* deny,不产出任何 toolFilter),`{ compaction }` ↔ 0.2.1 minimal 行集(minimal 变体由 `minimalPluginsFor({ bashPath, hostExtras })` 生成),探测式接入见第 8 条;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关全 volatile 探测;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**宿主行为**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-presets` → `gitbash-shell`**(与设置命名空间同串)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
+0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.2.2-rc.1`(兼容门禁 `plugin-compatibility.ts` 优先读 `engines.dsh`,只要存在该字段就忽略 peer,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 同步声明同一 range 并标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),只保留这一代宿主路径。要点:四个变体由 `pluginsFor({ kind, skillsDir, pythonActive, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,单代镜像官方 `0.2.2-rc.1` standard/minimal/ptc/cordis + Git Bash 增量;可选行由 `hostExtras` 按包探测(见第 8 条);minimal 变体由 `minimalPluginsFor({ bashPath, hostExtras })` 生成;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关直接 `.volatile()`;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**语义能力**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-shell`**(同时是 configForms key)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
 
 1. **执行器替换 full-access argv；Windows 未验证受限能力必须 fail-closed（Unreleased）**:
    沙箱/生命周期基础设施沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 必须显式 Git for Windows
@@ -59,19 +66,16 @@
    无解/用户-only cygheap 映射”的历史泛化论断。新 IPC/OS 方案必须实际正负权限验收；文件工具
    policy 另属一层，拒绝不得绕过。侧栏交互终端/minimal PTY不因此获得围栏。
    历史复现见 CHANGELOG v0.13.2；当前实施与独立验证见 CHANGELOG Unreleased。
-   **0.1.7 执行器契约(v0.24.4 补齐,issue #6 复盘)**:① `Config` 的六个继承字段
-   (`cwd`/`timeoutMs`/`maxTimeoutMs`/`maxOutputBytes`/`maxSpillBytes`/`graceMs`)**必须经
-   `live()` 探测加 `.volatile()`** —— 0.1.7-alpha.1 起基类把它们读成 `Volatile<T>` 并一律 `.get()`,
-   裸值会让**每一次 shell 调用**抛 `config.timeoutMs.get is not a function`(整个 `ctx.shell` 失效);
-   插件自己的 `bashPath` 保持裸值。② 方法面改了:`run`/`start` 被删除,抽象面是
-   `resolve` + `execute(spec): Promise<ShellExecution>`,后台执行 = `onExpiry: 'none'` 的一次
-   execution,前台/后台由调用方是否 await `result()` 决定 —— 所以**必须覆盖 `execute`** 才能让
-   "全权访问走 Git Bash argv""win32 未验证受限能力拒绝启动"两条继续成立(`run`/`start` 只留给
-   ≤0.1.6,`execute` 在无 `super.execute` 时委派给 `run`);父类的 `decorateResult` 是私有的,
-   就地记忆化投影由本插件的 `decorateExecution` 复刻。③ `settings` 服务在 0.1.7 上**没有
-   `get(ns)` 了**(只剩 `describe()`/`update()`):读插件设置一律用 `describe()` 里本行
-   (行 id `gitbash-shell`)的表单值 —— 本插件踩过两处(`withParityEnv` 的 Linux 行尾 env、
-   better-sidebar 的 `terminalShell` 接管)后总结出的规则。
+   **0.2.2-rc.1 执行器契约(issue #6 复盘)**:① `Config` 的六个继承字段
+   (`cwd`/`timeoutMs`/`maxTimeoutMs`/`maxOutputBytes`/`maxSpillBytes`/`graceMs`)**必须
+   `.volatile()`** —— 基类把它们读成 `Volatile<T>` 并一律 `.get()`,裸值会让**每一次 shell
+   调用**抛 `config.timeoutMs.get is not a function`(整个 `ctx.shell` 失效);插件自己的
+   `bashPath` 保持裸值。② 抽象面是 `resolve` + `execute(spec)`/`executeArgv(spec,argv)`;
+   `run`/`start` 已删除,后台执行 = `onExpiry: 'none'` 的一次 execution,前台/后台由调用方是否
+   await `result()` 决定 —— 所以**必须覆盖 `execute`** 才能让"全权访问走 Git Bash argv"
+   "win32 未验证受限能力拒绝启动"两条成立;父类的 `decorateResult` 是私有的,就地记忆化投影由
+   本插件的 `decorateExecution` 复刻。③ `settings` 只有 `describe()`/`update()`:读插件设置
+   用 `describe()` 里本行(行 id `gitbash-shell`)的表单值。
 2. **组合数据可审查(v0.32.0 起)**:四个变体的行集是 `src/compositions.js` 里**已提交、可 diff 的
    JS 数据**(新时代的等价物;assets 目录已随物化路径删除),绝不引入运行时读内置 preset 合成行集的
    逻辑——组合要可审查、可对照。对齐纪律见第 9 条(fixture 锁官方行序列)。
@@ -192,7 +196,7 @@
      - ① **判定必须「开关 ON 且对方能力报 gitBashActive」,缺一不可**:纯函数
        `effectivePresetIds(configured, { suppress, peerGitBash })` 是唯一判据。对方缺失/未装/未生效/尚未挂载/版本 < 0.14.0 ⇒ **一律不摘**——
        **绝不能因为「探测不到对方」就少注册一个变体**(宁可多一条名录,不可少一个模式);默认 false
-       保持 0.24.x 的四变体名录不变。信号只认对方 `ctx.provide('ptcCordisPreset', { id, gitBashActive })`
+       保持默认四变体名录不变。信号只认对方 `ctx.provide('ptcCordisPreset', { id, gitBashActive })`
        的主动上报,**不要**去 `agentPresets.list()` 按 name/description 猜(文本会随对方版本漂移、还可能
        被用户改)。
      - ② **接线与节律**:`ctx.inject(['ptcCordisPreset'])`(与行激活顺序无关,同 4a 的教训)+
@@ -270,8 +274,8 @@
      - 改动必须跑冒烟里的「subagent switch」三例 + 真机两态(见 CHANGELOG v0.27.0 的装置:真 root/child/nested agent + 真 assemble 调用)。
 
 4h. **bashPath 解析链与两条硬边界(v0.28.0,issue #11;懒化与 exec-path 层 v0.33.0,issue #13)**:用户机器上 Git 装在
-     `Q:\Git` 而 patch 写死 `C:/Program Files/Git/bin/bash.exe` ⇒ **每条命令 spawn ENOENT**;又因本插件撤掉
-     `pwsh-sandbox` 而 dsh 每进程只允许一个 `ctx.shell`,**整个会话的命令能力归零且无提示**。本版把解析统一、并把"没有 Git Bash"
+     `Q:\Git` 而 patch 写死 `C:/Program Files/Git/bin/bash.exe` ⇒ **每条命令 spawn ENOENT**;而 dsh 每进程只允许一个
+     `ctx.shell`,**整个会话的命令能力归零且无提示**。本版把解析统一、并把"没有 Git Bash"
      变成可引导的显式失败。**v0.33.0(issue #13)补的另一半:解析结果绝不在 apply() 期冻结** —— 那一刻
      `loader.resolve('gitbash-executor')` 会因行不在 root 树而 throw、settings 服务可能未注入,冻结的空值让
      "配置正确"被误判为"未配置"而跑自动链;同一次启动里执行器(懒解析)正常而日志/弹窗/终端接管(冻结值)失败,
@@ -281,20 +285,18 @@
      settle 两段(失败且显式层为空时轮询 250ms×20 仅 win32,翻转后补打 settled 段;terminal 接管挂 `onBashSettled`
      通知,boot 失败→settled 成功无需重启即可接管)。**防回归断言在冒烟「explicit tier is LAZY」**:源码不得再现
      `const configuredBashPath = effectiveConfiguredBashPath(` / `const bashResolution = resolveGitBashCached(`。
-     **executor 行读取二段式(同版,真机实测)**:dsh 0.2.0-rc.2 起 bundle-patch insert 的行挂**所属插件 subtree**,
-     `loader.resolve('gitbash-executor')` 从 root 树查找**恒 throw**(不是启动时序,是永远读不到;探针 7 次采样全 throw)
-     ——`executorConfiguredBashPath` 因此先试 `resolve`(旧宿主,行在 root 树,空串也是真实答案=自动链),throw 则
-     `loader.entries()` 迭代(含 subtree)按行自身 `options.id` 匹配(0.2.0 实测稳定可读)。冒烟「executor row lookup
-     survives the subtree layout change」锁死三种 loader 形状。**教训**:宿主 loader 的树结构变化会静默断掉按 id 直查的
-     读取——面向 loader 的读取一律带 entries() 兜底。
+     **executor 行只走 entries()**:bundle-patch insert 的行挂**所属插件 subtree**,
+     `loader.resolve('gitbash-executor')` 从 root 树查找**恒 throw**。`executorConfiguredBashPath` 只迭代
+     `loader.entries()`(含 subtree)按行自身 `options.id` 匹配;没有 `entries()` 的 loader 读 `''`。
+     冒烟「executor row lookup reads entries() only (dsh >=0.2.2-rc.1 subtree layout)」锁死这一形状。
      - **两条硬边界(用户明确表态,高于任何"为了不报错"的降级提议;动这层前先问用户)**:
        ① **永不回退**:找不到 Git Bash 就**只报错 + 引导**,绝不换 pwsh / cmd / WSL bash / MSYS2 bash 顶上,
           也不做"暂时留个能跑的"。理由(用户原话):"人家大可自己卸载插件,既然人家下载了我们插件就是要用。"
        ② **只认 Git for Windows 的 bash**:WSL(`C:\Windows\System32\bash.exe`、WindowsApps 别名)、
           MSYS2、Cygwin 的 bash **一律不算命中**,宁可报错("绝对不能用 wsl")。
      - **解析链(`src/bash-path.js`,唯一实现;执行器与翻译层共用同一 memo)**,顺序即契约:
-       1. **设置里填的**:`gitbash-executor` 行 config(翻译层经 `executorConfiguredBashPath` 的
-          **resolve→entries() 二段式**读到 —— 见上) > `gitbash-shell` 行 `bashPath`(apply() 的
+       1. **设置里填的**:`gitbash-executor` 行 config(翻译层经 `executorConfiguredBashPath`
+          的 **entries()** 读到 —— 见上) > `gitbash-shell` 行 `bashPath`(apply() 的
           `config` 参数,`rowBashPath`) > 空(=自动链)。**显式值即答案,失败也不换别的**。
        2. **默认安装位置**:`C:/Program Files/Git/bin/bash.exe`(主)、`%ProgramFiles(x86)%`、`%ProgramW6432%`、
           `%LOCALAPPDATA%/Programs/Git/bin/bash.exe`。
@@ -320,8 +322,8 @@
        ② win32 注册 `GET /dsh-gitbash-shell/api/status`(可选服务 `ctx.inject(['webServer'])`,绝不硬 inject);
        ③ 客户端半在 `shell.overlay` 上弹一次(仅 win32 且 `ok:false`,同 boot 一次、`sessionStorage` 记关闭),
        内含**探测清单 + 内联 bashPath 编辑(写 `configForms` 的 `bashPath`)+「去下载 Git for Windows」**。
-       **`pwsh-sandbox` 的 `disabled: true` 永远与 bash 健康无关**(冒烟守卫断言它没有 `!!js`);
-       `cordis.patch.yml` 的 `gitbash-executor.config.bashPath` 默认是**空串**(=自动链)。
+       **`cordis.patch.yml` 纯新增**:只插 `gitbash-shell` 行,不改任何官方行;旧 profile 的
+       `gitbash-executor.config.bashPath` 仍经 `entries()` 兼容读取。
      - **深链结论(实测)**:官方设置页**没有**公开 API 能跳到指定插件的设置卡
        (`openSettings`/`openSection` 只发给 `settings.launcher`/`settings.onboarding` 占用者,面板状态是
        `ui-settings-general` 私有 store;`ctx.shortcuts` 也没有按 id 执行命令的入口)⇒ 因此弹窗**自带编辑器**,
@@ -379,7 +381,7 @@
 7. **preset id 永不随官方改名,组合对齐由 fixture 锁死(v0.32.0 收敛)**:`code-gitbash` 保持历史 id
    (会话钉在 id 上,改名即 preset not found——dsh 0.1.2 把内置 `code` 改名 `ptc` 时本插件变体 id
    就没有跟随)。变体组合与官方内置 preset 的对齐由 `tests/smoke.mjs` 的
-   `compositions: full variants mirror the official 0.1.7 row split` 一项锁住(era 资产/marker 维度
+   `compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates` 一项锁住(era 资产/marker 维度
    已随物化路径删除,历史叙事见 CHANGELOG v0.6.0~v0.31.1)。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
@@ -398,12 +400,12 @@
    `time-context`/`tool-schedule` 两行,极简 preset 新增 image-only `tool-fs` 与专属 compaction 组
    (`isolate` 仅 compaction、无 pruner),alpha.4 起全工具 preset 另有 `tool-plugin-market`
    (standard/ptc 关、cordis 随 profileContext);alpha.3 已把 `schedule_*` 从 subagent 的
-   `toolFilter.deny` 移除 ⇒ 插件侧**不再产出任何 toolFilter**。本插件**不抬宿主下限**,由
-   `probeHostExtras(ctx)` 从 **`ctx.baseUrl`**(行挂载同一解析基准)逐包 `require.resolve` 探测
-   (四包:time-context、tool-schedule、plugin-market/tools、compaction-basic),可用才加行
+   `toolFilter.deny` 移除 ⇒ 插件侧**不再产出任何 toolFilter**。宿主下限已是 `0.2.2-rc.1`,
+   但这四行仍由 `probeHostExtras(ctx)` 从 **`ctx.baseUrl`**(行挂载同一解析基准)逐包 `require.resolve`
+   探测(time-context、tool-schedule、plugin-market/tools、compaction-basic),可用才加行
    (`timeContext`/`toolSchedule`/`pluginMarket` 仅 standard/ptc/cordis 三个 kind,`compaction`
    仅 minimal);探测每 boot 一次、reconcile 重注册复用;任何解析异常降级为「不可用」。**不要**把这些行
-   写成无条件(包缺失拒绝整棵挂载),也**不要**为此抬 `engines.dsh`。官方下一版再加行时:先重跑
+   写成无条件(包缺失会拒绝整棵挂载)。官方下一版再加行时:先重跑
    `tests/align-official.mjs`(pins 换新 sha)再决定是否新增探测位。
    **官方 mcp-client 的运行时桥接口子(v0.35.0 追记)**:本插件 `src/fastctx-bridge.js` 的
    自写 MCP stdio 客户端,起因是官方 `@deepseek-ai/dsh-mcp-client` 只能作为**静态行**挂载
@@ -431,7 +433,7 @@
       `insert[0].config.plugins`),抽出 `- id:` / `name:` / `disabled:` 三行序列,与本插件
       对应变体(`src/compositions.js`)逐条对齐;**提示词**(persona 的 `prefix:`/`suffix:`
       文本)与**工具行**同样要 diff,不要只看 id 名字。smoke 的
-      `compositions: full variants mirror the official 0.1.7 row split` 锁住对齐。
+      `compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates` 锁住对齐。
    ② **行改名是致命项**:dsh 0.1.6-alpha.1 把引擎行 `workflow-worker-thread` 改名 `workflow-ptc`
       并**删除**了旧包(`packages/workflow/workflow-worker-thread` 整包消失)。组合里一行 import
       失败会拒绝**整棵 preset 挂载**(agent-presets `mount.ts`),变体直接不可用——
@@ -464,7 +466,7 @@
       `tool-subagent-control` 主行)、subagent 的 `modelSelectionSettings` 改名
       `modelSelection` + `modelDiscovery`、`tool-presentation` 被 `tool-executor-ptc` 取代。
       每次跟随升级必须额外核对:①`packages/core/tool-executor-*` 是否新增/改名(新宿主上 PTC
-      形必须挂执行器行,旧行在旧宿主上保留);②`packages/bundle/web-app/presets/*.patch.yml`
+      形必须挂执行器行,本插件只产出 rc.1 这一形状);②`packages/bundle/web-app/presets/*.patch.yml`
       里 `!!js` 条件行(如 `!!js "!ctx.get('profileContext')"`)对应的服务是否可从 ctx 读到
       ——声明式组合没有 `!!js`,必须改成注册时求值的 hostExtras 布尔;③`system-prompt/assemble`
       携带的字段集(`PromptAssembly` 拆分后不再带 `tools`,工具面要从 `ctx.get('tools').schemas(agent)`
@@ -505,37 +507,28 @@
      - 改这层必须跑冒烟里的 `path rescue` 五例 + `path map route` 一例(含真实文件系统断言:
        `path.resolve(cwd, msys)` 指向不存在的路径,而救回后的拼写 `existsSync` 为真)。
 
-4k. **schemastery 取哪一份,由宿主行为决定(v0.31.1,issue #12)**:插件**必须**与它所继承的执行器基类
-     用**同一套语义**的 schemastery。dsh 0.1.7+ 的 `LocalBashExecutor.Config` 把六个字段声明为 `.volatile()`
-     并在 `assertServiceableBashConfig`(line 80)与 `resolve`(line 124/132)里调 `.get()`;用一份
+4k. **schemastery 选一份能产出 Volatile refs 的副本(v0.31.1,issue #12;v0.49.0 单代重写)**:
+     插件**必须**与它继承的执行器基类用**同一套语义**的 schemastery。dsh >=0.2.2-rc.1 的
+     `LocalBashExecutor.Config` 把六个字段声明为 `.volatile()` 并一律 `.get()`;用一份
      **没有 `volatile()`** 的 schemastery 构造 Config ⇒ 字段退化成普通值 ⇒ **每次 shell 调用**都
-     `TypeError: config.timeoutMs.get is not a function`,而插件已经把 pwsh-sandbox 关掉 ⇒
-     **整个会话的命令能力归零**,且宿主日志全绿(插件行本身加载成功,报错也指不到插件)。
-     - **这不是用户的配置问题**:`@deepseek-ai/schemastery` 是 peer,Node 从**插件文件向上**解析,
-       在 hoisted profile 里会先撞上被其他依赖**提升到 profile 根**的旧副本(报告者实测 3.18.2,无 volatile),
-       而宿主自己用的是安装目录里与 shell 包放在一起的那份(3.18.4)。hoisted 布局与依赖提升都是 pnpm 的正常行为。
-     - **v0.24.4(issue #6)的 `live()` 逐字段探测只在「我们碰巧解析到的那份恰好有 `volatile()`」时有效** ——
-       这正是 #12 指出的软肋。`src/schemastery.js` 把它换成**宿主行为驱动**:
-       ① `hostWantsVolatileRefs(ParentConfig)` 直接调用**宿主自己**的 `SandboxBashExecutor.Config({})`,
-          看 `timeoutMs` 解析成 `{ get() }` 还是普通值 —— 读的是**行为**,不碰任何私有 schema 结构;
-          宿主答不上来(抛错/非函数)⇒ `undefined`;
-       ② `chooseCopy` 纯函数:宿主要 refs 且**自己的副本能服务** ⇒ 保持自己那份(**能服务就不换**);
-          自己那份不能 ⇒ **重定向到 shell 包那份**并打一行日志说明取自哪里;宿主读普通值(≤0.1.6)⇒
-          保持自己那份(**绝不**递一个它不会 `.get()` 的 ref —— 那是 #12 的镜像错误);宿主答不上来 ⇒
-          保持历史行为(逐字段探测),**不替宿主猜**;要而哪儿都没有 ⇒ 保留自己那份(**不改其它行为**)
-          但 **fail-loud 说明原因**,不再留一个与插件看不出关系的神秘 TypeError;
-       ③ **两个消费点共用同一份缓存解析**(`src/shell.js` 的执行器 Config ↔ `src/index.js` 的行 Config 与
-          旧时代 settings 命名空间),否则两处可能拿到不同的 schemastery,设置项与执行器就会各说各话。
-     - **不得恢复静态 peer import**(v0.24.3 的教训,见 §0):解析在 `src/schemastery.js` 内**动态**进行;
-       `src/shell.js` 的那个顶层 await 是**唯一**一处,冒烟 harness 用 `stripModule()` 把它换成桩
-       (`new Function` 里不能出现 await)。
-     - **第三种组合(宿主要 refs 而两边都没有)在现实中不可达**:宿主能正常跑,就说明它自己解析到了配套副本,
-       而"shell 包域"正是宿主的域;该分支仍保留 fail-loud 作为防御,并由单元测试覆盖。
-     - 改这层必须跑冒烟里的 `schemastery:` 五例。**判断修复是否成立时,判据必须是「插件与宿主的解析结果
-       是否一致」,不能是「有没有 `.get()`」** —— 后者在旧宿主上会给出反向的错误结论(旧宿主拿到 ref 同样是崩),
-       见 CHANGELOG v0.31.1 的对照实验。
+     `TypeError: config.timeoutMs.get is not a function`,整个会话的命令能力归零。
+     - **解析**:`loadSchemastery()` 无参数、进程内缓存一次。先解析本包的 peer;再解析
+       `@deepseek-ai/dsh-bash-sandbox`,并从它旁边解析同一 peer(仅当入口不同才作为候选)。
+       加载后只看**语义能力** `hasVolatile(z)`,不再调用宿主 Config 做行为探测。
+     - **chooseCopy({ ownEntry, copies })** 纯函数:自己的副本能产出 Volatile refs ⇒
+       `own-volatile`(**能服务就不换**);自己不能而别的候选能 ⇒ `redirected` 并打日志;
+       所有候选都不能 ⇒ `no-volatile-anywhere`,保留自己的副本但 `z` 置空、fail-loud;
+       没有候选 ⇒ `unresolved`。
+     - **两个消费点共用同一份缓存**(src/shell.js 的执行器 Config ↔ src/index.js 的行 Config):
+       两处都调用 `loadSchemastery()`,否则设置项与执行器可能各说各话。
+     - **不得恢复 schemastery 静态 peer import**(见 §0):解析在 `src/schemastery.js` 内动态进行;
+       `src/shell.js` 的 `const schema = await loadSchemastery()` 是唯一顶层 await,冒烟 harness 用
+       `stripModule()` 换成桩。`src/shell.js` 顶部对 `@deepseek-ai/dsh-bash-sandbox` 的静态 import
+       是另一个依赖面:该文件只被 `src/inline-tools.js` 动态 import 且失败被捕获,不会让主插件行消失;
+       若未来主入口也要 import 它,必须改成动态/可选加载。
+     - 改这层必须跑冒烟里的 `schemastery:` 四例,判据是「选到的副本能否产出 Volatile refs」,不是版本号。
 
-4l. **行内工具补位 + pwsh 替换 + FastCtx 桥(v0.35.0,用户拍板的默认形态)**:官方四个 preset 的
+4l. **行内工具补位 + 私有执行器 + FastCtx 桥(v0.35.0,用户拍板的默认形态)**:官方四个 preset 的
      `tool-bash`/`tool-pwsh` 行嵌在 preset 声明的 `config.plugins` 里,而 `applyEntryPatches`
      的 id 索引**只递归 `group: true` 的行**(`vendor/include` buildMap)——bundle patch 按 id
      **够不到** preset 组合内的行(restatement 会冻结官方行集,禁走)。因此默认路径是运行时补位:
@@ -543,17 +536,17 @@
        无 bash」;`opsPresent` = 见 `ops_*`(dsh-ops)。变体开启时工具面已有 bash ⇒ 补位天然跳过
        (**按观测互斥,无显式锁**)。接线 `mountInlineTools(ctx, deps)`,时序防御:created 时两工具
        皆无视为「未接线」,250ms×5 有界重试。
-     - **激活的是官方 `@deepseek-ai/dsh-tool-bash` 模块本身**(经 `ctx.baseUrl` 的
-       `require.resolve` + `createScope(agent.ctx)` 手动 `apply`)——零行为复刻;scope 随
-       agent/disposed 回滚。**绝不重写 bash 工具行为**;`agent.ctx.tools.restrict({ deny: ['pwsh'] })`
-       遮蔽假 pwsh(其执行器在本机就是 ctx.shell=Git Bash)。
+     - **v0.35–v0.38 曾激活官方 `@deepseek-ai/dsh-tool-bash` 模块本身;v0.39.0 route B 起改为
+       自有 `src/bash-tool.js`**(对官方工具逐调用镜像)执行在私有 `GitBashSandboxExecutor` 上,
+       经 `agent.ctx.plugin(mod)` 挂载,scope 随 agent/disposed 回滚;官方 `pwsh` 工具由
+       `pwshTool` 开关控制显示/隐藏,`pwsh7` 旁路已退役(见本节 ⑦)。
      - **路由提示词分两段**:`GITBASH_ROUTE_ADDENDUM`(bash 优先/pwsh 仅原生场景/禁止 bash 嵌
        `pwsh -Command`——**恒加**,路由与方言无关)+ `GITBASH_MSYS_ADDENDUM`(**仅方言开时**,
        随 `dialectApplies`)。挂在既有 `system-prompt/assemble` 监听器里改 `assembly.tools` 的
        bash description(schema 层,极简 preset 的 complete persona 剥不掉);幂等标记 =
        「Prefer this bash tool」。官方 bash description 本身是干净 bash 方言(v0.35.0 核实),
        我们只增补。
-     - **`pwsh7`**(v0.35.0–0.36.0 间名为 `gitbash_pwsh`;`src/inline-tools.js`):走 `ctx.subprocess`(**绝不经 ctx.shell**),
+     - **`pwsh7`(历史,v0.39.0 起退役;v0.35.0–0.36.0 间名为 `gitbash_pwsh`)**：原走 `ctx.subprocess`(**绝不经 ctx.shell**),
        spawn **系统 pwsh 7**(`resolveHostPwsh7`:well-known > PATH,绝不 5.1、绝不自带);
        `command/script_path` 严格二选一、未声明键硬拒(学 dsh-ops #10:宿主工具收
        `run_in_background`,本工具必须显式拒绝而非静默前台);输入路径经挂载表 MSYS→Windows,
@@ -611,8 +604,8 @@
        开关语义 = 「显示 pwsh 工具」(默认关 = `tools.restrict` 隐藏 + pre-execute 兜底拒,
        理由句 `hiddenPwshDenyReason()` 指路设置卡),`pwsh7` 旁路整体退役;
        `resolveHostModule`(inline-tools 导出)是宿主包解析的唯一通道(loader 优先 +
-       createRequire 兜底)。bashPath 显式配置只认 `gitbash-shell` 行(executor 行已不存在,
-       `executorConfiguredBashPath` 二段式读取保留作老 profile 兼容层)。
+       createRequire 兜底)。bashPath 显式配置只认 `gitbash-shell` 行;旧 profile 的 executor 行字段
+       仍经 `executorConfiguredBashPath` 的 `entries()` 读取作兼容层(不再有 resolve 首路径)。
        ⑨ **dsh-ops 0.3.0 互通:gb_* 退役 + 跨工具家族方言统一(v0.39.4,用户拍板)**:T-Auto/dsh-ops
        0.3.0 以原生 Rust `ops_*` 文件工具取代 FastCtx 上游(走 DSH 原生 policy/sandbox 通道)并新增
        PTC 批量能力与三平台支持。用户裁决:**bash 不让位**(ops_bash 仅 full-access + 裸 subprocess
@@ -710,7 +703,7 @@
 4. 旧物化残留清理改动:手造带 marker 的 unmodified 树 → 启动被删 + 日志;篡改文件成
    user-modified → 保留 + 提示;无 marker 的 foreign 目录 → 绝不碰。
 5. **升级 dsh 后**(v0.14.0 起强制):按第 9 条把四个内置 preset 各核对一遍——行序列 + 提示词 +
-   disabled 默认值;smoke 的 `compositions: full variants mirror the official 0.1.7 row split`
+   disabled 默认值;smoke 的 `compositions: full variants mirror the rc.1 host row split`
    锁住对齐;真机确认声明式注册日志出现四个变体且模式选择器里都能挂载。
 6. **去重改动(§4e,v0.25.0 起)**:隔离实例(`DSH_HOME` 独立 + 新建 profile + 两份插件 `link:` 安装
    + 探针插件定时打印 `agentPresets.list()`)里**真的翻转开关**看名录:默认两侧条目并存 → 写

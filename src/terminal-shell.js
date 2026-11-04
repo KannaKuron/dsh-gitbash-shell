@@ -6,12 +6,12 @@
  * `subprocess.terminalEnvironment().defaultShell` when no `shell` is configured,
  * and on that machine the PATH hit for `bash` is
  * `C:\WINDOWS\system32\bash.EXE` — the Microsoft WSL launcher. The agent tools
- * are already ours (`pwsh-sandbox` out, `gitbash-executor` in), but the sidebar
- * terminal is a DIFFERENT row with a different shell resolution, so it kept
- * starting WSL.
+ * are already ours (this plugin's own bash tool over a private Git Bash
+ * executor), but the sidebar terminal is a DIFFERENT row with a different shell
+ * resolution, so it kept starting WSL.
  *
  * WHY THIS MODULE TALKS TO `configEditor` AND NOT TO `settings`
- * (measured on dsh 0.1.7-rc.2, probe readout in the task notes):
+ * (verified against the host's settings/configEditor API):
  *   - `settings.update('terminal', …)` is impossible twice over:
  *     `SettingsService.write()` requires every written path to be VOLATILE
  *     (`volatileForm(schema)` → `undefined` ⇒ "Plugin entry … has no volatile

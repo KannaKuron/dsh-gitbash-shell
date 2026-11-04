@@ -534,14 +534,14 @@ test('runtime preview: actual run_code transport receives Unicode/EOF fixes and 
 })
 
 
-test('runtime preview: old hosts without workingDirectory mount all companions and preserve policy-first cwd', { timeout: 10000 }, async t => {
+test('runtime preview: without workingDirectory all companions mount and preserve policy-first cwd', { timeout: 10000 }, async t => {
   const spawns=[];
   const f=await fixture(t,{explicitTools:true,workingDirectory:null,sessionCwd:'D:/session-project',policyWorkspaceRoot:null,
     subprocessRuntime:{spawn(spec){spawns.push(spec);return {done:Promise.resolve({exitCode:0,signal:null}),collected:{stdout:{readFrom:()=>({text:'ok',nextOffset:2,lossy:false})},stderr:{readFrom:()=>({text:'',nextOffset:0,lossy:false})}},terminate(){}}}}});
-  await bounded(f.activated.promise,'old-host companions');
+  await bounded(f.activated.promise,'companions without workingDirectory');
   assert.deepEqual(f.names().sort(),['bash','gitbash_native','gitbash_to_native_path']);
   for(const [workdir,cwd] of [[undefined,'D:/session-project'],['scripts','D:/session-project/scripts'],['E:/explicit','E:/explicit']]){
-    const response=await f.execute('bash',{command:'memory-only',description:'Verify old-host cwd',...(workdir===undefined?{}:{workdir})});
+    const response=await f.execute('bash',{command:'memory-only',description:'Verify cwd without workingDirectory',...(workdir===undefined?{}:{workdir})});
     assert.equal(response.isError,false,JSON.stringify(response));assert.equal(spawns.at(-1).cwd,cwd);
   }
   f.agent.session.header.policy={mode:'danger-full-access',workspaceRoot:'F:/policy-project'};

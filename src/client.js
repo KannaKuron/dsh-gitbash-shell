@@ -43,8 +43,8 @@ window.__ModuleLoader__.load({
 		var TAG = "[gitbash-shell/client]";
 		/** Dictionary namespace (the plugin's own t seat). */
 		var NS = "gitbashShell";
-		/** The settings namespace the HOST half serves. */
-		var SETTINGS_NAMESPACE = "gitbash-shell";
+		/** The plugin row id the host half serves (also its configForms key). */
+		var ROW_NAMESPACE = "gitbash-shell";
 		/** The PEER row this card mirrors: dsh-ptc-cordis-preset's own entry. Only
 		   its existence is read here — the switch value itself lives on THIS
 		   plugin's row (the single authoritative copy the peer card binds too) —
@@ -2184,9 +2184,8 @@ window.__ModuleLoader__.load({
 
 			/* The dedupe row mirrors the PEER's row: it is drawn only where
 			   dsh-ptc-cordis-preset is installed and its entry has reached the
-			   configForms mirror (dsh >= 0.1.7). Absent on old hosts (no
-			   configForms), while the peer is not installed, or before its entry
-			   appears; every step is defensive, and the form's own subscribe
+			   configForms mirror. It stays absent while the peer is not
+			   installed or before its entry appears; the form's own subscribe
 			   bumps the tick so a late-arriving peer row still shows up. */
 			var peerState = useState(null);
 			var peer = peerState[0];
@@ -2422,9 +2421,9 @@ window.__ModuleLoader__.load({
 				);
 			}
 
-			// dsh 0.1.6-alpha.2: the Plugins page renders this card through the
-			// `plugins.bundle.config` slot with view="page" — the page draws the
-			// title itself; the collapsible shell only shows on the popup seat.
+			// The Plugins page renders this card through the `plugins.bundle.config`
+			// slot with view="page" — the page draws the title itself; the
+			// collapsible shell only shows on the popup seat.
 
 			var mounts = snap.value.virtualMounts !== false;
 			var errs = snap.value.errorDialect !== false;
@@ -2567,7 +2566,8 @@ window.__ModuleLoader__.load({
 			   same field through configForms — so the buttons write through
 			   writeField exactly like every other row on this card. */
 			var variantOn = snap.value.variantPresets === true;
-			var pwshOn = snap.value.pwshTool !== false;
+			// Default OFF (v0.39.0): must match the host's `=== true` reader.
+			var pwshOn = snap.value.pwshTool === true;
 			var experimentalOn = snap.value.experimentalNative !== false;
 			// Default OFF (v0.39.4): must match the host's `=== true` reader.
 			var fctxOn = snap.value.fastctxTools === true;
@@ -3029,7 +3029,7 @@ window.__ModuleLoader__.load({
 					forms = c === undefined || c === null ? undefined : c.get("configForms");
 				} catch (error_) { forms = undefined; }
 				var form;
-				try { form = forms && typeof forms.get === "function" ? forms.get(SETTINGS_NAMESPACE) : undefined; } catch (error_) { form = undefined; }
+				try { form = forms && typeof forms.get === "function" ? forms.get(ROW_NAMESPACE) : undefined; } catch (error_) { form = undefined; }
 				if (!form || typeof form.set !== "function") {
 					/* No form seat: say so instead of pretending the save landed. */
 					setSaveError(t("error") + ": " + t("bash.saveFailed"));
@@ -3277,9 +3277,9 @@ window.__ModuleLoader__.load({
 		exports.name = "dsh-gitbash-shell/client";
 
 		/**
-		 * Required client services: only era-guaranteed ones are hard-injected;
-		 * the settings face is acquired OPTIONALLY (a missing configForms on a
-		 * stripped-down host must not take the card down with it).
+		 * Required client services are hard-injected; the settings face is
+		 * acquired OPTIONALLY (a missing configForms on a stripped-down host
+		 * must not take the card down with it).
 		 */
 		exports.inject = ["locale", "slots"];
 
@@ -3292,7 +3292,7 @@ window.__ModuleLoader__.load({
 				ctx.inject(["configForms"], function (fctx) {
 					try {
 						var forms = fctx && fctx.configForms;
-						if (forms && typeof forms.get === "function") scope = forms.get(SETTINGS_NAMESPACE);
+						if (forms && typeof forms.get === "function") scope = forms.get(ROW_NAMESPACE);
 					} catch (error) {
 						console.warn(TAG + " configForms acquisition failed:", error && error.message ? error.message : error);
 					}

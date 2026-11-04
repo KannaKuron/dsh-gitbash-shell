@@ -95,7 +95,7 @@ for (const gapBefore of [true, false]) test(`R04: Bash promotion also preserves 
   })) cleanups.push(root.provide(name, value))
   t.after(async () => { finish(); if (hooks) await hooks.done; for (const off of cleanups.reverse()) await off() })
   const tools = root.plugin(Tools); await tools; cleanups.push(() => tools.dispose())
-  const module = root.plugin(createBashToolModule({ log() {}, executor: {
+  const module = root.plugin(createBashToolModule({ log() {}, toolsModule: { defineTool: (options) => options }, executor: {
     resolve: request => ({ ...request, workdir: 'C:/fixed', timeoutMs: 100 }),
     execute: async () => { started.resolve(); return proc },
   } }))

@@ -19,12 +19,13 @@
 
 ### Host requirement & preset alignment
 
-Since v0.32.0 the host floor is **dsh >= 0.1.7-rc** (declared through the
-`@deepseek-ai/dsh` peer, prereleases included; older hosts are no longer
-supported). The four variants are committed JS row sets in
-`src/compositions.js`, mirroring the official 0.1.7 standard/minimal/ptc/cordis
+Since v0.49.0 the host floor is **dsh >= 0.2.2-rc.1**: the gate reads
+`engines.dsh` (rc.1 `app-boot` ignores the peer whenever that field exists;
+`semver` evaluates with `includePrerelease: true`). `peerDependencies` mirrors
+the same range and stays `optional`; this plugin serves that one generation. The four variants are committed JS row sets in
+`src/compositions.js`, mirroring the official 0.2.2-rc.1 standard/minimal/ptc/cordis
 split plus the Git Bash delta; upgrade alignment is locked by the smoke test
-`compositions: full variants mirror the official row split`. **Preset ids
+`compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates`. **Preset ids
 never change** (`code-gitbash` kept its historical id when dsh 0.1.2 renamed
 the built-in `code` to `ptc` — sessions are pinned to ids, and a rename would
 orphan them).
@@ -76,8 +77,8 @@ The old "replace the executor" three-step patch became runtime work:
    preset variants **declaratively** (`ctx.agentPresets.register`,
    v0.32.0+) — the row sets are committed, diffable JS data
    (`src/compositions.js`) and **no directory is ever materialized**;
-   materialized trees left by older versions are cleaned one-way at boot
-   only when the marker proves the user never edited them (the cleanup
+   materialized trees left by pre-declarative versions are cleaned one-way at
+   boot only when the marker proves the user never edited them (the cleanup
    ignores the switch).
 
 Environment: `bash.exe` is a direct child of the host's managed subprocess provider, not a login launcher. Parent environment values pass through credential scrubbing before the protected `DSH_*` overlay; this does not expose an unfiltered host environment.
@@ -105,15 +106,15 @@ to bring old sessions back as-is, turn `variantPresets` on.
 - **Separate file policy:** official file tools retain their own checks; reads are not necessarily workspace-only. The path helper only converts strings: no existence check or permission grant. A refusal never authorizes another-tool workaround.
 - **Scope:** this gate covers this plugin's own bash/native tools. Sidebar interactive terminals, minimal's persistent PTY and other plugins' executors do not acquire confinement from it. The official root PowerShell executor stays untouched.
 
-Historical unconfined records/rendering remain readable; only the user’s explicit experimentalNative opt-out restores the legacy route. See CHANGELOG v0.13.2 for history and Unreleased for current behaviour/tests.
+Historical unconfined records/rendering remain readable; only the user’s explicit experimentalNative opt-out restores the explicitly UNCONFINED route. See CHANGELOG v0.13.2 for history and Unreleased for current behaviour/tests.
 
 ## Explicit tools (Unreleased)
 
-**Runtime switch `experimentalNative` (default true):** Settings > Plugins > dsh-gitbash-shell > Experimental native execution / fail-closed. ON refuses restricted/unresolved Windows Bash and offers available companions. OFF immediately unregisters/disables both tools and restores legacy explicitly `unconfined` Bash, which does not enforce shell file-write restrictions. Changes affect subsequent calls in existing sessions without restart; already running jobs continue. Refusals also guide the user to select `danger-full-access` in the session access-mode control; agents must not relax permissions automatically. This switch is independent of path dialect/codePaths.
+**Runtime switch `experimentalNative` (default true):** Settings > Plugins > dsh-gitbash-shell > Experimental native execution / fail-closed. ON refuses restricted/unresolved Windows Bash and offers available companions. OFF immediately unregisters/disables both tools and restores explicitly `unconfined` Bash, which does not enforce shell file-write restrictions. Changes affect subsequent calls in existing sessions without restart; already running jobs continue. Refusals also guide the user to select `danger-full-access` in the session access-mode control; agents must not relax permissions automatically. This switch is independent of path dialect/codePaths.
 
 Both companions join the Windows own-bash agent scope without replacing official tools/root providers. Existing names are not overwritten. Missing public native executor/OutputCollector capability skips native without breaking bash/path; minimal's persistent terminal does not use this inline patch.
 
-`gitbash_native` is registered as a stable slot synchronously at `agent/created`: the mount-time preflight resolves the host `defineTool` and native capability, and the slot and the real executor are built by the same `nativeToolDefinition()`; when the real module arrives it only installs its implementation behind that one registration (no remove/add), so the tool name, description and schema stay identical across steps (issue #38). If the host lacks jobs or the preflight fails, no slot is advertised and the legacy late path remains; the slot is withdrawn when `experimentalNative` is turned off, the agent is disposed, or the face no longer needs it.
+`gitbash_native` is registered as a stable slot synchronously at `agent/created`: the mount-time preflight resolves the host `defineTool` and native capability, and the slot and the real executor are built by the same `nativeToolDefinition()`; when the real module arrives it only installs its implementation behind that one registration (no remove/add), so the tool name, description and schema stay identical across steps (issue #38). If the host lacks jobs or the preflight fails, no slot is advertised and the late registration path remains; the slot is withdrawn when `experimentalNative` is turned off, the agent is disposed, or the face no longer needs it.
 
 - **gitbash_to_native_path**: `{ msys_path: completeValue } → { native_path }`, using fresh shared mount facts. Native Windows/cwd-relative values may pass through; unknown MSYS roots/missing facts, URLs, empty/NUL values reject. Independent of automatic dialect/codePaths switches, with no filesystem access or permission grant.
 - **gitbash_native**: description, absolute `executable: {kind:'path',value}`, `argv: [{kind:'literal'|'path',value}]`, optional absolute typed cwd. Literals avoid MSYS conversion; only declared paths translate/normalize. No bare command, model env, implicit scripts, .cmd/.bat or escalation. Known interpreters require explicit `entrypoint:'interpreter'`; this is not executable attestation or a guarantee about arbitrary cmd/non-CRT parsers.
@@ -131,7 +132,7 @@ const fs = await import('node:fs/promises');
 return await fs.readFile(resolved.native_path, 'utf8');
 ```
 
-For route/search strings that resemble paths, choose codePaths:false to avoid legacy guessing; typed tool argument translation still works.
+For route/search strings that resemble paths, choose codePaths:false to avoid automatic guessing; typed tool argument translation still works.
 
 ## Native Windows and run_code compatibility boundaries
 
@@ -171,9 +172,8 @@ output encodings.
 
 ## Config
 
-The `gitbash-shell` row (its id has matched the settings namespace since v0.24.0; it was
-`gitbash-presets` through v0.23.0) takes the materialized `presets` list and the cooperation
-switch:
+The `gitbash-shell` row (also the configForms key) takes the `presets` list and
+the cooperation switch:
 
 ```yaml
 - id: gitbash-shell
@@ -185,7 +185,7 @@ switch:
 `suppressPeerCordis` (boolean, **off by default**) drops `创造模式 · Git Bash` (`cordis-gitbash`)
 from the roster only while two facts hold **at the same time**: the switch is `true` **and**
 dsh-ptc-cordis-preset reports that its `PTC 创造模式` is the Git Bash variant. Off by default means
-the four-variant roster of 0.24.x is unchanged; see
+the four-variant default roster is unchanged; see
 [Cooperation with dsh-ptc-cordis-preset](#cooperation-with-dsh-ptc-cordis-preset) for the decision
 rule, the timing, and how both sides share one state.
 
@@ -279,24 +279,19 @@ seen. The switch is off by default, so nothing changes unless you ask for it.
 
 **When it takes effect:**
 
-- **New hosts (dsh ≥ 0.1.7) — live**: the switch rides the row Config's volatile channel and the
-  peer capability is watched through `ctx.inject(['ptcCordisPreset'])` (**independent of plugin row
-  activation order**); either change reconciles on the spot — retiring logs `preset 'cordis-gitbash'
-  retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)`, restoring logs `preset
-  'cordis-gitbash' registered declaratively`. Sessions already mounted keep their own composition
-  snapshot and are never rewritten; the roster change shows up for new sessions.
-- **Old hosts (dsh ≤ 0.1.6) — decided once at startup**: there is no registration registry to watch
-  and the capability probe is bounded (1s by default; "not seen" counts as "not covered"), so
-  turning the switch on cleans up the `cordis-gitbash` directory an earlier boot materialized,
-  while turning it back off re-materializes that variant on the **next startup** only.
+The switch is **live**: it rides the row Config's volatile channel and the peer
+capability is watched through `ctx.inject(['ptcCordisPreset'])` (**independent
+of plugin row activation order**); either change reconciles on the spot —
+retiring logs `preset 'cordis-gitbash' retired (dsh-ptc-cordis-preset covers
+Creation mode on Git Bash)`, restoring logs `preset 'cordis-gitbash'
+registered declaratively`. Sessions already mounted keep their own composition
+snapshot and are never rewritten; the roster change shows up for new sessions.
 
 **Both settings cards show one and the same state**: the single authoritative value lives in this
 plugin's own row Config; the peer's card binds that same row through
 `ctx.configForms.get('gitbash-shell')` and writes the same field (DSH officially supports editing a
 namespace another plugin owns), so a change on either side shows up on the other immediately —
-there is no second copy and no sync logic. On old hosts `configForms` does not exist, the mirrored
-card never appears, and the switch is only editable on this plugin's own surface (the
-`gitbash-shell` namespace).
+there is no second copy and no sync logic.
 
 **Versions**: the switch itself ships in **this plugin ≥ 0.25.0**; the peer's cooperation
 capability ships in **dsh-ptc-cordis-preset ≥ 0.14.0**.
@@ -306,7 +301,7 @@ capability ships in **dsh-ptc-cordis-preset ≥ 0.14.0**.
 While commands default to this plugin's own Git Bash tool on Windows, the
 plugin makes every path the
 model sees use the MSYS drive-root POSIX form (/c/Users/..., /c/Program Files/...). The switch
-is the `posixPaths` boolean in the `gitbash-shell` settings namespace; it is **on by default**
+is the `posixPaths` boolean on the `gitbash-shell` row Config; it is **on by default**
 (since v0.10.0) and can be toggled any time on this plugin's "Git Bash path dialect" card in
 **Settings → Plugins**. No preset or composition file is touched, and every mode —
 standard/minimal/PTC/creation and user-authored presets — is covered.
@@ -366,9 +361,9 @@ into that row (only when the row has no shell of its own — an explicit choice 
 
 When [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (v0.15.2+) is installed, on Windows this plugin adopts its official runtime settings seam (`terminalShell` — by the sidebar's own contract, "settings-page overrides win for terminals opened afterwards"), so both the sidebar's UI terminal tabs and the model-facing `terminal_*` tools open Git Bash — no upstream change, new terminals pick it up immediately. In addition, this bundle's patch also sets `config.shell` on the sidebar's row (boot-time resolution, so the **tab label reads `bash` too**; the row edit is harmless-skipped when the sidebar is not installed). Rules:
 
-- **The plugin owns the pref while installed**: on every Windows boot it unconditionally sets `terminalShell` to Git Bash — a value you set elsewhere is overwritten again on the next boot;
+- **The plugin owns the pref while installed and `adoptSidebar` is on (default)**: on every Windows boot it sets `terminalShell` to Git Bash — a value you set elsewhere is overwritten again on the next boot;
 - Removing this plugin restores the previous value (the sidebar returns to what it had before, e.g. its default pwsh / powershell resolution);
-- Disable the adoption with `betterSidebarShell: false` in this plugin's row config.
+- Disable the adoption with `adoptSidebar: false` in this plugin's row config.
 
 ## License
 

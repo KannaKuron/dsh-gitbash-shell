@@ -177,9 +177,6 @@ export function applyToolRouting(tools, { pwshVisible = false, msys = false, ter
   }
 }
 
-/** @deprecated composed form kept for tests: route + MSYS sentences. */
-export const GITBASH_BASH_ADDENDUM = GITBASH_ROUTE_ADDENDUM + '\n' + GITBASH_MSYS_ADDENDUM
-
 /**
  * The deny reason for a hidden pwsh call (route B wording): the tool is REAL
  * PowerShell on this host, just hidden by the row switch — the sentence says
@@ -386,9 +383,8 @@ export function mountInlineTools(ctx, deps) {
       // explicit activation failure and the finally disposes this half-mounted
       // scope instead of leaking it for the agent's lifetime (shape credit:
       // KouzakiUmi's PR #28).
-      const registeredNames = scope.ctx.get !== undefined
-        ? ((scope.ctx.get('tools')?.schemas?.(agent) ?? []).map((schema) => schema && typeof schema.name === 'string' ? schema.name : ''))
-        : []
+      const registeredNames = (scope.ctx.get('tools')?.schemas?.(agent) ?? [])
+        .map((schema) => schema && typeof schema.name === 'string' ? schema.name : '')
       if (registeredNames.includes('bash') === false) {
         throw new Error('bash tool did not register for this agent (module fiber INACTIVE — this host lacks an injected service the module requires — or the tools read-back is unavailable); bash is NOT available in this session, please report this with your dsh version (issue #27)')
       }

@@ -123,7 +123,7 @@ async function toolFixture(t, { jobs, executor, sandboxModule } = {}) {
       ...(spec.sandboxPolicy ? { sandbox: { mode: spec.sandboxPolicy.mode, denied: false } } : {}),
     }) }),
   }
-  const module = createBashToolModule({ executor: executor ?? fallbackExecutor, sandboxModule, log() {} })
+  const module = createBashToolModule({ executor: executor ?? fallbackExecutor, toolsModule: { defineTool: (options) => options }, sandboxModule, log() {} })
   let toolCtx
   const apply = module.apply
   module.apply = (ctx, config) => { toolCtx = ctx; return apply(ctx, config) }
@@ -134,29 +134,18 @@ async function toolFixture(t, { jobs, executor, sandboxModule } = {}) {
   return { root, fiber, definitions, requests, removeJobs, ctx: toolCtx }
 }
 
-function assertJsonSchema(node) {
-  assert.equal(typeof node, 'object')
-  if (node.required !== undefined) {
-    assert.ok(Array.isArray(node.required), 'JSON-schema required is an array, never a spec boolean')
-    assert.ok(node.required.every(key => Object.hasOwn(node.properties, key)))
-  }
-  for (const value of Object.values(node.properties ?? {})) assertJsonSchema(value)
-  for (const key of ['oneOf', 'anyOf', 'allOf']) for (const value of node[key] ?? []) assertJsonSchema(value)
-  if (node.items !== undefined) assertJsonSchema(node.items)
-}
-
-test('runtime: plain fallback recursively compiles required flags without weakening nested outputs', async t => {
+test('runtime: typed author schema marks required flags without weakening nested outputs', async t => {
   const f = await toolFixture(t)
   const definition = f.definitions.get('bash')
-  assertJsonSchema(definition.parameters)
-  assertJsonSchema(definition.output.schema)
-  assert.deepEqual(definition.parameters.required, ['description', 'command'])
+  assert.equal(definition.parameters.description.required, true)
+  assert.equal(definition.parameters.command.required, true)
   const foreground = definition.output.schema.oneOf[2]
-  assert.ok(foreground.required.includes('stdout'))
-  assert.ok(foreground.required.includes('stderr'))
-  assert.deepEqual(foreground.properties.stdout.required, ['text', 'truncated'])
-  assert.deepEqual(foreground.properties.stderr.required, ['text', 'truncated'])
-  assert.deepEqual(foreground.properties.sandbox.required, ['mode', 'denied'])
+  assert.equal(foreground.properties.stdout.required, true)
+  assert.equal(foreground.properties.stderr.required, true)
+  assert.equal(foreground.properties.stdout.properties.text.required, true)
+  assert.equal(foreground.properties.stderr.properties.text.required, true)
+  assert.equal(foreground.properties.sandbox.properties.mode.required, true)
+  assert.equal(foreground.properties.sandbox.properties.denied.required, true)
   assert.deepEqual(foreground.properties.exitCode.oneOf, [{ type: 'integer' }, { type: 'null' }])
   const value = await definition.execute({ command: 'echo ok', description: 'Check fallback result' }, { signal: new AbortController().signal })
   assert.equal(value.kind, 'foreground')
@@ -167,19 +156,19 @@ test('runtime: plain fallback recursively compiles required flags without weaken
 
 test('runtime: actual Cordis jobs unload restores foreground bash and reload does not duplicate it', async t => {
   const f = await toolFixture(t, { jobs: {} })
-  assert.ok(f.definitions.get('bash').parameters.properties.run_in_background)
+  assert.ok(f.definitions.get('bash').parameters.run_in_background)
   assert.equal(f.ctx.fiber.state, 2)
   await f.removeJobs()
   assert.ok(f.definitions.has('bash'), 'foreground-only bash survives jobs unload')
-  assert.equal(f.definitions.get('bash').parameters.properties.run_in_background, undefined)
+  assert.equal(f.definitions.get('bash').parameters.run_in_background, undefined)
   const removeAgain = f.root.provide('jobs', {})
   try {
     // Await the injecting child fiber's scheduled activation without an unbounded poll.
     await new Promise(resolve => setImmediate(resolve))
-    assert.ok(f.definitions.get('bash').parameters.properties.run_in_background)
+    assert.ok(f.definitions.get('bash').parameters.run_in_background)
   } finally { await removeAgain() }
   assert.equal(f.definitions.size, 1)
-  assert.equal(f.definitions.get('bash').parameters.properties.run_in_background, undefined)
+  assert.equal(f.definitions.get('bash').parameters.run_in_background, undefined)
 })
 
 test('runtime: missing approval helper still passes the agent\'s standing mode and workspace root', async t => {
@@ -193,7 +182,7 @@ test('runtime: missing approval helper still passes the agent\'s standing mode a
   }
   const f = await toolFixture(t, { executor })
   const definition = f.definitions.get('bash')
-  assert.equal(definition.parameters.properties.sandbox_permissions, undefined)
+  assert.equal(definition.parameters.sandbox_permissions, undefined)
   const agent = { session: { header: { mode: 'read-only', cwd: 'D:/child-workspace' } } }
   const exec = { agent, signal: new AbortController().signal }
   const value = await definition.execute({ command: 'echo ok', description: 'Keep child standing policy' }, exec)
@@ -216,9 +205,9 @@ test('runtime: restricted foreground and background calls fail before Jobs admis
   }
   const f = await toolFixture(t, { executor, jobs: { start(spec) { admitted.push(spec); return 'admitted-job' } } })
   const definition = f.definitions.get('bash')
-  assertJsonSchema(definition.output.schema)
   const schema = definition.output.schema.oneOf[0]
-  assert.deepEqual(schema.properties.sandbox.required, ['mode', 'denied'])
+  assert.equal(schema.properties.sandbox.properties.mode.required, true)
+  assert.equal(schema.properties.sandbox.properties.denied.required, true)
   for (const mode of ['read-only', 'workspace-write']) {
     const agent = { session: { header: { mode, cwd: 'D:/child-workspace' } } }
     for (const run_in_background of [false, true]) {
@@ -262,12 +251,12 @@ test('runtime: a registration failure is logged without aborting another compani
   assert.equal(definitions.size, 0);
 });
 
-test('runtime: ownership inspection falls back to the public definitions listing', () => {
+test('runtime: ownership inspection uses the public schemas listing', () => {
   const definitions = new Map();
   const logs = [];
   const ctx = { tools: {
     get view() { throw new Error('private tools.view must not be read') },
-    definitions: () => [...definitions.values()],
+    schemas: () => [...definitions.values()].map(definition => ({ name: definition.name })),
     register(definition) {
       definitions.set(definition.name, definition);
       return () => definitions.delete(definition.name);

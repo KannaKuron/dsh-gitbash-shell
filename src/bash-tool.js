@@ -33,9 +33,7 @@
  *
  * Host-package dependencies (`@deepseek-ai/dsh-tools` for `defineTool`,
  * `@deepseek-ai/dsh-sandbox` for the escalation helpers) resolve through the
- * host's own loader channel; when absent the definition degrades to a plain
- * JSON-schema object and the escalation surface is not advertised at all —
- * the tool keeps working, strictly narrower.
+ * host's own loader channel and are required on dsh >=0.2.2-rc.1.
  *
  * @module dsh-gitbash-shell/bash-tool
  */
@@ -266,31 +264,6 @@ function outputSchemaSpec() {
   }
 }
 
-/** Convert key-level spec flags at every depth, including union branches. */
-function schemaSpecToJson(spec) {
-  const { required: marker, ...out } = spec
-  if (Array.isArray(marker)) out.required = [...marker]
-  if (spec.properties !== undefined) {
-    const required = Array.isArray(marker) ? [...marker] : []
-    out.properties = {}
-    for (const [key, value] of Object.entries(spec.properties)) {
-      if (value.required === true && !required.includes(key)) required.push(key)
-      out.properties[key] = schemaSpecToJson(value)
-    }
-    if (required.length > 0) out.required = required
-  }
-  for (const key of ['oneOf', 'anyOf', 'allOf']) {
-    if (Array.isArray(spec[key])) out[key] = spec[key].map(schemaSpecToJson)
-  }
-  if (spec.items !== undefined) out.items = schemaSpecToJson(spec.items)
-  return out
-}
-
-/** Plain JSON-schema variant of the same union (fallback when defineTool is absent). */
-function outputSchemaJson() {
-  return schemaSpecToJson(outputSchemaSpec())
-}
-
 /** The official args validation (index.ts:73). */
 function validateBashArgs(args, effectiveMode, validateEscalation) {
   if (typeof args.command !== 'string' || args.command.trim().length === 0) {
@@ -319,7 +292,7 @@ function validateBashArgs(args, effectiveMode, validateEscalation) {
  * host-package modules are resolved once per process too.
  * @param {object} options
  * @param {object} options.executor - the private GitBashSandboxExecutor instance.
- * @param {object|undefined} [options.toolsModule] - `@deepseek-ai/dsh-tools` (defineTool), when resolvable.
+ * @param {object} options.toolsModule - `@deepseek-ai/dsh-tools` (defineTool, required).
  * @param {object|undefined} [options.sandboxModule] - `@deepseek-ai/dsh-sandbox` (escalation helpers), when resolvable.
  * @param {object|undefined} [options.llmModule] - `@deepseek-ai/dsh-llm` (HarnessError), when resolvable.
  * @param {(message: string) => void} options.log
@@ -514,10 +487,10 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
             : { ...standingPolicy, mode: approvedMode }
           // Refuse unsupported policy before directory preparation or job admission.
           if (typeof executor.gitBashRoute === 'function') executor.gitBashRoute({ sandboxPolicy: policy })
-          // Optional read (issue #27): on hosts that provide workingDirectory
-          // this is the same ensure() seam the modern official tool-bash uses;
-          // on hosts without it, fall back to the session cwd exactly the way
-          // the rc.2-era official resolveWorkdir did (policy root ?? header).
+          // Optional read (issue #27): a hard module inject for a service the
+          // host may not serve would leave the tool fiber INACTIVE. Read it at
+          // the use site instead; absent, fall back to the session cwd
+          // (policy root ?? header) exactly like the official resolveWorkdir.
           const cwd = await resolveSessionCwd(ctx, exec, policy)
           const workdir = resolveWorkdir(args.workdir, cwd)
           const dshEnv = ctx.shellEnv.collect(exec)
@@ -564,43 +537,15 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           return { kind: 'foreground', ...canonicalBashResult(result, spec.workdir) }
         }
 
-        if (typeof defineTool === 'function') {
-          return defineTool({
-            name: 'bash',
-            description: bashDescription(),
-            parameters: parametersSpec(),
-            output: {
-              schema: outputSchemaSpec(),
-              render: (_args, value) => [{
-                type: 'text',
-                text: value.kind === 'background'
-                  ? renderBackground(value.jobId, value.sandbox)
-                  : value.kind === 'promoted'
-                    ? renderPromoted(value, escalationModes)
-                    : renderResult(value, escalationModes),
-              }],
-              presentationMeta: (_args, value) => ({ cwd: value.cwd }),
-            },
-            execute: executeBody,
-            presentCall: presentBashCall,
-            presentResult: presentBashResult,
-          })
+        if (typeof defineTool !== 'function') {
+          throw new Error('bash tool: @deepseek-ai/dsh-tools defineTool is unavailable')
         }
-        // Plain-object fallback: same surface, JSON-schema dialect, no arg
-        // soft-validation wrapper (the registry still validates against the
-        // declared schema). Only reachable on hosts where the loader channel
-        // cannot reach `@deepseek-ai/dsh-tools`.
-        log('bash tool: @deepseek-ai/dsh-tools not resolvable; registering a plain definition')
-        return {
+        return defineTool({
           name: 'bash',
           description: bashDescription(),
-          // No additionalProperties:false — the official spec lets undeclared
-          // keys reach execute too, where enableRunInBackground enforces them
-          // ("Undeclared keys are allowed, so schema omission also needs
-          // enforcement", index.ts:498).
-          parameters: schemaSpecToJson({ type: 'object', properties: parametersSpec() }),
+          parameters: parametersSpec(),
           output: {
-            schema: outputSchemaJson(),
+            schema: outputSchemaSpec(),
             render: (_args, value) => [{
               type: 'text',
               text: value.kind === 'background'
@@ -614,7 +559,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           execute: executeBody,
           presentCall: presentBashCall,
           presentResult: presentBashResult,
-        }
+        })
       }
 
       // The background surface follows the registry (index.ts:536), verbatim.

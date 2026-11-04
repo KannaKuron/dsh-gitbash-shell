@@ -215,7 +215,7 @@ test('ops-adopt: the row set spans the legacy row and all four mode rows', () =>
     'dsh-ops-mode-cordis',
   ], 'dsh-ops 0.4.3 cordis.patch.yml row ids')
   assert.deepEqual([...OPS_SHELL_ROW_IDS], [OPS_SHELL_ROW_ID, ...OPS_MODE_ROW_IDS],
-    'the legacy row stays first so a mixed profile writes both eras')
+    'the legacy row stays first so a mixed profile keeps both row shapes')
   const source = readFileSync(new URL('../src/ops-adopt.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   assert.match(source, /MODE_PLANS\[\*\]\.shell/, 'the module records WHY every mode row can publish bash')
 })

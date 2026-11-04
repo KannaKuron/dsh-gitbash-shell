@@ -185,24 +185,21 @@ const MSYS_PATH_PARAM_DESCRIPTION = 'The complete value to convert, as one singl
   + 'Pass the FULL value only; the tool performs no I/O and no permission grant.'
 
 /**
- * Build the tool definition in whichever dialect the host supports: the real
- * `defineTool` author schema when the host module is available (parameters is
- * a property map with `required: true` on the property; the output object
- * declares `additionalProperties: false` explicitly and marks every property
- * required), or an equivalent plain JSON-schema object otherwise. Both shapes
- * share ONE execute body.
+ * Build the tool definition from the host's `defineTool` author schema
+ * (parameters is a property map with `required: true` on the property; the
+ * output object declares `additionalProperties: false` explicitly and marks
+ * every property required). dsh >=0.2.2-rc.1 always provides the module.
  * @param {object} deps
- * @param {object|undefined} [deps.toolsModule] - `@deepseek-ai/dsh-tools` (defineTool).
+ * @param {object} deps.toolsModule - `@deepseek-ai/dsh-tools` (defineTool).
  * @param {(value: string, env?: object|null) => unknown} [deps.translate] -
  *   the shared translator, already composed fresh by the wiring.
  * @param {(value: string, env: object|null) => unknown} [deps.translateMsysPath] -
  *   alternative to `translate`: the raw shared helper.
  * @param {() => object|null|undefined} [deps.buildEnv] - fresh mount-facts
  *   reader (buildTranslateEnv composition); called once per tool call.
- * @param {(message: string) => void} [deps.log]
  * @returns {object} a registry-ready definition.
  */
-export function buildPathToolDefinition({ toolsModule, translate, translateMsysPath, buildEnv, experimentalEnabled, log = () => {} } = {}) {
+export function buildPathToolDefinition({ toolsModule, translate, translateMsysPath, buildEnv, experimentalEnabled } = {}) {
   const convertValue = typeof translate === 'function'
     ? (value, env) => translate(value, env)
     : typeof translateMsysPath === 'function'
@@ -221,46 +218,26 @@ export function buildPathToolDefinition({ toolsModule, translate, translateMsysP
     if (!outcome.ok) throw new Error(outcome.message)
     return { native_path: outcome.native_path }
   }
-  if (typeof toolsModule?.defineTool === 'function') {
-    return toolsModule.defineTool({
-      name: PATH_TOOL_NAME,
-      description: pathToolDescription(),
-      parameters: {
-        msys_path: { type: 'string', required: true, description: MSYS_PATH_PARAM_DESCRIPTION },
-      },
-      output: {
-        schema: {
-          type: 'object',
-          properties: { native_path: { type: 'string', required: true } },
-          additionalProperties: false,
-        },
-        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-      },
-      isConcurrencySafe: true,
-      execute,
-    })
+  if (typeof toolsModule?.defineTool !== 'function') {
+    throw new Error('path-tool: @deepseek-ai/dsh-tools defineTool is unavailable')
   }
-  log('path-tool: @deepseek-ai/dsh-tools not resolvable; building a plain JSON-schema definition')
-  return {
+  return toolsModule.defineTool({
     name: PATH_TOOL_NAME,
     description: pathToolDescription(),
     parameters: {
-      type: 'object',
-      properties: { msys_path: { type: 'string', description: MSYS_PATH_PARAM_DESCRIPTION } },
-      required: ['msys_path'],
-      additionalProperties: false,
+      msys_path: { type: 'string', required: true, description: MSYS_PATH_PARAM_DESCRIPTION },
     },
     output: {
       schema: {
         type: 'object',
-        properties: { native_path: { type: 'string' } },
-        required: ['native_path'],
+        properties: { native_path: { type: 'string', required: true } },
         additionalProperties: false,
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
+    isConcurrencySafe: true,
     execute,
-  }
+  })
 }
 
 /**
@@ -271,8 +248,7 @@ export function buildPathToolDefinition({ toolsModule, translate, translateMsysP
  * MAIN WIRING's decisions — this module carries none.
  *
  * Deps (final interface):
- *   - toolsModule:      `@deepseek-ai/dsh-tools` when resolvable (defineTool);
- *                       absent ⇒ plain JSON-schema definition, same surface.
+ *   - toolsModule:      `@deepseek-ai/dsh-tools` (defineTool, required).
  *   - translate:        (value) => native, the shared translateMsysPath
  *                       composed fresh per call by the wiring, OR
  *   - translateMsysPath + buildEnv: the raw shared helper plus a fresh

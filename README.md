@@ -85,27 +85,24 @@ dsh-ptc-cordis-preset 的 `PTC 创造模式` 用户 preset 均不受影响、自
 
 ### 宿主要求与 preset 对齐
 
-自 v0.32.0 起宿主下限为 **dsh >= 0.1.7-rc**(经 peer `@deepseek-ai/dsh` 声明,
-prerelease 含入求值;旧宿主不再支持)。四个变体的行集是 `src/compositions.js`
-里已提交的 JS 数据,镜像官方 0.1.7 的 standard/minimal/ptc/cordis 行切分并叠加
+自 v0.49.0 起宿主下限为 **dsh >= 0.2.2-rc.1**:门禁读 `engines.dsh`(rc.1 的 `app-boot` 只要见到该字段就忽略 peer,`semver` 以 `includePrerelease: true` 求值),`peerDependencies` 同步声明并标 `optional`;只服务这一代宿主。四个变体的行集是 `src/compositions.js`
+里已提交的 JS 数据,镜像官方 0.2.2-rc.1 的 standard/minimal/ptc/cordis 行切分并叠加
 Git Bash 增量;跟随 dsh 升级的对齐由冒烟测试
-`compositions: full variants mirror the official row split` 锁住。
+`compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates` 锁住。
 **preset id 保持 `code-gitbash` 不变**——会话钉在 id 上,dsh 0.1.2 把内置 `code`
 改名 `ptc` 时本插件的变体 id 就没有跟随(改名会让已固定的会话报 preset not found)。
 
-**dsh 0.2.1 增量自动随行(v0.34.0 起,v0.40.2 对齐 alpha.5)**:官方 0.2.1 给全工具
-preset 加了时间上下文(`time-context`)与提醒工具(`schedule_*`);alpha.3 又把这两行
-从 subagent 的 `toolFilter.deny` 里移除(提醒工具重新可达子代理),给极简变体加了
-image-only `tool-fs` 与专属 compaction 组,alpha.4 给全工具 preset 加了插件市场
-(`tool-plugin-market`)。本插件在 0.2.1+ 宿主上探测到对应包即自动把上述行纳入变体
-(全工具三变体随探针取 `time-context`/`tool-schedule`/`tool-plugin-market`,极简
-变体只取 compaction 增量,与官方一致);旧宿主行为逐字节不变,**无需为此升级 dsh**。
+**可选官方行按包探测接入**:rc.1 全工具 preset 自带时间上下文(`time-context`)与
+提醒工具(`schedule_*`),极简 preset 自带 image-only `tool-fs` 与专属 compaction 组,
+全工具 preset 另有插件市场(`tool-plugin-market`)。本插件在挂载时按 `ctx.baseUrl`
+探测这些包,可用才纳入对应变体;剥掉某个包的 profile 只降级该行,不会拒绝整棵
+preset 挂载。
 
-**dsh 0.2.2-rc.1 对齐(v0.48.2)**:官方全工具 preset 的 `tool-fs` 行新增
-`config: { applyPatch: false }`(新的 apply_patch 工具默认关闭),本插件的
-standard/cordis/ptc 变体同步补上,极简变体不加;插件管理/市场行按 rc.1 的门控
-重排(cordis 两者跟 `profileContext`,standard 仅 manager 跟 `profileContext`,
-ptc 两者恒禁用)。`dsh.compatibility.dshReleases` 已登记 0.2.2-rc.1。
+**0.2.2-rc.1 基线**:官方全工具 preset 的 `tool-fs` 行带
+`config: { applyPatch: false }`,本插件的 standard/cordis/ptc 变体同步,极简变体不加;
+插件管理/市场行按 rc.1 门控(cordis 两者跟 `profileContext`,standard 仅 manager 跟
+`profileContext`,ptc 两者恒禁用)。`dsh.compatibility.dshReleases` 只登记
+0.2.2-rc.1。
 
 ## 安装(公开 npm 插件,推荐)
 
@@ -155,7 +152,7 @@ bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件
 **Unreleased 的 Windows 自有 bash/native 工具在 experimentalNative 开启时（默认）采用 fail-closed**：`read-only`、
 `workspace-write` 或缺失/未解析的策略在执行前拒绝；仅真实解析为
 `danger-full-access` 的调用可以执行。受限请求不会登记/启动无围栏进程，也不会自动
-回退 pwsh/cmd/WSL、切模式或绕过文件工具拒绝。用户可在设置中关闭 experimentalNative，恢复明确标注 unconfined 的旧版 Bash 行为。
+回退 pwsh/cmd/WSL、切模式或绕过文件工具拒绝。用户可在设置中关闭 experimentalNative，恢复明确标注 unconfined 的兼容 Bash 行为。
 
 - **拒绝不是沙箱修复**：当前仍无已验证的受限 Git Bash。历史失败为 Win32 error 5 /
   0xC0000142；匹配本机 MSYS 源码后发现 signal pipe 显式 SD 缺 restricting SID，
@@ -356,8 +353,7 @@ preset 会被插件自动清理;宿主官方 PowerShell 执行器原样保留(�
 **两侧设置卡上是同一份状态**:权威值只有本插件这一行 Config 一份;对方的设置卡通过
 `ctx.configForms.get('gitbash-shell')` **绑定同一行**、写同一个字段(DSH 官方支持编辑另一个
 插件所拥有的命名空间),所以任一侧改动另一侧立即同步——不存在两份拷贝,也没有同步逻辑。
-旧宿主上 `configForms` 不存在、镜像卡片不出现,开关只在本插件自己的设置面(`gitbash-shell`
-命名空间)可改。
+
 
 **依赖版本**:去重开关本体在**本插件 ≥ 0.25.0**;对方的协作能力在
 **dsh-ptc-cordis-preset ≥ 0.14.0**。
@@ -438,7 +434,7 @@ PTC/创造及用户自建模式一律覆盖。
 
 ## 显式工具（Unreleased）
 
-**运行时开关 `experimentalNative`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」。开启时 Windows 受限/未确定模式拒绝 Bash，提供可用的两个显式工具；关闭立即注销并禁用两个工具，恢复明确标注 `unconfined` 的旧版 Bash（不执行 shell 文件写入限制）。修改作用于现有会话后续调用，无需重启，不终止已启动的任务。拒绝时用户也可在会话访问模式控件选择 `danger-full-access`；Agent 不得自行放宽权限。与路径方言及 codePaths 开关独立。
+**运行时开关 `experimentalNative`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」。开启时 Windows 受限/未确定模式拒绝 Bash，提供可用的两个显式工具；关闭立即注销并禁用两个工具，恢复明确标注 `unconfined` 的兼容 Bash（不执行 shell 文件写入限制）。修改作用于现有会话后续调用，无需重启，不终止已启动的任务。拒绝时用户也可在会话访问模式控件选择 `danger-full-access`；Agent 不得自行放宽权限。与路径方言及 codePaths 开关独立。
 
 
 两个工具随 Windows 的自有 bash 工具挂入同一 agent-owned scope；不替换官方工具或 root
@@ -518,7 +514,7 @@ return await fs.readFile(resolved.native_path, 'utf8');
 
 - **插件全权接管**:Windows 上每次启动都无条件把它的 `terminalShell` 设为 Git Bash——即使你在设置页/别处改过,下次插件启动也会改回来;
 - 卸载本插件 → 自动还原为你改之前的原值(回到它的默认解析:pwsh / powershell);
-- 想关掉本联动 → 本插件 row 配置加 `betterSidebarShell: false`。
+- 想关掉本联动 → 本插件 row 配置加 `adoptSidebar: false`(默认 true)。
 
 ## 许可
 

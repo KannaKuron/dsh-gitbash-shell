@@ -1,25 +1,19 @@
 /**
- * dsh-gitbash-shell — declarative composition rows (dsh >= 0.1.7).
+ * dsh-gitbash-shell — declarative composition rows (dsh >= 0.2.2-rc.1).
  *
- * dsh 0.1.7 removed directory presets; a preset is a definition registered
- * through agentPresets.register(). This module is the committed, reviewable
- * composition DATA for the four Git Bash variants — the new-era counterpart
- * of the committed assets/<variant>/agent.cordis*.yml texts the materializer
- * writes on older hosts.
- *
- * Every variant mirrors the official preset it replaces (packages/bundle/
+ * A preset is a definition registered through agentPresets.register(). This
+ * module is the committed, reviewable composition DATA for the four Git Bash
+ * variants and mirrors the official 0.2.2-rc.1 presets (packages/bundle/
  * web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the Git Bash
  * routing: full variants keep the official platform-gated shell rows, and the
  * inline patch adds OUR bash over a private executor on Windows. The minimal
  * variant instead keeps its persistent Git Bash terminal rows. On non-Windows
- * hosts the official stack stays native. Host-release deltas ride hostExtras
- * probes (the block below the header rows) — each probe keeps the base set
- * byte-identical to the 0.1.7 mirror. A conditional delta exists while
- * dsh-ptc-cordis-preset reports its experimental-CPython backend ACTIVE: the
- * two workflow rows follow the official Python composition and go off (see
- * `pythonActive` below). While that backend is off — the default, and also
- * whenever the peer's preflight failed — the rows are the official ones
- * unchanged.
+ * hosts the official stack stays native. Optional host extras ride
+ * hostExtras probes so a package stripped from a profile degrades that row
+ * instead of rejecting the whole preset mount. A conditional delta exists
+ * while dsh-ptc-cordis-preset reports its experimental-CPython backend
+ * ACTIVE: the two workflow rows follow the official Python composition and go
+ * off (see `pythonActive` below).
  */
 
 /** Default Git Bash binary — must match src/shell.js and the patch config. */
@@ -29,12 +23,7 @@ function off(value) {
   return value === true ? { disabled: true } : {}
 }
 
-// Plan-mode section, shared body with an era-specific FIRST SENTENCE (each
-// byte-exact from its era's official patch.yml): dsh 0.1.7..0.2.1-alpha.1
-// say "until exit_plan_mode succeeds", 0.2.1-alpha.2 rephrased to "until the
-// user approves your plan through exit_plan_mode". The hostExtras probe
-// already splits the eras for the row set, so the wording rides the same
-// signal — no new probe, and each generation mirrors its own official text.
+// Plan-mode section, byte-exact from the official 0.2.2-rc.1 patch.yml.
 const PLAN_SECTION_TAIL = `Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
 Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
@@ -48,9 +37,7 @@ Make the plan decision-complete: state the goal and success criteria; group impl
 When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
 `
 
-const planSectionFor = (hostEra021) => hostEra021
-  ? `You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. ${PLAN_SECTION_TAIL}`
-  : `You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. ${PLAN_SECTION_TAIL}`
+const PLAN_SECTION = `You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. ${PLAN_SECTION_TAIL}`
 
 /**
  * The shared full-tool rows for standard / ptc / cordis variants (pure).
@@ -58,8 +45,6 @@ const planSectionFor = (hostEra021) => hostEra021
  * @param {'standard'|'ptc'|'cordis'} input.kind - which official preset this
  *   variant mirrors (workflow rows follow it: enabled on standard/cordis,
  *   disabled on ptc).
- * @param {boolean} input.gitBash - retained for composition-call compatibility;
- *   full variants obtain Git Bash from the per-agent inline patch on Windows.
  * @param {string|undefined} input.skillsDir - Creation authoring skills
  *   directory (cordis variant only; resolved beside the agent-preset package).
  * @param {boolean} [input.pythonActive] - whether the experimental CPython
@@ -76,7 +61,7 @@ const planSectionFor = (hostEra021) => hostEra021
  *   workflow setting is untouched and returns once it is not.
  * @returns {object[]} the declarative plugins list.
  */
-export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hostExtras = {} }) {
+export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras = {} }) {
   const win = typeof process !== 'undefined' && process.platform === 'win32'
   // Route B preserves the root PowerShell executor. On Windows the official
   // tool-bash would execute through that executor, so full variants retain the
@@ -84,38 +69,27 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
   const bashDisabled = win
   const pwshDisabled = !win
   const workflowOn = kind !== 'ptc' && pythonActive !== true
-  // dsh 0.2.1 grew the official full-tool presets across releases, all
-  // row-id-stable: alpha.2 added time-context (durable clock readings) and
-  // tool-schedule (the reminder tools); alpha.3 DELETED the schedule_*
-  // toolFilter deny from the subagent/subagent_fork configs (official
-  // reminders reach subagents again — the deny was never load-bearing,
-  // nothing replaces it); alpha.4 added a tool-plugin-market row to every
-  // full preset. 0.2.2-alpha.2 then reworked the tool execution architecture
-  // (`executorPlugin`): the official executors moved into explicit
-  // tool-executor-native/-ptc rows, the subagent config renamed
-  // `modelSelectionSettings` to `modelSelection` + opt-in `modelDiscovery`,
-  // list-agents folded into the tool-subagent-control row itself (its
-  // separate row is gone), and the manager/market rows enable under a
-  // profile context instead of staying off outside cordis. A preset row whose
-  // package is absent rejects the WHOLE mount, so these ride a host probe
-  // (index.js probeHostExtras, resolved from ctx.baseUrl — the base rows
-  // mount from); absent/older hosts keep the byte-identical earlier row set.
-  // The minimal variant carries its own 0.2.1-alpha.3 delta (tool-fs +
-  // compaction) behind the compaction flag.
-  const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false, executorPlugin = false, profileContext = false } = hostExtras
+  // The 0.2.2-rc.1 preset row set: explicit tool-executor-native/-ptc rows,
+  // subagent `modelSelection` + `modelDiscovery`, list_agents folded into the
+  // tool-subagent-control row, and manager/market rows gated on the live
+  // profile context. Optional rows that some profiles strip (time-context,
+  // tool-schedule, plugin market, minimal compaction) are host-probed at boot
+  // (index.js probeHostExtras, resolved from ctx.baseUrl — the base preset
+  // rows mount from) because a row whose package is absent rejects the WHOLE
+  // mount.
+  const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false, profileContext = false } = hostExtras
   const rows = [
     {
       id: 'persona',
       name: '@deepseek-ai/dsh-persona',
       config: {
         prefix: 'You are a coding agent powered by the {{model}} model.',
-        // NO suffix: the host dropped the `cwd` prompt variable on 2026-09-13
-        // (upstream 79bd3d8da7 — working directories centralized into the
-        // working-directory service) and removed the persona suffix clause
-        // from every official preset in 0.2.1-alpha.2 (upstream 2eb058d887).
-        // An unregistered variable reference throws BEFORE any model request
-        // and kills the whole turn (issue #16, dsh 0.2.1-alpha.1+). The
-        // host's working-directory runtime context supplies the directory.
+        // NO suffix: the host dropped the `cwd` prompt variable (working
+        // directories centralized into the working-directory service) and its
+        // official presets carry no persona suffix clause. An unregistered
+        // variable reference throws BEFORE any model request and kills the
+        // whole turn (issue #16). The host's working-directory runtime context
+        // supplies the directory.
       },
     },
     {
@@ -126,10 +100,9 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
     ...(timeContext ? [{ id: 'time-context', name: '@deepseek-ai/dsh-time-context' }] : []),
     { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash', ...off(bashDisabled) },
     { id: 'tool-pwsh', name: '@deepseek-ai/dsh-tool-pwsh', ...off(pwshDisabled) },
-    // 0.2.2-rc.1 ships every full-tool preset with the new apply_patch tool
-    // explicitly OFF beside edit. Keep the earlier generations byte-identical
-    // (the key did not exist there) and mirror the shipped default on 0.2.2.
-    { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs', ...(executorPlugin ? { config: { applyPatch: false } } : {}) },
+    // 0.2.2-rc.1 ships every full-tool preset with apply_patch explicitly OFF
+    // beside edit; mirror that default.
+    { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs', config: { applyPatch: false } },
     {
       id: 'tool-fs-search',
       name: '@deepseek-ai/dsh-tool-fs-search',
@@ -152,7 +125,7 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
         {
           id: 'plan-mode',
           name: '@deepseek-ai/dsh-plan-mode',
-          config: { section: planSectionFor(timeContext) },
+          config: { section: PLAN_SECTION },
         },
       ],
     },
@@ -178,20 +151,15 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
       isolate: { workflowEngine: true },
       config: [
         { id: 'tool-subagent-control', name: '@deepseek-ai/dsh-tool-subagent-control' },
-        // 0.2.2-alpha.2 folded list_agents into the control row itself; the
-        // separate child row is gone, so alpha.2+ hosts must not mount it.
-        ...(executorPlugin ? [] : [{ id: 'tool-subagent-list-agents', name: '@deepseek-ai/dsh-tool-subagent-control/list-agents' }]),
         {
           id: 'tool-subagent',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: executorPlugin
-            ? { provider: 'spawn', toolName: 'subagent', modelSelection: true, modelDiscovery: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }) }
-            : { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, ...(timeContext ? {} : { backgroundMode: 'continuable' }) },
+          config: { provider: 'spawn', toolName: 'subagent', modelSelection: true, modelDiscovery: true },
         },
         {
           id: 'tool-subagent-fork',
           name: '@deepseek-ai/dsh-tool-subagent',
-          config: { provider: 'fork', toolName: 'subagent_fork', ...(timeContext ? {} : { backgroundMode: 'continuable' }) },
+          config: { provider: 'fork', toolName: 'subagent_fork' },
         },
         {
           id: 'workflow-ptc',
@@ -201,11 +169,9 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
         },
         { id: 'tool-workflow', name: '@deepseek-ai/dsh-tool-workflow', ...off(!workflowOn) },
         // NO tool-subagent-codex / tool-subagent-claude-code / tool-ralph:
-        // the official presets retired these three disabled placeholder rows
-        // in 0.2.1-alpha.2 (upstream 8ed0b530ed — the codex/claude-code
-        // provider rows moved to on-demand official plugin bundles). They
-        // were `disabled: true` on every host generation, so dropping them
-        // loses nothing and re-aligns with the shipped 0.2.1 row split.
+        // the official presets retired these disabled placeholder rows (the
+        // codex/claude-code provider rows moved to on-demand official plugin
+        // bundles), so omitting them mirrors the shipped rc.1 row split.
       ],
     },
     { id: 'tool-ask-user', name: '@deepseek-ai/dsh-tool-ask-user' },
@@ -221,13 +187,9 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
     },
   ]
   if (kind === 'ptc') {
-    // 0.2.2-alpha.2 replaced the deprecated presentation selector with the
-    // explicit PTC executor row (the base deployment keeps
-    // tool-executor-native; a scoped executor row overrides it for this
-    // agent). Older hosts keep the presentation row they ship.
-    rows.push(executorPlugin
-      ? { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' }
-      : { id: 'tool-presentation', name: '@deepseek-ai/dsh-agent-tool-presentation', config: { mode: 'ptc' } })
+    // The explicit PTC executor row: the base deployment keeps
+    // tool-executor-native, and this scoped row overrides it for this agent.
+    rows.push({ id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
   }
   if (kind === 'cordis') {
     rows.push({ id: 'tool-cordis', name: '@deepseek-ai/dsh-tool-cordis' })
@@ -240,20 +202,18 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
   rows.push({
     id: 'tool-plugin-manager',
     name: '@deepseek-ai/dsh-plugin-manager/tools',
-    // Official rows: before 0.2.2-alpha.2 only cordis keeps it on. In
-    // 0.2.2-rc.1 cordis/standard gate it on the live profile context while
-    // ptc keeps it off outright.
-    ...(executorPlugin ? off(kind === 'ptc' ? true : !profileContext) : off(kind !== 'cordis')),
+    // rc.1 official rows: cordis/standard gate it on the live profile
+    // context while ptc keeps it off outright.
+    ...off(kind === 'ptc' ? true : !profileContext),
   })
   if (pluginMarket) {
     rows.push({
-      // Official 0.2.1-alpha.4 added the market beside the manager. In
-      // 0.2.2-rc.1 cordis gates it on the profile context, standard keeps it
-      // off outright (the union side owns the market there) and ptc keeps it
-      // off too.
+      // rc.1: cordis gates it on the profile context, standard keeps it off
+      // outright (the union side owns the market there) and ptc keeps it off
+      // too.
       id: 'tool-plugin-market',
       name: '@deepseek-ai/dsh-plugin-market/tools',
-      ...(executorPlugin ? off(kind !== 'cordis' ? true : !profileContext) : off(kind !== 'cordis')),
+      ...off(kind !== 'cordis' ? true : !profileContext),
     })
   }
   return rows
@@ -272,9 +232,8 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
  *   failure — never a substitute shell (issue #15: the hardcoded default
  *   broke every PTY spawn where Git lives outside `C:/Program Files/Git`).
  * @param {object} [input.hostExtras] - the host probe (probeHostExtras):
- *   `compaction` true adds the official 0.2.1-alpha.3 minimal rows (an
- *   image-read-only tool-fs plus the pruner-less compaction group) ahead of
- *   the terminal.
+ *   `compaction` true adds the official minimal rows (an image-read-only
+ *   tool-fs plus the pruner-less compaction group) ahead of the terminal.
  * @returns {object[]} the declarative plugins list.
  */
 export function minimalPluginsFor({ bashPath, hostExtras = {} } = {}) {
@@ -292,15 +251,15 @@ export function minimalPluginsFor({ bashPath, hostExtras = {} } = {}) {
     },
     ...(compaction ? [
       {
-        // Official 0.2.1-alpha.3 minimal: image reads ride the fs tool; every
-        // other fs verb stays with the persistent terminal.
+        // Official minimal: image reads ride the fs tool; every other fs verb
+        // stays with the persistent terminal.
         id: 'tool-fs',
         name: '@deepseek-ai/dsh-tool-fs',
         config: { read: false, readImage: true, write: false, edit: false },
       },
       {
-        // Official 0.2.1-alpha.3 minimal compaction group: NO pruner row
-        // (isolate carries compaction alone, unlike the full presets).
+        // Official minimal compaction group: NO pruner row (isolate carries
+        // compaction alone, unlike the full presets).
         id: 'compaction',
         name: 'cordis:group',
         group: true,

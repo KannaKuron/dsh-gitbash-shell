@@ -3,6 +3,19 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.49.0 — 2026-11-05
+
+### feat:单代基线 dsh >=0.2.2-rc.1,撤回 v0.47.2 的双代兼容
+
+- **基线**:`engines.dsh`、peer `@deepseek-ai/dsh`、`dsh.compatibility.dsh` 统一到 `>=0.2.2-rc.1`(peer 保持 optional),node 下限 `>=24.9.0`,schemastery peer/dev 改 `^3.19.0`;`dsh.compatibility.dshReleases` 只登记 0.2.2-rc.1,`dsh.plugin.json` 同步。运行时不再为 0.1.7–0.2.1 保留任何分支、探测或测试夹具,直接反转 v0.47.2 的「兼容下限回落」。
+- **执行器单代**:删除 `run`/`start`/`runArgv`/`startArgv` 与 `super.execute` 回退,只保留 `resolve` + `execute(spec)`/`executeArgv(spec, argv)`;继承的六个 Config 字段直接 `.volatile()`(不再逐字段 `live()` 探测),`bashPath` 保持裸值。
+- **schemastery 语义化**:删除 `hostWantsVolatileRefs` 的宿主 Config 行为探测;无参 `loadSchemastery()` 解析本包 peer,再解析 shell 包旁同一 peer,以 `hasVolatile()` 判定语义能力;`chooseCopy({ ownEntry, copies })` 返回 `own-volatile`/`redirected`/`no-volatile-anywhere`/`unresolved`。两个消费点共用同一缓存,`shell.js` 对 `@deepseek-ai/dsh-bash-sandbox` 的静态 import 仍是受控例外(只被 `inline-tools.js` 动态 import 且失败被捕获)。
+- **宿主读取面收敛**:`executorConfiguredBashPath` 只走 `loader.entries()`(删除 `loader.resolve` 首路径);`settings` 只读 `describe()` 的行表单(删除 `settings.get(ns)` 兼容);工具枚举只认公开 `ctx.tools.schemas(scope)`(删除 `definitions()` 回退);`system-prompt/assemble` 只读 `toolSet`(删除 `assembly.tools` 回退);工具定义只走 typed `defineTool`(删除 plain JSON-schema 回退)。
+- **组合单代**:`compositions.js` 只产出 rc.1 形状(`tool-executor-ptc`、subagent 的 `modelSelection`+`modelDiscovery`、list-agents 并入 control 行、manager/market 随 `profileContext`);删除 `executorPlugin` 探测、旧 `gitBash` 形参、旧 `backgroundMode`/`tool-presentation`/`tool-subagent-list-agents` 行。time-context/tool-schedule/plugin-market/compaction 的按包探测保留。
+- **清理**:删除 `purgeOrphans`、`agentPresets.register` 守卫外壳、`betterSidebarShell` 无效条件、测试专用 inline addendum 与不可达防御;移除根目录 0 字节跟踪文件 `=0.1.7-rc`。`src/client.js` 的 `SETTINGS_NAMESPACE` 更名 `ROW_NAMESPACE`,设置卡按宿主 `=== true` 语义读取 `pwshTool`。
+- **保留**:用户数据迁移(旧物化树 marker 清理、旧 preset/profile 行字段、侧栏终端旧默认名 `bash`)、跨插件联动(dsh-ops/FastCtx、dsh-ptc-cordis-preset、better-sidebar、terminal bundle)、平台分支、可选官方能力的按包探测与降级,理由见 AGENTS.md「单代基线与大版本清理纪律」。
+- **测试与验证**:测试夹具全部改为 rc.1 单代契约,删除 0.1.6 执行器与双代 schemastery/composition 用例;`npm test` 345 项(344 pass + 1 平台 skip),另跑 `node --check`、`node tests/align-official.mjs`、`git diff --check` 与旧下限/旧 API 静态复查。仓库内没有 SSR 专用脚本,未执行 SSR 自检。本轮在 macOS 开发,无 Windows 真机,未发布。
+
 ## v0.48.3 — 2026-11-04
 
 **类型**:fix(移除对 dsh 0.2.2 私有 `ctx.tools.view` 的依赖)

@@ -15,37 +15,16 @@
  *                       copied from the INSTALLED shipped 'cordis' preset so
  *                       the guidance tracks the deployment)
  *
- * Each preset directory carries a .plugin-managed.json marker recording the
- * hash of every file this plugin wrote. Ownership rules (per preset):
- *   - absent           → materialize;
- *   - foreign          → written by someone else: never touch;
- *   - user-modified    → ours but edited: never touch again (delete the
- *                        directory to re-materialize);
- *   - unmodified       → refreshed only when the plugin version changed (or,
- *                        for cordis-gitbash, when the live skills source
- *                        drifted); otherwise idle.
- *
- * Uninstall hygiene mirrors dsh-ptc-cordis-preset: on disposal, a package
- * directory that still exists means reload/update/restart — keep the
- * presets; a vanished package.json means uninstall — remove each preset the
- * user never modified.
- *
- * ERA SPLIT (v0.6.0): dsh renamed the built-in `code` preset to `ptc` in
- * 0.1.2 with no compatibility alias (tool-presentation `mode` value, plus new
- * built-in rows), so each variant ships BOTH committed era texts where the
- * built-in changed (minimal did not — one text serves both). The era is
- * probed per boot from the roster (`ptc` → dsh >= 0.1.2, else `code`),
- * recorded in the marker (`base`), and a flipped detection re-materializes
- * on the next startup — either upgrade order converges, and preset IDS never
- * change (sessions are pinned to them; `code-gitbash` keeps its historical
- * id even though its dsh >= 0.1.2 text presents through the `ptc` built-in).
+ * Presets are registered declaratively through agentPresets.register(); the
+ * composition data lives in src/compositions.js. Earlier releases materialized
+ * preset directories with a .plugin-managed.json marker. That path is gone, but
+ * cleanupLegacyTrees() still removes an UNMODIFIED tree left behind by an old
+ * version — a user-modified or foreign tree is never touched.
  */
 
 import { createHash } from 'node:crypto'
 import {
-  cpSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -55,7 +34,6 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
@@ -93,45 +71,21 @@ import {
 export * from './path-dialect.js'
 
 /**
- * The executor base class's own Config schema, when this deployment has it.
- *
- * Dynamic and optional on purpose: `@deepseek-ai/dsh-bash-sandbox` belongs to
- * another row of THIS plugin, and a deployment that cannot resolve it must
- * still mount every other face (the static-peer-import lesson, v0.24.3). What
- * we need it for is the host's OWN behavioural answer to "do you read your
- * shell limits through `.get()`?" — see src/schemastery.js.
- */
-async function executorConfigSchema() {
-  try {
-    const mod = await import('@deepseek-ai/dsh-bash-sandbox')
-    return (mod.SandboxBashExecutor ?? mod.default)?.Config
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * The schemastery module, resolved LAZILY (v0.24.3): `@deepseek-ai/schemastery`
- * is a PEER — plain Node cannot resolve it from this package, only the host's
- * own resolution (the profile shared fallback) supplies it. A deployment whose
- * fallback lacks it used to fail the *static* import at the top of this file,
- * and the Loader treats a failed plugin import as a non-fatal skip
+ * The schemastery module, resolved LAZILY: `@deepseek-ai/schemastery` is a
+ * PEER — plain Node cannot resolve it from this package, only the host's own
+ * resolution (the profile shared fallback) supplies it. A static peer import
+ * failure makes the Loader skip the whole plugin row as non-fatal
  * (`vendor/loader/src/config/entry.ts` `_init()`: logger.error + return, no
- * fiber) — the row then silently never mounted, which for THIS plugin means no
- * preset variants, no executor wiring and no client half, while every host log
- * stays green. Same all-green failure class as dsh-better-workspace issue #9;
- * verified with a fixture plugin whose only difference was the static peer
- * import. Deferring the import hides the schema where the module is absent
- * instead of killing the row.
+ * fiber), so the import stays dynamic.
  *
- * WHICH copy is resolved is no longer left to our own resolution order
- * (v0.31.1, issue #12): src/schemastery.js asks the host what it expects and
- * picks a copy that agrees with it. Both call sites share the one cached
- * answer, so the settings namespace and the executor can never disagree.
+ * WHICH copy is resolved is not left to our own resolution order: the resolver
+ * picks a copy that can produce the Volatile refs the host executor reads
+ * (src/schemastery.js). Both call sites share one cached answer, so the row
+ * Config and the executor Config cannot disagree.
  */
 let Schema = null
 try {
-  Schema = (await loadSchemastery({ parentConfig: await executorConfigSchema() })).z ?? null
+  Schema = (await loadSchemastery()).z ?? null
 } catch (error) {
   Schema = null
   console.warn(
@@ -342,9 +296,6 @@ import {
 
 /** The shipped preset whose skills/ dir seeds cordis-gitbash. */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const pkgDir = join(here, '..')
-
 // ── tree hashing ────────────────────────────────────────────────────────────
 
 /** Every file under `root`, as sorted relative POSIX-style paths. */
@@ -396,16 +347,6 @@ function classify(target) {
   if (keys.length !== Object.keys(current).length) return 'user-modified'
   for (const k of keys) if (current[k] !== recorded[k]) return 'user-modified'
   return 'unmodified'
-}
-
-/** 'skills/<rel>' → sha256 map of a skills source tree, or null when absent. */
-function skillsHashes(source) {
-  if (!source || !existsSync(source)) return null
-  const out = {}
-  for (const rel of walkFiles(source)) {
-    out[`skills/${rel}`] = createHash('sha256').update(readFileSync(join(source, rel))).digest('hex')
-  }
-  return out
 }
 
 // ── inspect-registry compatibility shim ─────────────────────────────────────
@@ -471,33 +412,22 @@ export function installRegisterShim(reg) {
 // wrapper reads the same value per dispatch and passes calls through.
 
 /**
- * dsh >= 0.1.7 marks a Config field live-editable without remount; a
- * 0.1.6-era schemastery predates the method and the guard keeps this module
- * loadable there (values then behave as ordinary config, read through the
- * registered settings namespace instead).
- */
-function live(schema) {
-  return typeof schema.volatile === 'function' ? schema.volatile() : schema
-}
-
-/**
- * Row Config = the settings surface on dsh >= 0.1.7 (values persist under the
- * row id; the patch row id is 'gitbash-shell', the same string as the old
- * settings namespace, so the one-shot legacy settings.yaml import maps old
- * user values onto the new home). Inert metadata on older hosts, and absent
- * (undefined) when schemastery is unresolvable: cordis then passes the row
- * config through unvalidated instead of the whole row disappearing.
+ * Row Config = this plugin's live settings surface (values persist under the
+ * row id 'gitbash-shell'). Every editable field is volatile, so a change lands
+ * on the next read without a remount. Absent (undefined) when schemastery is
+ * unresolvable: cordis then passes the row config through unvalidated instead
+ * of the whole row disappearing.
  */
 export const Config = Schema === null ? undefined : Schema.object({
   // Row-level knob predating the Config surface (invariant 6): which preset
   // variants to serve. Ordinary config — an edit remounts the plugin, which
   // is the right weight for a list that changes the roster.
   presets: Schema.array(Schema.string()).default(PRESET_IDS),
-  posixPaths: live(Schema.boolean().default(true)),
-  virtualMounts: live(Schema.boolean().default(true)),
-  globSplit: live(Schema.boolean().default(true)),
-  errorDialect: live(Schema.boolean().default(true)),
-  codePaths: live(Schema.boolean().default(true)),
+  posixPaths: Schema.boolean().default(true).volatile(),
+  virtualMounts: Schema.boolean().default(true).volatile(),
+  globSplit: Schema.boolean().default(true).volatile(),
+  errorDialect: Schema.boolean().default(true).volatile(),
+  codePaths: Schema.boolean().default(true).volatile(),
   /**
    * Whether DELEGATED agents (subagents, team members, nested children) also
    * use the Git Bash dialect (v0.27.0). Default ON — the historical behavior;
@@ -506,9 +436,9 @@ export const Config = Schema === null ? undefined : Schema.object({
    * no echo rewrite, no DSH_PATH_DIALECT fact). The executor itself is one
    * per-process provider, so Git Bash stays the binary either way.
    */
-  subagentDialect: live(Schema.boolean().default(true)),
-  gitAutocrlf: live(Schema.boolean().default(true)),
-  bashPath: live(Schema.string().default('')),
+  subagentDialect: Schema.boolean().default(true).volatile(),
+  gitAutocrlf: Schema.boolean().default(true).volatile(),
+  bashPath: Schema.string().default('').volatile(),
   /**
    * Bash init script (issue #37, v0.45.0): path of a file every `bash -c`
    * must source before running the command. Implemented as `BASH_ENV`, the
@@ -520,8 +450,8 @@ export const Config = Schema === null ? undefined : Schema.object({
    * `~` expands to the home directory; the path must exist (a missing file is
    * silently ignored by bash, so a typo looks like "not set").
    */
-  initScript: live(Schema.string().default('')),
-  adoptSidebar: live(Schema.boolean().default(true)),
+  initScript: Schema.string().default('').volatile(),
+  adoptSidebar: Schema.boolean().default(true).volatile(),
   /**
    * Whether the OFFICIAL sidebar terminal ("new terminal") is switched to the
    * resolved Git Bash (v0.29.0, task-25). Default ON — the user asked for
@@ -531,7 +461,7 @@ export const Config = Schema === null ? undefined : Schema.object({
    * Ubuntu, not Git Bash. Only ever writes when the terminal has NO shell of
    * its own: an explicit choice is never overwritten.
    */
-  autoTerminalShell: live(Schema.boolean().default(true)),
+  autoTerminalShell: Schema.boolean().default(true).volatile(),
   /**
    * Dedupe switch against dsh-ptc-cordis-preset (their issue #7, v0.25.0):
    * ON while that plugin is installed AND materializing its `PTC 创造模式`
@@ -541,7 +471,7 @@ export const Config = Schema === null ? undefined : Schema.object({
    * settings card too (their card binds this row through configForms), so
    * changing it on either side changes it here.
    */
-  suppressPeerCordis: live(Schema.boolean().default(false)),
+  suppressPeerCordis: Schema.boolean().default(false).volatile(),
   /**
    * Serve the four `* · Git Bash` VARIANT presets (v0.34.x behaviour) instead
    * of relying on the inline tool patch (v0.35.0). Default OFF for every user
@@ -552,7 +482,7 @@ export const Config = Schema === null ? undefined : Schema.object({
    * registering variants; a session pinned to a variant id must re-select an
    * official preset (the roster flip is announced in the CHANGELOG).
    */
-  variantPresets: live(Schema.boolean().default(false)),
+  variantPresets: Schema.boolean().default(false).volatile(),
   /**
    * Show the host `pwsh` tool to agents (v0.39.0 semantics; default OFF).
    * Route B keeps the official pwsh executor in place, so the tool is REAL
@@ -561,18 +491,18 @@ export const Config = Schema === null ? undefined : Schema.object({
    * bash-first. The retired v0.37 `pwsh7` side-channel is gone; this switch
    * now controls the real thing.
    */
-  pwshTool: live(Schema.boolean().default(false)),
+  pwshTool: Schema.boolean().default(false).volatile(),
   // Maintainer PR #26 decision: one live opt-out for refusal and companions.
-  experimentalNative: live(Schema.boolean().default(true)),
+  experimentalNative: Schema.boolean().default(true).volatile(),
   /**
    * Publish the FastCtx file tools (`gb_*`) through the local MCP bridge.
-   * Default ON; Windows-only payload, stands down entirely when dsh-ops is
-   * present (its ops_* tools already cover the same ground).
+   * Default OFF (dsh-ops 0.3.0 supersedes it); Windows-only payload, and it
+   * stands down entirely when dsh-ops is present.
    */
-  fastctxTools: live(Schema.boolean().default(false)),
+  fastctxTools: Schema.boolean().default(false).volatile(),
 })
 
-/** Read one Config value across eras: Volatile ref (>= 0.1.7) or plain value. */
+/** Read one Config value: a Volatile ref, or a plain value from a test. */
 export function valueOf(value) {
   return value && typeof value.get === 'function' ? value.get() : value
 }
@@ -596,11 +526,10 @@ export function rowBashPath(config) {
 }
 
 /**
- * Era-aware live settings reader for everything wired inside apply(): the
- * NEW era reads this plugin's own Config refs (no listener needed — every
- * consumer here already re-reads per dispatch/assembly), the OLD era keeps
- * reading the registered namespace through the settings service.
- * @param {object} ctx - the plugin's mounting context.
+ * Live settings reader for everything wired inside apply(): it reads this
+ * plugin's own Config refs (no listener needed — every consumer here already
+ * re-reads per dispatch/assembly).
+ * @param {object} ctx - the plugin's mounting context (kept for the call shape).
  * @param {object|undefined} config - apply()'s resolved Config.
  * @returns {{ dialect: () => object, posix: () => boolean, adoptSidebar: () => boolean, suppressPeerCordis: () => boolean }}
  */
@@ -609,7 +538,7 @@ function makeLiveReader(ctx, config) {
   const dialect = () => {
     if (!hasConfig) {
       // No row Config (schemastery unresolvable): everything off except the
-      // opt-out booleans, the exact shape the old fallback returned.
+      // opt-out booleans.
       return {
         posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false,
         codePaths: false, gitAutocrlf: false, bashPath: '', subagentDialect: true, autoTerminalShell: true,
@@ -632,8 +561,9 @@ function makeLiveReader(ctx, config) {
       // Default OFF (v0.35.0): the official presets carry Git Bash through the
       // inline tool patch; the variant roster is opt-in.
       variantPresets: valueOf(config.variantPresets) === true,
-      // Default ON (v0.35.0): the pwsh replacement fills the denied host tool.
-      pwshTool: valueOf(config.pwshTool) !== false,
+      // Default OFF (v0.39.0): route B keeps the real pwsh tool hidden unless
+      // the user explicitly shows it.
+      pwshTool: valueOf(config.pwshTool) === true,
       // Default OFF (v0.39.4, dsh-ops 0.3.0): FastCtx is dead upstream and dsh-ops ships stronger native ops_* file tools; an explicit true re-enables the bridge. It still stands down when dsh-ops is present.
       fastctxTools: valueOf(config.fastctxTools) === true,
     }
@@ -644,7 +574,7 @@ function makeLiveReader(ctx, config) {
     adoptSidebar: () => dialect().adoptSidebar !== false,
     autoTerminalShell: () => dialect().autoTerminalShell !== false,
     variantPresets: () => (hasConfig ? valueOf(config.variantPresets) === true : false),
-    pwshTool: () => (hasConfig ? valueOf(config.pwshTool) !== false : true),
+    pwshTool: () => (hasConfig ? valueOf(config.pwshTool) === true : false),
     experimentalNative: () => (hasConfig ? valueOf(config.experimentalNative) !== false : true),
     fastctxTools: () => (hasConfig ? valueOf(config.fastctxTools) === true : false),
     // Default OFF: only an explicit true asks for deduplication.
@@ -682,7 +612,7 @@ const SIDEBAR_RETRY_MS = 1500
  * polling keeps the original ready-wait behavior: at boot the settings
  * service may not be provided yet when this row's apply runs. Never throws.
  *
- * `readAdopt` is apply()'s era-aware gate getter (`() => liveSettings.
+ * `readAdopt` is apply()'s live gate getter (`() => liveSettings.
  * adoptSidebar()`), passed in because this module-level helper cannot see
  * that scope-local reader itself (v0.24.2 regression fix — referencing
  * `liveSettings` here threw `ReferenceError: liveSettings is not defined`
@@ -760,55 +690,11 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
 
 // ── plugin ──────────────────────────────────────────────────────────────────
 
-/** First user-trust root: the roster's authoring target. */
-
-/** Directory of skills inside the installed shipped `cordis` preset, if any. */
-async function findSkillsSource(agentPresets) {
-  try {
-    const list = await agentPresets.list()
-    const cordis = Array.isArray(list) ? list.find((p) => p && p.id === SKILLS_SOURCE_PRESET && typeof p.path === 'string') : undefined
-    if (!cordis) return undefined
-    return join(dirname(cordis.path), 'skills')
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * Purge preset directories this plugin materialized in earlier versions but
- * that are no longer in the configured materialization set. Only an
- * UNMODIFIED tree is removed; a user-edited one stays (and is left alone).
- * @param userRoot - the user-trust preset root path.
- * @param keep - preset ids to keep.
- */
-function purgeOrphans(userRoot, keep) {
-  try {
-    for (const entry of readdirSync(userRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const id = entry.name
-      if (keep.includes(id)) continue
-      const target = join(userRoot, id)
-      const marker = readMarker(target)
-      if (!marker || marker.managedBy !== MANAGED_BY) continue
-      if (classify(target) === 'unmodified') {
-        rmSync(target, { recursive: true, force: true })
-        console.log(`${TAG} removed orphan preset '${id}' (no longer materialized)`)
-      } else {
-        console.log(`${TAG} orphan preset '${id}' was modified after materialization — leaving it alone`)
-      }
-    }
-  } catch (error) {
-    console.log(`${TAG} orphan cleanup skipped: ${error?.message ?? error}`)
-  }
-}
-
-// ── declarative registration (dsh >= 0.1.7) ──────────────────────────────────
+// ── declarative registration ────────────────────────────────────────────────
 //
-// dsh 0.1.7 removed directory presets: nothing reads ~/.dsh/.agent-presets
-// any more, and a preset is a definition registered through
-// agentPresets.register(). The era probe is the register method itself; the
-// composition data lives in src/compositions.js (the new-era counterpart of
-// the committed assets/<variant>/ texts).
+// A preset is a definition registered through agentPresets.register(); dsh
+// >=0.2.2-rc.1 has no directory-preset path. The composition data lives in
+// src/compositions.js.
 
 /** Resolve the Creation-skills dir beside @deepseek-ai/dsh-agent-preset. */
 async function resolveSkillsDir() {
@@ -822,7 +708,7 @@ async function resolveSkillsDir() {
   }
 }
 
-/** The legacy preset root, best effort (roster roots are gone on 0.1.7). */
+/** The legacy preset root, best effort (used only to remove old leftovers). */
 function legacyPresetRoot() {
   try {
     const env = process.env.DSH_HOME
@@ -861,30 +747,25 @@ function cleanupLegacyTrees(presetIds) {
 /**
  * Probe the dsh host additions for the variant compositions.
  *
- * `timeContext` / `toolSchedule` / `pluginMarket` / `compaction` are the
- * 0.2.1 rows (durable clock readings, reminder tools, the plugin market row,
- * the minimal tool-fs + compaction delta). `executorPlugin` marks the
- * 0.2.2-alpha.2 tool-execution architecture: the packages tool-executor-native
- * and tool-executor-ptc exist, the official presets mount the latter for PTC,
- * the subagent config renamed `modelSelectionSettings` to
- * `modelSelection` + `modelDiscovery`, and list-agents folded into the control
- * row. `profileContext` is the host fact the manager/market rows gate on since
- * alpha.2 (`!!js "!ctx.get('profileContext')"`) — computed from the live
- * service, not the package set.
+ * `timeContext` / `toolSchedule` / `pluginMarket` / `compaction` are
+ * optional official rows (durable clock readings, reminder tools, the plugin
+ * market row, the minimal tool-fs + compaction delta). `profileContext` is the
+ * live host service the manager/market rows gate on — read from ctx, not from
+ * the package set.
  *
- * A preset row whose package is absent rejects the WHOLE mount, so every row
- * rides this probe: each is added only when its package resolves from the
- * HOST's module base — `ctx.baseUrl`, the exact base `prepareProfileEntries`
- * mounts preset rows from, so the probe can never disagree with the mounter.
- * On older hosts all stay false and the row set stays byte-identical to the
- * earlier mirror. Probed once per boot; the profile's package set does not
- * change under a running host.
+ * A preset row whose package is absent rejects the WHOLE mount, so optional
+ * rows ride this probe: each is added only when its package resolves from
+ * the HOST's module base — `ctx.baseUrl`, the exact base
+ * `prepareProfileEntries` mounts preset rows from, so the probe can never
+ * disagree with the mounter. Probed once per boot; the profile's package set
+ * does not change under a running host. A missing core row is not masked here:
+ * the 0.2.2-rc.1 base rows (tool-executor-*, agent-preset, …) are emitted
+ * unconditionally, so an inconsistent host fails the mount loudly.
  * @param {object} ctx - cordis context (any fiber of the running host).
  * @param {Function} [resolve] - predicate override for tests; receives a
  *   package specifier, resolves like `require.resolve`, returns boolean.
  * @returns {Promise<{timeContext: boolean, toolSchedule: boolean,
- *   pluginMarket: boolean, compaction: boolean, executorPlugin: boolean,
- *   profileContext: boolean}>}
+ *   pluginMarket: boolean, compaction: boolean, profileContext: boolean}>}
  */
 export async function probeHostExtras(ctx, resolve) {
   let ok = resolve
@@ -899,12 +780,11 @@ export async function probeHostExtras(ctx, resolve) {
       ok = () => false
     }
   }
-  const [timeContext, toolSchedule, pluginMarket, compaction, executorPlugin] = await Promise.all([
+  const [timeContext, toolSchedule, pluginMarket, compaction] = await Promise.all([
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-time-context')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-schedule')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-plugin-market/tools')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-compaction-basic')).then(Boolean),
-    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-executor-ptc')).then(Boolean),
   ])
   let profileContext = false
   try {
@@ -912,7 +792,7 @@ export async function probeHostExtras(ctx, resolve) {
   } catch {
     profileContext = false
   }
-  return { timeContext, toolSchedule, pluginMarket, compaction, executorPlugin, profileContext }
+  return { timeContext, toolSchedule, pluginMarket, compaction, profileContext }
 }
 
 /** Run one probe predicate; ANY failure reads as "absent" (a throwing
@@ -988,12 +868,12 @@ async function migrateVariantDefault(ctx, readVariants) {
   }
 }
 
-async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive, hostExtras = {}, readBashResolution }) {
+async function registerVariant(ctx, presetId, { skillsDir, pythonActive, hostExtras = {}, readBashResolution }) {
   const meta = PRESET_META[presetId]
   if (!meta) return undefined
   const plugins = meta.kind === 'minimal'
     ? minimalPluginsFor({ bashPath: minimalPtyBashPath(readBashResolution), hostExtras })
-    : pluginsFor({ kind: meta.kind, gitBash: gitBashActive, skillsDir, pythonActive, hostExtras })
+    : pluginsFor({ kind: meta.kind, skillsDir, pythonActive, hostExtras })
   return ctx.agentPresets.register({
     id: presetId,
     name: meta.name,
@@ -1027,12 +907,10 @@ async function registerVariant(ctx, presetId, { gitBashActive, skillsDir, python
  */
 async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolution, readVariants) {
   cleanupLegacyTrees(presetIds)
-  const gitBashActive = process.platform === 'win32'
   const skillsDir = await resolveSkillsDir()
-  // The dsh 0.2.1 additions (time-context / tool-schedule / plugin-market /
-  // minimal compaction rows) probe once per boot and ride every
-  // (re-)registration below — the profile's package set cannot change under a
-  // running host.
+  // Optional official rows (time-context / tool-schedule / plugin-market /
+  // minimal compaction) probe once per boot and ride every (re-)registration
+  // below — the profile's package set cannot change under a running host.
   const hostExtras = await probeHostExtras(ctx)
   /** presetId -> unregister, i.e. exactly what is live right now. */
   const live = new Map()
@@ -1107,7 +985,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
         if (closed) break
         if (live.has(presetId)) continue
         try {
-          const unregister = await registerVariant(ctx, presetId, { gitBashActive, skillsDir, pythonActive, hostExtras, readBashResolution })
+          const unregister = await registerVariant(ctx, presetId, { skillsDir, pythonActive, hostExtras, readBashResolution })
           if (unregister) {
             if (closed) { await unregister(); break }
             live.set(presetId, unregister)
@@ -1130,7 +1008,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
     + (live.size === 0 ? ' — variantPresets is off: the official presets carry Git Bash through the inline tool patch (see the CHANGELOG)'
       : '')
     + (hostExtras.timeContext || hostExtras.toolSchedule || hostExtras.pluginMarket || hostExtras.compaction
-    ? ' [dsh 0.2.1 additions: ' + [
+    ? ' [host rows: ' + [
         hostExtras.timeContext ? 'time-context' : '',
         hostExtras.toolSchedule ? 'tool-schedule' : '',
         hostExtras.pluginMarket ? 'plugin-market' : '',
@@ -1241,15 +1119,14 @@ export async function apply(ctx, config = {}) {
      the executor resolve from this same value, so an explicit answer is never
      substituted and never silently ignored.
      (issue #11: the row config is where the reporter's workaround landed.)
-     LAZY, never frozen (issue #13): at apply() time the loader store may not
-     hold the executor row yet — `loader.resolve()` throws and reads '' — and
-     the old settings-service detour could equally read '' before the service
-     was injected. A frozen '' then ran the automatic chain (which fails on
-     shimmed Git layouts) while the executor's own per-call lazy resolution
-     worked, i.e. the same boot gave OPPOSITE verdicts. Every consumer below
-     re-reads per use; the own row's value comes from apply()'s `config`
-     parameter (this row's live Config refs — volatile, so a settings edit is
-     visible on the next read without any listener). */
+     LAZY, never frozen (issue #13): a single apply()-time snapshot can be
+     taken before the profile's rows settle, and a stale '' then ran the
+     automatic chain (which fails on shimmed Git layouts) while the executor's
+     own per-call lazy resolution worked — the same boot gave OPPOSITE
+     verdicts. Every consumer below re-reads per use; the own row's value comes
+     from apply()'s `config` parameter (this row's live Config refs —
+     volatile, so a settings edit is visible on the next read without any
+     listener). */
   const readConfiguredBashPath = () => effectiveConfiguredBashPath(executorConfiguredBashPath(ctx), rowBashPath(config))
   const readBashResolution = () => resolveGitBashCached({ configured: readConfiguredBashPath() })
   const gitBashCapability = {
@@ -1359,19 +1236,13 @@ export async function apply(ctx, config = {}) {
              no run_code hint — so they meet the shell they were composed for. */
           const dialect = liveSettings.dialect()
           const applies = dialectApplies(dialect, assembleContext && assembleContext.agent)
-          // dsh 0.2.2-alpha.2 narrowed this event to prompt PRESENTATION: it no
-          // longer carries `tools` ("tool declarations remain provider-owned"),
-          // so read the step's admitted set back from the tools service — the
-          // same toolSet the agent loop resolved for this step, so conditional
-          // tools are judged exactly as execution will judge them. Older hosts
-          // still hand the list over on the assembly, and some of them expose
-          // `schemas(agent)` without the second argument; prefer their own
-          // list instead of asking a signature they may not support.
-          const toolSet = assembleContext && assembleContext.toolSet
+          // This event carries prompt PRESENTATION only; tool declarations are
+          // provider-owned. Read the step's admitted set back from the tools
+          // service with the same toolSet the agent loop resolved, so
+          // conditional tools are judged exactly as execution will judge them.
           const offeredTools = (() => {
-            if (toolSet === undefined && Array.isArray(assembly && assembly.tools)) return assembly.tools
             try {
-              return ctx.get('tools')?.schemas?.(assembleContext && assembleContext.agent, toolSet) ?? []
+              return ctx.get('tools')?.schemas?.(assembleContext && assembleContext.agent, assembleContext && assembleContext.toolSet) ?? []
             } catch {
               return []
             }
@@ -1449,14 +1320,13 @@ export async function apply(ctx, config = {}) {
         let echo = false
         let echoEnv = null
         try {
-          // The LIVE, era-aware reader (v0.25.1, issue #8). The legacy
-          // `readDialectSettings(ctx)` reads `settings.get(ns)`, which does not
-          // exist on dsh >= 0.1.7 — it returned the all-off fallback, so this
-          // wrapper translated NOTHING while the directive and the shell env
-          // (both already on the live reader) kept working: `/c/...` reached the
-          // file tools untranslated, `~` was never expanded, `glob.path` and
-          // `bash.workdir` went through raw, and an in-workspace `/c/...` write
-          // fell outside the sandbox. One missed call site, five symptoms.
+          // Read the LIVE row Config (v0.25.1, issue #8). A snapshot taken at
+          // apply() time can still carry defaults before volatile updates land,
+          // so this wrapper translated NOTHING while the directive and the
+          // shell env kept working: `/c/...` reached the file tools untranslated,
+          // `~` was never expanded, `glob.path` and `bash.workdir` went through
+          // raw, and an in-workspace `/c/...` write fell outside the sandbox.
+          // One stale read site, five symptoms.
           const dialect = liveSettings.dialect()
           // v0.27.0: a delegated agent the user excluded keeps the official
           // semantics for BOTH faces of its calls — arguments go through
@@ -1990,11 +1860,10 @@ export async function apply(ctx, config = {}) {
   // ── dsh-better-sidebar terminal adoption (Windows only) ────────────────
   // The sidebar resolves its terminal shell through the settings seam per
   // open; adopt it through that seam (see adoptSidebarShell for rationale).
-  // Disable with `betterSidebarShell: false` in the plugin row config.
   // Rides the settle notification (issue #13): a boot-time failure with an
   // empty explicit tier may still settle into a success once the loader rows
   // mount, and the adoption then happens without a restart.
-  if (config.betterSidebarShell !== false && process.platform === 'win32') {
+  if (process.platform === 'win32') {
     let sidebarAdopted = false
     onBashSettled((resolution) => {
       if (resolution.ok) {
@@ -2039,7 +1908,7 @@ export async function apply(ctx, config = {}) {
         nativeContract = ({ background, execute }) => nativeModule.nativeToolDefinition({ toolsModule, background, execute })
       }
     } catch (error) {
-      console.log(TAG + ' eager native slot unavailable; gitbash_native stays on the legacy late path: ' + (error?.message ?? error))
+      console.log(TAG + ' eager native slot unavailable; gitbash_native stays on the late registration path: ' + (error?.message ?? error))
     }
     try {
       mountInlineTools(ctx, {
@@ -2144,19 +2013,12 @@ export async function apply(ctx, config = {}) {
     }
   }
 
-  // ── era split: declarative registration on dsh >= 0.1.7 ──────────────────
-  // The register method IS the era signal. On the new host the whole
-  // materialization path below is dead code (nothing reads the directory any
-  // more), so this branch serves the variants and returns.
-  if (ctx.agentPresets && typeof ctx.agentPresets.register === 'function') {
-    try {
-      await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis(), readBashResolution, () => liveSettings.variantPresets())
-    } catch (error) {
-      console.log(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
-    }
-    return
+  // ── declarative preset registration ───────────────────────────────────────
+  try {
+    await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis(), readBashResolution, () => liveSettings.variantPresets())
+  } catch (error) {
+    console.log(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
   }
-
 }
 // Test surface: pure helpers, no Cordis context required.
 export const _internal = { PRESET_IDS, VARIANT_DEFAULT_SUCCESSORS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim, probeHostExtras }

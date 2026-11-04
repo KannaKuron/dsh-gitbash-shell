@@ -22,20 +22,12 @@ import { join } from 'node:path'
 import { minimalPluginsFor, pluginsFor } from '../src/compositions.js'
 
 /** dsh-v0.2.2-rc.1, packages/bundle/web-app/presets/*.patch.yml.
- * Across 0.2.1-alpha.3..alpha.5 (all row-id-stable): the schedule_* subagent
- * deny was DELETED (alpha.3 — official reminders reach subagents again), a
- * tool-plugin-market row joined every full preset right after
- * tool-plugin-manager (alpha.4), and minimal gained an image-read-only tool-fs
- * row plus its own compaction group (no pruner row, isolate carries compaction
- * alone). 0.2.2-rc.1 adds the explicit `config: { applyPatch: false }` to the
- * full presets' tool-fs row (never minimal) and moves the manager/market gates
- * onto the live profile context. Earlier, 0.2.1-alpha.2 removed the
- * retired persona suffix, the three disabled provider placeholder rows and
- * the subagent `backgroundMode: 'continuable'`, rephrased the plan-mode
- * first sentence, and added time-context + tool-schedule. The plugin mirrors
- * the era-specific shapes ONLY via the host probe (hostExtras in oursOf
- * below), so the alignment target is the full-probe row set against the
- * rc.1 text (including the 0.2.2 executor architecture). */
+ * Baseline: the single-generation row set of 0.2.2-rc.1. The full presets
+ * carry `config: { applyPatch: false }` on tool-fs, manager/market gates ride
+ * the live profile context, subagent uses modelSelection/modelDiscovery, and
+ * list-agents lives in tool-subagent-control. Optional rows (time-context,
+ * tool-schedule, plugin-market, compaction) are package-probed at runtime, so
+ * oursOf passes the full-probe hostExtras set below. */
 const PRESET_SHA256 = {
   standard: '3006cc3780cddaa7fb0089e5854e6bbef4409cf1d425930fd835226b95660afd',
   cordis: '0e8f611644b3c36249808c4d7eb7a40d78006d04da6b55eef1a42797a5a34355',
@@ -135,16 +127,16 @@ export function flatten(rows, depth = 0) {
 }
 
 /** Our rows for one variant id, with the Git Bash delta applied.
- * The full host probe (dsh 0.2.1 additions) is ON: the alignment target is
- * the 0.2.1 text, and the 0.1.7-era row set stays locked by smoke.mjs. */
+ * The optional-row probe is ON: the alignment target is the 0.2.2-rc.1 text
+ * including time-context, tool-schedule, plugin-market and compaction. */
 function oursOf(variant, platform) {
   const kind = KINDS[variant]
   if (kind === 'minimal') return flatten(minimalPluginsFor({ hostExtras: { compaction: true } }))
-  // Exercise BOTH host branches, independently of the machine running this
-  // audit. This pure composition module has no imports or runtime effects.
+  // Force the win32/unix platform branch independently of the machine running
+  // this audit. This pure composition module has no imports or runtime effects.
   const source = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8').replace(/^export /gm, '')
   const compose = new Function('process', source + '\nreturn pluginsFor')({ platform: platform === 'win32' ? 'win32' : 'linux' })
-  return flatten(compose({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, executorPlugin: true, profileContext: true } }))
+  return flatten(compose({ kind, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, profileContext: true } }))
 }
 
 const reported = []
@@ -205,7 +197,7 @@ for (const [name, pinned] of Object.entries(PRESET_SHA256)) {
   const pinMatches = digest.startsWith(pinned)
   console.log(`${pinMatches ? 'OK  ' : 'DRIFT'} ${name}.patch.yml sha256=${digest.slice(0, 16)} pinned=${pinned}`)
   if (!pinMatches) {
-    console.error('  the official preset text CHANGED since dsh-v0.1.7-rc.2: re-diff every variant by hand, then update PRESET_SHA256')
+    console.error('  the official preset text CHANGED since dsh-v0.2.2-rc.1: re-diff every variant by hand, then update PRESET_SHA256')
     failed = true
   }
   const rows = rowsOf(text)

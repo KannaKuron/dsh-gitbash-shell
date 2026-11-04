@@ -388,7 +388,7 @@ test('client settings seat: the live configForms seat only — the legacy seat i
 
 test('sidebar adoption is switchable, default on, and never clobbers manual picks', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(text, /adoptSidebar: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(text, /adoptSidebar: Schema\.boolean\(\)\.default\(true\)\.volatile\(\)/)
   assert.match(text, /adoptSidebar: \(\) => dialect\(\)\.adoptSidebar !== false/, 'host reads the switch through the live Config reader')
   // OFF enters the owned restore path; that path writes ONLY while the
   // current value is still ours. A startup same-value is not our takeover.
@@ -401,9 +401,9 @@ test('sidebar adoption is switchable, default on, and never clobbers manual pick
 
 test('host gates the path dialect behind the posixPaths setting', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(text, /posixPaths: live\(Schema\.boolean\(\)\.default\(true\)\)/)
-  // dsh 0.1.7: the wrapper and the directive closure read the era-aware
-  // live reader (Config refs — re-read per dispatch/assembly).
+  assert.match(text, /posixPaths: Schema\.boolean\(\)\.default\(true\)\.volatile\(\)/)
+  // The wrapper and the directive closure read the live Config refs,
+  // re-reading them per dispatch/assembly.
   assert.match(text, /const dialect = liveSettings\.dialect\(\)/, 'wrapper must read the gate per dispatch')
   assert.match(text, /liveSettings\.dialect\(\)/, 'directive closure must read the live dialect')
   // v0.27.0: the same live dialect object also carries the delegated-agent gate
@@ -419,12 +419,8 @@ test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', (
   assert.match(text, /ctx\.inject\(\['shellEnv'\], \(envCtx\) => \{/)
   assert.match(text, /shellEnv\.register\(\{/)
   assert.match(text, /DSH_PATH_DIALECT/)
-  // the resolver reads the live switch per execution: flipping the setting
-  // empties the variable with no re-registration
-  // the resolver reads the live switch per execution: flipping the setting
-  // empties the variable with no re-registration
-  // dsh 0.1.7: the resolver reads the era-aware live reader (Config refs on
-  // new hosts, the registered namespace on old ones) — still per execution.
+  // The resolver reads the live switch per execution: flipping the setting
+  // empties the variable with no re-registration.
   assert.match(text, /resolve\(execution\) \{/, 'the resolver receives the execution')
   assert.match(text, /dialectApplies\(dialect, execution && execution\.agent\)/,
     'the DSH_PATH_DIALECT fact is withheld from a delegated agent the user excluded')
@@ -518,17 +514,10 @@ test('manifest and package versions stay in sync', () => {
   assert.equal(pkg.scripts.version !== undefined, true, 'the version script must exist so bumps stay in sync')
 })
 
-test('executor: the base class\'s Config fields stay volatile (issue #6)', () => {
-  // dsh 0.1.7-alpha.1 (`feat(settings): project volatile Config through
-  // profile-backed forms`, #4587) made `LocalBashExecutor.Config` declare
-  // exactly these six fields `.volatile()` and read every one of them through
-  // `.get()`
-  // (packages/shell/bash-local/src/index.ts:100-107 + assertServiceableBashConfig).
-  // `SandboxBashExecutor` — our parent — declares no Config of its own and
-  // inherits that one verbatim, so THIS redeclaration is the executor's
-  // contract: plain values here throw `config.timeoutMs.get is not a function`
-  // on the first shell call and take the whole ctx.shell down (issue #6,
-  // 0.24.2). Re-check this list whenever the host's bash-local Config changes.
+test('executor: Config fields ride schemastery volatile (dsh >=0.2.2-rc.1)', () => {
+  // The base class declares its six inherited limits with .volatile() and
+  // reads every one through .get(); our Config must match that contract or the
+  // first shell call throws `config.timeoutMs.get is not a function` (#6).
   const baseLiveFields = ['cwd', 'timeoutMs', 'maxTimeoutMs', 'maxOutputBytes', 'maxSpillBytes', 'graceMs']
 
   const src = readFileSync('src/shell.js', 'utf8')
@@ -537,13 +526,13 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
     stripped + '\nreturn { gitBashShellConfig, Config, GitBashSandboxExecutor }')
   class FakeBase {}
 
-  /** A recording schemastery stand-in: `supportsVolatile` picks the host era. */
-  const recorder = (supportsVolatile) => {
+  /** A recording schemastery stand-in: volatile() is always available. */
+  const recorder = () => {
     const nodes = []
     const node = () => {
       const n = { marked: 0 }
       n.default = () => n
-      if (supportsVolatile) n.volatile = () => { n.marked += 1; return n }
+      n.volatile = () => { n.marked += 1; return n }
       nodes.push(n)
       return n
     }
@@ -551,12 +540,8 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
     return { z, nodes }
   }
 
-  // 1) 0.1.7+ host (its schemastery HAS volatile): every inherited field must
-  //    come out as a Volatile ref — exactly once — while our own bashPath knob
-  //    stays plain (the base neither declares nor `.get()`s it, and
-  //    `get bashPath()` reads it directly).
-  const withVolatile = recorder(true)
-  const liveFields = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withVolatile.z, process).gitBashShellConfig(withVolatile.z)
+  const rec = recorder()
+  const liveFields = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, rec.z, process).gitBashShellConfig(rec.z)
   assert.deepEqual(Object.keys(liveFields).sort(), [...baseLiveFields, 'bashPath'].sort(),
     'the executor Config must declare exactly the inherited fields plus bashPath')
   for (const key of baseLiveFields) {
@@ -564,49 +549,19 @@ test('executor: the base class\'s Config fields stay volatile (issue #6)', () =>
   }
   assert.equal(liveFields.bashPath.marked, 0, 'bashPath is our own knob and must stay a plain value')
 
-  // 2) <=0.1.6 host (schemastery without volatile, base class reads plain
-  //    values): the probe must NOT invent markers, or the old base class would
-  //    receive objects it never calls `.get()` on.
-  const withoutVolatile = recorder(false)
-  const plainFields = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withoutVolatile.z, process).gitBashShellConfig(withoutVolatile.z)
-  for (const key of [...baseLiveFields, 'bashPath']) {
-    assert.equal(plainFields[key].marked, 0, key + ' must stay plain where volatile() does not exist')
-  }
-
-  // 3) The host's ANSWER outranks what our copy happens to offer (issue #12):
-  //    a <=0.1.6 host reads plain values, so a `volatile`-capable copy must
-  //    still emit plain fields — handing that base class a ref it never
-  //    `.get()`s is the mirror image of the reported crash.
-  const capableButPlainHost = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withVolatile.z, process)
-    .gitBashShellConfig(withVolatile.z, false)
-  for (const key of [...baseLiveFields, 'bashPath']) {
-    assert.equal(capableButPlainHost[key].marked, 0, key + ' must stay plain when the host reads plain values')
-  }
-  //    …and `true` forces them even where the probe alone would have to guess.
-  const forced = scope('C:/Program Files/Git/bin/bash.exe', FakeBase, withVolatile.z, process)
-    .gitBashShellConfig(withVolatile.z, true)
-  for (const key of baseLiveFields) {
-    assert.equal(forced[key].marked, 1, key + ' must be marked volatile when the host demands refs')
-  }
-
-  // 4) The shipping Config comes from the host-aware resolver, not from
-  //    whatever Node resolves first, and the resolution result reaches the
-  //    factory together with the host's answer.
-  assert.match(src, /await loadSchemastery\(\{ parentConfig: SandboxBashExecutor\.Config \}\)/)
-  assert.match(src, /export const Config = schema\.z \? gitBashShellConfig\(schema\.z, schema\.needsVolatile\) : undefined/)
-  assert.match(src, /typeof schema\.volatile === 'function' \? schema\.volatile\(\) : schema/)
+  // The shipping Config comes from the host-aware resolver.
+  assert.match(src, /await loadSchemastery\(\)/)
+  assert.match(src, /export const Config = schema\.z \? gitBashShellConfig\(schema\.z\) : undefined/)
   assert.doesNotMatch(src, /^import .*'@deepseek-ai\/schemastery'/m, 'no static peer import may kill the whole row')
 })
-
 test('executor: Windows restricted and unresolved policies fail before any argv route', async () => {
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
+  const EMPTY = { exitCode: 0, signal: null, stdout: {}, stderr: {} }
   class FakeBase {
-    async run(spec) { this.calls.push(['super.run', spec]); return { via: 'super.run' } }
-    start(spec) { this.calls.push(['super.start', spec]); return { via: 'super.start' } }
-    async runArgv(spec, argv) { this.calls.push(['runArgv', argv]); return { exitCode: 0, stdout: {}, stderr: {} } }
-    startArgv(spec, argv) { this.calls.push(['startArgv', argv]); return { started: true } }
+    async execute(spec) { this.calls.push(['super.execute', spec]); return { via: 'super.execute', result: async () => EMPTY } }
+    async executeArgv(spec, argv) { this.calls.push(['executeArgv', argv, spec]); return { started: true, result: async () => EMPTY } }
   }
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
   const make = (platform) => {
@@ -621,113 +576,37 @@ test('executor: Windows restricted and unresolved policies fail before any argv 
     const spec = { command: 'echo hi', ...(mode === undefined ? {} : { sandboxPolicy: { mode } }) }
     const ex = make('win32')
     ex.requireBashPath = () => { throw new Error('refused calls must not even resolve argv') }
-    await assert.rejects(() => ex.run(spec), refusal)
-    assert.throws(() => ex.start(spec), refusal)
+    await assert.rejects(() => ex.execute(spec), refusal)
     assert.throws(() => ex.gitBashRoute(spec), refusal)
     assert.deepEqual(ex.calls, [], 'no inherited, fallback or explicit argv execution')
   }
   const exFull = make('win32')
   const full = { command: 'echo hi', sandboxPolicy: { mode: 'danger-full-access' } }
-  const result = await exFull.run(full)
+  const handle = await exFull.execute(full)
   assert.deepEqual(exFull.calls[0][1], ['X:/git/bin/bash.exe', '-c', 'echo hi'])
-  assert.deepEqual(result.sandbox, { mode: 'danger-full-access', denied: false })
-  assert.deepEqual(exFull.start(full).sandbox, result.sandbox)
+  assert.deepEqual((await handle.result()).sandbox, { mode: 'danger-full-access', denied: false })
   const legacy = make('win32')
   legacy.experimentalEnabled = () => false
   for (const mode of ['read-only', 'workspace-write']) {
     const spec = { command: 'echo hi', sandboxPolicy: { mode } }
     const facts = { mode, denied: false, enforcement: 'unconfined' }
-    assert.deepEqual((await legacy.run(spec)).sandbox, facts)
-    assert.deepEqual(legacy.start(spec).sandbox, facts)
+    const unconfined = await legacy.execute(spec)
+    assert.deepEqual((await unconfined.result()).sandbox, facts)
+    assert.equal(legacy.calls.at(-1)[0], 'executeArgv', 'the opt-out uses the explicit Git Bash argv')
   }
-  await legacy.run({ command: 'echo hi' })
-  assert.equal(legacy.calls.at(-1)[0], 'super.run', 'unresolved opt-out keeps legacy delegation')
+  await legacy.execute({ command: 'echo hi' })
+  assert.equal(legacy.calls.at(-1)[0], 'super.execute', 'unresolved opt-out keeps host delegation')
   legacy.experimentalEnabled = () => true
-  await assert.rejects(() => legacy.run({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } }), refusal)
+  await assert.rejects(() => legacy.execute({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } }), refusal)
   const linux = make('linux')
-  await linux.run({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } })
-  linux.start({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } })
-  assert.deepEqual(linux.calls.map(call => call[0]), ['super.run', 'super.start'])
+  await linux.execute({ command: 'echo hi', sandboxPolicy: { mode: 'read-only' } })
   const linuxUnresolved = make('linux')
-  await linuxUnresolved.run({ command: 'echo hi' })
-  assert.equal(linuxUnresolved.calls[0][0], 'super.run')
+  await linuxUnresolved.execute({ command: 'echo hi' })
+  assert.deepEqual(linux.calls.map(call => call[0]), ['super.execute'])
+  assert.deepEqual(linuxUnresolved.calls.map(call => call[0]), ['super.execute'])
 })
-
-test('executor: runArgv envelope and start contract span both dsh eras (0.1.6)', async () => {
-  const src = readFileSync('src/shell.js', 'utf8')
-  const stripped = stripModule(src)
-  const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
-  const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
-  const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
-  const build = (Base, platform) => {
-    const mod = scope('C:/Program Files/Git/bin/bash.exe', resolveBashStub, effectiveBashStub, settingsBashStub, bashReportStub, Base, chain, { platform })
-    const ex = Object.create(mod.GitBashSandboxExecutor.prototype)
-    ex.config = { bashPath: 'X:/git/bin/bash.exe' }
-    ex.calls = []
-    ex.runArgvReturns = RESULT
-    return ex
-  }
-  // Pre-0.1.6 base: synchronous start, runArgv resolves to the bare result.
-  class SyncBase {
-    async run() { return { via: 'super.run' } }
-    start() { this.calls.push(['super.start']); return { via: 'super.start' } }
-    async runArgv() { return this.runArgvReturns }
-    startArgv() { this.calls.push(['startArgv']); return { started: true } }
-  }
-  // 0.1.6 base: async start, runArgv resolves to the envelope.
-  class AsyncBase extends SyncBase {
-    async start() { this.calls.push(['super.start']); return { via: 'super.start' } }
-  }
-
-  const spec = { command: 'echo hi', sandboxPolicy: { mode: 'danger-full-access' } }
-  const logs = []
-  const origLog = console.log
-  console.log = (...a) => logs.push(a.join(' '))
-  try {
-    const legacy = build(SyncBase, 'win32')
-    const rLegacy = await legacy.run(spec)
-    assert.equal(rLegacy.stdout.text, 'hi', 'a bare ShellRunResult reaches the caller unchanged')
-    assert.deepEqual(rLegacy.sandbox, { mode: 'danger-full-access', denied: false })
-
-    const modern = build(AsyncBase, 'win32')
-    modern.runArgvReturns = { result: RESULT, spawnRequested: true }
-    const rModern = await modern.run(spec)
-    assert.equal(rModern.stdout.text, 'hi', 'the { result, spawnRequested } envelope is unwrapped')
-    assert.equal(rModern.exitCode, 0)
-    assert.equal(rModern.result, undefined, 'no wrapper leaks into the result the host reads')
-    assert.deepEqual(rModern.sandbox, { mode: 'danger-full-access', denied: false })
-
-    const cancelled = build(AsyncBase, 'win32')
-    cancelled.runArgvReturns = { result: { ...RESULT, exitCode: null, aborted: true }, spawnRequested: false }
-    const rCancelled = await cancelled.run(spec)
-    assert.deepEqual(rCancelled.sandbox, { mode: 'danger-full-access', denied: false }, 'cancelled full-access execution keeps its resolved mode')
-
-    const syncProc = build(SyncBase, 'win32').start(spec)
-    assert.equal(typeof syncProc.then, 'undefined', 'a synchronous host gets the handle itself')
-    const asyncProc = build(AsyncBase, 'win32').start(spec)
-    assert.equal(typeof asyncProc.then, 'function', 'an async host gets a thenable')
-    assert.deepEqual((await asyncProc).sandbox, { mode: 'danger-full-access', denied: false }, 'awaiting yields the labelled handle')
-    const restricted = { ...spec, sandboxPolicy: { mode: 'workspace-write' } }
-    assert.throws(() => build(SyncBase, 'win32').start(restricted), /not started/)
-    const refusedAsync = build(AsyncBase, 'win32').start(restricted)
-    assert.equal(typeof refusedAsync.then, 'function', 'async hosts receive a rejected promise for refusal')
-    await assert.rejects(() => refusedAsync, /not started/)
-
-    const forwarded = []
-    const owner = build(AsyncBase, 'linux')
-    owner.ctx = { sandbox: { confine: (argv, policy, signal) => { forwarded.push([argv, policy, signal]); return { argv } } } }
-    const signal = { aborted: false }
-    owner.confine('echo hi', { mode: 'read-only' }, signal)
-    assert.equal(forwarded.length, 1)
-    assert.deepEqual(forwarded[0][0], ['X:/git/bin/bash.exe', '-c', 'echo hi'])
-    assert.equal(forwarded[0][2], signal, 'the host deadline reaches the sandbox provider')
-  } finally {
-    console.log = origLog
-  }
-})
-
-test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 follow-up)', async () => {
-  // 0.1.7 replaced the executor surface: `run`/`start` are gone, the runtime
+test('executor: dsh >=0.2.2-rc.1 execute() keeps both Git Bash substitutions', async () => {
+  // dsh >=0.2.2-rc.1 has no `run`/`start`: the runtime
   // calls `execute(spec): Promise<ShellExecution>` and background work is an
   // `onExpiry: 'none'` execution. Without an `execute` override the shipped
   // full-access branch spawns the bare `bash` name and a Windows confined call
@@ -740,7 +619,7 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
   const RESULT = { exitCode: 0, signal: null, timedOut: false, aborted: false, timeoutMs: 1000, stdout: { text: 'hi', truncated: false }, stderr: { text: '', truncated: false } }
   const chain = new Proxy(function () {}, { get: () => chain, apply: () => chain })
 
-  /** 0.1.7-era base: execute/executeArgv, no run/start. */
+  /** The dsh >=0.2.2-rc.1 executor surface: execute/executeArgv, no run/start. */
   class NewBase {
     async execute(spec) { this.calls.push(['super.execute', spec]); return { via: 'super.execute', result: async () => RESULT } }
     async executeArgv(spec, argv, onStarted) {
@@ -749,11 +628,6 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
       if (onStarted !== undefined) onStarted(ex)
       return ex
     }
-  }
-  /** <=0.1.6-era base: no `execute` at all. */
-  class OldBase {
-    async run(spec) { this.calls.push(['super.run', spec]); return { via: 'super.run' } }
-    async runArgv(spec, argv) { this.calls.push(['runArgv', argv]); return RESULT }
   }
   const build = (Base, platform) => {
     const mod = scope('C:/Program Files/Git/bin/bash.exe', resolveBashStub, effectiveBashStub, settingsBashStub, bashReportStub, Base, chain, { platform })
@@ -810,24 +684,17 @@ test('executor: dsh 0.1.7 execute() keeps both Git Bash substitutions (issue #6 
     const memoHandle = await memoEx.execute(full)
     assert.equal(memoHandle.result(), memoHandle.result(), 'one decorated promise per handle')
 
-    // Old-era host (no `execute`): our override hands the call to `run`.
-    const oldEx = build(OldBase, 'win32')
-    await assert.rejects(() => oldEx.execute(confined), /not started/)
-    assert.deepEqual(oldEx.calls, [])
-    const oldResult = await oldEx.execute(full)
-    assert.equal(kindOf(oldEx, 'runArgv')[0][1][0], 'X:/git/bin/bash.exe')
-    assert.deepEqual(oldResult.sandbox, { mode: 'danger-full-access', denied: false })
   } finally {
     console.log = origLog
   }
 })
 
-test('live settings readers span the 0.1.7 settings-service change (issue #6 follow-up)', async () => {
-  // dsh 0.1.7 kept the `settings` service but removed the namespace API: it now
-  // exposes describe()/update() and NO get(ns) (packages/settings/settings/src/index.ts).
-  // Every reader that still called get(ns) silently degraded on the new host —
-  // the executor's Linux-parity env (GIT_CONFIG_* autocrlf=input) and the
-  // better-sidebar terminal adoption both stopped happening with no error.
+test('live settings readers use describe()/update() only (issue #6 follow-up)', async () => {
+  // The settings service exposes describe()/update() and NO get(ns)
+  // (packages/settings/settings/src/index.ts). A reader that still called
+  // get(ns) silently degraded — the executor's Linux-parity env
+  // (GIT_CONFIG_* autocrlf=input) and the better-sidebar terminal adoption
+  // both stopped happening with no error.
   const src = readFileSync('src/shell.js', 'utf8')
   const stripped = stripModule(src)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', stripped + '\nreturn { GitBashSandboxExecutor }')
@@ -841,9 +708,9 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
   const spec = () => ({ command: 'echo hi' })
   const gitConfig = (result) => result.dshEnv === undefined ? undefined : result.dshEnv.GIT_CONFIG_VALUE_0
 
-  // New era: the values live in the row Config's projected form.
-  const newEra = build({ describe: () => [{ ns: 'locale', value: {} }, { ns: 'gitbash-shell', value: { posixPaths: true, gitAutocrlf: true } }], update: async () => {} })
-  assert.equal(gitConfig(newEra.withParityEnv(spec())), 'input', 'the describe() read must find the row form')
+  // The values live in the row Config's projected form.
+  const rowSettings = build({ describe: () => [{ ns: 'locale', value: {} }, { ns: 'gitbash-shell', value: { posixPaths: true, gitAutocrlf: true } }], update: async () => {} })
+  assert.equal(gitConfig(rowSettings.withParityEnv(spec())), 'input', 'the describe() read must find the row form')
   // Switch off, namespace missing, service missing: the spec is returned as-is.
   const off = build({ describe: () => [{ ns: 'gitbash-shell', value: { posixPaths: true, gitAutocrlf: false } }] })
   assert.equal(off.withParityEnv(spec()).dshEnv, undefined, 'gitAutocrlf:false disables the parity env')
@@ -864,8 +731,8 @@ test('live settings readers span the 0.1.7 settings-service change (issue #6 fol
     await new Promise((resolve) => setTimeout(resolve, 0))
     return updates
   }
-  const newEraUpdates = await adopt({ describe: () => [{ ns: 'better-sidebar', value: { terminalShell: '' } }] })
-  assert.deepEqual(newEraUpdates, [['better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
+  const adopted = await adopt({ describe: () => [{ ns: 'better-sidebar', value: { terminalShell: '' } }] })
+  assert.deepEqual(adopted, [['better-sidebar', { terminalShell: 'X:/git/bin/bash.exe' }]],
     'the adoption must still find the sidebar row through describe()')
   // Already adopted: nothing to write.
   const settled = await adopt({ describe: () => [{ ns: 'better-sidebar', value: { terminalShell: 'X:/git/bin/bash.exe' } }] })
@@ -877,14 +744,14 @@ test('the bash init script rides BASH_ENV (issue #37, v0.45.0)', () => {
   const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
   const client = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   // The row Config exposes the setting: live, default '' = never set.
-  assert.match(host, /initScript: live\(Schema\.string\(\)\.default\(''\)\)/)
+  assert.match(host, /initScript: Schema\.string\(\)\.default\(''\)\.volatile\(\)/)
   // The hook is bash's own BASH_ENV, never a login shell: `-l` would cd $HOME,
   // reorder PATH and mix profile output into stdout (the issue #37 answer).
   assert.match(shell, /BASH_ENV: configured/)
   assert.doesNotMatch(shell, /'(?:-l|-lc|--login)'/, 'no login-shell argv anywhere')
-  // Every execution entry point merges it, not just the modern one.
-  assert.equal((shell.match(/withInitScript\(this\.withParityEnv\(spec\)\)/g) || []).length, 3,
-    'execute/run/start must all merge the init script')
+  // The single execution entry point merges it.
+  assert.equal((shell.match(/withInitScript\(this\.withParityEnv\(spec\)\)/g) || []).length, 1,
+    'execute must merge the init script')
 
   const stripped = stripModule(shell)
   const scope = new Function('DEFAULT_GIT_BASH', 'resolveGitBashCached', 'effectiveConfiguredBashPath', 'settingsBashPath', 'bashResolutionReport', 'SandboxBashExecutor', 'z', 'process', 'homedir', 'join',
@@ -967,7 +834,7 @@ test('run_code program literals ride the same MSYS mount table (v0.20.0)', async
 test('the run_code literal rewrite has its own switch (codePaths)', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   const pathText = readFileSync(new URL('../src/path-dialect.js', import.meta.url), 'utf8')
-  assert.match(text, /codePaths: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(text, /codePaths: Schema\.boolean\(\)\.default\(true\)\.volatile\(\)/)
   assert.match(pathText, /exec\.name === 'run_code' && dialect\.codePaths/)
   assert.match(pathText, /rewriteCodePaths\(translated\.code, env\)/)
   // v0.20.1: the run_code sentence is NOT in the base directive — it rides the
@@ -981,13 +848,10 @@ test('the run_code literal rewrite has its own switch (codePaths)', async () => 
   assert.doesNotMatch(strict[1], /run_code/, 'the strict directive must not talk about run_code either')
   assert.match(pathText, /const RUN_CODE_DIRECTIVE_TEXT = '/, 'the conditional run_code sentence is gone')
   assert.match(text, /runCodeHintFor\(offeredTools, dialect\.codePaths === true\)/, 'the assembly hook must gate on the tool list and live codePaths state')
-  // dsh 0.2.2-alpha.2: the event no longer carries tools — read the step's
-  // admitted toolSet back from the tools service, so conditional tools are
-  // judged exactly as execution judges them. Older hosts still hand the list
-  // over on the assembly, and that fallback must survive the floor rollback.
-  assert.match(text, /Array\.isArray\(assembly && assembly\.tools\)/, 'older hosts still hand the tool list over on the assembly')
-  assert.match(text, /const toolSet = assembleContext && assembleContext\.toolSet/, 'the assembly hook must read the step toolSet')
-  assert.match(text, /ctx\.get\('tools'\)\?\.schemas\?\.\(assembleContext && assembleContext\.agent, toolSet\)/, 'the offered tools must come from the step-admitted set')
+  // The event does not carry tools — read the step's admitted toolSet back
+  // from the tools service, so conditional tools are judged exactly as
+  // execution judges them.
+  assert.match(text, /ctx\.get\('tools'\)\?\.schemas\?\.\(assembleContext && assembleContext\.agent, assembleContext && assembleContext\.toolSet\)/, 'the offered tools must come from the step-admitted set')
 })
 
 test('the run_code sentence is injected only where the tool exists (v0.20.1)', async () => {
@@ -1016,7 +880,7 @@ test('run_code gets TEMP/TMP only — never a fake HOME or PATH (v0.21.0)', asyn
 test('the model git gets Linux line endings from the executor (v0.21.1)', () => {
   const host = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
-  assert.match(host, /gitAutocrlf: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(host, /gitAutocrlf: Schema\.boolean\(\)\.default\(true\)\.volatile\(\)/)
   // the injection lives where the child env is actually built
   assert.match(shell, /withParityEnv\(spec\)/)
   assert.match(shell, /GIT_CONFIG_COUNT: '2'/)
@@ -1142,33 +1006,33 @@ test('the success echo rides tools/execute, so no decision can collide (v0.23.0,
   assert.doesNotMatch(post, /value:/, 'a decision here carries content only')
 })
 
-// ── dsh 0.1.7 declarative era ────────────────────────────────────────────────
+// ── dsh >=0.2.2-rc.1 declarative era ────────────────────────────────────────
 
-test('compositions: full variants mirror the supported host row split', async () => {
+test('compositions: full variants mirror the rc.1 host row split', async () => {
   const { pluginsFor, minimalPluginsFor, PRESET_META } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   for (const kind of ['standard', 'cordis']) {
-    // alpha.2 generation: the executor row exists, and every variant gates the
-    // manager on the live profile context (absent in this fixture → off).
-    const rows = pluginsFor({ kind, gitBash: true, skillsDir: kind === 'cordis' ? '/s' : undefined, hostExtras: { executorPlugin: true } })
+    // Every variant gates the manager on the live profile context (absent in
+    // this fixture → off).
+    const rows = pluginsFor({ kind, skillsDir: kind === 'cordis' ? '/s' : undefined })
     const delegation = row(rows, 'delegation').config
     assert.notEqual(row(delegation, 'workflow-ptc').disabled, true)
     assert.notEqual(row(delegation, 'tool-workflow').disabled, true)
     // ralph is RETIRED: the official presets dropped the three disabled
-    // placeholder rows (codex / claude-code / ralph) in 0.2.1-alpha.2
-    // (upstream 8ed0b530ed — codex/claude-code moved to on-demand bundles)
+    // placeholder rows (codex / claude-code / ralph); the codex/claude-code
+    // providers moved to on-demand bundles.
     assert.equal(row(delegation, 'tool-ralph'), undefined)
     assert.equal(row(rows, 'tool-bash').disabled, process.platform === 'win32' ? true : undefined)
     assert.equal(row(rows, 'tool-pwsh').disabled, process.platform === 'win32' ? undefined : true)
     assert.equal(row(rows, 'tool-plugin-manager').disabled, true, 'no profile context in this fixture -> manager off')
   }
-  const ptc = pluginsFor({ kind: 'ptc', gitBash: true, skillsDir: undefined, hostExtras: { executorPlugin: true } })
+  const ptc = pluginsFor({ kind: 'ptc', skillsDir: undefined })
   const delegation = row(ptc, 'delegation').config
   assert.equal(row(delegation, 'workflow-ptc').disabled, true)
   assert.equal(row(delegation, 'tool-workflow').disabled, true)
   assert.deepEqual(row(ptc, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
   assert.equal(row(ptc, 'tool-cordis'), undefined)
-  const cordis = pluginsFor({ kind: 'cordis', gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true } })
+  const cordis = pluginsFor({ kind: 'cordis', skillsDir: '/s' })
   assert.equal(row(cordis, 'tool-cordis').name, '@deepseek-ai/dsh-tool-cordis')
   assert.deepEqual(row(cordis, 'skill-filesystem').config.customSkillDirs, ['/s'])
   // minimal: single-tool, bash rows pinned on, pwsh off
@@ -1183,41 +1047,39 @@ test('compositions: full variants mirror the supported host row split', async ()
   }
 })
 
-test('compositions: dsh 0.2.1 host additions ride the probe, never the default', async () => {
+test('compositions: optional host rows ride the probe, never the default', async () => {
   const { pluginsFor, minimalPluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
-  // The schedule_* subagent deny is GONE at every probe level: official
-  // 0.2.1-alpha.3 deleted it (reminders reach subagents again), so no host
-  // shape produces it any more.
+  // No host shape produces a subagent toolFilter any more: dsh 0.2.1-alpha.3
+  // removed the schedule_* deny (reminders reach subagents again).
   for (const kind of ['standard', 'ptc', 'cordis']) {
-    const rows = pluginsFor({ kind, gitBash: true, skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true } })
+    const rows = pluginsFor({ kind, skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true } })
     const delegation = row(rows, 'delegation').config
     assert.equal(row(delegation, 'tool-subagent').config.toolFilter, undefined, kind)
     assert.equal(row(delegation, 'tool-subagent-fork').config.toolFilter, undefined, kind)
   }
-  // default (dsh <= 0.2.0): no era rows, no plugin-market — the 0.1.7 mirror stays unchanged
+  // Without the probes none of the optional rows is emitted.
   for (const kind of ['standard', 'ptc', 'cordis']) {
-    const rows = pluginsFor({ kind, gitBash: true, skillsDir: undefined })
+    const rows = pluginsFor({ kind, skillsDir: undefined })
     assert.ok(!ids(rows).includes('time-context') && !ids(rows).includes('tool-schedule') && !ids(rows).includes('tool-plugin-market'), kind)
-    // The older architecture keeps the shipped split: off on standard/ptc,
-    // on for cordis (every web deployment backs it with a profile context).
-    assert.equal(row(rows, 'tool-plugin-manager').disabled, kind === 'cordis' ? undefined : true, kind + ': older-host manager split')
+    // No live profile context in this fixture: rc.1 gates the manager off
+    // everywhere (cordis included).
+    assert.equal(row(rows, 'tool-plugin-manager').disabled, true, kind + ': manager needs profileContext')
   }
-  // probe on: rows in their official slots — tool-plugin-market directly
-  // after tool-plugin-manager, same disabled split
-  const on = pluginsFor({ kind: 'standard', gitBash: true, skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true } })
+  // Probe on: rows in their official slots.
+  const on = pluginsFor({ kind: 'standard', skillsDir: undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true } })
   assert.equal(ids(on).indexOf('time-context'), ids(on).indexOf('agent-instructions') + 1)
   assert.equal(ids(on).indexOf('tool-schedule'), ids(on).indexOf('tool-jobs') + 1)
   assert.equal(ids(on).indexOf('tool-plugin-market'), ids(on).indexOf('tool-plugin-manager') + 1)
   assert.equal(row(on, 'tool-plugin-market').disabled, true)
-  const onCordis = pluginsFor({ kind: 'cordis', gitBash: true, skillsDir: '/s', hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true } })
-  assert.equal(row(onCordis, 'tool-plugin-market').disabled, undefined, 'older-host cordis keeps the market row on')
+  const onCordis = pluginsFor({ kind: 'cordis', skillsDir: '/s', hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, profileContext: true } })
+  assert.equal(row(onCordis, 'tool-plugin-market').disabled, undefined, 'cordis keeps the market row on with a live profile context')
   // half-probe: plugin-market off keeps the row away
-  const half = pluginsFor({ kind: 'cordis', gitBash: true, skillsDir: '/s', hostExtras: { timeContext: true } })
+  const half = pluginsFor({ kind: 'cordis', skillsDir: '/s', hostExtras: { timeContext: true } })
   assert.ok(ids(half).includes('time-context') && !ids(half).includes('tool-plugin-market'))
-  // minimal: the compaction probe adds the official alpha.3 rows ahead of the
-  // terminal (tool-fs image-read-only + the pruner-less compaction group)
+  // minimal: the compaction probe adds the rc.1 rows ahead of the terminal
+  // (tool-fs image-read-only + the pruner-less compaction group)
   const base = minimalPluginsFor()
   assert.equal(base.length, 2)
   const onMinimal = minimalPluginsFor({ hostExtras: { compaction: true } })
@@ -1230,65 +1092,42 @@ test('compositions: dsh 0.2.1 host additions ride the probe, never the default',
   assert.equal(group.config.some((r) => r.id === 'tool-result-pruner'), false, 'the minimal group carries NO pruner')
   assert.equal(base.some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
 })
-
-test('compositions: alpha.2 executor shape and the older-host fallback', async () => {
+test('compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates', async () => {
   const { pluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
-  // alpha.2 executor architecture: list-agents folded into the control row,
-  // the subagent config uses the new model keys, and PTC mounts the explicit
-  // executor row instead of the retired presentation selector.
-  const alpha = pluginsFor({ kind: 'ptc', gitBash: true, skillsDir: undefined, hostExtras: { executorPlugin: true, profileContext: true } })
-  const alphaDelegation = row(alpha, 'delegation').config
-  assert.equal(ids(alphaDelegation).includes('tool-subagent-list-agents'), false, 'no separate list-agents row')
-  assert.deepEqual(row(alphaDelegation, 'tool-subagent').config, { provider: 'spawn', toolName: 'subagent', modelSelection: true, modelDiscovery: true, backgroundMode: 'continuable' })
-  assert.equal(row(alphaDelegation, 'tool-subagent').config.modelSelectionSettings, undefined)
-  assert.equal(row(alpha, 'tool-presentation'), undefined)
-  assert.deepEqual(row(alpha, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
+  // rc.1 executor architecture: list_agents folded into the control row, the
+  // subagent config uses modelSelection/modelDiscovery, and PTC mounts the
+  // explicit executor row instead of the retired presentation selector.
+  const ptc = pluginsFor({ kind: 'ptc', skillsDir: undefined, hostExtras: { profileContext: true } })
+  const delegation = row(ptc, 'delegation').config
+  assert.equal(ids(delegation).includes('tool-subagent-list-agents'), false, 'no separate list-agents row')
+  assert.deepEqual(row(delegation, 'tool-subagent').config, { provider: 'spawn', toolName: 'subagent', modelSelection: true, modelDiscovery: true })
+  assert.equal(row(delegation, 'tool-subagent').config.modelSelectionSettings, undefined)
+  assert.equal(row(delegation, 'tool-subagent').config.backgroundMode, undefined)
+  assert.equal(row(ptc, 'tool-presentation'), undefined)
+  assert.deepEqual(row(ptc, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
 
-  // Older hosts (0.1.7-rc .. 0.2.1): the byte-identical earlier row set —
-  // separate list-agents row, modelSelectionSettings, and the presentation
-  // selector. The probe flag is what selects the generation, so the plugin can
-  // keep installing on both without a package absent rejecting the mount.
-  const legacy = pluginsFor({ kind: 'ptc', gitBash: true, skillsDir: undefined, hostExtras: { executorPlugin: false, profileContext: true } })
-  const legacyDelegation = row(legacy, 'delegation').config
-  assert.deepEqual(row(legacyDelegation, 'tool-subagent-list-agents'), { id: 'tool-subagent-list-agents', name: '@deepseek-ai/dsh-tool-subagent-control/list-agents' })
-  assert.deepEqual(row(legacyDelegation, 'tool-subagent').config, { provider: 'spawn', toolName: 'subagent', modelSelectionSettings: true, backgroundMode: 'continuable' })
-  assert.equal(row(legacyDelegation, 'tool-subagent').config.modelSelection, undefined)
-  assert.deepEqual(row(legacy, 'tool-presentation'), { id: 'tool-presentation', name: '@deepseek-ai/dsh-agent-tool-presentation', config: { mode: 'ptc' } })
-  assert.equal(row(legacy, 'tool-executor-ptc'), undefined)
-
-  // 0.2.2-rc.1 manager/market: cordis gates both on the live profile
-  // context; standard gates the manager but keeps the market off outright;
-  // ptc keeps both off. The older architecture keeps the shipped split (off
-  // on standard/ptc, on for cordis, which every web deployment backs with a
-  // profile context).
+  // rc.1 manager/market: cordis and standard gate the manager on the live
+  // profile context; the market is cordis-only. PTC keeps both off.
   for (const kind of ['standard', 'ptc', 'cordis']) {
-    const withProfile = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: true, pluginMarket: true } })
+    const withProfile = pluginsFor({ kind, skillsDir: '/s', hostExtras: { profileContext: true, pluginMarket: true } })
     const managerOn = kind === 'cordis' || kind === 'standard'
     const marketOn = kind === 'cordis'
     assert.equal(row(withProfile, 'tool-plugin-manager').disabled, managerOn ? undefined : true, kind)
     assert.equal(row(withProfile, 'tool-plugin-market').disabled, marketOn ? undefined : true, kind)
     assert.deepEqual(row(withProfile, 'tool-fs').config, { applyPatch: false }, kind + ' ships apply_patch off')
-    const without = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: false, pluginMarket: true } })
+    const without = pluginsFor({ kind, skillsDir: '/s', hostExtras: { profileContext: false, pluginMarket: true } })
     assert.equal(row(without, 'tool-plugin-manager').disabled, true, kind)
     assert.equal(row(without, 'tool-plugin-market').disabled, true, kind)
-
-    const legacyWithProfile = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: false, profileContext: true, pluginMarket: true } })
-    assert.equal(row(legacyWithProfile, 'tool-plugin-manager').disabled, kind === 'cordis' ? undefined : true, kind)
-    assert.equal(row(legacyWithProfile, 'tool-plugin-market').disabled, kind === 'cordis' ? undefined : true, kind)
-    assert.equal(row(legacyWithProfile, 'tool-fs').config, undefined, kind + ' keeps the pre-0.2.2 tool-fs row byte-identical')
   }
 })
-
 test('probeHostExtras resolves from the host base and degrades to false', async () => {
   const { probeHostExtras } = await import('../src/index.js')
-  const all = { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, executorPlugin: true, profileContext: false }
-  const none = { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, executorPlugin: false, profileContext: false }
+  const all = { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, profileContext: false }
+  const none = { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, profileContext: false }
   assert.deepEqual(await probeHostExtras(undefined, () => true), all)
   assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { ...none, toolSchedule: true })
-  // the executor generation is decided by its own package probe
-  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-executor-ptc'), { ...none, executorPlugin: true })
   // a throwing resolver reads as "absent" — never rejects the boot
   assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), none)
   // default resolver from this test file's base: official host packages absent → all false
@@ -1298,7 +1137,7 @@ test('probeHostExtras resolves from the host base and degrades to false', async 
   assert.deepEqual(await probeHostExtras({ get: () => { throw new Error('boom') } }, () => false), none)
 })
 
-test('host half: lazy Config with volatile probing and the era branch', async () => {
+test('host half: lazy Config with the single-generation schemastery loader', async () => {
   const mod = await import('../src/index.js')
   assert.equal(typeof mod.Config, 'function')
   assert.equal(typeof mod.valueOf, 'function')
@@ -1307,12 +1146,12 @@ test('host half: lazy Config with volatile probing and the era branch', async ()
   // whole row silently (the Loader skips a failed plugin import non-fatally),
   // which for this plugin means no presets, no executor and no client half.
   assert.doesNotMatch(hostSource, /^import .*'@deepseek-ai\/schemastery'/m, 'no static peer import in the host half')
-  assert.match(hostSource, /await loadSchemastery\(\{ parentConfig: await executorConfigSchema\(\) \}\)/)
+  assert.match(hostSource, /Schema = \(await loadSchemastery\(\)\)\.z \?\? null/)
   // The peer is still imported lazily — inside the resolver, one domain at a time.
   const resolver = readFileSync(new URL('../src/schemastery.js', import.meta.url), 'utf8')
   assert.match(resolver, /await import\(pathToFileURL\(entry\)\.href\)/)
   assert.match(hostSource, /export const Config = Schema === null \? undefined : Schema\.object\(/)
-  assert.match(hostSource, /typeof ctx\.agentPresets\.register === 'function'/)
+  assert.match(hostSource, /export const inject = \['agentPresets'\]/, 'the preset registry is a hard dependency')
   assert.match(hostSource, /await runDeclarativeEra\(ctx, presetIds, \(\) => liveSettings\.suppressPeerCordis\(\), readBashResolution, \(\) => liveSettings\.variantPresets\(\)\)/)
 })
 
@@ -1320,10 +1159,10 @@ test('client half: settings acquisition through configForms only, no dead inject
   const clientSource = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   assert.match(clientSource, /exports\.inject = \["locale", "slots"\]/)
   assert.match(clientSource, /ctx\.inject\(\["configForms"\]/)
-  assert.match(clientSource, /forms\.get\(SETTINGS_NAMESPACE\)/)
+  assert.match(clientSource, /forms\.get\(ROW_NAMESPACE\)/)
 })
 
-test('package meta: 0.1.7 display assets and the renamed patch row', () => {
+test('package meta: icon, locales, and the renamed patch row', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(pkg.icon, './icon.svg')
   assert.equal(pkg.exports['./locale/*.json'], './locale/*.json')
@@ -1364,13 +1203,13 @@ test('the manifest subpath is exported, so desktop discovery can read it (v0.24.
 })
 
 test('the dsh peer requirement covers every supported host (v0.24.3)', () => {
-  // dsh 0.1.7 enforces ONE thing at install and boot: peerDependencies whose
+  // The host enforces ONE thing at install and boot: peerDependencies whose
   // name is `@deepseek-ai/dsh` or `@deepseek-ai/dsh-*`
   // (packages/boot/app-boot/src/plugin-compatibility.ts). `engines.dsh` is
   // declarative and never read. Without this row the plugin is never
-  // compatibility-checked at all — and a range that excludes a host it still
-  // supports would get the row disabled, so the range mirrors the declared
-  // engine floor instead of enumerating releases.
+  // compatibility-checked at all — and a range that excludes a supported host
+  // would get the row disabled, so the range mirrors the declared engine floor
+  // instead of enumerating releases.
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh'], pkg.engines.dsh, 'one source of truth for the dsh floor')
   assert.match(pkg.peerDependencies['@deepseek-ai/dsh'], /^>=\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/u, 'an open lower bound (prerelease tag allowed): no enumeration, no ceiling')
@@ -1418,14 +1257,14 @@ test('regression (v0.24.2): apply() mounts — adoptSidebarShell never reaches i
   assert.match(
     source,
     /adoptSidebarShell\(ctx, resolution\.path, \(\) => liveSettings\.adoptSidebar\(\)\)/,
-    'apply() must hand its era-aware gate getter to the helper, and only adopt with a RESOLVED bash (via the settle notification since issue #13)',
+    'apply() must hand its live gate getter to the helper, and only adopt with a RESOLVED bash (via the settle notification since issue #13)',
   )
 })
 
 test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async () => {
   // The runtime twin of the guard above: actually run the mount path the
   // loader runs. On win32 this exercises the sidebar adoption branch whose
-  // synchronous `void run()` used to throw before the era split.
+  // synchronous `void run()` used to throw during mount.
   const { apply } = await import('../src/index.js')
   const updates = []
   const ctx = {
@@ -1433,18 +1272,15 @@ test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async
     provide: () => () => {},
     inject: () => {},
     on: () => {},
-    // settings present WITHOUT register() = the NEW-era surface (Config
-    // refs, dsh >= 0.1.7). describe() is the read shape readShell has used
-    // since v0.25.1 (`settings.get(ns)` died with dsh 0.1.6) — the stub's
-    // old get-only pair left readShell reading null, a stale-stub failure
-    // already latent in v0.32.1 on win32.
+    // The live settings surface: describe() is the only read shape, and
+    // update() the only write. A get-only stub left readShell reading null.
     get: (name) => (name === 'settings'
       ? {
           describe: () => [{ ns: 'better-sidebar', value: { terminalShell: '' } }],
           update: async (ns, patch) => { updates.push([ns, patch]) },
         }
       : undefined),
-    agentPresets: { roots: [] }, // no register(): legacy branch, early return, zero fs side effects
+    agentPresets: { defaultId: undefined, list: async () => [], register: async () => {} },
   }
   await assert.doesNotReject(() => apply(ctx, {}), 'apply() must not throw on mount')
   if (process.platform === 'win32') {
@@ -1487,7 +1323,7 @@ test('effectivePresetIds drops only the peer-covered variant, and only when both
 test('host half: the dedupe switch is wired and defaults OFF', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   // declared on the row Config (volatile)
-  assert.match(src, /suppressPeerCordis: live\(Schema\.boolean\(\)\.default\(false\)\)/)
+  assert.match(src, /suppressPeerCordis: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/)
   // reactive — peer capability arrival + the volatile switch itself
   assert.match(src, /ctx\.inject\(\[PEER_CAPABILITY\]/)
   assert.match(src, /ctx\.on\('loader\/volatile-update'/)
@@ -1509,7 +1345,7 @@ test('client card: the dedupe row is peer-gated and writes THIS row\'s field', (
   assert.match(src, /var dedupe = snap\.value\.suppressPeerCordis === true;/)
   assert.match(src, /writeField\("suppressPeerCordis", true\)/)
   assert.match(src, /writeField\("suppressPeerCordis", false\)/)
-  // drawn only while the peer's entry is served (absent peer / old host hide it);
+  // drawn only while the peer's entry is served (an absent peer hides it);
   // v0.36.0 regroup: dedupe and python live under ONE `peerSection` heading
   assert.match(src, /var peerSection = peerSnap\.status === "ready" \? fold\("sec\.peer"/)
   assert.match(src, /\n\t\t\t\tpeerSection,/)
@@ -1619,25 +1455,25 @@ test('translateDispatch covers every argument face issue #8 reported', () => {
 
 test('issue #8 root cause stays fixed: the dispatch face reads the LIVE dialect', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // The legacy namespace reader is GONE (v0.32.1): `settings.get(ns)` stopped
-  // existing on dsh >= 0.1.7, so a reader that went through it returned the
-  // all-off fallback and silently disabled the whole translation layer while
-  // the directive text and the shell env (both on the live reader) kept
-  // working — issue #8's "half-alive dialect". The dispatch face must read
-  // the live reader, and the dead registration path must stay dead.
+  // The legacy namespace reader is GONE (v0.32.1): the namespace API no longer
+  // exists, so a reader that went through it returned the all-off fallback and
+  // silently disabled the whole translation layer while the directive text and
+  // the shell env (both on the live reader) kept working — issue #8's
+  // "half-alive dialect". The dispatch face must read the live reader, and the
+  // dead registration path must stay dead.
   const applyBody = src.slice(src.indexOf('export async function apply'))
   // strip line comments first: the history documents the old call in a
   // comment, and the assertion is about CODE, not prose
   const codeOnly = applyBody.replace(/^\s*\/\/.*$/gm, '')
   assert.doesNotMatch(codeOnly, /readDialectSettings\(ctx\)/, 'the dispatch face must not use the legacy reader')
   assert.match(applyBody, /const dialect = liveSettings\.dialect\(\)/)
-  // and the sidebar revert (its own missed era read, found in the same audit)
-  // goes through the era-aware helper instead of settings.get
+  // and the sidebar revert (its own stale read, found in the same audit) goes
+  // through the live reader instead of a namespace lookup
   assert.match(src, /const now = readShell\(\)/)
   assert.doesNotMatch(src, /now = s\.get\(SIDEBAR_NS\)/)
   // v0.32.1: the whole legacy namespace surface is deleted — the registration
-  // block and the four namespace readers died with the 0.1.6 era. A stray
-  // `settings.register` would be dead-on-arrival code on every supported host.
+  // block and the four namespace readers are gone. A stray `settings.register`
+  // would be dead-on-arrival code on every supported host.
   const code = src.replace(/^\s*\/\/.*$/gm, '')
   assert.doesNotMatch(code, /settings\.register/, 'the legacy settings registration must stay deleted')
   assert.doesNotMatch(code, /SETTINGS_NAMESPACE/, 'the legacy namespace constant must stay deleted')
@@ -1704,10 +1540,10 @@ test('python switch: the host rebuilds variants on the EFFECTIVE backend and ins
   // Reading peerPython again after an await could leave a mixed generation.
   assert.match(src, /const pythonActive = peerPython/)
   assert.match(src, /registeredPython !== pythonActive/)
-  assert.match(src, /await registerVariant\(ctx, presetId, \{ gitBashActive, skillsDir, pythonActive, hostExtras, readBashResolution \}\)/)
+  assert.match(src, /await registerVariant\(ctx, presetId, \{ skillsDir, pythonActive, hostExtras, readBashResolution \}\)/)
   assert.match(src, /registeredPython = pythonActive/)
   const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
-  assert.match(compositions, /export function pluginsFor\(\{ kind, gitBash, skillsDir, pythonActive = false, hostExtras = \{\} \}\)/, 'the composition entry point takes the effective fact')
+  assert.match(compositions, /export function pluginsFor\(\{ kind, skillsDir, pythonActive = false, hostExtras = \{\} \}\)/, 'the composition entry point takes the effective fact')
   assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonActive !== true/)
   // the runtime row belongs to dsh-ptc-cordis-preset alone: our bundle patch
   // must never target it (two providers would collide)
@@ -1891,7 +1727,7 @@ test('subagent switch: OFF keeps the dialect to the main agent', () => {
 test('subagent switch: a missing key defaults to ON', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   // declared volatile with default true on the row Config
-  assert.match(src, /subagentDialect: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(src, /subagentDialect: Schema\.boolean\(\)\.default\(true\)\.volatile\(\)/)
   // the live reader keeps the opt-out semantics (only an explicit false turns it off)
   assert.match(src, /subagentDialect: valueOf\(config\.subagentDialect\) !== false/)
   // and the no-Config fallback keeps delegations covered
@@ -2046,17 +1882,14 @@ test('bash resolution: the explicit tier is LAZY, never frozen at apply time (is
   assert.equal(effectiveConfiguredBashPath('', 'E:/row/bin/bash.exe'), 'E:/row/bin/bash.exe')
 })
 
-test('executor row lookup survives the subtree layout change (issue #13, measured on 0.2.0-rc.2)', async () => {
+test('executor row lookup reads entries() only (dsh >=0.2.2-rc.1 subtree layout)', async () => {
   const { executorConfiguredBashPath } = await import('../src/bash-path.js')
   const row = (bashPath) => ({ options: { id: 'gitbash-executor', config: bashPath === undefined ? {} : { bashPath } } })
-  // OLD hosts: the row sits in the ROOT tree — resolve(id) returns it
+  // The bundle-inserted row lives in the OWNING PLUGIN'S SUBTREE: resolve(id)
+  // throws from the root tree forever. entries() iterates subtrees, so it is
+  // the only read path; a root-only resolve() answer is deliberately ignored.
   const rootCtx = { loader: { resolve: (id) => (id === 'gitbash-executor' ? row('D:/root/bin/bash.exe') : undefined) } }
-  assert.equal(executorConfiguredBashPath(rootCtx), 'D:/root/bin/bash.exe')
-  // NEW hosts (0.2.0-rc.2): the bundle-inserted row lives in the OWNING
-  // PLUGIN'S SUBTREE — resolve(id) throws forever; entries() (which iterates
-  // subtrees) is what finds it. The old code read the throw as "not
-  // configured", so the explicit tier silently vanished while the executor's
-  // own lazy this.config.bashPath kept working.
+  assert.equal(executorConfiguredBashPath(rootCtx), '', 'resolve() must no longer supply the explicit tier')
   const subtreeCtx = {
     loader: {
       resolve: () => { throw new Error('cannot resolve entry gitbash-executor') },
@@ -2065,13 +1898,13 @@ test('executor row lookup survives the subtree layout change (issue #13, measure
   }
   assert.equal(executorConfiguredBashPath(subtreeCtx), 'E:/scoop/apps/git/2.56.0/bin/bash.exe')
   // an empty string on the row is a REAL answer (= automatic chain), not a miss
-  assert.equal(executorConfiguredBashPath({ loader: { resolve: () => row('') } }), '')
+  assert.equal(executorConfiguredBashPath({ loader: { entries: function* () { yield row('') } } }), '')
   // the row genuinely absent (disabled / not inserted) reads ''
-  const absentCtx = { loader: { resolve: () => { throw new Error('cannot resolve entry gitbash-executor') }, entries: function* () { yield { options: { id: 'gitbash-shell', config: {} } } } } }
+  const absentCtx = { loader: { entries: function* () { yield { options: { id: 'gitbash-shell', config: {} } } } } }
   assert.equal(executorConfiguredBashPath(absentCtx), '')
   // no loader / broken entries never throw
   assert.equal(executorConfiguredBashPath({}), '')
-  assert.equal(executorConfiguredBashPath({ loader: { resolve: () => row('F:/x/bin/bash.exe'), entries: () => { throw new Error('boom') } } }), 'F:/x/bin/bash.exe')
+  assert.equal(executorConfiguredBashPath({ loader: { resolve: () => row('F:/x/bin/bash.exe'), entries: () => { throw new Error('boom') } } }), '')
 })
 
 test('minimal PTY shellPath rides the resolution chain; unresolved keeps the visible default (issue #15)', async () => {
@@ -2383,7 +2216,7 @@ test('sidebar terminal: the host reaches configEditor, never the settings servic
   // the better-sidebar channel stays independent
   assert.match(src, /adoptSidebarShell\(ctx, resolution\.path/)
   // the switch is declared volatile with default ON on the row Config
-  assert.match(src, /autoTerminalShell: live\(Schema\.boolean\(\)\.default\(true\)\)/)
+  assert.match(src, /autoTerminalShell: Schema\.boolean\(\)\.default\(true\)\.volatile\(\)/)
 })
 
 test('sidebar terminal: writes go through the official editor only — no fs path to the profile patch', async () => {
@@ -3010,31 +2843,17 @@ test('path map route: registered, loopback-fenced, and reporting the host facts'
 })
 
 /* ── schemastery resolution domain (v0.31.1, issue #12) ──────────────────────
-   The plugin must agree with the executor base class it extends. On dsh 0.1.7+
+   The plugin must agree with the executor base class it extends. On dsh >=0.2.2-rc.1
    that base declares its shell limits with `.volatile()` and reads them through
    `.get()`; a Config built from a copy WITHOUT `volatile()` therefore yields
    plain values and every shell call dies with
    `TypeError: config.timeoutMs.get is not a function`, taking the whole
    ctx.shell down. Our own resolution walk can land on an older copy another
-   dependency hoisted to the profile root, so the copy is chosen by asking the
-   HOST what it expects — these tests drive that decision without a filesystem. */
+   dependency hoisted to the profile root, so the copy is chosen semantically:
+   the first one that can produce Volatile refs. These tests drive that decision
+   without a filesystem. */
 
-test('schemastery: the host is asked what it expects, and an unreadable host is never guessed at', async () => {
-  const { hostWantsVolatileRefs } = await import('../src/schemastery.js')
-
-  // dsh 0.1.7+: the host's own schema resolves the field to a Volatile ref.
-  assert.equal(hostWantsVolatileRefs(() => ({ timeoutMs: { get: () => 120000 } })), true)
-  // <= 0.1.6: it resolves to the plain value the old base class reads directly.
-  assert.equal(hostWantsVolatileRefs(() => ({ timeoutMs: 120000 })), false)
-  // A schema that refuses `{}` (required fields) tells us nothing — the caller
-  // must fall back to the historical probe rather than guess a semantics change.
-  assert.equal(hostWantsVolatileRefs(() => { throw new Error('cwd is required') }), undefined)
-  assert.equal(hostWantsVolatileRefs(() => null), undefined)
-  assert.equal(hostWantsVolatileRefs(undefined), undefined)
-  assert.equal(hostWantsVolatileRefs({}), undefined, 'a non-callable Config cannot answer')
-})
-
-test('schemastery: hasVolatile recognizes exactly the copies that can serve a 0.1.7 host', async () => {
+test('schemastery: hasVolatile recognizes exactly the copies that can serve the host', async () => {
   const { hasVolatile, isSchemastery } = await import('../src/schemastery.js')
   const capable = { object: () => ({}), string: () => ({ volatile: () => ({}) }) }
   const legacy = { object: () => ({}), string: () => ({}) }
@@ -3049,7 +2868,7 @@ test('schemastery: hasVolatile recognizes exactly the copies that can serve a 0.
   assert.equal(isSchemastery({ object: 'not-a-function' }), false)
 })
 
-test('schemastery: a volatile-hungry host is served from the shell packages when our own walk lands on a legacy copy', async () => {
+test('schemastery: a volatile-capable copy is served from the shell packages when our own walk lands on a legacy copy', async () => {
   const { chooseCopy } = await import('../src/schemastery.js')
   const capable = { object: () => ({}), string: () => ({ volatile: () => ({}) }) }
   const legacy = { object: () => ({}), string: () => ({}) }
@@ -3059,39 +2878,28 @@ test('schemastery: a volatile-hungry host is served from the shell packages when
   // THE reported case (issue #12): the profile root hoisted an old copy that our
   // own walk hits first, while the host runs the capable one beside its shell
   // packages. The capable copy — not the first one found — must win.
-  const rescue = chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [beside, own] })
+  const rescue = chooseCopy({ ownEntry: 'own', copies: [beside, own] })
   assert.equal(rescue.chosen, beside)
-  assert.equal(rescue.reason, 'host-volatile-redirected')
+  assert.equal(rescue.reason, 'redirected')
 
   // Order must not decide it: the same answer when our own copy is tried first.
-  assert.equal(chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [own, beside] }).chosen, beside)
+  assert.equal(chooseCopy({ ownEntry: 'own', copies: [own, beside] }).chosen, beside)
 
-  // Our own copy can serve the host too — then there is nothing to redirect.
+  // Our own copy can serve too — then there is nothing to redirect.
   const ownCapable = { where: 'this plugin', entry: 'own', z: capable }
-  const kept = chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [beside, ownCapable] })
+  const kept = chooseCopy({ ownEntry: 'own', copies: [beside, ownCapable] })
   assert.equal(kept.chosen, ownCapable, 'a capable own copy is never swapped for another capable one')
-  assert.equal(kept.reason, 'host-volatile')
+  assert.equal(kept.reason, 'own-volatile')
 
-  // The one case the plugin cannot paper over: the host wants refs and NO copy
-  // provides them. Keep our own copy (so nothing else changes) but say why.
-  const hopeless = chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [own] })
+  // No copy provides volatile(): keep our own copy (so nothing else changes)
+  // but report the reason; the loader turns that into the fail-loud Config gap.
+  const hopeless = chooseCopy({ ownEntry: 'own', copies: [own] })
   assert.equal(hopeless.chosen, own)
   assert.equal(hopeless.reason, 'no-volatile-anywhere')
 
-  // A <=0.1.6 host reads plain values: never hand it a ref it will not `.get()`,
-  // even when a capable copy is lying around.
-  const oldHost = chooseCopy({ needsVolatile: false, ownEntry: 'own', copies: [beside, own] })
-  assert.equal(oldHost.chosen, own)
-  assert.equal(oldHost.reason, 'host-plain')
-
-  // An unreadable host keeps the pre-#12 behaviour verbatim.
-  const unknown = chooseCopy({ needsVolatile: undefined, ownEntry: 'own', copies: [beside, own] })
-  assert.equal(unknown.chosen, own)
-  assert.equal(unknown.reason, 'host-unknown')
-
   // Nothing resolved anywhere: the caller reports the absent Config surface.
-  assert.equal(chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [] }).chosen, undefined)
-  assert.equal(chooseCopy({ needsVolatile: true, ownEntry: 'own', copies: [] }).reason, 'unresolved')
+  assert.equal(chooseCopy({ ownEntry: 'own', copies: [] }).chosen, undefined)
+  assert.equal(chooseCopy({ ownEntry: 'own', copies: [] }).reason, 'unresolved')
 })
 
 test('schemastery: the loader resolves the real peer here and reports where it came from', async () => {
@@ -3100,18 +2908,16 @@ test('schemastery: the loader resolves the real peer here and reports where it c
   assert.equal(SCHEMASTERY_PARENT, '@deepseek-ai/dsh-bash-sandbox')
 
   resetSchemasteryCache()
-  // No host Config supplied => the host could not answer, so this is the
-  // historical path: our own copy, and a reason that says so.
-  const resolved = await loadSchemastery({})
+  const resolved = await loadSchemastery()
   assert.equal(typeof resolved.z?.object, 'function', 'this repo carries the peer as a devDependency, so it resolves')
-  assert.equal(resolved.needsVolatile, undefined)
-  assert.equal(resolved.reason, 'host-unknown')
-  assert.equal(resolved.source, 'this plugin')
+  assert.ok(resolved.reason === 'own-volatile' || resolved.reason === 'redirected', 'a usable copy says where it came from')
+  assert.equal(resolved.source, resolved.reason === 'own-volatile' ? 'this plugin' : 'the shell packages')
+  assert.notEqual(resolved.entry, '')
 
   // One answer per process: both call sites must see the same copy, or the
-  // settings namespace and the executor would disagree about the vocabulary.
-  const again = await loadSchemastery({ parentConfig: () => ({ timeoutMs: { get: () => 1 } }) })
-  assert.equal(again.z, resolved.z, 'the second call must reuse the cached resolution, not re-decide')
+  // row Config and the executor would disagree about the vocabulary.
+  const again = await loadSchemastery()
+  assert.equal(again, resolved, 'the second call must reuse the cached resolution, not re-decide')
   resetSchemasteryCache()
 })
 
@@ -3122,10 +2928,10 @@ test('schemastery: both halves resolve through the shared loader, and neither st
       file + ' must not statically import the peer (a failed import silently kills the row)')
     assert.match(src, /loadSchemastery\(/, file + ' must resolve through the shared loader')
   }
-  // The executor half must supply the host's own Config as the oracle; the host
-  // half reaches the same schema through the executor package.
-  assert.match(readFileSync('src/shell.js', 'utf8'), /loadSchemastery\(\{ parentConfig: SandboxBashExecutor\.Config \}\)/)
-  assert.match(readFileSync('src/index.js', 'utf8'), /executorConfigSchema\(\)/)
+  // Both halves call the same zero-argument loader; the choice is semantic
+  // (can this copy produce Volatile refs?), never an oracle handed in by us.
+  assert.match(readFileSync('src/shell.js', 'utf8'), /await loadSchemastery\(\)/)
+  assert.match(readFileSync('src/index.js', 'utf8'), /await loadSchemastery\(\)\)\.z \?\? null/)
 })
 
 // ── v0.39.0: inline tool patch (route B — the plugin's OWN bash tool) ──────
@@ -3168,19 +2974,19 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   assert.match(hostSource, /mountInlineTools\(ctx, \{/)
   assert.match(hostSource, /mountFastctx\(ctx, \{/)
-  assert.match(hostSource, /variantPresets: live\(Schema\.boolean\(\)\.default\(false\)\)/)
+  assert.match(hostSource, /variantPresets: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/)
   // The pwsh switch keeps its id and default; route B made it a visibility
   // switch for the REAL tool.
-  assert.match(hostSource, /pwshTool: live\(Schema\.boolean\(\)\.default\(false\)\)/)
+  assert.match(hostSource, /pwshTool: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/)
   // Default OFF (v0.39.4): dsh-ops 0.3.0 replaced FastCtx with native ops_*
   // file tools — the bridge retires to an explicit opt-in.
-  assert.match(hostSource, /fastctxTools: live\(Schema\.boolean\(\)\.default\(false\)\)/)
+  assert.match(hostSource, /fastctxTools: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/)
   assert.match(hostSource, /fastctxTools: valueOf\(config\.fastctxTools\) === true/)
   // Routing rides applyToolRouting (inline-tools.js) since the native RFC:
   // the sentence is picked from the actual offered face, and the pwsh-visible
   // / msys facts still flow from the live settings read here. The list comes
-  // from the assembly on older hosts and from the tools service on
-  // 0.2.2-alpha.2+ (the event stopped carrying declarations).
+  // from the tools service (`ctx.tools.schemas`); the event no longer carries
+  // declarations.
   assert.match(hostSource, /applyToolRouting\(offeredTools,/)
   assert.match(hostSource, /pwshVisible: liveSettings\.pwshTool\(\) === true/)
   assert.match(hostSource, /msys: applies && dialect\.posixPaths === true/)
@@ -3319,7 +3125,7 @@ test('bash tool: the module refuses a non-executor, declares no shell inject, an
     resolve: (request) => ({ ...request, workdir: '/w', timeoutMs: request.timeoutMs ?? 120000 }),
     execute: async () => { throw new Error('not used by this test') },
   }
-  const mod = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: undefined, llmModule: undefined, log: () => {} })
+  const mod = createBashToolModule({ executor, toolsModule: { defineTool: (options) => options }, sandboxModule: undefined, llmModule: undefined, log: () => {} })
   assert.deepEqual(mod.inject, ['tools', 'systemPrompt', 'shellEnv'],
     'no ctx.shell (the official executor owns that service) and no workingDirectory (hosts without the service would leave the fiber INACTIVE, issue #27)')
   mod.apply(ctx, {})
@@ -3355,14 +3161,15 @@ test('bash tool: the schema advertises background + escalation only when the com
     logger: {},
   })
   const executor = { sandboxMode: 'workspace-write', resolve: (r) => r, execute: async () => { throw new Error('unused') } }
-  // Plain-fallback shape (defineTool absent) with the full composition.
-  const mod = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: sandbox, llmModule: undefined, log: () => {} })
+  // The typed defineTool spec (the only shape now) with the full composition.
+  const mod = createBashToolModule({ executor, toolsModule: { defineTool: (options) => options }, sandboxModule: sandbox, llmModule: undefined, log: () => {} })
   mod.apply(makeCtx({ start: () => 'j1', wait: async () => ({ status: 'completed' }), read: () => ({ chunks: [], lossy: false }), kill: () => {}, remove: () => {} }), {})
   const def = registered[registered.length - 1]
-  assert.deepEqual(def.parameters.required, ['description', 'command'])
-  assert.equal(def.parameters.properties.run_in_background !== undefined, true)
-  assert.deepEqual(def.parameters.properties.sandbox_permissions.enum, ['workspace-write', 'danger-full-access'])
-  assert.match(def.parameters.properties.sandbox_permissions.description, /esc\(command\)/)
+  assert.equal(def.parameters.command.required, true)
+  assert.equal(def.parameters.description.required, true)
+  assert.equal(def.parameters.run_in_background !== undefined, true)
+  assert.deepEqual(def.parameters.sandbox_permissions.enum, ['workspace-write', 'danger-full-access'])
+  assert.match(def.parameters.sandbox_permissions.description, /esc\(command\)/)
   assert.equal(def.output.schema.oneOf.length, 3, 'background | promoted | foreground')
   // The defineTool path would wrap execute with soft validation; the plain
   // path validates INSIDE executeBody via validateBashArgs — both carry the

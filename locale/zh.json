@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Git Bash Shell",
-    "description": "把 Windows 的 PowerShell shell 换成 Git for Windows bash:兼容 bash-sandbox 的执行器、全工具统一的 MSYS 路径方言(posixPaths 等开关可实时编辑),以及 dsh 0.1.7+ 上直接声明进取的四个 * · Git Bash 预设。"
+    "description": "为 Windows 提供 Git for Windows bash 命令通道:自有 bash 工具跑在私有执行器上(官方 PowerShell 执行器原样保留)、全工具统一的 MSYS 路径方言(posixPaths 等开关可实时编辑),四个 * · Git Bash 预设变体可开关。要求 dsh >= 0.2.2-rc.1。"
   }
 }

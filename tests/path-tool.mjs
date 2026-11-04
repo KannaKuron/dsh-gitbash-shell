@@ -168,27 +168,16 @@ test('path-tool: classification helpers', () => {
   assert.equal(looksPosixValue('relative'), false)
 })
 
-test('path-tool: plain definition — schema data, execute, fresh buildEnv per call', () => {
+test('path-tool: definition executes and consumes fresh buildEnv facts per call', () => {
   let buildCalls = 0
   const definition = buildPathToolDefinition({
+    toolsModule: { defineTool: (options) => options },
     translateMsysPath,
     buildEnv: () => { buildCalls++; return FULL_ENV },
   })
   assert.equal(definition.name, PATH_TOOL_NAME)
-  // Plain JSON-schema shape: property required via the array, object closed.
-  assert.deepEqual(definition.parameters, {
-    type: 'object',
-    properties: { msys_path: { type: 'string', description: definition.parameters.properties.msys_path.description } },
-    required: ['msys_path'],
-    additionalProperties: false,
-  })
-  assert.equal(definition.parameters.properties.msys_path.description.length > 20, true)
-  assert.deepEqual(definition.output.schema, {
-    type: 'object',
-    properties: { native_path: { type: 'string' } },
-    required: ['native_path'],
-    additionalProperties: false,
-  })
+  assert.equal(typeof definition.execute, 'function')
+  assert.equal(typeof definition.output.render, 'function')
   // Execute converts and consumes FRESH facts per call (never a copied table).
   assert.deepEqual(definition.execute({ msys_path: '/c/我的#目录' }), { native_path: 'C:/我的#目录' })
   assert.equal(buildCalls, 1)
@@ -248,6 +237,7 @@ test('path-tool: the module owns its registration and reverts it on disposal', (
   }
   const logs = []
   const module = createPathToolModule({
+    toolsModule: { defineTool: (options) => options },
     translateMsysPath,
     buildEnv: () => FULL_ENV,
     log: (message) => logs.push(message),
@@ -256,11 +246,10 @@ test('path-tool: the module owns its registration and reverts it on disposal', (
   module.apply(ctx)
   assert.equal(registered.length, 1)
   assert.equal(registered[0].name, PATH_TOOL_NAME)
-  // Two log lines are correct without the host module: the plain-definition
-  // fallback note at build time, plus the registration line in apply.
-  assert.equal(logs.length, 2)
-  assert.match(logs[0], /dsh-tools not resolvable; building a plain JSON-schema definition/)
-  assert.match(logs[1], /gitbash_to_native_path registered/)
+  // One log line: the registration line in apply. The definition is authored
+  // through the host's own defineTool, so there is no fallback note.
+  assert.equal(logs.length, 1)
+  assert.match(logs[0], /gitbash_to_native_path registered/)
   // Scope disposal (the effects cordis runs) removes the tool, no residue.
   for (const dispose of effects) dispose()
   assert.equal(registered.length, 0)
@@ -269,7 +258,11 @@ test('path-tool: the module owns its registration and reverts it on disposal', (
 test('path-tool: factory fails loud without a translator and on a broken registry', () => {
   assert.throws(() => createPathToolModule({}), /a shared translator is required/)
   assert.throws(() => createPathToolModule({ buildEnv: () => FULL_ENV }), /a shared translator is required/)
-  const module = createPathToolModule({ translateMsysPath, buildEnv: () => FULL_ENV })
+  const module = createPathToolModule({
+    toolsModule: { defineTool: (options) => options },
+    translateMsysPath,
+    buildEnv: () => FULL_ENV,
+  })
   assert.throws(() => module.apply({}), /ctx\.tools\.register is unavailable/)
 })
 
@@ -290,7 +283,7 @@ test('path-tool: the real shared buildTranslateEnv feeds the same helper (compos
 
  test('path switch: stale definitions reject before translation and recover live', () => {
   let enabled = false, translated = 0;
-  const definition = buildPathToolDefinition({ experimentalEnabled: () => enabled, translate: () => { translated++; return 'C:/test'; } });
+  const definition = buildPathToolDefinition({ toolsModule: { defineTool: (options) => options }, experimentalEnabled: () => enabled, translate: () => { translated++; return 'C:/test'; } });
   assert.throws(() => definition.execute({ msys_path: '/c/test' }), /disabled by experimentalNative/);
   assert.equal(translated, 0);
   enabled = true;

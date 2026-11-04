@@ -95,11 +95,6 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
     return assembly.contexts[0].text
   }
   assert.match(assemble(), /best-effort/)
-  // Older hosts hand the list over on the assembly and expose a one-argument
-  // schemas(); the fallback must use their list instead of asking the service.
-  const legacy = { contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [], tools: [{ name: 'run_code' }] }
-  handler(legacy, { agent: undefined }, () => {})
-  assert.match(legacy.contexts[0].text, /best-effort/)
   dialect = { ...dialect, codePaths: false }
   assert.match(assemble(), /rewriting is OFF/)
   dialect = { ...dialect, posixPaths: false }
@@ -259,14 +254,15 @@ function issue27Fixture({ withWorkingDirectory }) {
     tools: { register: (definition) => definitions.set(definition.name, definition) },
   }
   const logs = []
-  const module = createBashToolModule({ executor, toolsModule: undefined, sandboxModule: undefined, llmModule: undefined, log: (message) => logs.push(message) })
+  const toolsModule = { defineTool: (options) => options }
+  const module = createBashToolModule({ executor, toolsModule, sandboxModule: undefined, llmModule: undefined, log: (message) => logs.push(message) })
   const exec = { agent: { session: { header: { cwd: 'D:/work/ws' } } }, signal: new AbortController().signal, callId: 'i27' }
   return { module, ctx, definitions, executor, getExecuted: () => executed, logs, exec }
 }
 
 test('compatibility: a host WITHOUT workingDirectory still registers bash and falls back to the session cwd (issue #27)', async () => {
   const { module, ctx, definitions, getExecuted, exec } = issue27Fixture({ withWorkingDirectory: false })
-  assert.deepEqual(module.inject, ['tools', 'systemPrompt', 'shellEnv'], 'the inject list must not name services older hosts lack')
+  assert.deepEqual(module.inject, ['tools', 'systemPrompt', 'shellEnv'], 'workingDirectory stays an optional inject, never a hard dependency')
   module.apply(ctx, {})
   assert.ok(definitions.has('bash'), 'apply must register bash without workingDirectory present')
   const value = await definitions.get('bash').execute({ command: 'echo x', description: 'issue 27 cwd fallback' }, exec)

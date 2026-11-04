@@ -1,6 +1,6 @@
 {
   "name": "dsh-gitbash-shell",
-  "version": "0.48.3",
+  "version": "0.49.0",
   "description": "Windows 上给 agent 一个真正的 Git Bash 命令工具:私有 Git Bash 执行器实例(官方 PowerShell 执行器原样保留),统一 MSYS 盘根路径方言,官方 pwsh 工具默认隐藏可开关,物化四个内置预设的 Git Bash 变体,侧栏终端接管可开关。· Give agents a real Git Bash tool on Windows: a private Git Bash executor instance (the official PowerShell executor stays untouched), a unified MSYS drive-root path dialect, an opt-in official pwsh tool, and four Git Bash preset variants.",
   "type": "module",
   "repository": {
@@ -16,8 +16,8 @@
     "./package.json": "./package.json"
   },
   "engines": {
-    "node": ">=18",
-    "dsh": ">=0.1.7-rc"
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
   },
   "dsh": {
     "bundle": {
@@ -32,16 +32,8 @@
       "platform": "web"
     },
     "compatibility": {
-      "dsh": ">=0.1.7-rc",
+      "dsh": ">=0.2.2-rc.1",
       "dshReleases": {
-        "0.2.0-rc.2": "compatible",
-        "0.2.1-alpha.1": "compatible",
-        "0.2.1-alpha.2": "compatible",
-        "0.2.1-alpha.3": "compatible",
-        "0.2.1-alpha.4": "compatible",
-        "0.2.1-alpha.5": "compatible",
-        "0.2.1-rc.1": "compatible",
-        "0.2.2-alpha.2": "compatible",
         "0.2.2-rc.1": "compatible"
       }
     }
@@ -74,11 +66,15 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh": ">=0.1.7-rc",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/dsh": ">=0.2.2-rc.1",
+    "@deepseek-ai/dsh-bash-sandbox": ">=0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.19.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-bash-sandbox": {
       "optional": true
     }
   },
@@ -94,6 +90,6 @@
   },
   "icon": "./icon.svg",
   "devDependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "^3.19.0"
   }
 }
