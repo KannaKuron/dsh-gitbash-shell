@@ -14,7 +14,7 @@
 - **组合单代**:`compositions.js` 只产出 rc.1 形状(`tool-executor-ptc`、subagent 的 `modelSelection`+`modelDiscovery`、list-agents 并入 control 行、manager/market 随 `profileContext`);删除 `executorPlugin` 探测、旧 `gitBash` 形参、旧 `backgroundMode`/`tool-presentation`/`tool-subagent-list-agents` 行。time-context/tool-schedule/plugin-market/compaction 的按包探测保留。
 - **清理**:删除 `purgeOrphans`、`agentPresets.register` 守卫外壳、`betterSidebarShell` 无效条件、测试专用 inline addendum 与不可达防御;移除根目录 0 字节跟踪文件 `=0.1.7-rc`。`src/client.js` 的 `SETTINGS_NAMESPACE` 更名 `ROW_NAMESPACE`,设置卡按宿主 `=== true` 语义读取 `pwshTool`。
 - **保留**:用户数据迁移(旧物化树 marker 清理、旧 preset/profile 行字段、侧栏终端旧默认名 `bash`)、跨插件联动(dsh-ops/FastCtx、dsh-ptc-cordis-preset、better-sidebar、terminal bundle)、平台分支、可选官方能力的按包探测与降级,理由见 AGENTS.md「单代基线与大版本清理纪律」。
-- **测试与验证**:测试夹具全部改为 rc.1 单代契约,删除 0.1.6 执行器与双代 schemastery/composition 用例;`npm test` 345 项(344 pass + 1 平台 skip),另跑 `node --check`、`node tests/align-official.mjs`、`git diff --check` 与旧下限/旧 API 静态复查。仓库内没有 SSR 专用脚本,未执行 SSR 自检。本轮在 macOS 开发,无 Windows 真机,未发布。
+- **测试与验证**:测试夹具全部改为 rc.1 单代契约,删除 0.1.6 执行器与双代 schemastery/composition 用例;`npm test` 345 项(344 pass + 1 平台 skip),另跑 `node --check`、`node tests/align-official.mjs`、`git diff --check` 与旧下限/旧 API 静态复查。仓库内没有 SSR 专用脚本,未执行 SSR 自检。本轮在 macOS 开发,发布前未做 Windows 真机验证。
 
 ## v0.48.3 — 2026-11-04
 
