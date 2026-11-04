@@ -413,6 +413,7 @@ test('host gates the path dialect behind the posixPaths setting', async () => {
 
 test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const pathText = readFileSync(new URL('../src/path-dialect.js', import.meta.url), 'utf8')
   // registered through the official dsh-shell-env registry at service-ready
   // timing — never by mutating the process environment
   assert.match(text, /ctx\.inject\(\['shellEnv'\], \(envCtx\) => \{/)
@@ -441,7 +442,7 @@ test('shellEnv fact DSH_PATH_DIALECT rides the official registry, gated live', (
   for (const key of declared[1].matchAll(/\[([A-Za-z0-9_]+)\]/g)) {
     assert.equal(key[1], 'PATH_DIALECT_KEY', 'unexpected computed key in the shell-env declaration: ' + key[1])
   }
-  assert.match(text, /const PATH_DIALECT_KEY = 'DSH_/, 'the computed key must itself be a DSH_* fact')
+  assert.match(pathText, /export const PATH_DIALECT_KEY = 'DSH_/, 'the computed key must itself be a DSH_* fact')
   assert.doesNotMatch(declared[1], /GIT_CONFIG/, 'git config belongs to the executor, not to the DSH_* registry')
   assert.match(text, /envCtx\.effect\(\(\) => unregister/)
 })
@@ -965,19 +966,20 @@ test('run_code program literals ride the same MSYS mount table (v0.20.0)', async
 
 test('the run_code literal rewrite has its own switch (codePaths)', async () => {
   const text = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const pathText = readFileSync(new URL('../src/path-dialect.js', import.meta.url), 'utf8')
   assert.match(text, /codePaths: live\(Schema\.boolean\(\)\.default\(true\)\)/)
-  assert.match(text, /exec\.name === 'run_code' && dialect\.codePaths/)
-  assert.match(text, /rewriteCodePaths\(translated\.code, env\)/)
+  assert.match(pathText, /exec\.name === 'run_code' && dialect\.codePaths/)
+  assert.match(pathText, /rewriteCodePaths\(translated\.code, env\)/)
   // v0.20.1: the run_code sentence is NOT in the base directive — it rides the
   // same context entry only for assemblies whose tool list carries run_code, so
   // every other mode (standard/cordis sessions, run_code disabled) stays quiet.
-  const base = /const POSIX_DIRECTIVE_TEXT = '([^']*)'/.exec(text)
+  const base = /const POSIX_DIRECTIVE_TEXT = '([^']*)'/.exec(pathText)
   assert.ok(base !== null, 'directive text is gone')
   assert.doesNotMatch(base[1], /run_code/, 'the base directive must not talk about run_code')
-  const strict = /const POSIX_DIRECTIVE_TEXT_STRICT = '([^']*)'/.exec(text)
+  const strict = /const POSIX_DIRECTIVE_TEXT_STRICT = '([^']*)'/.exec(pathText)
   assert.ok(strict !== null, 'strict directive text is gone')
   assert.doesNotMatch(strict[1], /run_code/, 'the strict directive must not talk about run_code either')
-  assert.match(text, /const RUN_CODE_DIRECTIVE_TEXT = '/, 'the conditional run_code sentence is gone')
+  assert.match(pathText, /const RUN_CODE_DIRECTIVE_TEXT = '/, 'the conditional run_code sentence is gone')
   assert.match(text, /runCodeHintFor\(offeredTools, dialect\.codePaths === true\)/, 'the assembly hook must gate on the tool list and live codePaths state')
   // dsh 0.2.2-alpha.2: the event no longer carries tools — read the step's
   // admitted toolSet back from the tools service, so conditional tools are
@@ -2217,6 +2219,7 @@ test('missing-bash popup: registered globally, win32-only, once per boot, with b
 
 test('bash status route + capability expose the verdict to the client and to peers', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const pathSrc = readFileSync(new URL('../src/path-dialect.js', import.meta.url), 'utf8')
   assert.match(src, /ctx\.inject\(\['webServer'\]/, 'the route is an optional service, never a hard inject')
   assert.match(src, /const route = '\/dsh-gitbash-shell\/api\/status'/)
   assert.match(src, /wctx\.webServer\.register\(\{ kind: 'prefix', path: route, handler \}\)/)
@@ -2236,7 +2239,7 @@ test('bash status route + capability expose the verdict to the client and to pee
   assert.ok(readerIdx !== -1 && readerIdx < capabilityIdx, 'liveSettings precedes gitBashCapability so the pwshToolEnabled getter cannot hit a TDZ read')
   assert.match(src, /downloadUrl: GIT_BASH_DOWNLOAD_URL,/)
   // ONE resolver for the executor and the translation layer (issue #11's split)
-  assert.match(src, /const resolution = resolveGitBashCached\(\{ configured: cacheKey \}\)/)
+  assert.match(pathSrc, /const resolution = resolveGitBashCached\(\{ configured: cacheKey \}\)/)
   assert.match(src, /buildTranslateEnv\(readConfiguredBashPath\(\)\)/, 'the path map reads the LIVE explicit tier')
   const shell = readFileSync(new URL('../src/shell.js', import.meta.url), 'utf8')
   assert.match(shell, /resolveGitBashCached\(\{ configured \}\)/, 'the executor resolves through the same shared memo')

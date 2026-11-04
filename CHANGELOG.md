@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.48.1 — 2026-11-04
+
+### chore:宿主半拆出 MSYS 路径方言模块
+
+- **拆分**:`src/index.js` 中约 970 行的路径方言层整体移入 `src/path-dialect.js`——POSIX 指令文本、run_code 提示、`windowsToMsys`、入参/成功结果/失败文本翻译、虚拟挂载表、glob 绝对模式拆分、run_code 程序内路径字面量改写,以及 `buildTranslateEnv` 的探测缓存。
+- **入口更薄**:`src/index.js` 从 3106 行降到 2162 行,只保留插件装配、Config/live reader、preset 生命周期与 apply;并 re-export 原路径层符号,外部 `import { … } from './src/index.js'` 不变。`GIT_MOUNTS` 单独导出供 pathmap 路由生成宿主事实。
+- **依赖**:新模块只依赖 `node:fs` / `node:os` / `node:path` 与 `./bash-path.js` 的 `resolveGitBashCached`,不引入新的 peer import。
+- **测试**:346 项(345 pass + 1 平台 skip);源码断言改为同时读取 `src/index.js` 与 `src/path-dialect.js`,路径翻译行为用例全部保持。
+
 ## v0.48.0 — 2026-11-02
 
 ### fix:工具面开关改为「重启生效」——不再在存活会话上重建工具面

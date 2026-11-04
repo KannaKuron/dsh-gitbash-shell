@@ -87,7 +87,7 @@
     挂载即撞 "already registered" 直到重启。修复:ctx.inject(['cordisInspect'], ...) 服务
     就绪那一刻安装,与行激活顺序无关;上游形状不符时仍防御式退化为裸挂。动到 shim 需重跑
     「cordis 先挂 + 选 cordis-gitbash 成功」方向验证。
- 4b. **统一 POSIX 路径方言 + MSYS 根翻译层(v0.8.0)**:指令(order 126)升级为
+ 4b. **统一 POSIX 路径方言 + MSYS 根翻译层(v0.8.0;实现自 v0.48.1 起集中在 `src/path-dialect.js`,index 仅装配与 re-export)**:指令(order 126)升级为
     「所有工具一律 MSYS 盘根 /c/ 形式」(含改写规则:反斜杠/盘符事实与工具输出
     的 Windows 路径一律转写回 /c/);host 侧全局 tools/execute wrapper 把路径参数
     字段(file_path/path/workdir,按字段名白名单——动态工具同名字段自动覆盖)
