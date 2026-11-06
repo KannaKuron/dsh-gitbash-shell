@@ -1,3 +1,4 @@
+import { applyToolRouting, PTC_ROUTING } from './tool-routing.js'
 /**
  * dsh-gitbash-shell/bash-tool — the plugin's OWN bash tool (v0.39.0, route B).
  *
@@ -317,6 +318,16 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
     // optionally at the use site (below) instead of injecting it.
     inject: ['tools', 'systemPrompt', 'shellEnv'],
     apply(ctx, config = {}) {
+      const routing = config.routing
+      if (routing) ctx.systemPrompt.section({
+        name: 'gitbash-shell:program-routing',
+        order: ctx.systemPrompt.getSectionOrder('TOOL_BASH'),
+        text: ({ scope }) => {
+          const owner = scope ?? routing.scope
+          const offered = ctx.tools.selectExecutor(owner).describe(ctx.tools.definitions(owner)).schemas
+          return offered.some(tool => tool.name === 'run_code') ? PTC_ROUTING : ''
+        },
+      })
       const backgroundEnabled = config?.enableRunInBackground ?? true
       const promoteOnTimeout = (config?.promoteOnTimeout ?? true) && backgroundEnabled
       // The capability fact rides the executor's constructor read of
@@ -540,7 +551,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
         if (typeof defineTool !== 'function') {
           throw new Error('bash tool: @deepseek-ai/dsh-tools defineTool is unavailable')
         }
-        return defineTool({
+        const definition = defineTool({
           name: 'bash',
           description: bashDescription(),
           parameters: parametersSpec(),
@@ -560,6 +571,18 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           presentCall: presentBashCall,
           presentResult: presentBashResult,
         })
+        if (routing) Object.defineProperty(definition, 'description', { enumerable: true, get() {
+          // Definitions contain getters too; reading only names avoids recursion
+          // through schemas() -> this description. Do not recommend conditional
+          // foreign tools without an admitted step. Core projects this for native/PTC.
+          const names = ctx.tools.definitions(routing.scope)
+            .filter(tool => ctx.tools.executable(tool.name, routing.scope) !== undefined)
+            .map(tool => ({ name: tool.name }))
+          const own = { name: 'bash', description: bashDescription() }
+          applyToolRouting([own, ...names.filter(tool => tool.name !== 'bash')], routing.options())
+          return own.description
+        } })
+        return definition
       }
 
       // The background surface follows the registry (index.ts:536), verbatim.

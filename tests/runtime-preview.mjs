@@ -1,3 +1,4 @@
+import { executeTool, nativeExecutor, ptcExecutor, sdkSchemas } from './host-runtime.mjs'
 // Actual installed Core/Cordis contracts, isolated Contexts, and memory-only
 // subprocesses. No production profile, filesystem writes, or model requests.
 import test from 'node:test'
@@ -63,7 +64,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     await fiber
     return fiber
   }
-  for (const module of [SystemPrompt, ToolRuntime, shellEnv]) await mount(module, undefined)
+  for (const module of [SystemPrompt, ToolRuntime, ptc ? ptcExecutor : nativeExecutor, shellEnv]) await mount(module, undefined)
   let agentParent
   await mount({ inject: ['tools'], apply(ctx) {
     agentParent = ctx
@@ -116,25 +117,28 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     set: value => { pwshVisible = value; root.emit('loader/volatile-update', [['pwshTool']]) },
     setExperimental: value => { experimental = value; root.emit('loader/volatile-update', [['experimentalNative']]) },
     allowAgentMount: () => { failAgentMount = false },
-    execute: (name, args = {}) => tools.execute({ agent, name, callId: `${name}-runtime-preview`, arguments: args, signal: new AbortController().signal }),
+    execute: (name, args = {}) => executeTool(tools, { agent, name, callId: `${name}-runtime-preview`, arguments: args, signal: new AbortController().signal }),
     remount: () => mount(ctx => mountInlineTools(ctx, deps)),
   }
 }
 
-test('runtime preview: live pwsh schema and dispatch follow both switch directions', { timeout: 10000 }, async t => {
+test('runtime preview: pwsh visibility stays stable until the agent patch remounts', { timeout: 10000 }, async t => {
   const f = await fixture(t, { existingBash: true })
   assert.deepEqual(f.names(), ['bash'])
   f.set(true)
+  assert.ok(!f.names().includes('pwsh'))
+  assert.equal((await f.execute('pwsh')).isError, true)
+  await f.patch.dispose()
+  const shown = await f.remount()
   assert.ok(f.names().includes('pwsh'))
   assert.equal((await f.execute('pwsh')).value, 'pwsh')
   f.set(false)
-  assert.ok(!f.names().includes('pwsh'))
-  assert.equal((await f.execute('pwsh')).isError, true)
-  f.set(true)
-  assert.equal((await f.execute('pwsh')).isError, false)
-  assert.equal(f.root.get('shell'), f.official)
-  await f.patch.dispose()
   assert.ok(f.names().includes('pwsh'))
+  assert.equal((await f.execute('pwsh')).isError, false)
+  await shown.dispose()
+  const hidden = await f.remount()
+  assert.ok(!f.names().includes('pwsh'))
+  await hidden.dispose()
 })
 
 test('runtime preview: experimental switch changes existing schemas and restricted Bash without restart', { timeout: 15000 }, async t => {
@@ -214,13 +218,13 @@ test('runtime preview: a failed per-agent plugin mount releases its scope and ca
   assert.equal(f.agentScopes[0].ctx.fiber.state, 4)
   assert.ok(!f.names().includes('bash'))
   f.allowAgentMount()
-  f.set(true)
+  f.root.emit('agent/created', { agent: f.agent })
   await bounded(f.activated.promise, 'retried agent mount')
   assert.equal(f.agentScopes.length, 2)
   assert.ok(f.names().includes('bash'))
 })
 
-test('runtime preview: actual ToolRuntime accepts and executes the recursive plain fallback', { timeout: 10000 }, async t => {
+test('runtime preview: actual ToolRuntime accepts and executes the required defineTool contract', { timeout: 10000 }, async t => {
   const f = await fixture(t, { existingBash: true, pwshVisible: true })
   await f.patch.dispose()
   const child = createScope(f.agent.ctx)
@@ -234,7 +238,7 @@ test('runtime preview: actual ToolRuntime accepts and executes the recursive pla
       stdout: { text: 'plain-fallback-ok', truncated: false }, stderr: { text: '', truncated: false }, sandbox: { mode: spec.sandboxPolicy.mode, denied: false },
     }) }),
   }
-  const module = createBashToolModule({ executor, log() {} })
+  const module = createBashToolModule({ executor, toolsModule: { defineTool }, log() {} })
   await child.ctx.plugin(module)
   f.agent.session.header.policy = { mode: 'read-only', workspaceRoot: 'D:/child-workspace' }
   const result = await f.execute('bash', { command: 'memory-only command', description: 'Verify plain fallback execution' })
@@ -394,24 +398,15 @@ test('runtime preview: direct resolved restricted execution refuses and full han
 for (const ptc of [false, true]) test(`runtime preview: routing reaches the actual ${ptc ? 'PTC SDK' : 'native tool'} prompt and respects visibility`, { timeout: 10000 }, async t => {
   const f = await fixture(t, { explicitTools: true, ptc })
   await bounded(f.activated.promise, 'routing tools activation')
-  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  const start = source.indexOf("ctx.on('system-prompt/assemble',")
-  const end = source.indexOf("      console.log(TAG + ' prompt-assembly path dialect active", start)
-  assert.ok(start >= 0 && end > start)
   let dialect = { posixPaths: false, codePaths: false, subagentDialect: true }
-  const hook = f.root.plugin(ctx => {
-    new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', source.slice(start, end))(
-      ctx, { dialect: () => dialect, pwshTool: () => f.deps.pwshEnabled() }, dialectHelpers.dialectApplies, dialectHelpers.windowsToMsys, dialectHelpers.runCodeHintFor, applyToolRouting)
-  })
-  t.after(() => hook.dispose())
-  await hook
+  f.deps.routingOptions = agent => ({ msys: dialect.posixPaths && dialectHelpers.dialectApplies(dialect, agent) })
   const assemble = () => f.root.get('systemPrompt').assemble({ scope: f.agent, agent: f.agent })
   const first = await assemble()
   const sdk = first.sections.find(section => section.name === 'tools:sdk')?.text ?? ''
   if (ptc) {
     assert.deepEqual(first.tools.map(tool => tool.name), ['run_code'])
-    assert.match(first.tools[0].description, /call only bindings actually offered/)
-    assert.match(first.tools[0].description, /denial is a stop condition/)
+    assert.match(first.sections.find(section => section.name === 'gitbash-shell:program-routing').text, /call only bindings actually offered/)
+    assert.match(first.sections.find(section => section.name === 'gitbash-shell:program-routing').text, /denial is a stop condition/)
     assert.match(sdk, /gitbash_native/)
     assert.match(sdk, /Choose this tool BEFORE execution/)
     assert.match(sdk, /gitbash_to_native_path/)
@@ -425,13 +420,13 @@ for (const ptc of [false, true]) test(`runtime preview: routing reaches the actu
   }
   f.set(true)
   const shown = await assemble()
-  if (ptc) assert.match(shown.sections.find(section => section.name === 'tools:sdk').text, /\bpwsh\b/)
-  else assert.match(shown.tools.find(tool => tool.name === 'bash').description, /use the pwsh tool ONLY when/)
+  if (ptc) assert.doesNotMatch(shown.sections.find(section => section.name === 'tools:sdk').text, /\bpwsh\b/)
+  else assert.doesNotMatch(shown.tools.find(tool => tool.name === 'bash').description, /use the pwsh tool ONLY when/)
   f.set(false)
   dialect = { ...dialect, posixPaths: true, subagentDialect: false }
   f.agent.session.header.origin = 'subagent'
   const delegated = await assemble()
-  const text = delegated.tools.find(tool => tool.name === (ptc ? 'run_code' : 'bash')).description
+  const text = ptc ? delegated.sections.find(section => section.name === 'gitbash-shell:program-routing').text : delegated.tools.find(tool => tool.name === 'bash').description
   assert.match(text, /denial is a stop condition/, 'routing is independent of delegated dialect switches')
   assert.doesNotMatch(text, /\/c\/Users/)
   assert.equal(f.root.get('shell'), f.official)
@@ -508,18 +503,19 @@ test('runtime preview: actual run_code transport receives Unicode/EOF fixes and 
   const mount = async (module, config) => { const fiber = root.plugin(module, config); cleanup.push(() => fiber.dispose()); await fiber }
   t.after(async () => { for (const off of cleanup.reverse()) await off() })
   await mount(SystemPrompt)
-  await mount(ToolRuntime, { mode: 'ptc' })
+  await mount(ToolRuntime)
+  await mount(ptcExecutor)
   const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   const start = source.indexOf("ctx.on('tools/execute',")
   const end = source.indexOf("      console.log(TAG + ' MSYS path translation active", start)
   assert.ok(start >= 0 && end > start)
   await mount(ctx => {
-    new Function('ctx', 'liveSettings', 'dialectApplies', 'buildTranslateEnv', 'readConfiguredBashPath', 'translateDispatch', 'rewriteResultPaths', source.slice(start, end))(
-      ctx, { dialect: () => dialect }, dialectHelpers.dialectApplies, () => env, () => '', dialectHelpers.translateDispatch, dialectHelpers.rewriteResultPaths)
+    new Function('ctx', 'liveSettings', 'dialectApplies', 'buildTranslateEnv', 'readConfiguredBashPath', 'translateDispatch', 'programLanguageFor', 'rewriteResultPaths', source.slice(start, end))(
+      ctx, { dialect: () => dialect }, dialectHelpers.dialectApplies, () => env, () => '', dialectHelpers.translateDispatch, dialectHelpers.programLanguageFor, dialectHelpers.rewriteResultPaths)
   })
   const run = async code => {
     const args = { description: 'Capture compatible program without executing it', code }
-    const value = await root.get('tools').execute({ name: 'run_code', callId: 'compat-code-' + captured.length, arguments: args, signal: new AbortController().signal })
+    const value = await executeTool(root.get('tools'), { name: 'run_code', callId: 'compat-code-' + captured.length, arguments: args, signal: new AbortController().signal })
     assert.equal(value.isError, false, JSON.stringify(value))
     assert.equal(args.code, code, 'caller source stays unchanged')
     return captured.at(-1)
@@ -574,7 +570,7 @@ for (const layer of ['global', 'agent']) for (const name of ['gitbash_to_native_
       const response = await f.execute(name, { msys_path: '/c/sentinel' });
       assert.equal(response.isError, false, JSON.stringify(response));
       assert.equal(response.value, sentinel);
-      assert.equal(f.tools.sdkSchemas(f.agent).find(tool => tool.name === name).output.type, 'string', 'SDK retains the foreign return contract');
+      assert.equal(sdkSchemas(f.tools, f.agent).find(tool => tool.name === name).output.type, 'string', 'SDK retains the foreign return contract');
       const other = name === 'gitbash_native' ? 'gitbash_to_native_path' : 'gitbash_native';
       assert.equal(f.names().includes(other), enabled, 'one collision cannot block the other companion');
     }
@@ -582,7 +578,7 @@ for (const layer of ['global', 'agent']) for (const name of ['gitbash_to_native_
     await foreign.dispose();
     f.setExperimental(false);
     f.setExperimental(true);
-    const output = f.tools.sdkSchemas(f.agent).find(tool => tool.name === name).output;
+    const output = sdkSchemas(f.tools, f.agent).find(tool => tool.name === name).output;
     if (name === 'gitbash_to_native_path') assert.equal(output.type, 'object');
     else assert.ok(output.oneOf.every(branch => branch.type === 'object'), 'native union contract recovers after the owner leaves');
     await f.patch.dispose();
@@ -622,11 +618,14 @@ test('runtime preview: the eager native slot fixes the tool face from agent crea
   const nativeFace = () => face().filter(tool => tool.name === 'gitbash_native')
   assert.equal(nativeFace().length, 1)
   assert.deepEqual(nativeFace(), initial.filter(tool => tool.name === 'gitbash_native'), 'the native entry must not be removed/re-added when the real executor arrives: ' + JSON.stringify(f.logs))
-  // Withdrawing the capability must remove the slot rather than leave a ghost.
+  // The eager schema stays stable on a live agent; its execution gate changes immediately.
   f.deps.nativeContract = undefined
   f.setExperimental(false)
-  assert.ok(!f.names().includes('gitbash_native'))
+  assert.ok(f.names().includes('gitbash_native'), 'running agent retains its stable eager schema')
+  const denied = await f.execute('gitbash_native', {})
+  assert.equal(denied.isError, true)
   await f.patch.dispose()
+  assert.ok(!f.names().includes('gitbash_native'))
 })
 
 test('runtime preview: native Jobs reload preserves a foreign owner without blocking its scope', { timeout: 10000 }, async t => {
@@ -648,7 +647,7 @@ test('runtime preview: native Jobs reload preserves a foreign owner without bloc
   const removeJobs = f.root.provide('jobs', {});
   await new Promise(setImmediate);
   try {
-    assert.ok(f.tools.sdkSchemas(f.agent).find(tool => tool.name === 'gitbash_native').output.oneOf.every(branch => branch.type === 'object'));
+    assert.ok(sdkSchemas(f.tools, f.agent).find(tool => tool.name === 'gitbash_native').output.oneOf.every(branch => branch.type === 'object'));
     assert.ok(f.tools.get('gitbash_native', f.agent).parameters.properties.run_in_background);
   } finally { await removeJobs(); }
   assert.equal(f.tools.get('gitbash_native', f.agent).parameters.properties.run_in_background, undefined);

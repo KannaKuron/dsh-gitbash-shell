@@ -35,11 +35,11 @@ const RUN_CODE_DIRECTIVE_TEXT = ' In a run_code program, compatible plain MSYS p
 const RUN_CODE_DIRECTIVE_OFF_TEXT = ' In a run_code program, automatic path-literal rewriting is OFF. Direct native Node fs/path APIs require Windows drive-letter or cwd-relative paths, not MSYS /c/... strings. Tool path arguments are still translated separately; program strings do not perform shell expansion.'
 
 /** The run_code sentence for this assembly, or '' when the tool is not offered. */
-export function runCodeHintFor(tools, codePaths = true) {
+export function runCodeHintFor(tools, codePaths = true, programLanguage) {
   if (!Array.isArray(tools)) return ''
   for (const tool of tools) {
     const name = tool && typeof tool.name === 'string' ? tool.name : ''
-    if (name === 'run_code') return codePaths === true ? RUN_CODE_DIRECTIVE_TEXT : RUN_CODE_DIRECTIVE_OFF_TEXT
+    if (name === 'run_code' && programLanguage === 'typescript') return codePaths === true ? RUN_CODE_DIRECTIVE_TEXT : RUN_CODE_DIRECTIVE_OFF_TEXT
   }
   return ''
 }
@@ -404,15 +404,12 @@ export const GIT_MOUNTS = new Map([
 
 const translateEnvCache = new Map()
 
-/**
- * The runtime facts the virtual mounts resolve against (all optional — a
- * missing fact simply leaves its paths untranslated). Probed once per
- * distinct bashPath setting (v0.19.0: a settings-configured bash.exe joins
- * the candidates FIRST, fixing /usr translation for custom installs);
- * tmpdir/homedir are cheap; the Git root walks the candidate bash.exe list
- * (the default install plus every PATH entry) and accepts a root only when
- * <root>/usr/bin exists, which excludes the WSL bash shim in WindowsApps.
- */
+/** Read the invoking scope, never infer its language from a global peer setting. */
+export function programLanguageFor(ctx, agent) {
+  try { return (agent?.ctx ?? ctx)?.get?.('ptcRuntime')?.language }
+  catch { return undefined }
+}
+
 /**
  * One dispatch's path-bearing arguments in the host dialect (pure). The
  * tools/execute wrapper's decision surface, exported so a test can drive the
@@ -423,7 +420,7 @@ const translateEnvCache = new Map()
  * @param {object|null} env - mount table (buildTranslateEnv), null when mounts are off.
  * @returns {object|undefined} the translated arguments (same reference when untouched).
  */
-export function translateDispatch(exec, dialect, env) {
+export function translateDispatch(exec, dialect, env, programLanguage) {
   if (!exec || !exec.arguments || typeof exec.arguments !== 'object') return exec?.arguments
   let translated = translatePathArguments(exec.arguments, env)
   if (exec.name === 'glob' && dialect.globSplit) {
@@ -435,7 +432,7 @@ export function translateDispatch(exec, dialect, env) {
   // current drive as '<drive>:\c\...'. The same mount table covers the program
   // path literals (see rewriteCodePaths; anything unclear leaves the code
   // untouched).
-  if (exec.name === 'run_code' && dialect.codePaths && typeof translated.code === 'string') {
+  if (exec.name === 'run_code' && dialect.codePaths && programLanguage === 'typescript' && typeof translated.code === 'string') {
     const rewritten = rewriteCodePaths(translated.code, env)
     const nextCode = programPrelude(env) + rewritten
     if (nextCode !== translated.code) translated = { ...translated, code: nextCode }
@@ -443,6 +440,15 @@ export function translateDispatch(exec, dialect, env) {
   return translated
 }
 
+/**
+ * The runtime facts the virtual mounts resolve against (all optional — a
+ * missing fact simply leaves its paths untranslated). Probed once per
+ * distinct bashPath setting (v0.19.0: a settings-configured bash.exe joins
+ * the candidates FIRST, fixing /usr translation for custom installs);
+ * tmpdir/homedir are cheap; the Git root walks the candidate bash.exe list
+ * (the default install plus every PATH entry) and accepts a root only when
+ * <root>/usr/bin exists, which excludes the WSL bash shim in WindowsApps.
+ */
 export function buildTranslateEnv(configuredBashPath) {
   const cacheKey = typeof configuredBashPath === 'string' && configuredBashPath !== '' ? configuredBashPath : ''
   const cached = translateEnvCache.get(cacheKey)

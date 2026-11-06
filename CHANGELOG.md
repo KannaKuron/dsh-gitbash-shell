@@ -3,6 +3,19 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## Unreleased — 2026-11-06
+
+**类型**: fix / test（Windows 本机审计修复，宿主基线仍为 0.2.2-rc.1）
+
+- **Python 程序保留**：从调用 agent 的实际 PTC runtime 读取语言；只对 TypeScript 执行程序字面量转换及 JS TEMP prelude。Python/未知运行时源码不变，工具路径字段仍独立转换。
+- **终端配置保留**：只填 `config.shellPath`，保留其它参数与 YAML 注释；读/改/写/回读全程使用宿主 configEditor 同款 profile 文件锁。
+- **隐藏工具所有权**：经公开 scopeChainOf 逐层检查全局、祖先和当前 agent 的 schema，动态 companion 和 eager native slot 共用判据；不读取私有 tools.view，也不假设跨 scope 注册会冲突。
+- **dsh-ops 精确恢复**：profile 旁原子保存原值收据，先记账后编辑；只恢复实际认领且仍为插件写入值的字段。原有 false、后续 true/删除、并发编辑均保留；拒绝写入撤销新增认领，恢复失败保留记录以便重试。卸载先清理重试定时器、等待正在进行的接管，再恢复。
+- **模型路由提示**：Bash 自有定义动态提供描述，由宿主 native/PTC provider 投影；PTC 指引使用真实 prompt section。run_code 提示从选中 executor 的声明判断，并按实际语言门控，删除无效的 schema 副本修改。
+- **测试设施**：host-loader 防同步 require.resolve 重入；preview 统一挂载当前 Native/Ptc executor 并使用 calls/results 批次接口；修正过期的 live face、SDK 与 registry 夹具。终端 YAML 测试纳入 npm test，移除个人路径探测，增加锁定 yaml dev dependency；测试 Cordis 对齐 4.1.0，CI 覆盖 Node 24.9 下限与 24。
+- **独立回归**：完整插件入口的最终 native/PTC 提示、complete persona、真实 Python 解释器、隐藏祖先工具；跨进程 dsh-ops 恢复、原有 false、并发/失败编辑；终端其它配置及注释保留。
+- **验证**：Windows 本机 Desktop/Core 0.2.2-rc.1（Cordis 4.1.0，内置 Node 24.21.0）只读提取后进行隔离预览；npm test 372/372 通过；内置 Node 执行完整 test:preview 93/93 通过，均无跳过；npm pack dry-run 与 diff --check 通过。未修改生产 profile 或安装目录，未调用模型、未发 npm 版本；不声称完成 GUI、真实 dsh-ops 插件或 Python PTC 插件的完整会话验证。
+
 ## v0.50.0 — 2026-11-06
 
 **类型**:breaking(feat:适配 dsh-ops 0.5.0 单行配置,放弃 0.4.x 旧行集)

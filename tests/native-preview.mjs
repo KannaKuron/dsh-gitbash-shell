@@ -1,3 +1,4 @@
+import { executeTool, nativeExecutor } from './host-runtime.mjs'
 // Isolated actual installed Core, ToolRuntime, Jobs and controlled native Node.
 // No profile, installation, real network/secret inspection or second runner.
 import test from 'node:test'
@@ -52,7 +53,7 @@ async function fixture(t, { jobs = false, controller = true, artifactFactory, en
     await fiber
     return fiber
   }
-  for (const module of [LocalSubprocessRuntime, SystemPrompt, toolsModule.ToolRuntime, shellEnv]) await mount(module)
+  for (const module of [LocalSubprocessRuntime, SystemPrompt, toolsModule.ToolRuntime, nativeExecutor, shellEnv]) await mount(module)
   const provider = root.get('subprocess')
   provider.internals.spillDir = DIR // documented test hook, isolated provider only
   const rootProvider = root.reflect.store[root[Context.isolate].subprocess]
@@ -81,7 +82,7 @@ async function fixture(t, { jobs = false, controller = true, artifactFactory, en
   await toolFiber
   disposers.push(() => toolFiber.dispose())
   const tools = root.get('tools')
-  const run = (args, signal = new AbortController().signal) => tools.execute({ agent, name: 'gitbash_native', callId: randomUUID(), arguments: args, signal })
+  const run = (args, signal = new AbortController().signal) => executeTool(tools, { agent, name: 'gitbash_native', callId: randomUUID(), arguments: args, signal })
   t.after(async () => {
     for (const dispose of disposers.reverse()) await dispose()
     assert.equal(root.reflect.store[root[Context.isolate].subprocess], undefined)

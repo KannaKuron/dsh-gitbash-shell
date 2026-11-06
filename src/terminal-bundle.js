@@ -254,11 +254,7 @@ export async function adoptTerminalBundlePatch(io, input) {
     node.type = 'QUOTE_DOUBLE'
     return node
   }
-  const newMap = (...pairs) => {
-    const map = document.createNode({})
-    for (const [key, value] of pairs) map.set(key, value)
-    return map
-  }
+
 
   // An empty patch file parses as a FLOW sequence ([]); once rows are added
   // it must print in block style or every new row comes out one-line flow.
@@ -277,7 +273,7 @@ export async function adoptTerminalBundlePatch(io, input) {
   const bashNode = plan.bash
   if (bashIndex >= 0) {
     document.setIn([bashIndex, 'disabled'], bashNode.disabled)
-    document.setIn([bashIndex, 'config'], newMap(['shellPath', quotedScalar(bashNode.shellPath)]))
+    document.setIn([bashIndex, 'config', 'shellPath'], quotedScalar(bashNode.shellPath))
   } else {
     const row = rowFromFragment(`- id: ${TERMINAL_BUNDLE_BASH_ROW}\n  disabled: ${bashNode.disabled}\n  config:\n    shellPath: ${JSON.stringify(bashNode.shellPath)}\n`)
     if (row === undefined) {

@@ -35,11 +35,8 @@ const GOOD = { platform: 'win32', enabled: true, mounted: true, resolved: BASH_P
 async function realYaml() {
   const candidates = []
   try { candidates.push(createRequire(import.meta.url).resolve('yaml')) } catch { /* not linked here */ }
-  for (const host of [
-    'C:/Users/kanna/.dsh/profiles/desktop/node_modules/yaml/package.json',
-    'D:/APP/DeepSeek Harness/resources/app.asar/dsh/node_modules/yaml/package.json',
-  ]) {
-    try { candidates.push(createRequire(pathToFileURL(host)).resolve('yaml')) } catch { /* not installed there */ }
+  if (process.env.DSH_PREVIEW_HOST_DIR) {
+    candidates.unshift(createRequire(pathToFileURL(join(process.env.DSH_PREVIEW_HOST_DIR, 'package.json'))).resolve('yaml'))
   }
   for (const candidate of candidates) {
     try { return await import(pathToFileURL(candidate).href) } catch { /* next */ }
@@ -331,4 +328,17 @@ test('detectTerminalBundle reads the tool row through the loader service', async
     },
   }
   assert.equal(await detectTerminalBundle(disabledCtx), false)
+})
+
+test('writer: filling shellPath preserves every other terminal option and comments', async () => {
+  const yaml = await realYaml()
+  assert.ok(yaml, 'portable test dependency or selected installed host supplies yaml')
+  const h = harness(yaml, { initial: '- id: optional-terminal-bash\n  disabled: false\n  config:\n    # user tuning\n    timeoutMs: 98765\n    scrollbackLines: 4321\n    shellArgs: [--noprofile, --norc, -i]\n' })
+  try {
+    const result = await adoptTerminalBundlePatch(h.io, { ...GOOD, patchPath: h.patchPath })
+    assert.equal(result.status, 'updated')
+    const config = yaml.parse(h.last())[0].config
+    assert.deepEqual(config, { timeoutMs: 98765, scrollbackLines: 4321, shellArgs: ['--noprofile', '--norc', '-i'], shellPath: BASH_PATH })
+    assert.match(h.last(), /# user tuning/)
+  } finally { rmSync(h.tmp, { recursive: true, force: true }) }
 })

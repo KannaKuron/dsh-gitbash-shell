@@ -1,3 +1,4 @@
+import { executeTool, nativeExecutor } from './host-runtime.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as path from 'node:path'
@@ -14,7 +15,7 @@ test('preview: MCP failures retain isError through the actual host ToolRuntime',
     for (const fiber of fibers.reverse()) await fiber.dispose()
     Object.assign(McpStdio.prototype, originals)
   })
-  for (const module of [SystemPrompt, ToolRuntime]) {
+  for (const module of [SystemPrompt, ToolRuntime, nativeExecutor]) {
     const fiber = root.plugin(module)
     fibers.push(fiber)
     await fiber
@@ -41,7 +42,7 @@ test('preview: MCP failures retain isError through the actual host ToolRuntime',
   await new Promise(setImmediate)
   const tools = root.get('tools')
   assert.ok(tools.schemas(agent).some((schema) => schema.name === 'gb_inspect_local_file'))
-  const result = await tools.execute({ agent, name: 'gb_inspect_local_file', callId: 'preview-mcp-error', arguments: {}, signal: new AbortController().signal })
+  const result = await executeTool(tools, { agent, name: 'gb_inspect_local_file', callId: 'preview-mcp-error', arguments: {}, signal: new AbortController().signal })
   assert.equal(result.isError, true)
   assert.match(result.error.message, /gb_inspect_local_file failed: fixture file not found/)
   assert.match(result.content[0].text, /fixture file not found/)

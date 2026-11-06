@@ -1,3 +1,4 @@
+import { executeTool, nativeExecutor } from './host-runtime.mjs'
 // Actual selected Core + ToolRuntime + Jobs; ordinary Node producers only.
 // Test scratch only: no installation, production profile, network or secrets.
 import test from 'node:test'
@@ -45,7 +46,7 @@ async function fixture(t) {
     const fiber = root.plugin(module, config); disposers.push(() => fiber.dispose()); await fiber; return fiber
   }
   t.after(async () => { for (const dispose of disposers.reverse()) await dispose() })
-  for (const module of [LocalSubprocessRuntime, SystemPrompt, toolsModule.ToolRuntime, shellEnv]) await mount(module)
+  for (const module of [LocalSubprocessRuntime, SystemPrompt, toolsModule.ToolRuntime, nativeExecutor, shellEnv]) await mount(module)
   const provider = root.get('subprocess')
   const rootProviders = ['shell', 'subprocess'].map(name => root.reflect.store[root[Context.isolate][name]])
   provider.internals.spillDir = directory
@@ -69,7 +70,7 @@ async function fixture(t) {
     },
   })
   const fiber = agent.ctx.plugin(module); await fiber; disposers.push(() => fiber.dispose())
-  const run = args => root.get('tools').execute({ agent, name: 'gitbash_native', callId: randomUUID(),
+  const run = args => executeTool(root.get('tools'), { agent, name: 'gitbash_native', callId: randomUUID(),
     signal: new AbortController().signal, arguments: args })
   return { run, jobs, agent, reads, handles, preserved() {
     for (const [index, name] of ['shell', 'subprocess'].entries()) assert.equal(root.reflect.store[root[Context.isolate][name]], rootProviders[index])
