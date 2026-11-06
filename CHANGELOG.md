@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.50.0 — 2026-11-06
+
+**类型**:breaking(feat:适配 dsh-ops 0.5.0 单行配置,放弃 0.4.x 旧行集)
+
+- **背景**:dsh-ops 0.5.0 把组件行合并成唯一一行 `dsh-ops`(bundle 只 insert 这一行),旧的 `dsh-ops-shell` / `dsh-ops-file` / `dsh-ops-mode-*` / `dsh-ops-discovery` 不再插入;每个内置模式的 `publishBashTool` 被 `bash` 取代(仅保留为模式内 legacy alias)。v0.49.0 的 ops-adopt 只认旧行集,升级 dsh-ops 0.5.0 后什么都不做,四个官方模式里的 `ops_bash` 会与本插件的 bash 并存。
+- **接管**:`src/ops-adopt.js` 重写为 0.5.0 单行契约——只认 id/name 均为 `dsh-ops` 且未禁用的行;读 `override[<mode>].bash`(缺省回看 `inherited`),给 minimal/standard/ptc/cordis 写入嵌套 `bash:false`;一次 configEditor edit + 逐模式回读,不成立即 `write-failed`。不动 `global.bash`,不动 `presets.<自定义 id>`,不动 pwsh7 overlay / 文件 / 后台增强。
+- **恢复**:dispose 只撤回自己写的四个 `bash:false`;有继承值则恢复,无则删除对应空 section;用户显式 `true` 保持不动。
+- **旧版**:0.4.x 行集不再探测、不再接管。升级 dsh-ops 0.5.0,或留在本插件 v0.49.0。旧 profile patch 里的旧行覆盖会留下 `patch: entry ... not found` 警告(官方升级须知要求手动清理),与 ops-adopt 无关。
+- **测试**:`tests/ops-adopt.mjs` 重写为 0.5.0 矩阵(单行四模式、嵌套写入、回读、恢复、用户 true、disabled、缺行、报告);`npm test` 341 pass / 1 platform skip / 0 fail;`node --check src/ops-adopt.js` 通过。README / README_EN / AGENTS 同步。
+- **验证边界**:本轮在 macOS 开发,ops-adopt 的实际写入受 win32 门控保护;Windows 真机写入/恢复仍待验证。
+
 ## v0.49.0 — 2026-11-05
 
 ### feat:单代基线 dsh >=0.2.2-rc.1,撤回 v0.47.2 的双代兼容

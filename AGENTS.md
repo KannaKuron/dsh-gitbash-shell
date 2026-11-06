@@ -670,15 +670,17 @@
 - **剔除清单边界(守卫测试锁死)**:`OPS_SHELL_TOOLS` 必须恰好 `ops_bash` + `ops_run`;
   `ops_run_background`/`ops_job_*`(后台四件套)与 `ops_*` 文件工具**永不剔除**(2026-10-19 用户决策)。
   dsh-ops 新增 shell 类工具时,是否纳入剔除清单属用户决断——守卫测试会拦住顺手扩展,先问用户。
-- **ops-adopt 假设**:`publishBashTool` 键名、`mountSessionBash` 首行门、configEditor 的 edit
-  语义(整键替换+回读自检)若变化,接管/还原生命周期要重验(tests/ops-adopt.mjs 的 fake editor
-  是按当前语义建模的)。
-- **行集/门控(0.4.3 实证,2026-10-28)**:`OPS_SHELL_ROW_IDS` = 旧 `dsh-ops-shell` + 四个
-  `dsh-ops-mode-*`。dsh-ops 每次改行名或增删「会发 Windows shell 的行」都要跟:`MODE_PLANS[*].shell`
-  为 true 的行全部要写 `publishBashTool=false`;0.4.3 起工具发布按 **preset id** 门控(只认官方
-  四个 id),本插件的 `ptc-cordis`/变体 id 不在其中 → 那些会话里 dsh-ops 不发布也不隐藏任何工具,
-  逐 agent 的 `OPS_SHELL_TOOLS` deny 仍是兜底。升级 dsh-ops 大版本后,profile patch 里旧行覆盖
-  会留下 `patch: entry ... not found` 警告(官方升级须知要求手动删),与本插件无关。
+- **ops-adopt 假设(0.5.0 实证,2026-11-06)**:单行 `dsh-ops` 的四个内置模式 section 各写
+  `bash:false`(0.5.0 的新键;`publishBashTool` 只是模式内 legacy alias),经官方 configEditor
+  嵌套 edit + 逐模式回读;不动 `global.bash`、不动 `presets.<id>`。`mountSessionBash` 首行门、
+  configEditor 的 edit 语义(整键替换+回读自检)若变化,接管/还原生命周期要重验。
+- **行集/门控(0.5.0 实证,2026-11-06)**:只认 id/name 都是 `dsh-ops` 的单行;`OPS_ROW_ID='dsh-ops'`,
+  `OPS_MODES=['minimal','standard','ptc','cordis']`。旧 `dsh-ops-shell`/`dsh-ops-file`/
+  `dsh-ops-mode-*` 在 0.5.0 已移除,本插件只支持 0.5.0,旧版 profile 不再接管(升级 dsh-ops 或留在
+  v0.49.0)。0.5.0 内置模式默认发布 `ops_bash`;写四个 `bash:false` 后这些模式不再注册。未列出的
+  自定义 preset(含 `ptc-cordis`/变体 id)不受 dsh-ops 影响,逐 agent 的 `OPS_SHELL_TOOLS` deny 仍是兜底。
+- **0.5.0 迁移**:旧 profile patch 里 `dsh-ops-shell`/`dsh-ops-mode-*` 的覆盖会留下
+  `patch: entry ... not found` 警告(官方升级须知要求手动删),与 ops-adopt 无关——它只认单行。
 - **翻译桥(fastctx bridge)**:dsh-ops 的 FastCtx 工具入参形状(文件工具 path 数组、issue #21 的
   PRIMARY 数组形)若变,参数翻译的覆盖面要重审;后台四件套的 command 参数是 bash 语义,不经
   MSYS 翻译(dsh-ops 自带 bundled bash 执行),勿越界翻译。

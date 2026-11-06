@@ -1743,15 +1743,16 @@ export async function apply(ctx, config = {}) {
     }
   }
 
-  // ── dsh-ops bash removal from the agent face (v0.42.0) ────────────────
+  // ── dsh-ops bash removal from the agent face (dsh-ops 0.5.0) ──────────
   // ops_bash registers in each agent's OWN layer; the host restrict() only
   // filters INHERITED surfaces (core/tools view()), so "visible but denied"
-  // (v0.41.0) can never become hidden — dsh-ops must simply not register
-  // the tool. It ships the precise switch (publishBashTool); we hold it
-  // false ONLY while this plugin is mounted, through the official
-  // configEditor channel, and the dispose hook below lifts the override
-  // when our fiber stops (disable / uninstall => dsh-ops gets its bash
-  // back). See src/ops-adopt.js for the full rationale and safety rails.
+  // can never become hidden — dsh-ops must simply not register the tool.
+  // 0.5.0 replaced the 0.4.x mode rows with ONE `dsh-ops` row whose four
+  // built-in sections (minimal/standard/ptc/cordis) each accept `bash:false`.
+  // We hold those four flags false ONLY while this plugin is mounted, through
+  // the official configEditor channel; the dispose hook below lifts them when
+  // our fiber stops (disable / uninstall => dsh-ops gets its bash back).
+  // See src/ops-adopt.js for the full rationale and safety rails.
   if (process.platform === 'win32') {
     try {
       ctx.inject(['configEditor'], (opsEditorCtx) => {

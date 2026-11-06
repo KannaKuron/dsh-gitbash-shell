@@ -1,5 +1,5 @@
 /**
- * dsh-gitbash-shell — dsh-ops bash removal from the agent face (v0.42.0).
+ * dsh-gitbash-shell — dsh-ops bash removal from the agent face.
  *
  * THE PROBLEM (user report 2026-10-19, owner decision the same day): with
  * dsh-ops installed, the model sees BOTH a bash tool (ours) and ops_bash
@@ -17,29 +17,19 @@
  * layer (mountSessionBash -> per-agent registration), so no amount of
  * restricting from our side can hide it. Not registering is the only path.
  *
- * THE SWITCH: dsh-ops ships exactly that, as first-class config —
- * publishBashTool (default true). false => mountSessionBash returns before
- * registering, resolveShells reports the bash rung as 'disabled', and the
- * prompt-policy tool table drops the bash row. Setting it is therefore not a
- * hack into someone else's plugin; it is their own supported configuration.
+ * THE SWITCH (dsh-ops 0.5.0, owner decision 2026-11-06): the single
+ * `dsh-ops` row owns four built-in mode sections — `minimal`,
+ * `standard`, `ptc`, `cordis` — and each accepts `bash: false`
+ * (`src/presets/config.ts`: `bash` wins over the legacy
+ * `publishBashTool` alias, then defaults to true; the runtime multiplies
+ * it with `global.bash`). Setting those four flags is dsh-ops' own
+ * supported configuration, not a hack into someone else's plugin.
  *
- * WHICH ROWS CARRY IT (v0.46.0, dsh-ops 0.4.3 breaking change): up to 0.4.2
- * the switch lived on the single `dsh-ops-shell` component row. 0.4.3 replaced
- * the component roster with preset-mode switches — `dsh-ops-mode-minimal`,
- * `-standard`, `-ptc` and `-cordis` — and EVERY one of them plans a Windows
- * shell (`MODE_PLANS[*].shell = true` in src/modes/plan.ts), so every one of
- * them can publish ops_bash. This module therefore walks the whole set
- * ({@link OPS_SHELL_ROW_IDS}): the legacy row when an older dsh-ops is
- * mounted, the four mode rows when 0.4.3+ is. A row that is not mounted is
- * never written to (hard rule 1), which is what makes one walk serve both
- * eras and mixed/partially-overridden profiles.
- *
- * NOT COVERED BY THIS MODULE (documented, not a bug): dsh-ops 0.4.3+ gates
- * its tools on the AGENT'S PRESET ID (`modeOf` -> `modeByPreset`), and the
- * four ids are the official ones. A custom preset such as ours (`ptc-cordis`)
- * or the `· Git Bash` variant ids matches no mode, so dsh-ops publishes
- * nothing there and the row switches we write simply never fire — the face
- * keeps only our bash.
+ * SCOPE (owner decision, 2026-11-06): only the four BUILT-IN modes are
+ * touched. `global.bash`, the `presets.<id>` custom bindings and every
+ * other dsh-ops setting stay exactly as the user configured them: a custom
+ * preset is not ours to police, and the four mode flags are what keep the
+ * bash slot ours while this plugin is mounted.
  *
  * WHY THIS MODULE TALKS TO configEditor (same discipline as
  * terminal-shell.js): the write must survive restarts and must be undoable.
@@ -47,14 +37,16 @@
  * itself persists through — it lands in the profile patch document (official
  * YAML editor, file-locked, comment-preserving) and change returning the
  * INHERITED config makes the editor DELETE the override row again. That gives
- * us a real restore primitive instead of a hand-rolled file edit.
+ * us a real restore primitive instead of a hand-rolled file edit. The
+ * `current` argument is the full effective row config, so the write keeps
+ * every unrelated dsh-ops key (panel/tui/discovery/...) intact.
  *
  * OWNERSHIP AND RESTORE (the owner requirement: uninstalling this plugin must
  * give dsh-ops its bash back):
  *   - plugin disabled / uninstalled while dsh runs => our fiber stops => the
  *     dispose hook below runs and lifts the override through the same editor;
  *   - plugin re-enabled => boot re-adopts (idempotent: the plan is a no-op
- *     when the override already reads false);
+ *     when every mode already reads false);
  *   - the one uncovered path is uninstalling while dsh is SHUT DOWN (no fiber
  *     ever stops): the override survives, the official settings card shows
  *     "已覆盖 / restore defaults" for exactly this, and flipping it back (or
@@ -64,9 +56,9 @@
  * PRODUCT DECISION (owner, 2026-10-19): while this plugin is installed, the
  * bash tool is OURS — dsh-ops is kept for its file, search and background
  * enhancements only, and there is NO settings switch for this behavior. A
- * user who flips publishBashTool back to true in the settings card is
- * overridden again on our next boot; the supported way to use ops_bash is to
- * disable this plugin (which also restores the value — the dispose hook).
+ * user who flips one of the four mode flags back to true in the settings card
+ * is overridden again on our next boot; the supported way to use ops_bash is
+ * to disable this plugin (which also restores the flags — the dispose hook).
  *
  * HARD RULES:
  *   1. NEVER write when the row is absent — no dsh-ops, nothing to remove.
@@ -74,70 +66,147 @@
  *   3. NEVER claim success without reading the value back.
  *   4. Restore returns the INHERITED value for OUR key only: unrelated
  *      overrides in the same row (the user's own dsh-ops settings) survive.
- *   5. NEVER write to a disabled row (it publishes nothing); restore still
- *      lifts our value from a row the user disabled afterwards.
+ *   5. NEVER write to a disabled row or mode section (it publishes nothing);
+ *      restore still lifts our value from one the user disabled afterwards.
  */
 
-/** The Loader row id of the dsh-ops shell component (dsh-ops <= 0.4.2). */
-export const OPS_SHELL_ROW_ID = 'dsh-ops-shell'
+/** The single Loader row dsh-ops 0.5.0 mounts. */
+export const OPS_ROW_ID = 'dsh-ops'
 
-/** dsh-ops 0.4.3+ preset-mode rows; every one plans a Windows shell. */
-export const OPS_MODE_ROW_IDS = Object.freeze([
-  'dsh-ops-mode-minimal',
-  'dsh-ops-mode-standard',
-  'dsh-ops-mode-ptc',
-  'dsh-ops-mode-cordis',
-])
+/** The built-in mode sections that can publish ops_bash (0.5.0 shape). */
+export const OPS_MODES = Object.freeze(['minimal', 'standard', 'ptc', 'cordis'])
 
-/** Every row that can carry the publishBashTool switch, legacy first. */
-export const OPS_SHELL_ROW_IDS = Object.freeze([OPS_SHELL_ROW_ID, ...OPS_MODE_ROW_IDS])
+/** @deprecated Use {@link OPS_ROW_ID}; kept for one release of import compatibility. */
+export const OPS_SHELL_ROW_ID = OPS_ROW_ID
+
+/** @deprecated Use {@link OPS_MODES}; the row ids no longer exist in 0.5.0. */
+export const OPS_MODE_ROW_IDS = Object.freeze(OPS_MODES.map((mode) => 'dsh-ops-mode-' + mode))
+
+/** @deprecated Use {@link OPS_ROW_ID}; the 0.4.x row set is gone. */
+export const OPS_SHELL_ROW_IDS = Object.freeze([OPS_ROW_ID])
+
+/** True when a value is a plain record (not an array/null). */
+function isRecord(value) {
+  return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)
+}
 
 /**
- * The effective publishBashTool of the row: the profile patch override wins
- * over the inherited layer value; a missing key means the dsh-ops default
- * (true — it publishes). Treats malformed shapes as the default so a broken
- * hand edit cannot make us believe there is a decision to respect.
- * @param {object} row - one configEditor.configuration() entry.
- * @returns {boolean} the effective value.
+ * One layer's mode section, or undefined.
+ * @param {object|undefined} row - one configEditor.configuration() entry.
+ * @param {'override'|'inherited'} layer - which value layer to read.
+ * @param {string} mode - one of {@link OPS_MODES}.
+ * @returns {object|undefined} the section.
  */
-export function effectivePublishBashTool(row) {
-  const override = row !== null && row !== undefined && row.override !== null && row.override !== undefined
-    ? row.override.publishBashTool
-    : undefined
-  const inherited = row !== null && row !== undefined && row.inherited !== null && row.inherited !== undefined
-    ? row.inherited.publishBashTool
-    : undefined
-  if (typeof override === 'boolean') return override
-  if (typeof inherited === 'boolean') return inherited
+function sectionOf(row, layer, mode) {
+  const container = row === null || row === undefined ? undefined : row[layer]
+  if (!isRecord(container)) return undefined
+  const section = container[mode]
+  return isRecord(section) ? section : undefined
+}
+
+/**
+ * One boolean key of one mode section, undefined when absent/malformed.
+ * @param {object|undefined} row - one editor entry.
+ * @param {'override'|'inherited'} layer - value layer.
+ * @param {string} mode - mode name.
+ * @param {string} key - section key.
+ * @returns {boolean|undefined} the value.
+ */
+function boolOf(row, layer, mode, key) {
+  const section = sectionOf(row, layer, mode)
+  return typeof section?.[key] === 'boolean' ? section[key] : undefined
+}
+
+/**
+ * The effective `global.bash` switch (override wins over inherited; default true).
+ * Exported for the tests and for future diagnostics; the plan itself deliberately
+ * does NOT skip on it: the four mode flags are what keep ownership stable if the
+ * user re-enables the global switch without restarting dsh.
+ * @param {object|undefined} row - one editor entry.
+ * @returns {boolean} the value.
+ */
+export function effectiveGlobalBash(row) {
+  const override = row !== null && row !== undefined && isRecord(row.override) ? row.override.global : undefined
+  if (isRecord(override) && typeof override.bash === 'boolean') return override.bash
+  const inherited = row !== null && row !== undefined && isRecord(row.inherited) ? row.inherited.global : undefined
+  if (isRecord(inherited) && typeof inherited.bash === 'boolean') return inherited.bash
   return true
 }
 
 /**
+ * The effective bash flag of one mode: dsh-ops multiplies the mode flag with
+ * `global.bash`. A missing mode flag means the dsh-ops default (true).
+ * @param {object|undefined} row - one editor entry.
+ * @param {string} mode - mode name.
+ * @returns {boolean} the value.
+ */
+export function effectiveModeBash(row, mode) {
+  const override = boolOf(row, 'override', mode, 'bash')
+  if (override !== undefined) return override && effectiveGlobalBash(row)
+  const inherited = boolOf(row, 'inherited', mode, 'bash')
+  if (inherited !== undefined) return inherited && effectiveGlobalBash(row)
+  return effectiveGlobalBash(row)
+}
+
+/**
+ * The effective enabled flag of one mode section (default true).
+ * @param {object|undefined} row - one editor entry.
+ * @param {string} mode - mode name.
+ * @returns {boolean} the value.
+ */
+export function effectiveModeEnabled(row, mode) {
+  const override = boolOf(row, 'override', mode, 'enabled')
+  if (override !== undefined) return override
+  const inherited = boolOf(row, 'inherited', mode, 'enabled')
+  return inherited === undefined ? true : inherited
+}
+
+/**
  * Decide what to do about ops_bash FOR ONE ROW. Pure: every fact arrives as
- * an argument, so the whole matrix (absent / already overridden / off at the
- * source / disabled row / to-adopt) is unit-testable anywhere.
+ * an argument, so the whole matrix (absent / per-mode present / off at the
+ * source / disabled / to-adopt) is unit-testable anywhere.
  * @param {object|undefined} row - one row from configEditor.configuration(),
  *   or undefined when not mounted.
- * @returns {{action: string, reason: string}} the plan.
+ * @returns {{action: string, reason: string, modes: object[]}} the plan.
  */
 export function planOpsAdopt(row) {
   if (row === undefined || row === null) {
-    return { action: 'skip-row-absent', reason: 'the dsh-ops shell row is not mounted in this profile' }
+    return { action: 'skip-row-absent', reason: 'the dsh-ops row is not mounted in this profile', modes: [] }
   }
   if (row.entry?.options?.disabled === true) {
-    return { action: 'skip-disabled', reason: 'the row is disabled, so it publishes no bash tool' }
+    return {
+      action: 'skip-disabled',
+      reason: 'the dsh-ops row is disabled, so it publishes no bash tool',
+      modes: OPS_MODES.map((mode) => ({ mode, action: 'skip-disabled', reason: 'the dsh-ops row is disabled' })),
+    }
   }
-  const overrideValue = row.override !== null && row.override !== undefined ? row.override.publishBashTool : undefined
-  if (typeof overrideValue === 'boolean' && overrideValue === false) {
-    return { action: 'present', reason: 'the row override already sets publishBashTool=false' }
+  const modes = OPS_MODES.map((mode) => {
+    if (!effectiveModeEnabled(row, mode)) {
+      return { mode, action: 'skip-disabled-mode', reason: 'the ' + mode + ' section is disabled, so it publishes no bash tool' }
+    }
+    const overrideBash = boolOf(row, 'override', mode, 'bash')
+    if (overrideBash === false) {
+      return { mode, action: 'present', reason: 'the ' + mode + ' section already sets bash=false' }
+    }
+    if (overrideBash === undefined && boolOf(row, 'inherited', mode, 'bash') === false) {
+      return { mode, action: 'unchanged-inherited-off', reason: 'bash is false at the configuration source for ' + mode + '; nothing to override' }
+    }
+    return {
+      mode,
+      action: 'adopt',
+      reason: 'dsh-ops would publish bash for ' + mode + '; the owner decision is one bash per face and it is ours',
+    }
+  })
+  if (modes.some((mode) => mode.action === 'adopt')) {
+    return { action: 'adopt', reason: 'at least one dsh-ops mode would publish bash next to ours', modes }
   }
-  if (typeof overrideValue !== 'boolean' && effectivePublishBashTool(row) === false) {
-    return { action: 'unchanged-inherited-off', reason: 'publishBashTool is false at the configuration source (the dsh-ops settings); nothing to override' }
+  if (modes.some((mode) => mode.action === 'present')) {
+    return { action: 'present', reason: 'every publishing dsh-ops mode already sets bash=false', modes }
   }
-  return {
-    action: 'adopt',
-    reason: 'the dsh-ops bash would run next to ours; the owner decision is one bash per face and it is ours',
+  if (modes.some((mode) => mode.action === 'unchanged-inherited-off')) {
+    return { action: 'unchanged-inherited-off', reason: 'every publishing dsh-ops mode is already off at the source', modes }
   }
+  return { action: 'skip-disabled-modes', reason: 'every dsh-ops mode section is disabled', modes }
 }
 
 /**
@@ -151,21 +220,14 @@ function rowIdOf(row) {
 }
 
 /**
- * Every shell-carrying dsh-ops row in an editor view, legacy first then the
- * mode rows in roster order. Rows for other dsh-ops ids are ignored.
+ * The dsh-ops row in an editor view (0.5.0 has exactly one).
  * @param {object} editor - ctx.configEditor (or a stand-in in tests).
  * @returns {object[]} the rows (possibly empty).
  */
 function opsRowsOf(editor) {
   const rows = editor.configuration()
   if (!Array.isArray(rows)) return []
-  const found = []
-  for (const id of OPS_SHELL_ROW_IDS) {
-    for (const candidate of rows) {
-      if (rowIdOf(candidate) === id) found.push(candidate)
-    }
-  }
-  return found
+  return rows.filter((candidate) => rowIdOf(candidate) === OPS_ROW_ID)
 }
 
 /**
@@ -180,9 +242,20 @@ function freshRowOf(editor, id) {
 }
 
 /**
- * Apply the plan through the official config editor, then READ EVERY VALUE
- * BACK. One walk serves both eras: the legacy `dsh-ops-shell` row and the four
- * 0.4.3+ `dsh-ops-mode-*` rows; absent rows are skipped, never written.
+ * Flatten the plan into per-mode result rows (the log and the tests read these).
+ * @param {object} row - the editor entry.
+ * @param {object} plan - a planOpsAdopt result.
+ * @returns {object[]} one entry per mode.
+ */
+function resultRowsOf(row, plan) {
+  const id = rowIdOf(row) || OPS_ROW_ID
+  return plan.modes.map((mode) => ({ id, mode: mode.mode, action: mode.action, reason: mode.reason }))
+}
+
+/**
+ * Apply the plan through the official config editor, then READ EVERY MODE
+ * BACK. Absent rows are skipped, never written; disabled rows/modes are never
+ * written.
  * @param {object} editor - ctx.configEditor (or a stand-in in tests).
  * @returns {Promise<{status: string, rows: object[], detail?: string}>} the
  *   outcome; the caller logs it — this function never lies about success and
@@ -194,18 +267,30 @@ export async function adoptOpsBashRemoval(editor) {
   }
   const rows = opsRowsOf(editor)
   if (rows.length === 0) {
-    return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops shell or mode row is mounted in this profile' }
+    return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops row is mounted in this profile' }
   }
-  const plans = rows.map((row) => planOpsAdopt(row))
-  const results = rows.map((row, index) => ({ id: rowIdOf(row), action: plans[index].action, reason: plans[index].reason }))
-  const targets = rows.filter((row, index) => results[index].action === 'adopt')
+  const plans = rows.map((row) => ({ row, plan: planOpsAdopt(row) }))
+  const results = plans.flatMap(({ row, plan }) => resultRowsOf(row, plan))
+  const targets = plans.flatMap(({ row, plan }) => plan.modes
+    .filter((mode) => mode.action === 'adopt')
+    .map((mode) => ({ row, mode: mode.mode })))
   if (targets.length > 0 && typeof editor.edit !== 'function') {
     return { status: 'write-failed', rows: results, detail: 'the config editor exposes no edit()' }
   }
-  for (const row of targets) {
+  for (const { row } of plans) {
+    const modes = targets.filter((target) => target.row === row).map((target) => target.mode)
+    if (modes.length === 0) continue
     const id = rowIdOf(row)
     try {
-      await editor.edit(row.entry, (raw) => ({ ...raw, publishBashTool: false }))
+      await editor.edit(row.entry, (current) => {
+        const next = isRecord(current) ? { ...current } : {}
+        for (const mode of modes) {
+          const section = isRecord(next[mode]) ? { ...next[mode] } : {}
+          section.bash = false
+          next[mode] = section
+        }
+        return next
+      })
     } catch (error) {
       return {
         status: 'write-failed',
@@ -214,8 +299,8 @@ export async function adoptOpsBashRemoval(editor) {
       }
     }
   }
-  // Read back: edit() resolving is NOT proof the rows now carry our value.
-  for (const row of targets) {
+  // Read back: edit() resolving is NOT proof the row now carries our value.
+  for (const { row, mode } of targets) {
     const id = rowIdOf(row)
     let after
     try {
@@ -227,11 +312,11 @@ export async function adoptOpsBashRemoval(editor) {
         detail: 'the write succeeded but reading ' + id + ' back failed: ' + (error && error.message ? error.message : String(error)),
       }
     }
-    if (after === undefined || after.override === null || after.override === undefined || after.override.publishBashTool !== false) {
+    if (after === undefined || after.override === null || after.override === undefined || after.override?.[mode]?.bash !== false) {
       return {
         status: 'write-failed',
         rows: results,
-        detail: 'the write did not stick on ' + id + ': it does not read publishBashTool=false'
+        detail: 'the write did not stick on ' + id + ' (' + mode + '): it does not read bash=false'
           + (after === undefined ? ' (the row vanished during the write)' : ''),
       }
     }
@@ -239,13 +324,14 @@ export async function adoptOpsBashRemoval(editor) {
   if (targets.length > 0) return { status: 'adopted', rows: results }
   if (results.some((result) => result.action === 'present')) return { status: 'present', rows: results }
   if (results.some((result) => result.action === 'unchanged-inherited-off')) return { status: 'unchanged-inherited-off', rows: results }
-  return { status: 'skip-disabled-rows', rows: results, detail: 'every dsh-ops shell row is disabled' }
+  if (results.some((result) => result.action === 'skip-disabled-mode')) return { status: 'skip-disabled-modes', rows: results }
+  return { status: 'skip-disabled-rows', rows: results, detail: 'the dsh-ops row is disabled' }
 }
 
 /**
- * Lift our override so dsh-ops follows its own settings again. Runs from the
- * fiber dispose hook (plugin disabled / uninstalled while dsh runs). Only OUR
- * key is touched: unrelated overrides in the same row survive.
+ * Lift our mode overrides so dsh-ops follows its own settings again. Runs from
+ * the fiber dispose hook (plugin disabled / uninstalled while dsh runs). Only
+ * OUR key is touched: unrelated overrides in the same row survive.
  * @param {object} editor - ctx.configEditor (or a stand-in in tests).
  * @returns {Promise<{status: string, rows: object[], detail?: string}>} the outcome.
  */
@@ -255,41 +341,51 @@ export async function restoreOpsBash(editor) {
   }
   const rows = opsRowsOf(editor)
   if (rows.length === 0) {
-    return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops shell or mode row is mounted — nothing to restore' }
+    return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops row is mounted — nothing to restore' }
   }
-  // Only rows where OUR value is in force are touched. A row the user flipped
+  // Only modes where OUR value is in force are touched. A mode the user flipped
   // back ON afterwards is their own later choice — leave it exactly where it is.
   const results = []
   const targets = []
   for (const row of rows) {
     const id = rowIdOf(row)
-    const overrideValue = row.override !== null && row.override !== undefined ? row.override.publishBashTool : undefined
-    if (typeof overrideValue !== 'boolean') {
-      results.push({ id, action: 'unchanged', reason: 'no publishBashTool override to lift' })
-      continue
+    for (const mode of OPS_MODES) {
+      const overrideBash = boolOf(row, 'override', mode, 'bash')
+      if (overrideBash === undefined) {
+        results.push({ id, mode, action: 'unchanged', reason: 'no bash override to lift in ' + mode })
+        continue
+      }
+      if (overrideBash !== false) {
+        results.push({ id, mode, action: 'unchanged', reason: 'the ' + mode + ' override reads bash=true — a later choice of the user, left alone' })
+        continue
+      }
+      results.push({ id, mode, action: 'restore' })
+      targets.push({ row, mode })
     }
-    if (overrideValue !== false) {
-      results.push({ id, action: 'unchanged', reason: 'the override reads publishBashTool=true — a later choice of the user, left alone' })
-      continue
-    }
-    results.push({ id, action: 'restore' })
-    targets.push(row)
   }
   if (targets.length === 0) {
-    return { status: 'unchanged', rows: results, detail: results.map((row) => row.id + ': ' + row.reason).join('; ') }
+    return { status: 'unchanged', rows: results, detail: results.map((row) => row.mode + ': ' + row.reason).join('; ') }
   }
   if (typeof editor.edit !== 'function') {
     return { status: 'restore-failed', rows: results, detail: 'the config editor exposes no edit()' }
   }
-  for (const row of targets) {
+  for (const row of rows) {
+    const modes = targets.filter((target) => target.row === row).map((target) => target.mode)
+    if (modes.length === 0) continue
     const id = rowIdOf(row)
     try {
-      await editor.edit(row.entry, (raw, inherited) => {
-        const next = { ...raw }
-        if (inherited !== null && inherited !== undefined && Object.hasOwn(inherited, 'publishBashTool')) {
-          next.publishBashTool = inherited.publishBashTool
-        } else {
-          delete next.publishBashTool
+      await editor.edit(row.entry, (current, inherited) => {
+        const next = isRecord(current) ? { ...current } : {}
+        for (const mode of modes) {
+          const section = isRecord(next[mode]) ? { ...next[mode] } : {}
+          const inheritedSection = isRecord(inherited) && isRecord(inherited[mode]) ? inherited[mode] : undefined
+          if (inheritedSection !== undefined && Object.hasOwn(inheritedSection, 'bash')) {
+            section.bash = inheritedSection.bash
+          } else {
+            delete section.bash
+          }
+          if (Object.keys(section).length === 0) delete next[mode]
+          else next[mode] = section
         }
         return next
       })
@@ -301,7 +397,7 @@ export async function restoreOpsBash(editor) {
       }
     }
   }
-  for (const row of targets) {
+  for (const { row, mode } of targets) {
     const id = rowIdOf(row)
     let after
     try {
@@ -313,9 +409,13 @@ export async function restoreOpsBash(editor) {
         detail: 'the restore succeeded but reading ' + id + ' back failed: ' + (error && error.message ? error.message : String(error)),
       }
     }
-    const left = after !== undefined && after.override !== null && after.override !== undefined ? after.override.publishBashTool : undefined
-    if (typeof left === 'boolean' && left === false) {
-      return { status: 'restore-failed', rows: results, detail: 'the restore did not stick on ' + id + ': it still reads publishBashTool=false' }
+    const left = boolOf(after, 'override', mode, 'bash')
+    const inheritedBash = boolOf(after, 'inherited', mode, 'bash')
+    // A false that equals the inherited value is the restored state, not a
+    // leftover override; only a false that disagrees with the source is a
+    // failed lift.
+    if (left === false && inheritedBash !== false) {
+      return { status: 'restore-failed', rows: results, detail: 'the restore did not stick on ' + id + ' (' + mode + '): it still reads bash=false' }
     }
   }
   return { status: 'restored', rows: results }
@@ -328,7 +428,23 @@ export async function restoreOpsBash(editor) {
  */
 export function opsRowList(result) {
   const rows = Array.isArray(result?.rows) ? result.rows : []
-  return rows.map((row) => row.id).filter((id) => typeof id === 'string' && id !== '').join(', ')
+  return [...new Set(rows.map((row) => row.id).filter((id) => typeof id === 'string' && id !== ''))].join(', ')
+}
+
+/**
+ * The mode names one result touched (filtered by action when asked).
+ * @param {object} result - an adopt/restore result.
+ * @param {string[]} [actions] - only these actions; all when omitted.
+ * @returns {string} slash-joined mode names, or ''.
+ */
+export function opsModeList(result, actions) {
+  const rows = Array.isArray(result?.rows) ? result.rows : []
+  const allowed = Array.isArray(actions) ? actions : null
+  const modes = rows
+    .filter((row) => allowed === null || allowed.includes(row.action))
+    .map((row) => row.mode)
+    .filter((mode) => typeof mode === 'string' && mode !== '')
+  return [...new Set(modes)].join('/')
 }
 
 /**
@@ -339,22 +455,26 @@ export function opsRowList(result) {
  */
 export function opsAdoptReport(result) {
   const listed = opsRowList(result)
+  const modes = opsModeList(result, ['adopt', 'present', 'unchanged-inherited-off', 'skip-disabled-mode']) || OPS_MODES.join('/')
   switch (result.status) {
     case 'adopted':
-      return 'dsh-ops bash removed from the agent face (publishBashTool=false on ' + listed + ' through the official config editor): the host cannot hide own-layer tools, so dsh-ops must simply not register it — disable this plugin any time you want ops_bash back (the removal is lifted automatically)'
+      return 'dsh-ops bash removed from the agent face (bash=false on ' + modes + ' of ' + (listed || OPS_ROW_ID) + ' through the official config editor): the host cannot hide own-layer tools, so dsh-ops must simply not register it — disable this plugin any time you want ops_bash back (the removal is lifted automatically)'
     case 'present':
-      return 'dsh-ops bash already removed: ' + listed + ' already read publishBashTool=false (nothing written)'
+      return 'dsh-ops bash already removed: ' + modes + ' already read bash=false (nothing written)'
     case 'unchanged-inherited-off':
-      return 'dsh-ops bash already off at the source: publishBashTool=false in the dsh-ops configuration of ' + listed + ' (nothing written)'
+      return 'dsh-ops bash already off at the source: bash=false in the dsh-ops configuration of ' + (modes || listed) + ' (nothing written)'
     case 'skip-disabled-rows':
-      return 'dsh-ops bash removal not needed: ' + (result.detail ?? 'every dsh-ops shell row is disabled')
+    case 'skip-disabled':
+      return 'dsh-ops bash removal not needed: ' + (result.detail ?? 'the dsh-ops row is disabled')
+    case 'skip-disabled-modes':
+      return 'dsh-ops bash removal not needed: ' + (result.detail ?? 'every dsh-ops built-in mode section is disabled')
     case 'skip-row-absent':
-      return 'dsh-ops bash removal skipped: ' + (result.detail ?? 'the dsh-ops shell row is not mounted')
+      return 'dsh-ops bash removal skipped: ' + (result.detail ?? 'the dsh-ops row is not mounted')
     case 'write-failed':
       return 'dsh-ops bash removal FAILED — ' + (result.detail ?? '')
         + ' | next steps: ops_bash stays VISIBLE and our pre-execute denial keeps answering its calls;'
-        + ' retry by restarting dsh, or set publishBashTool=false on the dsh-ops shell/mode row by hand'
-        + ' (Settings -> the dsh-ops card -> publishBashTool), or turn to the README for the manual patch row.'
+        + ' retry by restarting dsh, or set bash=false on the dsh-ops built-in modes by hand'
+        + ' (Settings -> the dsh-ops card -> minimal/standard/ptc/cordis), or turn to the README for the manual patch row.'
     default:
       return 'dsh-ops bash removal skipped: ' + (result.detail ?? result.status)
   }
@@ -367,13 +487,14 @@ export function opsAdoptReport(result) {
  */
 export function opsRestoreReport(result) {
   const listed = opsRowList(result)
+  const modes = opsModeList(result, ['restore']) || OPS_MODES.join('/')
   switch (result.status) {
     case 'restored':
-      return 'dsh-ops bash setting restored: the publishBashTool override is lifted on ' + (listed || 'the rows') + ', ops_bash follows the dsh-ops settings again'
+      return 'dsh-ops bash setting restored: the bash override is lifted on ' + modes + ' of ' + (listed || OPS_ROW_ID) + ', ops_bash follows the dsh-ops settings again'
     case 'unchanged':
       return 'dsh-ops bash restore not needed: ' + (result.detail ?? 'no override of ours to lift')
     case 'skip-row-absent':
-      return 'dsh-ops bash restore skipped: ' + (result.detail ?? 'the dsh-ops shell row is gone')
+      return 'dsh-ops bash restore skipped: ' + (result.detail ?? 'the dsh-ops row is gone')
     case 'restore-failed':
       return 'dsh-ops bash restore FAILED — ' + (result.detail ?? '')
         + ' | the dsh-ops override may survive this plugin: lift it by hand'
