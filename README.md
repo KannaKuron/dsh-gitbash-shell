@@ -58,7 +58,9 @@ POSIX 宿主上完整保留;
   0.5.0 已移除旧 `dsh-ops-shell`/`dsh-ops-file`/`dsh-ops-mode-*` 行,本版也删掉对应接管逻辑:
   旧 dsh-ops 的 profile 不再被本插件去重,请先升级 dsh-ops 0.5.0(或留在本插件 v0.49.0)。
   **停用或卸载本插件的瞬间自动还原**(dispose 钩子只撤回自己写的 `bash:false`,同 section 的其它设置原样保留),
-  重新启用又会自动接管。三个边界:①关机状态下卸载的残余覆盖,可用 dsh-ops 设置卡恢复默认,或重新安装/停用本插件
+  重新启用又会自动接管。接管前会在 profile 目录的 `.gitbash-ops-ownership.json` 中原子记录实际修改字段的原值，
+  重启后仍可精确恢复；用户原先设置的 `bash:false` 不会被认领或删除。升级前留下且没有记录的 `false` 保持原样，
+  不猜测它属于用户还是旧插件。三个边界:①关机状态下卸载的残余覆盖,可用 dsh-ops 设置卡恢复默认,或重新安装/停用本插件
   触发还原;②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它;③**0.5.0 只对四个内置模式生效**:
   dsh-ops 不再全局接入未列出的自定义 preset,本插件的 `ptc-cordis` 与「· Git Bash」变体 id 不在四个内置模式中,
   那些会话里 dsh-ops 不会发布 `ops_bash`;dsh-ptc-cordis-preset v0.26.0 自己挂 `dsh-ops/integration` 取文件工具,
@@ -433,7 +435,7 @@ PTC/创造及用户自建模式一律覆盖。
 
 ## 显式工具（Unreleased）
 
-**运行时开关 `experimentalNative`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」。开启时 Windows 受限/未确定模式拒绝 Bash，提供可用的两个显式工具；关闭立即注销并禁用两个工具，恢复明确标注 `unconfined` 的兼容 Bash（不执行 shell 文件写入限制）。修改作用于现有会话后续调用，无需重启，不终止已启动的任务。拒绝时用户也可在会话访问模式控件选择 `danger-full-access`；Agent 不得自行放宽权限。与路径方言及 codePaths 开关独立。
+**运行时开关 `experimentalNative`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」。开启时 Windows 受限/未确定模式拒绝 Bash，提供可用的两个显式工具；关闭立即禁用两个工具的执行；已有 eager native 槽位保留当前会话的 schema，下一会话应用新工具面，并恢复明确标注 `unconfined` 的兼容 Bash（不执行 shell 文件写入限制）。修改作用于现有会话后续调用，无需重启，不终止已启动的任务。拒绝时用户也可在会话访问模式控件选择 `danger-full-access`；Agent 不得自行放宽权限。与路径方言及 codePaths 开关独立。
 
 
 两个工具随 Windows 的自有 bash 工具挂入同一 agent-owned scope；不替换官方工具或 root
@@ -518,3 +520,10 @@ return await fs.readFile(resolved.native_path, 'utf8');
 ## 许可
 
 MIT © KannaKuron。参考与致敬:[dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset)。
+
+### 运行时兼容性与配置保留
+
+- `run_code` 的程序字面量转换和 JavaScript TEMP 前置代码只适用于当前会话实际使用的 TypeScript 运行时；Python 或未知运行时的源码保持原样，普通工具路径参数仍独立转换。
+- 自动补全持久终端的 `shellPath` 保留已有 `shellArgs`、超时、回滚行数等设置及注释，并与宿主配置编辑器使用同一个 profile 锁。
+- 同名工具的全局、祖先和当前 agent 所有权均被检查；隐藏的外部工具也不会被插件重新注册覆盖。
+- Bash 路由提示通过插件自有工具定义进入普通模式及 PTC SDK；PTC 程序指引通过独立提示段提供，不再修改宿主返回的 schema 副本。

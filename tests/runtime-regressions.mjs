@@ -134,6 +134,33 @@ async function toolFixture(t, { jobs, executor, sandboxModule } = {}) {
   return { root, fiber, definitions, requests, removeJobs, ctx: toolCtx }
 }
 
+test('runtime: a host without the private executor projection omits PTC routing instead of throwing', () => {
+  const sections = []
+  const module = createBashToolModule({
+    executor: { resolve: request => request, execute() {} },
+    toolsModule: { defineTool: options => options },
+    log() {},
+  })
+  const apply = (selectExecutor) => {
+    sections.length = 0
+    module.apply({
+      tools: {
+        definitions: () => [],
+        executable: () => undefined,
+        register: () => () => {},
+        ...(selectExecutor === undefined ? {} : { selectExecutor }),
+      },
+      systemPrompt: { section: section => sections.push(section), getSectionOrder: () => 100 },
+      get: () => undefined,
+      inject() {},
+    }, { enableRunInBackground: false, routing: { scope: {}, options: () => ({}) } })
+    return sections.find(section => section.name === 'gitbash-shell:program-routing')
+  }
+  assert.equal(apply(undefined).text({ scope: {} }), '')
+  assert.equal(apply(() => { throw new Error('no executor mounted') }).text({ scope: {} }), '')
+  assert.match(apply(() => ({ describe: () => ({ schemas: [{ name: 'run_code' }] }) })).text({ scope: {} }), /call only bindings actually offered/)
+})
+
 test('runtime: typed author schema marks required flags without weakening nested outputs', async t => {
   const f = await toolFixture(t)
   const definition = f.definitions.get('bash')

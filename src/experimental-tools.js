@@ -1,3 +1,4 @@
+import { toolNameOccupied } from './tool-ownership.js'
 /** Live registration for agent-owned companions; restrict() accepts global names only. */
 export function registerExperimentalTool(ctx, definition, enabled, { scope, log = () => {} } = {}) {
   let unregister
@@ -8,16 +9,10 @@ export function registerExperimentalTool(ctx, definition, enabled, { scope, log 
     unregister = undefined
     if (enabled?.() === false) return
     const candidate = definition()
-    // Inspect AFTER removing only our registration. dsh made ctx.tools.view
-    // private, so read the public `schemas()` listing. It omits names
-    // restricted away from this scope; a hidden foreign owner then surfaces
-    // through register()'s own conflict error below, which is why the
-    // inspection is a fast path rather than the ownership authority.
+    // Global and ancestor registrations remain owned even when hidden here.
     let occupied
     try {
-      const listed = ctx.tools.schemas(scope)
-      if (listed === undefined) throw new Error('tool ownership inspection unavailable')
-      occupied = listed.some(tool => tool.name === candidate.name)
+      occupied = toolNameOccupied(ctx.tools, candidate.name, scope)
     } catch (error) {
       log(`${candidate.name} registration skipped: ${error?.message ?? error}`)
       return

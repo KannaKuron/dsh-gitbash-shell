@@ -847,11 +847,11 @@ test('the run_code literal rewrite has its own switch (codePaths)', async () => 
   assert.ok(strict !== null, 'strict directive text is gone')
   assert.doesNotMatch(strict[1], /run_code/, 'the strict directive must not talk about run_code either')
   assert.match(pathText, /const RUN_CODE_DIRECTIVE_TEXT = '/, 'the conditional run_code sentence is gone')
-  assert.match(text, /runCodeHintFor\(offeredTools, dialect\.codePaths === true\)/, 'the assembly hook must gate on the tool list and live codePaths state')
+  assert.match(text, /runCodeHintFor\(offeredTools, dialect\.codePaths === true, programLanguageFor/, 'the assembly hook must gate on the tool list and live codePaths state')
   // The event does not carry tools — read the step's admitted toolSet back
   // from the tools service, so conditional tools are judged exactly as
   // execution judges them.
-  assert.match(text, /ctx\.get\('tools'\)\?\.schemas\?\.\(assembleContext && assembleContext\.agent, assembleContext && assembleContext\.toolSet\)/, 'the offered tools must come from the step-admitted set')
+  assert.match(text, /registry\.definitions\(scope, assembleContext\?\.toolSet\)/, 'the offered tools must come from the step-admitted set')
 })
 
 test('the run_code sentence is injected only where the tool exists (v0.20.1)', async () => {
@@ -859,10 +859,10 @@ test('the run_code sentence is injected only where the tool exists (v0.20.1)', a
   assert.equal(runCodeHintFor(undefined), '', 'no tool list → nothing to say')
   assert.equal(runCodeHintFor([]), '')
   assert.equal(runCodeHintFor([{ name: 'bash' }, { name: 'read' }, { name: 'present' }]), '', 'a mode without run_code stays quiet')
-  const hint = runCodeHintFor([{ name: 'bash' }, { name: 'run_code' }])
+  const hint = runCodeHintFor([{ name: 'bash' }, { name: 'run_code' }], true, 'typescript')
   assert.match(hint, /run_code program/, 'a mode WITH run_code gets the sentence')
   assert.match(hint, /translated/, 'and it says what the layer does')
-  assert.equal(runCodeHintFor([{ name: 'run_code' }, { name: 'run_code' }]), hint, 'idempotent, one sentence')
+  assert.equal(runCodeHintFor([{ name: 'run_code' }, { name: 'run_code' }], true, 'typescript'), hint, 'idempotent, one sentence')
 })
 
 test('run_code gets TEMP/TMP only — never a fake HOME or PATH (v0.21.0)', async () => {
@@ -1426,7 +1426,7 @@ test('translateDispatch covers every argument face issue #8 reported', () => {
   const { translateDispatch } = _internal
   const env = { tmpDir: 'C:/Users/x/AppData/Local/Temp', home: 'C:/Users/x', gitRoot: 'C:/Program Files/Git' }
   const dialect = { posixPaths: true, virtualMounts: true, globSplit: true, codePaths: true }
-  const t = (name, args) => translateDispatch({ name, arguments: args }, dialect, env)
+  const t = (name, args) => translateDispatch({ name, arguments: args }, dialect, env, 'typescript')
   // ① MSYS drive root: the double root `/c/c/...` came from NOT translating here
   assert.equal(t('read', { file_path: '/c/Users/x/.dsh/.anonymous-user-id' }).file_path, 'C:/Users/x/.dsh/.anonymous-user-id')
   assert.equal(t('write', { file_path: '/c/Users/x/.dsh/p.txt', content: 'hi' }).file_path, 'C:/Users/x/.dsh/p.txt')
@@ -2970,7 +2970,7 @@ test('inline tools: the routing sentence is present and dialect-split', async ()
   assert.match(mod.GITBASH_MSYS_ADDENDUM, /\/c\/Users/)
 })
 
-test('inline tools: index.js wires the patch, the three switches, and the waterfall addendum', () => {
+test('inline tools: index.js wires the patch, the three switches, and the owned routing options', () => {
   const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   assert.match(hostSource, /mountInlineTools\(ctx, \{/)
   assert.match(hostSource, /mountFastctx\(ctx, \{/)
@@ -2982,14 +2982,11 @@ test('inline tools: index.js wires the patch, the three switches, and the waterf
   // file tools — the bridge retires to an explicit opt-in.
   assert.match(hostSource, /fastctxTools: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/)
   assert.match(hostSource, /fastctxTools: valueOf\(config\.fastctxTools\) === true/)
-  // Routing rides applyToolRouting (inline-tools.js) since the native RFC:
-  // the sentence is picked from the actual offered face, and the pwsh-visible
-  // / msys facts still flow from the live settings read here. The list comes
-  // from the tools service (`ctx.tools.schemas`); the event no longer carries
-  // declarations.
-  assert.match(hostSource, /applyToolRouting\(offeredTools,/)
-  assert.match(hostSource, /pwshVisible: liveSettings\.pwshTool\(\) === true/)
-  assert.match(hostSource, /msys: applies && dialect\.posixPaths === true/)
+  // Routing options flow into the per-agent owned Bash definition; the
+  // assembly waterfall no longer attempts to edit a detached schema list.
+  assert.match(hostSource, /routingOptions: \(agent\)/)
+  assert.match(hostSource, /pwshEnabled: \(\) => liveSettings\.pwshTool\(\) === true/)
+  assert.match(hostSource, /msys: liveSettings\.posix\(\) && dialectApplies/)
   // The desired set collapses to [] while the switch is off — the cleanup
   // still runs, but nothing registers.
   assert.match(hostSource, /readVariants && readVariants\(\) === true\s*\?\s*effectivePresetIds/)

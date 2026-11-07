@@ -373,3 +373,19 @@ When [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (v0.1
 
 MIT © KannaKuron. Inspired by
 [dsh-ptc-cordis-preset](https://github.com/KannaKuron/dsh-ptc-cordis-preset).
+
+### Runtime compatibility and configuration preservation
+
+- Program-literal rewriting and the JavaScript TEMP prelude run only for the
+  invoking session's actual TypeScript runtime. Python and unknown runtime source
+  stays unchanged; ordinary tool path parameters are translated independently.
+- Persistent-terminal shellPath adoption preserves other options and comments,
+  using the same profile lock as Core's configuration editor.
+- dsh-ops adoption atomically records original values in the profile-local
+  `.gitbash-ops-ownership.json` before editing. Restoration survives a restart,
+  changes only owned fields, and preserves pre-existing false and later user
+  choices. Unjournalled false values left by older versions are deliberately
+  left alone because their ownership cannot be determined.
+- Companion ownership checks include hidden global and ancestor tools. Bash
+  routing is emitted by its owned definition for native schemas and PTC SDKs;
+  PTC program guidance uses a separate prompt section rather than schema copies.

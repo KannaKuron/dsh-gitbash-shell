@@ -1,3 +1,4 @@
+import { prepareToolOwnership } from './tool-ownership.js'
 /**
  * dsh-gitbash-shell — host half (route B: the own bash tool + preset variants).
  *
@@ -28,16 +29,14 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
-  writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
-import { applyToolRouting, mountInlineTools } from './inline-tools.js'
+import { mountInlineTools } from './inline-tools.js'
 import { adoptTerminalBundlePatch, detectTerminalBundle, terminalBundleReport, terminalDialect } from './terminal-bundle.js'
 import { resolveHostModule } from './bash-tool.js'
 import { mountFastctx } from './fastctx-bridge.js'
@@ -60,6 +59,7 @@ import {
   rewriteFailureMessage,
   rewriteResultPaths,
   runCodeHintFor,
+  programLanguageFor,
   scanCodeLiterals,
   translateDispatch,
   translateGlobArguments,
@@ -1242,22 +1242,19 @@ export async function apply(ctx, config = {}) {
           // conditional tools are judged exactly as execution will judge them.
           const offeredTools = (() => {
             try {
-              return ctx.get('tools')?.schemas?.(assembleContext && assembleContext.agent, assembleContext && assembleContext.toolSet) ?? []
+              const registry = ctx.get('tools')
+              // The provider's tool model is projected through the private
+              // selectExecutor; without it (or if it throws) there is no public
+              // way to tell whether this step offers run_code, so stay silent.
+              if (typeof registry?.selectExecutor !== 'function') return []
+              const scope = assembleContext?.scope ?? assembleContext?.agent
+              return registry.selectExecutor(scope).describe(registry.definitions(scope, assembleContext?.toolSet)).schemas ?? []
             } catch {
               return []
             }
           })()
-          // Routing is dialect-independent and follows actual offered tools.
-          // PTC may expose only run_code here: its generic SDK decision rule
-          // relies on the registered bindings' own descriptions, not guessed
-          // hidden names. Replace our block on reassembly/visibility changes.
-          if (assembly && typeof assembly === 'object') {
-            applyToolRouting(offeredTools, {
-              pwshVisible: liveSettings.pwshTool() === true,
-              msys: applies && dialect.posixPaths === true,
-              terminalGitBash: terminalDialect.gitBash === true,
-            })
-          }
+          // Routing is emitted by the owned Bash definition and prompt section;
+          // this hook transforms only prompt text and the language-specific hint.
           if (applies && dialect.posixPaths === true && assembly && typeof assembly === 'object') {
             for (const section of Array.isArray(assembly.sections) ? assembly.sections : []) {
               if (section && typeof section.text === 'string') section.text = windowsToMsys(section.text)
@@ -1275,7 +1272,7 @@ export async function apply(ctx, config = {}) {
             // v0.20.1: the run_code sentence rides the SAME context entry, but
             // only when this assembly actually offers the tool (see
             // runCodeHintFor) — every other mode stays quiet.
-            const hint = runCodeHintFor(offeredTools, dialect.codePaths === true)
+            const hint = runCodeHintFor(offeredTools, dialect.codePaths === true, programLanguageFor(ctx, assembleContext?.agent))
             if (hint !== '') {
               for (const assembled of Array.isArray(assembly.contexts) ? assembly.contexts : []) {
                 if (assembled && assembled.name === 'gitbash-shell:posix-paths' && typeof assembled.text === 'string') {
@@ -1336,7 +1333,7 @@ export async function apply(ctx, config = {}) {
             const env = dialect.virtualMounts ? buildTranslateEnv(readConfiguredBashPath()) : null
             echoEnv = env
             if (exec && exec.arguments && typeof exec.arguments === 'object') {
-              const translated = translateDispatch(exec, dialect, env)
+              const translated = translateDispatch(exec, dialect, env, programLanguageFor(ctx, exec?.agent))
               if (translated !== exec.arguments) exec.arguments = translated
             }
           }
@@ -1756,39 +1753,32 @@ export async function apply(ctx, config = {}) {
   if (process.platform === 'win32') {
     try {
       ctx.inject(['configEditor'], (opsEditorCtx) => {
-        // The dsh-ops rows may activate after this plugin; retry a few
-        // times (bounded) instead of silently giving up, like the terminal row.
         let attempts = 0
-        let watched = false
-        const run = async () => {
-          attempts += 1
-          let result
-          try {
-            result = await adoptOpsBashRemoval(opsEditorCtx.configEditor)
-          } catch (error) {
-            console.log(`${TAG} dsh-ops bash removal crashed: ${error?.message ?? error}`)
-            return
-          }
-          if (result.status === 'skip-row-absent' && attempts < 6) {
-            setTimeout(() => { run().catch((error) => console.log(`${TAG} dsh-ops bash removal retry failed: ${error?.message ?? error}`)) }, 3000)
-            return
-          }
-          console.log(`${TAG} ${opsAdoptReport(result)}`)
-          // Restore wiring: only once the removal is actually in force.
-          // The hook is idempotent (a second run finds nothing to lift),
-          // so an inject-callback re-run cannot double-lift.
-          if (!watched && (result.status === 'adopted' || result.status === 'present')) {
-            watched = true
-            ctx.effect(() => async () => {
-              try {
-                console.log(`${TAG} ${opsRestoreReport(await restoreOpsBash(opsEditorCtx.configEditor))}`)
-              } catch (error) {
-                console.log(`${TAG} dsh-ops bash restore crashed: ${error?.message ?? error}`)
-              }
-            }, 'gitbash: dsh-ops bash removal restore')
-          }
+        let closed = false
+        let retry
+        let pending = Promise.resolve()
+        // Own retries and the in-flight edit before starting either. Disposal
+        // waits for adoption, then restores only journalled fields.
+        opsEditorCtx.effect(() => async () => {
+          closed = true
+          clearTimeout(retry)
+          await pending
+          try { console.log(`${TAG} ${opsRestoreReport(await restoreOpsBash(opsEditorCtx.configEditor))}`) }
+          catch (error) { console.log(`${TAG} dsh-ops bash restore crashed: ${error?.message ?? error}`) }
+        }, 'gitbash: dsh-ops bash removal restore')
+        const run = () => {
+          if (closed) return
+          pending = (async () => {
+            attempts++
+            const result = await adoptOpsBashRemoval(opsEditorCtx.configEditor)
+            if (!closed && result.status === 'skip-row-absent' && attempts < 6) {
+              retry = setTimeout(run, 3000)
+              retry.unref?.()
+            }
+            console.log(`${TAG} ${opsAdoptReport(result)}`)
+          })().catch(error => console.log(`${TAG} dsh-ops bash removal failed: ${error?.message ?? error}`))
         }
-        run().catch((error) => console.log(`${TAG} dsh-ops bash removal failed: ${error?.message ?? error}`))
+        run()
       })
     } catch (error) {
       console.log(`${TAG} dsh-ops bash removal wiring failed: ${error?.message ?? error}`)
@@ -1822,20 +1812,14 @@ export async function apply(ctx, config = {}) {
             return
           }
           const resolution = readBashResolution()
-          const result = await adoptTerminalBundlePatch(
+          const atomic = await resolveHostModule(ctx, '@deepseek-ai/dsh-atomic-write')
+          if (typeof atomic?.withFileLock !== 'function' || typeof atomic?.writeFileAtomic !== 'function') {
+            throw new Error('current host atomic profile-edit capability unavailable')
+          }
+          const update = () => adoptTerminalBundlePatch(
             {
               readFile: (file) => readFileSync(file, 'utf8'),
-              writeFileAtomic: async (file, data) => {
-                // The host's atomic write when resolvable; a same-directory
-                // tmp+rename otherwise — never a torn patch file.
-                try {
-                  const atomic = await resolveHostModule(ctx, '@deepseek-ai/dsh-atomic-write')
-                  if (typeof atomic?.writeFileAtomic === 'function') return atomic.writeFileAtomic(file, data, { mode: 0o600 })
-                } catch { /* fallback below */ }
-                const tmp = `${file}.gitbash-${Date.now()}.tmp`
-                writeFileSync(tmp, data, { mode: 0o600 })
-                renameSync(tmp, file)
-              },
+              writeFileAtomic: (file, data) => atomic.writeFileAtomic(file, data, { mode: 0o600 }),
               yaml: () => resolveHostModule(ctx, 'yaml'),
             },
             {
@@ -1846,6 +1830,7 @@ export async function apply(ctx, config = {}) {
               patchPath,
             },
           )
+          const result = await atomic.withFileLock(join(dirname(patchPath), 'package.json'), update)
           if (result.status === 'adopted' || result.status === 'updated' || result.status === 'unchanged') {
             terminalDialect.gitBash = true
           }
@@ -1894,6 +1879,7 @@ export async function apply(ctx, config = {}) {
     // stable gitbash_native definition synchronously. This is deliberately a
     // mount-time preflight: if the public native packages are unavailable we
     // advertise no slot at all instead of leaving a ghost tool behind.
+    await prepareToolOwnership(ctx)
     let nativeContract
     try {
       const [toolsModule, localBashModule, outputModule, nativeModule] = await Promise.all([
@@ -1933,6 +1919,10 @@ export async function apply(ctx, config = {}) {
         pwshEnabled: () => liveSettings.pwshTool() === true,
         experimentalEnabled: () => liveSettings.experimentalNative(),
         nativeContract,
+        routingOptions: (agent) => ({
+          msys: liveSettings.posix() && dialectApplies(liveSettings.dialect(), agent),
+          terminalGitBash: terminalDialect.gitBash === true,
+        }),
         // Explicit conversion does not rewrite source or change auto-dialect
         // settings. The same lazy, verified mount facts are used each call.
         translatePath: (value) => translateMsysPath(value, buildTranslateEnv(readConfiguredBashPath())),

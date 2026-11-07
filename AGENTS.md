@@ -150,7 +150,8 @@
        反引号语境下出现插值起点),绝不半改——半改的程序比不改更糟;
     ② **只翻「整体是路径」的字面量**:注释里的路径、带 scheme 的串、`$VAR`(JS 字面量是数据,不做
        shell 展开)、已是 Windows 形式、相对路径一律不动;
-    ③ **开关独立**:设置卡 `codePaths`(默认开,21 语言词典同齐),关掉只影响程序字面量,不动工具参数
+    ③ **运行时语言门控**:只对调用 agent 的实际 `ptcRuntime.language === "typescript"` 添加 JavaScript prelude 和改写源码;Python/未知语言不改源码,不能用全局 peer 意图推断。
+    ④ **开关独立**:设置卡 `codePaths`(默认开,21 语言词典同齐),关掉只影响程序字面量,不动工具参数
        方言;`posixPaths` 仍是总开关。
     仍**不在覆盖内**:动态拼出来的路径(`'/c/' + name`)与插值模板——只有「整条路径是一个字面量」才
     可判定,其余靠指令表述说清(模型侧纪律:程序里的路径写成实路径)。同源官方事实:run_code 的
@@ -628,7 +629,7 @@
        §4j 硬注入、v0.38.2 fiber 时序同一失败家族的第无数课)。
        实验 native 与 Bash 的 cwd 消费共用 `src/session-workdir.js`；native 同样不得硬 inject
        workingDirectory。服务存在时 ensure 错误不得吞掉，只有缺服务才走旧接缝。
-       companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，knownNames 可用时包含隐藏工具，旧宿主回退 schemas；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
+       companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，通过当前宿主公开 `scopeChainOf` 逐层检查 global/祖先/当前 scope 的 schemas，包含在子 scope 隐藏的工具；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
 
 4m. **native 工具首步稳定(v0.47.1,issue #38)**:任何模型可见工具都不允许在 `agent/created`
      之后才异步注册——step 1 少一个、step 2 补上会重写 provider 前缀,把整段会话缓存打掉
@@ -642,11 +643,18 @@
        状态重新推导)。槽位与真实 executor 必须共用 `src/native-tool.js` 的
        `nativeToolDefinition()`,name/description/parameters/output/presentCall 逐字节一致。
      - 真实模块只允许 `slot.install(definition)` 换实现,绝不二次 register;槽位在
-       `experimentalNative` 关闭、agent dispose、face 不再需要 bash 时 `dispose`。调用早于
+       agent dispose、face 不再需要 bash 时 `dispose`。运行中 agent 的 eager schema 按 toolFace 快照保持稳定，`experimentalNative` 关闭仍立即拒绝其执行；新会话应用新工具面。调用早于
        真实 executor 时等待就绪(15s 上限 + 可取消),不把未初始化调用当成功。
      - 回归:smoke 的 #38 源码断言 + native-executor 的定义一致性;真实 ToolRuntime 预览
        `tests/runtime-preview.mjs` 的 eager-slot 用例需要已安装宿主(host-loader),不在
        `npm test` 内。本机无 Windows 时不得声称真机通过,CHANGELOG 必须写明该边界。
+
+## 当前宿主测试与配置所有权
+
+- 宿主预览使用真实 Native/Ptc executor，`tools.execute({calls,...})` 返回 `results`；不得用旧单调用签名或给 registry 打兼容补丁。
+- 路由文案由自有 Bash definition 与 PTC prompt section 提供；`system-prompt/assemble` 不拥有工具声明，修改 `schemas()` 的副本不会进入模型请求。
+- 持久终端补全只改 `config.shellPath`，保留其它配置/注释；整个读改写使用与 configEditor 相同的 profile 锁。`disabled`/`shellPath` 是非字面量（如 `!!js`）时视为用户条件，`kept-user-choice` 不写入。
+- dsh-ops 只恢复 `.gitbash-ops-ownership.json` 记录的实际修改字段；原有 false、不明来源的历史 false 和后续用户选择不得认领。恢复的是**原形状**：原本没有 override 的模式删除该字段，不写成显式 `bash: true`。重试计时器、正在进行的接管与恢复都由注入 scope 管理。
 
 ## 上游追踪纪律:dsh 终端面与 dsh-ops(2026-10-19 用户要求)
 

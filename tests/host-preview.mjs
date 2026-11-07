@@ -1,3 +1,4 @@
+import { executeTool, nativeExecutor } from './host-runtime.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -42,7 +43,7 @@ for (const kind of ['standard', 'ptc', 'cordis']) {
       workingDirectory: { ensure: async () => cwd },
       loader: { internal: { import: (name) => import(name) } },
     })) own(root.provide(key, value))
-    for (const module of [SystemPrompt, LocalSubprocessRuntime, SandboxPwshExecutor, ToolRuntime, shellEnv]) await mount(module)
+    for (const module of [SystemPrompt, LocalSubprocessRuntime, SandboxPwshExecutor, ToolRuntime, nativeExecutor, shellEnv]) await mount(module)
     const official = root.reflect.store[root[Context.isolate].shell]
     const rows = pluginsFor({ kind, gitBash: true, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true } })
     for (const row of rows.filter((row) => ['tool-bash', 'tool-pwsh'].includes(row.id) && row.disabled !== true)) {
@@ -68,7 +69,7 @@ for (const kind of ['standard', 'ptc', 'cordis']) {
       },
     }))
     await settled; clearTimeout(timer)
-    const result = await tools.execute({
+    const result = await executeTool(tools, {
       agent, name: 'bash', callId: `variant-${kind}`, signal: new AbortController().signal,
       arguments: { description: 'Verify private variant executor', command: 'uname -s; printf "VARIANT_GITBASH_OK\\n"', workdir: cwd },
     })
@@ -90,6 +91,7 @@ test('host preview: real Core registry waits for activation then retires a regis
   t.after(async () => { for (const off of cleanups.reverse()) await off() })
   cleanups.push(root.provide('loader', { await: async () => {} }))
   cleanups.push(root.provide('sessionProjections', { register: () => () => {} }))
+  cleanups.push(root.provide('agents', { list: () => [] }))
   const registryFiber = root.plugin(AgentPresetRegistry, { default: 'standard' })
   cleanups.push(() => registryFiber.dispose()); await registryFiber
   const registry = root.get('agentPresets')

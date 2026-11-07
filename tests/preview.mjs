@@ -1,3 +1,4 @@
+import { executeTool, nativeExecutor } from './host-runtime.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
@@ -51,6 +52,7 @@ test('preview: real host registers and executes Git Bash without replacing Power
   await mount(LocalSubprocessRuntime)
   await mount(SandboxPwshExecutor)
   await mount(ToolRuntime)
+  await mount(nativeExecutor)
   await mount(shellEnv)
   await mount(toolPwsh)
   const official = root.reflect.store[root[Context.isolate].shell]
@@ -107,7 +109,7 @@ test('preview: real host registers and executes Git Bash without replacing Power
   assert.equal(root.reflect.store[root[Context.isolate].shell], official)
   assert.ok(!tools.schemas().some((schema) => schema.name === 'bash'), 'bash is per-agent, not global')
 
-  const run = (name, command) => tools.execute({
+  const run = (name, command) => executeTool(tools, {
     agent, name, callId: `preview-${name}-${Date.now()}`,
     arguments: { description: `Verify isolated ${name} execution`, command, workdir: cwd },
     signal: new AbortController().signal,

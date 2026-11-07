@@ -32,8 +32,8 @@ const modeActions = (result) => Object.fromEntries((result.modes ?? result.rows)
 /**
  * configEditor stand-in with the parts the plugin module touches: rows(),
  * configuration() and an edit() that replaces the override wholesale (the
- * official change(current, inherited) => next contract; this fake passes the
- * override as current, which is enough for the nested-key assertions).
+ * official change(current, inherited) => next contract; current includes the
+ * effective inherited settings, matching the installed Core editor).
  */
 function fakeOpsEditor({ rows = [], failEdit = null, ghostEdit = false, extraRows = false } = {}) {
   const state = { edits: [], rows: structuredClone(rows) }
@@ -49,7 +49,9 @@ function fakeOpsEditor({ rows = [], failEdit = null, ghostEdit = false, extraRow
       if (ghostEdit) return
       const row = state.rows.find((candidate) => candidate.entry.options.id === entry.options.id)
       if (!row) throw new Error('fake: row vanished')
-      row.override = change(row.override ?? {}, row.inherited ?? {})
+      const current = { ...row.inherited, ...row.override }
+      for (const mode of OPS_MODES) if (row.inherited?.[mode] || row.override?.[mode]) current[mode] = { ...row.inherited?.[mode], ...row.override?.[mode] }
+      row.override = change(current, row.inherited ?? {})
     },
   }
 }
@@ -138,58 +140,49 @@ test('ops-adopt: a refused or non-sticking write is reported, never claimed', as
   assert.match(hollow.detail, /did not stick/)
 })
 
-test('ops-adopt: restore lifts our nested false back to the inherited value and nothing else', async () => {
-  const override = {
-    minimal: { bash: false, promptPolicy: true },
-    standard: { bash: false },
-    ptc: {},
-    cordis: { bash: true },
-  }
-  const inherited = {
-    minimal: { bash: true, promptPolicy: false },
-    ptc: { bash: false },
-    cordis: { bash: true },
-  }
-  const editor = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID, override, inherited)] })
+test('ops-adopt: restore preserves existing false and restores only adopted fields', async () => {
+  const editor = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID,
+    { minimal: { bash: false, promptPolicy: true }, cordis: { bash: true } },
+    { standard: { bash: true }, ptc: { bash: false } })] })
+  await adoptOpsBashRemoval(editor)
   const restored = await restoreOpsBash(editor)
   assert.equal(restored.status, 'restored')
-  assert.equal(opsModeList(restored, ['restore']), 'minimal/standard')
   const after = editor.state.rows[0].override
-  assert.equal(after.minimal.bash, true, 'restored to the inherited value')
-  assert.equal(after.minimal.promptPolicy, true, "the user's own override keys are untouched")
-  assert.equal('standard' in after, false, 'the section was only our key, so it goes away')
-  assert.deepEqual(after.ptc, {}, 'a mode with no bash override is left alone')
-  assert.equal(after.cordis.bash, true, 'a later user ON choice is left alone')
+  assert.deepEqual(after.minimal, { bash: false, promptPolicy: true })
+  assert.equal(after.standard, undefined, 'an absent override is restored as absent, not as an explicit true')
+  assert.equal(effectiveModeBash(editor.state.rows[0], 'standard'), true, 'the inherited value still applies')
+  assert.equal(after.cordis.bash, true)
+  assert.deepEqual(after.ptc, { bash: false }, 'inherited unrelated mode remains effective')
+  assert.equal((await restoreOpsBash(editor)).status, 'unchanged')
 })
 
 test('ops-adopt: restore leaves later user choices and absent rows alone', async () => {
-  const userTrue = rowOf(OPS_ROW_ID, { minimal: { bash: true } }, { minimal: { bash: true } })
-  const editorA = fakeOpsEditor({ rows: [userTrue] })
-  const kept = await restoreOpsBash(editorA)
-  assert.equal(kept.status, 'unchanged')
-  assert.match(kept.detail, /left alone/)
-  assert.deepEqual(editorA.state.edits, [])
-
-  const bare = rowOf(OPS_ROW_ID, {}, {})
-  const editorB = fakeOpsEditor({ rows: [bare] })
-  assert.equal((await restoreOpsBash(editorB)).status, 'unchanged')
-  assert.deepEqual(editorB.state.edits, [])
-
-  const gone = fakeOpsEditor({ rows: [] })
-  assert.equal((await restoreOpsBash(gone)).status, 'skip-row-absent')
+  const editor = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID, {}, {})] })
+  await adoptOpsBashRemoval(editor)
+  editor.state.rows[0].override.minimal.bash = true
+  delete editor.state.rows[0].override.standard
+  await restoreOpsBash(editor)
+  assert.equal(editor.state.rows[0].override.minimal.bash, true)
+  assert.equal(editor.state.rows[0].override.standard, undefined)
+  const unowned = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID, { minimal: { bash: false } }, {})] })
+  assert.equal((await restoreOpsBash(unowned)).status, 'unchanged')
+  assert.deepEqual(unowned.state.edits, [])
+  assert.equal((await restoreOpsBash(fakeOpsEditor({ rows: [] }))).status, 'skip-row-absent')
   assert.equal((await restoreOpsBash(null)).status, 'restore-failed')
 })
 
-test('ops-adopt: a failed restore is reported with the manual safety net', async () => {
-  const failing = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID, { minimal: { bash: false } }, {})], failEdit: new Error('file locked') })
-  const refused = await restoreOpsBash(failing)
-  assert.equal(refused.status, 'restore-failed')
-  assert.match(refused.detail, /refused the restore/)
-
-  const ghost = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID, { minimal: { bash: false } }, {})], ghostEdit: true })
-  const hollow = await restoreOpsBash(ghost)
-  assert.equal(hollow.status, 'restore-failed')
-  assert.match(hollow.detail, /did not stick/)
+test('ops-adopt: a failed restore retains ownership for a retry', async () => {
+  const editor = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID, {}, {})] })
+  await adoptOpsBashRemoval(editor)
+  const edit = editor.edit
+  editor.edit = async () => { throw new Error('file locked') }
+  const failed = await restoreOpsBash(editor)
+  assert.equal(failed.status, 'restore-failed')
+  assert.match(failed.detail, /file locked/)
+  editor.edit = async () => {}
+  assert.match((await restoreOpsBash(editor)).detail, /did not stick/)
+  editor.edit = edit
+  assert.equal((await restoreOpsBash(editor)).status, 'restored')
 })
 
 test('ops-adopt: the reports carry the owner-facing wording', () => {
@@ -223,9 +216,10 @@ test('ops-adopt: index.js wires the disposal restore and keeps it inside the win
   assert.ok(marker > 0, 'the wiring block exists')
   const block = source.slice(marker, source.indexOf('OFFICIAL persistent-terminal bundle adoption', marker))
   assert.match(block, /process\.platform === 'win32'/, 'the removal is a Windows-host concern only')
-  assert.match(block, /ctx\.effect\(\(\) => async \(\) => \{/)
+  assert.match(block, /opsEditorCtx\.effect\(\(\) => async \(\) => \{/)
   assert.match(block, /restoreOpsBash\(opsEditorCtx\.configEditor\)/)
-  assert.match(block, /result\.status === 'adopted' \|\| result\.status === 'present'/, 'the restore hook only arms once the removal is actually in force')
+  assert.match(block, /await pending/, 'restore joins in-flight adoption')
+  assert.match(block, /clearTimeout\(retry\)/, 'disposal owns pending retries')
 })
 
 test('ops-adopt: the removal list never grows into dsh-ops background or file tools (2026-10-19 user decision)', () => {

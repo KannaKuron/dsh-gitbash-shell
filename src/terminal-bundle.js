@@ -73,17 +73,24 @@ export async function detectTerminalBundle(ctx) {
  * Read the plugin config entry for one patch row (the fields this module owns).
  * Takes the RAW parsed patch entry (`config` wrapper included) and returns the
  * FLATTENED facts; undefined when the input is not a row-shaped object.
+ *
+ * `opaque` marks an owned field whose value is not a plain boolean/string
+ * (for example a `!!js` expression). The writer must never replace such a
+ * field with a literal: an expression is a user/bundle condition, not an
+ * unset default.
  * @param {unknown} row - a parsed patch entry.
- * @returns {{disabled?: boolean, shellPath?: string}|undefined}
+ * @returns {{disabled?: boolean, shellPath?: string, opaque?: true}|undefined}
  */
 export function readPatchRow(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return undefined
   const out = {}
   if (row.disabled === true) out.disabled = true
   else if (row.disabled === false) out.disabled = false
+  else if (row.disabled !== undefined) out.opaque = true
   const config = row.config
   if (config && typeof config === 'object' && !Array.isArray(config)) {
     if (typeof config.shellPath === 'string') out.shellPath = config.shellPath
+    else if (config.shellPath !== undefined) out.opaque = true
   }
   return out
 }
@@ -92,7 +99,7 @@ export function readPatchRow(row) {
  * Pure decision: should (and how exactly) the profile patch adopt the bundle's
  * shell rows for this host? Mirrors terminal-shell's planTerminalAdopt shape —
  * one action + one human reason, every state enumerable and testable.
- * @param {{platform?: string, enabled?: boolean, mounted?: boolean, resolved?: string, rows?: {bash?: {disabled?: boolean, shellPath?: string}, pwsh?: {disabled?: boolean}}}} input - rows are the FLATTENED row facts (readPatchRow/currentBundleRows output).
+ * @param {{platform?: string, enabled?: boolean, mounted?: boolean, resolved?: string, rows?: {bash?: {disabled?: boolean, shellPath?: string, opaque?: true}, pwsh?: {disabled?: boolean, opaque?: true}}}} input - rows are the FLATTENED row facts (readPatchRow/currentBundleRows output).
  * @returns {{action: string, reason: string, bash?: {disabled: boolean, shellPath?: string}, pwsh?: {disabled: boolean}}}
  */
 export function planTerminalBundleAdopt(input) {
@@ -111,9 +118,15 @@ export function planTerminalBundleAdopt(input) {
   }
   const shellPath = resolved.trim()
   // `rows` carries the FLATTENED facts (readPatchRow/currentBundleRows output):
-  // { disabled?, shellPath? } — not the raw patch row with its config wrapper.
+  // { disabled?, shellPath?, opaque? } — not the raw patch row with its config wrapper.
   const bash = rows?.bash
   const pwsh = rows?.pwsh
+  if (bash?.opaque === true) {
+    return {
+      action: 'kept-user-choice',
+      reason: 'the persistent bash backend row carries a non-literal disabled/shellPath value (for example !!js) — not replacing an explicit condition with a literal',
+    }
+  }
   if (bash === undefined) {
     // No user/bundle override row yet: write ours, and disable the pwsh backend
     // ONLY when no row of its own exists (a user-written row is never touched).
@@ -165,10 +178,15 @@ export function currentBundleRows(yaml, document) {
     if (index < 0) return undefined
     const item = items[index]
     const row = {}
-    const disabled = item.getIn?.(['disabled'])
-    if (disabled === true || disabled === false) row.disabled = disabled
-    const shellPath = item.getIn?.(['config', 'shellPath'])
-    if (typeof shellPath === 'string') row.shellPath = shellPath
+    // keepScalar: a !!js expression resolves to a string, so the resolved
+    // value alone cannot distinguish it from a literal. Only a plain scalar
+    // with the expected JS type is safe to rewrite; anything else is opaque.
+    const disabled = item.getIn?.(['disabled'], true)
+    if (typeof disabled?.value === 'boolean' && disabled.tag !== 'tag:yaml.org,2002:js') row.disabled = disabled.value
+    else if (disabled !== undefined) row.opaque = true
+    const shellPath = item.getIn?.(['config', 'shellPath'], true)
+    if (typeof shellPath?.value === 'string' && shellPath.tag !== 'tag:yaml.org,2002:js') row.shellPath = shellPath.value
+    else if (shellPath !== undefined) row.opaque = true
     return row
   }
   const bash = read(TERMINAL_BUNDLE_BASH_ROW)
@@ -254,11 +272,7 @@ export async function adoptTerminalBundlePatch(io, input) {
     node.type = 'QUOTE_DOUBLE'
     return node
   }
-  const newMap = (...pairs) => {
-    const map = document.createNode({})
-    for (const [key, value] of pairs) map.set(key, value)
-    return map
-  }
+
 
   // An empty patch file parses as a FLOW sequence ([]); once rows are added
   // it must print in block style or every new row comes out one-line flow.
@@ -277,7 +291,7 @@ export async function adoptTerminalBundlePatch(io, input) {
   const bashNode = plan.bash
   if (bashIndex >= 0) {
     document.setIn([bashIndex, 'disabled'], bashNode.disabled)
-    document.setIn([bashIndex, 'config'], newMap(['shellPath', quotedScalar(bashNode.shellPath)]))
+    document.setIn([bashIndex, 'config', 'shellPath'], quotedScalar(bashNode.shellPath))
   } else {
     const row = rowFromFragment(`- id: ${TERMINAL_BUNDLE_BASH_ROW}\n  disabled: ${bashNode.disabled}\n  config:\n    shellPath: ${JSON.stringify(bashNode.shellPath)}\n`)
     if (row === undefined) {

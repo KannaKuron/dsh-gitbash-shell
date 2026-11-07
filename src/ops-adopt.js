@@ -1,3 +1,4 @@
+import { opsOwnership } from './ops-ownership.js'
 /**
  * dsh-gitbash-shell — dsh-ops bash removal from the agent face.
  *
@@ -42,7 +43,9 @@
  * every unrelated dsh-ops key (panel/tui/discovery/...) intact.
  *
  * OWNERSHIP AND RESTORE (the owner requirement: uninstalling this plugin must
- * give dsh-ops its bash back):
+ * restore only our changes):
+ *   - a profile-local ownership receipt records original values before edits;
+ *     existing false values are never claimed, including after a restart;
  *   - plugin disabled / uninstalled while dsh runs => our fiber stops => the
  *     dispose hook below runs and lifts the override through the same editor;
  *   - plugin re-enabled => boot re-adopts (idempotent: the plan is a no-op
@@ -64,7 +67,7 @@
  *   1. NEVER write when the row is absent — no dsh-ops, nothing to remove.
  *   2. NEVER hand-edit the profile patch file — the official editor only.
  *   3. NEVER claim success without reading the value back.
- *   4. Restore returns the INHERITED value for OUR key only: unrelated
+ *   4. Restore returns the recorded original override (or inherited value) for OUR key only: unrelated
  *      overrides in the same row (the user's own dsh-ops settings) survive.
  *   5. NEVER write to a disabled row or mode section (it publishes nothing);
  *      restore still lifts our value from one the user disabled afterwards.
@@ -262,9 +265,12 @@ function resultRowsOf(row, plan) {
  *   never throws for an expected condition.
  */
 export async function adoptOpsBashRemoval(editor) {
-  if (editor === null || editor === undefined || typeof editor.configuration !== 'function') {
-    return { status: 'skip-row-absent', rows: [], detail: 'the config editor is unavailable, so the dsh-ops row cannot be configured' }
-  }
+  if (!editor || typeof editor.configuration !== 'function') return { status: 'skip-row-absent', rows: [], detail: 'the config editor is unavailable' }
+  const store = opsOwnership(editor)
+  return store.run(() => adoptOwned(editor, store))
+}
+
+async function adoptOwned(editor, store) {
   const rows = opsRowsOf(editor)
   if (rows.length === 0) {
     return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops row is mounted in this profile' }
@@ -277,21 +283,48 @@ export async function adoptOpsBashRemoval(editor) {
   if (targets.length > 0 && typeof editor.edit !== 'function') {
     return { status: 'write-failed', rows: results, detail: 'the config editor exposes no edit()' }
   }
+  const receipt = await store.read()
+  const originalReceipt = structuredClone(receipt)
+  for (const { row, mode } of targets) {
+    const value = boolOf(row, 'override', mode, 'bash')
+    // Never claim a pre-existing false. It is not among the adopt targets.
+    receipt.fields[mode] = { hadOverride: value !== undefined, ...(value === undefined ? {} : { value }) }
+  }
+  // Persist before editing: a crash/reload after configEditor commits must not
+  // lose the original value. Failed writes remain retryable and are compared on restore.
+  if (targets.length) await store.write(receipt)
   for (const { row } of plans) {
     const modes = targets.filter((target) => target.row === row).map((target) => target.mode)
     if (modes.length === 0) continue
     const id = rowIdOf(row)
+    const conflicted = new Set()
     try {
       await editor.edit(row.entry, (current) => {
         const next = isRecord(current) ? { ...current } : {}
         for (const mode of modes) {
           const section = isRecord(next[mode]) ? { ...next[mode] } : {}
+          const expected = boolOf(row, 'override', mode, 'bash') ?? boolOf(row, 'inherited', mode, 'bash')
+          // configEditor serializes against other settings writers. Recheck its
+          // fresh current value rather than claiming a concurrent user edit.
+          if (section.bash !== expected) { conflicted.add(mode); continue }
           section.bash = false
           next[mode] = section
         }
         return next
       })
+      if (conflicted.size) {
+        for (const mode of conflicted) delete receipt.fields[mode]
+        await store.write(receipt)
+        return { status: 'write-failed', rows: results, detail: 'dsh-ops settings changed during adoption; concurrent choices were preserved' }
+      }
     } catch (error) {
+      // Core edit() rolls back a rejected reconciliation. Do not let a failed
+      // attempt acquire ownership over a future user-written false value.
+      for (const mode of modes) {
+        if (Object.hasOwn(originalReceipt.fields, mode)) receipt.fields[mode] = originalReceipt.fields[mode]
+        else delete receipt.fields[mode]
+      }
+      await store.write(receipt)
       return {
         status: 'write-failed',
         rows: results,
@@ -336,89 +369,59 @@ export async function adoptOpsBashRemoval(editor) {
  * @returns {Promise<{status: string, rows: object[], detail?: string}>} the outcome.
  */
 export async function restoreOpsBash(editor) {
-  if (editor === null || editor === undefined || typeof editor.configuration !== 'function') {
-    return { status: 'restore-failed', rows: [], detail: 'the config editor is unavailable, so the override cannot be lifted' }
-  }
-  const rows = opsRowsOf(editor)
-  if (rows.length === 0) {
-    return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops row is mounted — nothing to restore' }
-  }
-  // Only modes where OUR value is in force are touched. A mode the user flipped
-  // back ON afterwards is their own later choice — leave it exactly where it is.
-  const results = []
-  const targets = []
-  for (const row of rows) {
-    const id = rowIdOf(row)
-    for (const mode of OPS_MODES) {
-      const overrideBash = boolOf(row, 'override', mode, 'bash')
-      if (overrideBash === undefined) {
-        results.push({ id, mode, action: 'unchanged', reason: 'no bash override to lift in ' + mode })
-        continue
-      }
-      if (overrideBash !== false) {
-        results.push({ id, mode, action: 'unchanged', reason: 'the ' + mode + ' override reads bash=true — a later choice of the user, left alone' })
-        continue
-      }
-      results.push({ id, mode, action: 'restore' })
-      targets.push({ row, mode })
-    }
-  }
-  if (targets.length === 0) {
-    return { status: 'unchanged', rows: results, detail: results.map((row) => row.mode + ': ' + row.reason).join('; ') }
-  }
-  if (typeof editor.edit !== 'function') {
-    return { status: 'restore-failed', rows: results, detail: 'the config editor exposes no edit()' }
-  }
-  for (const row of rows) {
-    const modes = targets.filter((target) => target.row === row).map((target) => target.mode)
-    if (modes.length === 0) continue
-    const id = rowIdOf(row)
-    try {
-      await editor.edit(row.entry, (current, inherited) => {
-        const next = isRecord(current) ? { ...current } : {}
-        for (const mode of modes) {
-          const section = isRecord(next[mode]) ? { ...next[mode] } : {}
-          const inheritedSection = isRecord(inherited) && isRecord(inherited[mode]) ? inherited[mode] : undefined
-          if (inheritedSection !== undefined && Object.hasOwn(inheritedSection, 'bash')) {
-            section.bash = inheritedSection.bash
-          } else {
-            delete section.bash
+  if (!editor || typeof editor.configuration !== 'function') return { status: 'restore-failed', rows: [], detail: 'the config editor is unavailable' }
+  const store = opsOwnership(editor)
+  return store.run(async () => {
+    const receipt = await store.read()
+    const rows = opsRowsOf(editor)
+    if (!rows.length) return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops row is mounted' }
+    const results = []
+    for (const row of rows) {
+      const modes = OPS_MODES.filter(mode => Object.hasOwn(receipt.fields, mode))
+      if (!modes.length) continue
+      if (typeof editor.edit !== 'function') return { status: 'restore-failed', rows: results, detail: 'config editor exposes no edit()' }
+      try {
+        const restored = new Map(modes.filter(mode => boolOf(row, 'override', mode, 'bash') === false).map(mode => {
+          const original = receipt.fields[mode]
+          return [mode, original.hadOverride ? original.value : row.inherited?.[mode]?.bash]
+        }))
+        await editor.edit(row.entry, (current, inherited) => {
+          const next = isRecord(current) ? { ...current } : {}
+          for (const mode of modes) {
+            // A later user choice (including removal of the override) wins.
+            if (boolOf(row, 'override', mode, 'bash') !== false || next[mode]?.bash !== false) { restored.delete(mode); continue }
+            const original = receipt.fields[mode]
+            const section = { ...next[mode] }
+            // Restore the ORIGINAL SHAPE, not merely the original effective
+            // value: an absent override must become absent again, otherwise a
+            // user who never chose anything is left with an explicit "true"
+            // row that the settings UI reports as an override.
+            if (original.hadOverride) section.bash = original.value
+            else delete section.bash
+            if (Object.keys(section).length) next[mode] = section
+            else delete next[mode]
+            restored.set(mode, original.hadOverride ? original.value : inherited?.[mode]?.bash)
           }
-          if (Object.keys(section).length === 0) delete next[mode]
-          else next[mode] = section
+          return next
+        })
+        const after = freshRowOf(editor, rowIdOf(row))
+        if (!after) throw new Error('row vanished during restore')
+        for (const [mode, expected] of restored) {
+          const actual = boolOf(after, 'override', mode, 'bash') ?? boolOf(after, 'inherited', mode, 'bash')
+          if (actual !== expected) throw new Error(`restore did not stick for ${mode}`)
         }
-        return next
-      })
-    } catch (error) {
-      return {
-        status: 'restore-failed',
-        rows: results,
-        detail: 'the official config editor refused the restore for ' + id + ': ' + (error && error.message ? error.message : String(error)),
+        for (const mode of modes) {
+          results.push({ id: rowIdOf(row), mode, action: restored.has(mode) ? 'restore' : 'unchanged' })
+          delete receipt.fields[mode]
+        }
+        await store.write(receipt)
+      } catch (error) {
+        return { status: 'restore-failed', rows: results, detail: `owned override restore failed: ${error?.message ?? error}` }
       }
     }
-  }
-  for (const { row, mode } of targets) {
-    const id = rowIdOf(row)
-    let after
-    try {
-      after = freshRowOf(editor, id)
-    } catch (error) {
-      return {
-        status: 'restore-failed',
-        rows: results,
-        detail: 'the restore succeeded but reading ' + id + ' back failed: ' + (error && error.message ? error.message : String(error)),
-      }
-    }
-    const left = boolOf(after, 'override', mode, 'bash')
-    const inheritedBash = boolOf(after, 'inherited', mode, 'bash')
-    // A false that equals the inherited value is the restored state, not a
-    // leftover override; only a false that disagrees with the source is a
-    // failed lift.
-    if (left === false && inheritedBash !== false) {
-      return { status: 'restore-failed', rows: results, detail: 'the restore did not stick on ' + id + ' (' + mode + '): it still reads bash=false' }
-    }
-  }
-  return { status: 'restored', rows: results }
+    return { status: results.some(row => row.action === 'restore') ? 'restored' : 'unchanged', rows: results,
+      detail: results.length ? undefined : 'no owned bash overrides to restore' }
+  })
 }
 
 /**

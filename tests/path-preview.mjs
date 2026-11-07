@@ -1,3 +1,4 @@
+import { executeTool, ptcExecutor } from './host-runtime.mjs'
 // Real installed-Core coverage for the explicit path converter. Actual host
 // exports resolved through tests/host-loader.mjs: ToolRuntime → the retained
 // run_code transport → NodePtcRuntime → LocalSubprocessRuntime → a real Node
@@ -58,7 +59,7 @@ test('path preview: gitbash_to_native_path on the real engine', async t => {
   const j = JSON.stringify
   const runCode = async (name, code, extra = {}) => {
     const original = { description: 'Path preview: exercise gitbash_to_native_path on the real engine', code, ...extra }
-    const result = await root.get('tools').execute({
+    const result = await executeTool(root.get('tools'), {
       name: 'run_code', callId: 'path-preview-' + name, arguments: original, signal: new AbortController().signal,
     })
     // sourceFrozen: the registry must hand the program through untouched.
@@ -80,7 +81,8 @@ test('path preview: gitbash_to_native_path on the real engine', async t => {
     await mount(NodePtcRuntime, { timeoutMs: 4000, maxTimeoutMs: 10000, maxOutputBytes: 1048576, maxMessageBytes: 2097152, maxPendingCalls: 16, maxOldGenerationSizeMb: 128, graceMs: 1000,
       launch: { kind: 'node-script', executable: process.execPath } })
     await mount(SystemPrompt)
-    await mount(ToolRuntime, { mode: 'ptc' })
+    await mount(ToolRuntime)
+  await mount(ptcExecutor)
     // The module UNDER TEST: real defineTool, real registry, owned scope.
     const mainFiber = await mount(createPathToolModule({
       toolsModule: { defineTool },

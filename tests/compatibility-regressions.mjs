@@ -62,10 +62,10 @@ test('compatibility: interpolation, escape sequences and ambiguous slash stay co
 
 test('compatibility: run_code hints truthfully distinguish codePaths ON and OFF', () => {
   const tools = [{ name: 'run_code' }]
-  assert.match(runCodeHintFor(tools, true), /best-effort/)
-  assert.match(runCodeHintFor(tools, true), /tagged templates/)
-  assert.match(runCodeHintFor(tools, true), /routes or search data/)
-  const off = runCodeHintFor(tools, false)
+  assert.match(runCodeHintFor(tools, true, 'typescript'), /best-effort/)
+  assert.match(runCodeHintFor(tools, true, 'typescript'), /tagged templates/)
+  assert.match(runCodeHintFor(tools, true, 'typescript'), /routes or search data/)
+  const off = runCodeHintFor(tools, false, 'typescript')
   assert.match(off, /rewriting is OFF/)
   assert.doesNotMatch(off, /are translated.*before the program/)
   assert.equal(runCodeHintFor([{ name: 'bash' }], false), '')
@@ -83,12 +83,13 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   assert.ok(start >= 0 && end > start)
   let handler
   let dialect = { posixPaths: true, codePaths: true, subagentDialect: true }
+  let toolsService = { definitions: () => [], selectExecutor: () => ({ describe: () => ({ schemas: [{ name: 'run_code' }] }) }) }
   const ctx = {
     on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn },
-    get(name) { assert.equal(name, 'tools'); return { schemas: (_agent, toolSet) => toolSet === undefined ? [] : [{ name: 'run_code' }] } },
+    get(name) { if (name === 'ptcRuntime') return { language: 'typescript' }; assert.equal(name, 'tools'); return toolsService },
   }
-  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', source.slice(start, end))(
-    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting, terminalDialect)
+  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', 'programLanguageFor', source.slice(start, end))(
+    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting, terminalDialect, () => 'typescript')
   const assemble = agent => {
     const assembly = { contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [] }
     handler(assembly, { agent, toolSet: {} }, () => {})
@@ -101,6 +102,11 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   assert.equal(assemble(), 'BASE')
   dialect = { ...dialect, posixPaths: true, subagentDialect: false }
   assert.equal(assemble({ session: { header: { origin: 'subagent' } } }), 'BASE')
+  // A host without the private executor projection keeps the base section and
+  // never fails prompt assembly; run_code is then simply not advertised.
+  toolsService = { definitions: () => [] }
+  dialect = { ...dialect, subagentDialect: true, codePaths: true }
+  assert.equal(assemble(), 'BASE')
 })
 
 test('routing: offered native/path/pwsh tools have explicit pre-execution decision criteria', () => {
@@ -150,8 +156,8 @@ test('routing: PTC-only presentation teaches offered SDK selection without guess
   const tool = { name: 'run_code', description: 'PTC_BASE' }
   applyToolRouting([tool])
   assert.match(tool.description, /await tools\.<name>/)
-  assert.match(tool.description, /typed native-executable binding for exact Windows argv/)
-  assert.match(tool.description, /complete-path conversion binding/)
+  assert.match(tool.description, /Follow each binding's own description/)
+  assert.match(tool.description, /typed native execution and path conversion are different operations/)
   assert.match(tool.description, /If a needed binding is absent, report the missing capability/)
   assert.match(tool.description, /denial is a stop condition/)
   assert.doesNotMatch(tool.description, /gitbash_native|gitbash_to_native_path|\bpwsh\b/)
@@ -314,7 +320,7 @@ test('interop: ops_* arguments translate — root, operations[].path/to, protect
   // The posixPaths gate lives in the tools/execute WRAPPER (dialect.posixPaths
   // && dialectApplies), not inside translateDispatch — lock that wiring:
   const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  assert.match(hostSource, /if \(dialect\.posixPaths && dialectApplies\(dialect, exec && exec\.agent\)\) \{[\s\S]*?translateDispatch\(exec, dialect, env\)/, 'the wrapper gates the whole argument face on the live posixPaths switch')
+  assert.match(hostSource, /if \(dialect\.posixPaths && dialectApplies\(dialect, exec && exec\.agent\)\) \{[\s\S]*?translateDispatch\(exec, dialect, env, programLanguageFor/, 'the wrapper gates the whole argument face on the live posixPaths switch')
 })
 
 test('interop: ops_* results echo back in /c/ — items[].path, matches[].path, root', () => {
