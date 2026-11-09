@@ -359,6 +359,26 @@ preset 会被插件自动清理;宿主官方 PowerShell 执行器原样保留(�
 **依赖版本**:去重开关本体在**本插件 ≥ 0.25.0**;对方的协作能力在
 **dsh-ptc-cordis-preset ≥ 0.14.0**。
 
+### 全局 PTC SDK:`globalPtcSdk`(默认关)
+
+设置卡的「Global PTC SDK」控制 profile 的 root executor。默认关闭时不新增任何覆盖;开启后写入
+`tool-executor-native: { disabled: true }` 与 `tool-executor-ptc: { disabled: false }`,让未显式挂载
+scoped native executor 的 agent 通过 `run_code` SDK 调用工具。SDK 内含本插件的 Git Bash,不发布独立 `pwsh`。
+**写入的是 profile patch,重启 DSH 后生效。**
+
+- **不覆盖 `preset-minimal`**:minimal 的 `persona.complete: true` 会在 prompt 组装时抹掉 PTC SDK,
+  得到没有可用 SDK 的 `run_code`。本开关**不支持 minimal**,也不替部署复述该 preset(避免冻结官方行集);
+  要在 minimal 使用 PTC,需自行维护对应 preset 覆盖,或改用 standard/ptc/cordis。
+- **只撤回自己写且未被改过的行**:patch 旁的 `.gitbash-global-ptc-ownership.json` 记录本开关写入的行 id
+  与「数据 + YAML 注释」指纹。关闭开关、禁用或卸载插件时,只 lift receipt 认领且指纹仍一致的行;
+  用户手写同值行、后续改值/加配置/加注释的行一律保留。
+- **组合安全的逐行恢复**:splice 前按 base 默认(native 开、PTC 关)与将保留的行模拟最终组合,
+  **必须仍能证明恰好一个 enabled executor**;一行被用户改过时,另一行只有在满足该不变量时才撤回,
+  结果日志为 `lifted-partial`。若删除会造成「双 executor」或「无 executor」(含 `!!js` 等无法判定的行),
+  对应行及其 receipt 都保留,日志返回 `kept-user-choice` 并明确要求手工处理。
+- **失败边界**:receipt 损坏时拒绝猜测所有权;写入与回读使用宿主原子写和同一把 profile 文件锁,
+  校验失败回滚原 patch 字节。卸载恢复只记录失败日志,不阻断宿主关闭。
+
 ### run_code 后端开关:`pythonRuntime`(默认关,v0.26.0)
 
 dsh 有一个**实验性 CPython 后端**用于 PTC 的 `run_code`

@@ -649,6 +649,24 @@
        `tests/runtime-preview.mjs` 的 eager-slot 用例需要已安装宿主(host-loader),不在
        `npm test` 内。本机无 Windows 时不得声称真机通过,CHANGELOG 必须写明该边界。
 
+4n. **全局 PTC SDK 开关与所有权(`globalPtcSdk`,默认关)**:该开关只写 profile patch 的两个 root executor 行
+     (`tool-executor-native: disabled true`、`tool-executor-ptc: disabled false`),不是 volatile 实时切换,
+     重启 DSH 后生效。**绝不复述 `preset-minimal`**:它的 `persona.complete: true` 会抹掉 SDK,minimal 不在
+     本开关支持范围内;需要 minimal + PTC 的部署必须自己维护 preset 覆盖,README/设置卡必须明说。
+     - 所有权由 patch 旁 `.gitbash-global-ptc-ownership.json` 记录:只登记本次实际新增的行 id 与指纹;
+       用户原先手写的同值行不认领。指纹 = 规范化数据 + YAML AST 上全部 `comment/commentBefore`
+       (含嵌套 key/value),因为 `toJSON()` 会丢注释;只改注释同样视为用户编辑。
+     - OFF / 禁用 / 卸载按 receipt 逐行 lift:只有 receipt 认领且当前指纹仍相同的行才可删;splice 前必须按
+       base 默认(native 开、PTC 关)+ 将保留的行模拟最终组合,**无法证明恰好一个 enabled executor 就不删**
+       (含 opaque)。一行被改不阻断另一行「组合安全」的撤回,`lifted-partial` 必须列出需人工处理的行;
+       会造成双 executor / 无 executor 时对应行与 receipt 保留并返回 `kept-user-choice`。无 receipt、
+       指纹不符、receipt 损坏均不得猜测删除。卸载 dispose 先等正在进行的 adopt,再用同一把 profile 文件锁
+       lift,失败只 log。
+     - 回归必须覆盖:用户手写同值、后续改值、只加注释、部分 lift、adopt→lift 字节回滚、receipt 生命周期、
+       禁用/卸载接线。改 `agent/created` 的 PTC readiness 时另跑 `tests/global-ptc-created.mjs` 的空 face、
+       取消与 dispose 用例;supersede 清 timer 后旧 Promise 必须链到替代 reconcile / Bash mount,dispose 才可
+       直接 settle;正常 firing 不得提前 settle 下一 attempt。
+
 ## 当前宿主测试与配置所有权
 
 - 宿主预览使用真实 Native/Ptc executor，`tools.execute({calls,...})` 返回 `results`；不得用旧单调用签名或给 registry 打兼容补丁。
