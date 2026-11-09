@@ -4,7 +4,7 @@
 
 简体中文 | [English](README_EN.md)
 
-> **Unreleased／实验性实现讨论**：下述 fail-closed 与两个显式工具尚未正式发布，不是发布候选；安装公开 npm 包不保证包含这些变更。详见[设计、接口与待讨论决定](<docs/experimental-native-execution.md>)、[验证矩阵与复现](<docs/experimental-native-verification.md>)及 CHANGELOG。
+> **v0.53.0**：新增「路径工具」独立开关（[issue #45](https://github.com/KannaKuron/dsh-gitbash-shell/issues/45)）。关闭后只隐藏/禁用 `gitbash_to_native_path`，`gitbash_native` 与 fail-closed 安全兜底不受影响；修改即时作用于后续调用，工具面可见性重启 DSH 后更新。设计背景见[设计、接口与决定](<docs/experimental-native-execution.md>)与[验证矩阵](<docs/experimental-native-verification.md>)。
 
 > 让 DeepSeek Harness (dsh) 在 Windows 上**默认用 Git Bash 跑命令**的官方风格插件
 > —— 不替换宿主执行器(官方 PowerShell 执行器原样保留):新增自有 bash 工具
@@ -150,7 +150,7 @@ bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件
 
 **POSIX 宿主**：自有执行器的受限路径仍继承官方后端与拒绝分类。本节只讲 Windows。
 
-**Unreleased 的 Windows 自有 bash/native 工具在 experimentalNative 开启时（默认）采用 fail-closed**：`read-only`、
+**Windows 自有 bash/native 工具在 experimentalNative 开启时（默认）采用 fail-closed**：`read-only`、
 `workspace-write` 或缺失/未解析的策略在执行前拒绝；仅真实解析为
 `danger-full-access` 的调用可以执行。受限请求不会登记/启动无围栏进程，也不会自动
 回退 pwsh/cmd/WSL、切模式或绕过文件工具拒绝。用户可在设置中关闭 experimentalNative，恢复明确标注 unconfined 的兼容 Bash 行为。
@@ -167,7 +167,7 @@ bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件
   和其他插件执行器不因此获得围栏。官方 root PowerShell 执行器没有被替换。
 
 旧 unconfined 记录/渲染兼容仍保留供历史结果使用，不代表新调用可降级。历史见 CHANGELOG
-v0.13.2，当前行为及验证见 Unreleased。
+v0.13.2，当前行为及验证见 CHANGELOG。
 
 ## 配置
 
@@ -456,10 +456,11 @@ PTC/创造及用户自建模式一律覆盖。
 都不再改写,文件工具收 Windows 路径。**bash 始终是 Git Bash,不受此开关影响**——它只决定
 跨工具的路径方言。
 
-## 显式工具（Unreleased）
+## 显式工具
 
 **运行时开关 `experimentalNative`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「实验原生执行 / fail-closed」。开启时 Windows 受限/未确定模式拒绝 Bash，提供可用的两个显式工具；关闭立即禁用两个工具的执行；已有 eager native 槽位保留当前会话的 schema，下一会话应用新工具面，并恢复明确标注 `unconfined` 的兼容 Bash（不执行 shell 文件写入限制）。修改作用于现有会话后续调用，无需重启，不终止已启动的任务。拒绝时用户也可在会话访问模式控件选择 `danger-full-access`；Agent 不得自行放宽权限。与路径方言及 codePaths 开关独立。
 
+**路径工具开关 `pathTool`（默认 true）：** 设置 → 插件 → dsh-gitbash-shell →「路径工具」。它只控制 `gitbash_to_native_path`：关闭后该工具从当前会话工具面注销并立即拒绝执行；`gitbash_native`、fail-closed 安全兜底与路径方言完全不受影响。修改作用于现有会话后续调用，无需重启；工具面对新会话或重启后的会话生效。与 `experimentalNative` 是叠加关系——总闸关闭时两者都不可用。
 
 两个工具随 Windows 的自有 bash 工具挂入同一 agent-owned scope；不替换官方工具或 root
 provider，已有同名工具不覆盖。旧 Core 缺少公开 native executor/OutputCollector 能力时不
@@ -530,7 +531,7 @@ return await fs.readFile(resolved.native_path, 'utf8');
   直接调用 Node fs/path 时优先明确的 Windows drive-letter 或 cwd-relative 路径;
   工具 path/file_path 字段仍走工具参数翻译。词法扫描不能识别路由、搜索数据或 shell
   command 的用途;此类字符串不要依赖自动重写,必要时关闭 `codePaths`(提示同步标为 OFF)。
-- **沙箱**：参见上方安全章节。Unreleased 在 experimentalNative 开启时改为受限请求执行前拒绝，不是恢复了真实围栏；文件工具拒绝不授权 shell/native 重试。
+- **沙箱**：参见上方安全章节。实验原生执行在 experimentalNative 开启时改为受限请求执行前拒绝，不是恢复了真实围栏；文件工具拒绝不授权 shell/native 重试。
 
 ## 与 dsh-better-sidebar 联动
 

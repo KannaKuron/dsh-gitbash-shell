@@ -496,6 +496,12 @@ export const Config = Schema === null ? undefined : Schema.object({
   // Maintainer PR #26 decision: one live opt-out for refusal and companions.
   experimentalNative: Schema.boolean().default(true).volatile(),
   /**
+   * Issue #45: hide ONLY `gitbash_to_native_path`. The total switch above still
+   * owns `gitbash_native` and the fail-closed refusal; turning this OFF keeps
+   * both. Default ON preserves the v0.52.0 tool face for existing users.
+   */
+  pathTool: Schema.boolean().default(true).volatile(),
+  /**
    * Publish the FastCtx file tools (`gb_*`) through the local MCP bridge.
    * Default OFF (dsh-ops 0.3.0 supersedes it); Windows-only payload, and it
    * stands down entirely when dsh-ops is present.
@@ -596,6 +602,8 @@ function makeLiveReader(ctx, config) {
     variantPresets: () => (hasConfig ? valueOf(config.variantPresets) === true : false),
     pwshTool: () => (hasConfig ? valueOf(config.pwshTool) === true : false),
     experimentalNative: () => (hasConfig ? valueOf(config.experimentalNative) !== false : true),
+    // Issue #45: independent default-ON gate for gitbash_to_native_path only.
+    pathTool: () => (hasConfig ? valueOf(config.pathTool) !== false : true),
     fastctxTools: () => (hasConfig ? valueOf(config.fastctxTools) === true : false),
     // Default OFF: only an explicit true asks for deduplication.
     suppressPeerCordis: () => (hasConfig ? valueOf(config.suppressPeerCordis) === true : false),
@@ -2000,6 +2008,7 @@ export async function apply(ctx, config = {}) {
         },
         pwshEnabled: () => liveSettings.pwshTool() === true,
         experimentalEnabled: () => liveSettings.experimentalNative(),
+        pathToolEnabled: () => liveSettings.pathTool(),
         nativeContract,
         routingOptions: (agent) => ({
           msys: liveSettings.posix() && dialectApplies(liveSettings.dialect(), agent),

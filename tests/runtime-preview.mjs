@@ -34,7 +34,7 @@ function createScope(parent) {
   return { fiber, get ctx() { return ctx }, dispose: () => fiber.dispose() }
 }
 
-async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true, nativeContract, workingDirectory = { ensure: async () => process.cwd() }, sessionCwd, policyWorkspaceRoot = process.cwd() } = {}) {
+async function fixture(t, { existingBash = false, pwshVisible = false, pauseModules = false, pauseAgentScope = false, failAgentMount = false, subprocessRuntime, explicitTools = false, ptc = false, experimental = true, pathTool = true, nativeContract, workingDirectory = { ensure: async () => process.cwd() }, sessionCwd, policyWorkspaceRoot = process.cwd() } = {}) {
   const root = new Context()
   const cleanups = []
   const logs = []
@@ -80,6 +80,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     tools: ctx => ctx.get('tools'), agents: () => ({ list: () => [agent] }),
     pwshEnabled: () => pwshVisible,
     experimentalEnabled: () => experimental,
+    pathToolEnabled: () => pathTool,
     ...(nativeContract ? { nativeContract } : {}),
     ...(explicitTools ? {
       translatePath: value => dialectHelpers.translateMsysPath(value, { home: 'D:/compat-home', tmpDir: 'D:/compat-temp', gitRoot: 'C:/Program Files/Git' }),
@@ -116,6 +117,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
     names: () => tools.schemas(agent).map(schema => schema.name),
     set: value => { pwshVisible = value; root.emit('loader/volatile-update', [['pwshTool']]) },
     setExperimental: value => { experimental = value; root.emit('loader/volatile-update', [['experimentalNative']]) },
+    setPathTool: value => { pathTool = value; root.emit('loader/volatile-update', [['pathTool']]) },
     allowAgentMount: () => { failAgentMount = false },
     execute: (name, args = {}) => executeTool(tools, { agent, name, callId: `${name}-runtime-preview`, arguments: args, signal: new AbortController().signal }),
     remount: () => mount(ctx => mountInlineTools(ctx, deps)),
@@ -165,6 +167,43 @@ test('runtime preview: experimental switch changes existing schemas and restrict
     await f.patch.dispose()
     assert.deepEqual(f.names(), ['pwsh'])
   }
+})
+
+test('runtime preview: pathTool hides only gitbash_to_native_path and leaves native/fail-closed intact', { timeout: 15000 }, async t => {
+  const f = await fixture(t, { explicitTools: true, experimental: true, pathTool: true })
+  await bounded(f.activated.promise, 'path tool activation')
+  // Both native companions are present by default.
+  assert.ok(f.names().includes('gitbash_native'))
+  assert.ok(f.names().includes('gitbash_to_native_path'))
+  const converted = await f.execute('gitbash_to_native_path', { msys_path: '/c/test' })
+  assert.equal(converted.isError, false, JSON.stringify(converted))
+  assert.equal(converted.value.native_path, 'C:/test')
+
+  // OFF hides only the path tool; native stays registered.
+  f.setPathTool(false)
+  assert.ok(f.names().includes('gitbash_native'))
+  assert.ok(!f.names().includes('gitbash_to_native_path'))
+  assert.equal((await f.execute('gitbash_to_native_path', { msys_path: '/c/test' })).isError, true)
+
+  // The total switch still hides both, and re-enabling pathTool alone must not
+  // punch through it.
+  f.setExperimental(false)
+  assert.ok(!f.names().includes('gitbash_native'))
+  assert.ok(!f.names().includes('gitbash_to_native_path'))
+  f.setPathTool(true)
+  assert.ok(!f.names().includes('gitbash_native'))
+  assert.ok(!f.names().includes('gitbash_to_native_path'))
+
+  // Restore both, then pathTool OFF again: native remains live.
+  f.setExperimental(true)
+  assert.ok(f.names().includes('gitbash_native'))
+  assert.ok(f.names().includes('gitbash_to_native_path'))
+  f.setPathTool(false)
+  assert.ok(f.names().includes('gitbash_native'))
+  assert.ok(!f.names().includes('gitbash_to_native_path'))
+
+  await f.patch.dispose()
+  assert.deepEqual(f.names(), ['pwsh'])
 })
 
 test('runtime preview: plugin disposal cancels a delayed host import and cannot leave a ghost bash', { timeout: 10000 }, async t => {

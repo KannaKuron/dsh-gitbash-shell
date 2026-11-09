@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.53.0 — 2026-11-10
+
+**类型**: feat（路径工具独立开关，issue #45）
+
+- **新增 `pathTool` 行 Config（默认 true，volatile）**：只控制 `gitbash_to_native_path`。关闭后该工具从当前会话工具面注销并立即拒绝执行；`gitbash_native`、fail-closed 安全兜底与路径方言不受影响。`experimentalNative` 仍是总闸，关闭时两者都不可用。
+- **注册与刷新接线**：`registerExperimentalTool` 接受 `watchKeys`（默认仍是 `experimentalNative`）；路径模块用 `experimentalNative && pathTool` 组合门控，并同时监听两个 volatile key。
+- **设置卡**：实验原生执行行下方新增「路径工具」行，21 语言 `pathTool.label` / `pathTool.hint`，切换即时写 `pathTool`。文案写明工具面可见性在重启 DSH 后更新，以及 `gitbash_native` / fail-closed 不受影响。
+- **不采用按 run_code 自动隐藏**：工具面不随检测结果漂移；需要精简时由用户显式关闭，且默认 true 保持向后兼容。
+- **测试**：path-tool 执行门禁与注册切换 2 例、runtime-preview 独立开关 1 例、client-regressions 设置卡双向写入与 21 词典 1 例、smoke 静态接线 1 例。完整 `npm test` **414 项 / 413 pass / 0 fail / 1 platform skip**（约 1.7s）；隔离 dsh 0.2.2-rc.1 的 runtime-preview 新用例通过（基线与改动后同为 8 个既有失败，非本次回归）。
+- **链接**：[issue #45](https://github.com/KannaKuron/dsh-gitbash-shell/issues/45)
+
 ## v0.52.0 — 2026-11-09
 
 **类型**: feat / fix / docs（全局 PTC SDK 开关与配置所有权；关闭提示与卸载边界）

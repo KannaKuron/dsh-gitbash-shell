@@ -288,7 +288,8 @@ export function mountInlineTools(ctx, deps) {
         if (typeof deps.translatePath === 'function') {
           const { createPathToolModule, PATH_TOOL_NAME } = await untilDisposed(import('./path-tool.js'), controller.signal)
           extraModules.push({ name: PATH_TOOL_NAME, create: scope => createPathToolModule({
-            toolsModule: hostModules.toolsModule, translate: deps.translatePath, experimentalEnabled, log, scope,
+            toolsModule: hostModules.toolsModule, translate: deps.translatePath, experimentalEnabled,
+            pathToolEnabled: deps.pathToolEnabled, log, scope,
           }) })
           try {
             const localBashModule = await untilDisposed(resolveHostModule(ctx, '@deepseek-ai/dsh-bash-local'), controller.signal)
@@ -372,7 +373,7 @@ export function mountInlineTools(ctx, deps) {
             throw new Error(`${extra.name} scope inactive (a required service may be missing)`)
           }
           // Registration/stand-down is reported by the shared live registrar.
-          log(`${extra.name} scope ready; registration follows experimentalNative and existing owners`)
+          log(`${extra.name} scope ready; registration follows experimentalNative/pathTool and existing owners`)
         } catch (error) {
           if (!isLive(agent, state)) return
           await extraFiber?.dispose()
@@ -747,7 +748,7 @@ export function mountInlineTools(ctx, deps) {
     ctx.on('loader/volatile-update', (paths) => {
       if (!Array.isArray(paths)) return
       const flipped = paths
-        .filter((path) => Array.isArray(path) && ['pwshTool', 'experimentalNative'].includes(path[0]))
+        .filter((path) => Array.isArray(path) && ['pwshTool', 'experimentalNative', 'pathTool'].includes(path[0]))
         .map((path) => path[0])
       if (flipped.length === 0) return
       log(`tool-face switch changed (${flipped.join(', ')}): running agents keep their tool face; a new session or a DSH restart applies the new value`)

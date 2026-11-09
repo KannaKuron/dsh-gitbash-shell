@@ -4,7 +4,7 @@
 
 [简体中文](README.md) | English
 
-> **Experimental implementation discussion / Unreleased:** the fail-closed behaviour and two explicit tools below have not been officially released and are not a release candidate. Public npm installation does not guarantee these changes. See the [design, interfaces and open decisions](<docs/experimental-native-execution.md>), [verification matrix and reproduction](<docs/experimental-native-verification.md>) and Unreleased CHANGELOG.
+> **v0.53.0:** adds an independent **Path tool** switch ([issue #45](https://github.com/KannaKuron/dsh-gitbash-shell/issues/45)). Turning it off only hides/disables `gitbash_to_native_path`; `gitbash_native` and the fail-closed safety gate are unaffected. Changes apply to subsequent calls immediately; tool-face visibility updates after a DSH restart. See the [design, interfaces and decisions](<docs/experimental-native-execution.md>), [verification matrix](<docs/experimental-native-verification.md>) and CHANGELOG.
 
 > Run **agent commands on Git Bash by default** on Windows with DeepSeek
 > Harness (dsh) — the plugin does NOT replace the host executor (the official
@@ -99,18 +99,20 @@ to bring old sessions back as-is, turn `variantPresets` on.
 
 **POSIX hosts:** the executor's restricted path still inherits the official backend and denial classification. This section concerns Windows.
 
-**Unreleased Windows bash/native tools fail closed while experimentalNative is ON (default):** read-only, workspace-write or unresolved policy is refused before execution. Only an actually resolved danger-full-access call may run. Restricted requests never admit/start an unconfined process, automatically switch permissions/interpreters, or bypass file-tool denials. This changes the old labelled-bypass behaviour.
+**Windows bash/native tools fail closed while experimentalNative is ON (default):** read-only, workspace-write or unresolved policy is refused before execution. Only an actually resolved danger-full-access call may run. Restricted requests never admit/start an unconfined process, automatically switch permissions/interpreters, or bypass file-tool denials. This changes the old labelled-bypass behaviour.
 
 - **Refusal is not restored confinement.** No verified confined Git Bash is provided. Historical failures were Win32 error 5 / 0xC0000142. The matched modern MSYS signal pipe uses an explicit SD without a restricting SID; cygheap uses VirtualAlloc, and Core already supplements TokenDefaultDacl. Neither a default-DACL-only fix nor permanent impossibility is established; IPC/OS solutions still require isolated-environment validation.
 - **Per-call authority:** a full-access deployment default cannot widen a read-only session. Native preparation, async boundaries and the spawn seam recheck authority. Cancellation, owner disposal and direct kill mark output incomplete instead of claiming natural success.
 - **Separate file policy:** official file tools retain their own checks; reads are not necessarily workspace-only. The path helper only converts strings: no existence check or permission grant. A refusal never authorizes another-tool workaround.
 - **Scope:** this gate covers this plugin's own bash/native tools. Sidebar interactive terminals, minimal's persistent PTY and other plugins' executors do not acquire confinement from it. The official root PowerShell executor stays untouched.
 
-Historical unconfined records/rendering remain readable; only the user’s explicit experimentalNative opt-out restores the explicitly UNCONFINED route. See CHANGELOG v0.13.2 for history and Unreleased for current behaviour/tests.
+Historical unconfined records/rendering remain readable; only the user’s explicit experimentalNative opt-out restores the explicitly UNCONFINED route. See CHANGELOG v0.13.2 for history and the changelog for current behaviour/tests.
 
-## Explicit tools (Unreleased)
+## Explicit tools
 
 **Runtime switch `experimentalNative` (default true):** Settings > Plugins > dsh-gitbash-shell > Experimental native execution / fail-closed. ON refuses restricted/unresolved Windows Bash and offers available companions. OFF immediately unregisters/disables both tools and restores explicitly `unconfined` Bash, which does not enforce shell file-write restrictions. Changes affect subsequent calls in existing sessions without restart; already running jobs continue. Refusals also guide the user to select `danger-full-access` in the session access-mode control; agents must not relax permissions automatically. This switch is independent of path dialect/codePaths.
+
+**Path tool switch `pathTool` (default true):** Settings > Plugins > dsh-gitbash-shell > Path tool. It controls `gitbash_to_native_path` only: OFF unregisters the tool from the current session face and immediately refuses execution; `gitbash_native`, the fail-closed safety gate and path dialect are untouched. Changes affect subsequent calls in existing sessions without restart; the new face applies to new sessions or after a restart. It composes with `experimentalNative` — the master switch OFF disables both.
 
 Both companions join the Windows own-bash agent scope without replacing official tools/root providers. Existing names are not overwritten. Missing public native executor/OutputCollector capability skips native without breaking bash/path; minimal's persistent terminal does not use this inline patch.
 
@@ -168,7 +170,7 @@ output encodings.
   Lexical scanning cannot distinguish routes/search data/shell command strings
   from paths. Do not rely on rewriting those values; disable `codePaths` when
   needed (the model hint now accurately states OFF).
-- **Security**: Unreleased refuses restricted calls before execution while experimentalNative is ON; this is not restored confinement. A file-tool policy denial never authorizes a shell/native retry.
+- **Security**: Experimental native execution refuses restricted calls before execution while experimentalNative is ON; this is not restored confinement. A file-tool policy denial never authorizes a shell/native retry.
 
 ## Config
 

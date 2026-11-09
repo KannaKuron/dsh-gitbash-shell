@@ -3080,6 +3080,25 @@ test('native tool: the eager slot keeps the tool face stable from agent creation
   assert.match(nativeSource, /slot\.install\(definition\(\{ jobs, slot \}\)\)/)
 })
 
+test('path tool: the pathTool switch hides only the converter (issue #45)', () => {
+  const hostSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const toolsSource = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
+  const registrationSource = readFileSync(new URL('../src/experimental-tools.js', import.meta.url), 'utf8')
+  const pathSource = readFileSync(new URL('../src/path-tool.js', import.meta.url), 'utf8')
+  // Host: default ON, volatile, independent getter, passed to the inline mount.
+  assert.match(hostSource, /pathTool: Schema\.boolean\(\)\.default\(true\)\.volatile\(\)/)
+  assert.match(hostSource, /pathTool: \(\) => \(hasConfig \? valueOf\(config\.pathTool\) !== false : true\)/)
+  assert.match(hostSource, /pathToolEnabled: \(\) => liveSettings\.pathTool\(\)/)
+  // Inline: the path module alone receives the new gate and live-refresh key.
+  assert.match(toolsSource, /pathToolEnabled: deps\.pathToolEnabled/)
+  assert.match(toolsSource, /\['pwshTool', 'experimentalNative', 'pathTool'\]/)
+  // The generic registrar watches both switches; the path module combines them.
+  assert.match(registrationSource, /watchKeys = \['experimentalNative'\]/)
+  assert.match(pathSource, /const enabled = \(\) => deps\.experimentalEnabled\?\.\(\) !== false && deps\.pathToolEnabled\?\.\(\) !== false/)
+  assert.match(pathSource, /watchKeys: \['experimentalNative', 'pathTool'\]/)
+  assert.match(pathSource, /disabled by pathTool/)
+})
+
 test('inline tools: resolveHostModule tries the HOST loader before a plain require (v0.38.1 channel, v0.39 shape)', async () => {
   const { resolveHostModule } = await import('../src/inline-tools.js')
   const officialMod = { marker: 'official' }

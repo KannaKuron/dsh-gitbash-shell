@@ -292,3 +292,69 @@ test('path-tool: the real shared buildTranslateEnv feeds the same helper (compos
   assert.throws(() => definition.execute({ msys_path: '/c/test' }), /disabled/);
   assert.equal(translated, 1);
  });
+
+test('path switch: pathTool disables only the path tool, independently of experimentalNative', () => {
+  let experimental = true, pathTool = true, translated = 0;
+  const definition = buildPathToolDefinition({
+    toolsModule: { defineTool: (options) => options },
+    experimentalEnabled: () => experimental,
+    pathToolEnabled: () => pathTool,
+    translate: () => { translated++; return 'C:/test'; },
+  });
+  pathTool = false;
+  assert.throws(() => definition.execute({ msys_path: '/c/test' }), /disabled by pathTool/);
+  assert.equal(translated, 0);
+  // The total switch still wins when both are off.
+  experimental = false;
+  pathTool = true;
+  assert.throws(() => definition.execute({ msys_path: '/c/test' }), /disabled by experimentalNative/);
+  assert.equal(translated, 0);
+  // Either switch alone keeps the path tool available only when BOTH are on.
+  experimental = true;
+  assert.equal(definition.execute({ msys_path: '/c/test' }).native_path, 'C:/test');
+  assert.equal(translated, 1);
+  pathTool = false;
+  assert.throws(() => definition.execute({ msys_path: '/c/test' }), /disabled by pathTool/);
+  assert.equal(translated, 1);
+});
+
+test('path switch: pathTool toggles only the path tool registration', () => {
+  const registered = [];
+  const effects = [];
+  let listener;
+  let experimental = true, pathTool = true;
+  const ctx = {
+    tools: {
+      schemas: () => registered.map(definition => ({ name: definition.name })),
+      register(definition) {
+        registered.push(definition);
+        return () => { registered.pop(); };
+      },
+    },
+    effect(callback) { effects.push(callback()); },
+    on(event, callback) { if (event === 'loader/volatile-update') listener = callback; },
+  };
+  const module = createPathToolModule({
+    toolsModule: { defineTool: (options) => options },
+    translateMsysPath,
+    buildEnv: () => FULL_ENV,
+    experimentalEnabled: () => experimental,
+    pathToolEnabled: () => pathTool,
+  });
+  module.apply(ctx);
+  assert.equal(registered.length, 1);
+  pathTool = false;
+  listener([['pathTool']]);
+  assert.equal(registered.length, 0, 'pathTool OFF unregisters the path tool');
+  pathTool = true;
+  listener([['pathTool']]);
+  assert.equal(registered.length, 1);
+  experimental = false;
+  listener([['experimentalNative']]);
+  assert.equal(registered.length, 0, 'the total switch still hides the path tool');
+  experimental = true;
+  listener([['experimentalNative']]);
+  assert.equal(registered.length, 1);
+  for (const dispose of effects) dispose();
+  assert.equal(registered.length, 0);
+});

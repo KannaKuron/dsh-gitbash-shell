@@ -330,3 +330,32 @@ test('client: experimental switch defaults ON and writes the authoritative field
   const hints = [...source.matchAll(/"experimental.hint": ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]));
   for (const hint of hints) for (const fact of ['gitbash_native', 'gitbash_to_native_path', 'UNCONFINED', 'danger-full-access']) assert.ok(hint.includes(fact));
 });
+
+test('client: path tool switch defaults ON and writes pathTool both ways', async () => {
+  const f = cardFixture({ expanded: true });
+  f.setStatus('ready');
+  const walk = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flat(Infinity).flatMap(walk)];
+  const buttons = () => walk(f.render().tree).filter(node => node.type === 'button' && String(node.props.onClick).includes('pathTool'));
+  let controls = buttons();
+  assert.equal(controls.length, 2);
+  // Default true (undefined counts as ON, exactly like the host reader).
+  assert.ok(controls[0].props.className.includes('gb-segActive'));
+  controls[1].props.onClick();
+  await new Promise(setImmediate);
+  assert.equal(f.writes.at(-1).key, 'pathTool');
+  assert.equal(f.writes.at(-1).value, false);
+  f.setValues({ pathTool: false });
+  controls = buttons();
+  assert.ok(controls[1].props.className.includes('gb-segActive'));
+  controls[0].props.onClick();
+  await new Promise(setImmediate);
+  assert.equal(f.writes.at(-1).key, 'pathTool');
+  assert.equal(f.writes.at(-1).value, true);
+
+  const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
+  for (const key of ['pathTool.label', 'pathTool.hint']) assert.equal(source.split('"' + key + '":').length - 1, 21);
+  const labels = [...source.matchAll(/"pathTool.label": ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]));
+  assert.equal(labels.filter(label => label === labels[1]).length, 1, 'only English uses the English placeholder');
+  const hints = [...source.matchAll(/"pathTool.hint": ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]));
+  for (const hint of hints) for (const fact of ['gitbash_native', 'gitbash_to_native_path', 'fail-closed']) assert.ok(hint.includes(fact));
+});

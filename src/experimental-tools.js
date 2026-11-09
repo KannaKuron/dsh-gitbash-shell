@@ -1,6 +1,7 @@
 import { toolNameOccupied } from './tool-ownership.js'
 /** Live registration for agent-owned companions; restrict() accepts global names only. */
-export function registerExperimentalTool(ctx, definition, enabled, { scope, log = () => {} } = {}) {
+export function registerExperimentalTool(ctx, definition, enabled, { scope, log = () => {}, watchKeys = ['experimentalNative'] } = {}) {
+  const watched = Array.isArray(watchKeys) ? watchKeys : ['experimentalNative']
   let unregister
   let closed = false
   const refresh = () => {
@@ -33,7 +34,7 @@ export function registerExperimentalTool(ctx, definition, enabled, { scope, log 
   }
   ctx.effect(() => () => { closed = true; unregister?.(); unregister = undefined })
   ctx.on('loader/volatile-update', paths => {
-    if (Array.isArray(paths) && paths.some(path => Array.isArray(path) && path[0] === 'experimentalNative')) refresh()
+    if (Array.isArray(paths) && paths.some(path => Array.isArray(path) && watched.includes(path[0]))) refresh()
   })
   refresh()
   return refresh

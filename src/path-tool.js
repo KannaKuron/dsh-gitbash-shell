@@ -197,9 +197,13 @@ const MSYS_PATH_PARAM_DESCRIPTION = 'The complete value to convert, as one singl
  *   alternative to `translate`: the raw shared helper.
  * @param {() => object|null|undefined} [deps.buildEnv] - fresh mount-facts
  *   reader (buildTranslateEnv composition); called once per tool call.
+ * @param {() => boolean} [deps.experimentalEnabled] - the total native-tool
+ *   switch (issue #26).
+ * @param {() => boolean} [deps.pathToolEnabled] - the path-tool-only switch
+ *   (issue #45); absent or true keeps the tool enabled.
  * @returns {object} a registry-ready definition.
  */
-export function buildPathToolDefinition({ toolsModule, translate, translateMsysPath, buildEnv, experimentalEnabled } = {}) {
+export function buildPathToolDefinition({ toolsModule, translate, translateMsysPath, buildEnv, experimentalEnabled, pathToolEnabled } = {}) {
   const convertValue = typeof translate === 'function'
     ? (value, env) => translate(value, env)
     : typeof translateMsysPath === 'function'
@@ -210,6 +214,7 @@ export function buildPathToolDefinition({ toolsModule, translate, translateMsysP
   }
   const execute = (args) => {
     if (experimentalEnabled?.() === false) throw new Error('gitbash_to_native_path is disabled by experimentalNative. Enable Experimental native execution / fail-closed in Settings > Plugins > dsh-gitbash-shell.')
+    if (pathToolEnabled?.() === false) throw new Error('gitbash_to_native_path is disabled by pathTool. Enable Path tool in Settings > Plugins > dsh-gitbash-shell; gitbash_native and its fail-closed gate are independent.')
     // Fresh facts per call: the same lazy discipline as every other
     // translation consumer (a settings bashPath change must be visible on
     // the next call without a re-mount).
@@ -255,19 +260,24 @@ export function buildPathToolDefinition({ toolsModule, translate, translateMsysP
  *                       mount-facts reader `() => buildTranslateEnv(...)`;
  *                       buildEnv is called once per tool call.
  *   - log:              optional (message) => void.
+ *   - experimentalEnabled / pathToolEnabled: the total and path-only gates
+ *                       (issue #26 / issue #45).
  *
  * @param {object} [deps]
  * @returns {{ inject: string[], apply: (ctx: object) => void }}
  */
 export function createPathToolModule(deps = {}) {
   const definition = buildPathToolDefinition(deps)
+  const enabled = () => deps.experimentalEnabled?.() !== false && deps.pathToolEnabled?.() !== false
   return {
     inject: ['tools'],
     apply(ctx) {
       if (typeof ctx?.tools?.register !== 'function') {
         throw new Error('path-tool: ctx.tools.register is unavailable; cannot own the tool registration')
       }
-      registerExperimentalTool(ctx, () => definition, deps.experimentalEnabled, { scope: deps.scope, log: deps.log })
+      registerExperimentalTool(ctx, () => definition, enabled, {
+        scope: deps.scope, log: deps.log, watchKeys: ['experimentalNative', 'pathTool'],
+      })
     },
   }
 }
