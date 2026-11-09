@@ -3,9 +3,11 @@
  *
  * Covers the plan matrix (pure) and the patch writer against a real `yaml`
  * document module: comment/!!js survival, atomic write, verify-by-reread,
- * idempotency and the lift path. Without a resolvable `yaml` the plan matrix
- * still runs and the writer part reports SKIP-YAML (same posture as the other
- * host-dependent tests).
+ * idempotency, and the ownership receipt (review P0) that keeps OFF from
+ * deleting rows the user hand-wrote before ever toggling the switch.
+ *
+ * Without a resolvable `yaml` the plan matrix still runs and the writer part
+ * reports SKIP-YAML (same posture as the other host-dependent tests).
  */
 
 import test from 'node:test'
@@ -19,13 +21,18 @@ import { pathToFileURL } from 'node:url'
 import {
   EXECUTOR_NATIVE_ROW,
   EXECUTOR_PTC_ROW,
-  MINIMAL_PRESET_ROW,
   adoptGlobalPtcPatch,
   currentGlobalPtcRows,
   globalPtcReport,
   planGlobalPtcAdopt,
-  readMinimalRow,
 } from '../src/global-ptc.js'
+import {
+  OWNERSHIP_FILENAME,
+  emptyReceipt,
+  globalPtcOwnership,
+  rowFingerprint,
+  validateReceipt,
+} from '../src/global-ptc-ownership.js'
 
 /** Resolve a real eemeli `yaml` from the machine (host install preferred). */
 async function realYaml() {
@@ -43,20 +50,33 @@ async function realYaml() {
 const OUR = {
   native: { disabled: true },
   ptc: { disabled: false },
-  minimal: { complete: false },
 }
+
+/** The reviewer's P0 reproducer: a user hand-wrote the same rows. */
+const USER_HANDWRITTEN = `- id: tool-executor-native
+  disabled: true
+- id: tool-executor-ptc
+  disabled: false
+- id: preset-minimal
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    plugins:
+      - id: persona
+        name: '@deepseek-ai/dsh-persona'
+        config:
+          complete: false
+`
 
 test('plan: the switch being off writes nothing', () => {
   const plan = planGlobalPtcAdopt({ enabled: false, rows: {} })
   assert.equal(plan.action, 'skip-disabled')
 })
 
-test('plan: a fresh patch adopts all three rows', () => {
+test('plan: a fresh patch adopts both executor rows', () => {
   const plan = planGlobalPtcAdopt({ enabled: true, rows: {} })
   assert.equal(plan.action, 'adopt')
   assert.equal(plan.writeNative, true)
   assert.equal(plan.writePtc, true)
-  assert.equal(plan.writeMinimal, true)
 })
 
 test('plan: our exact shape is unchanged', () => {
@@ -76,42 +96,19 @@ test('plan: an explicitly disabled ptc row stands down', () => {
   assert.match(plan.reason, /disables the PTC root executor/)
 })
 
-test('plan: a user-written minimal row with complete:true stands down', () => {
-  const plan = planGlobalPtcAdopt({ enabled: true, rows: { ...OUR, minimal: { complete: true } } })
-  assert.equal(plan.action, 'kept-user-choice')
-  assert.match(plan.reason, /preset-minimal/)
-})
-
 test('plan: a non-literal row is never replaced by a literal', () => {
-  for (const rows of [
-    { ...OUR, native: { opaque: true } },
-    { ...OUR, ptc: { opaque: true } },
-    { ...OUR, minimal: { opaque: true } },
-  ]) {
+  for (const rows of [{ ...OUR, native: { opaque: true } }, { ...OUR, ptc: { opaque: true } }]) {
     const plan = planGlobalPtcAdopt({ enabled: true, rows })
     assert.equal(plan.action, 'kept-user-choice')
     assert.match(plan.reason, /non-literal/)
   }
 })
 
-test('plan: a partial patch writes only the missing rows', () => {
-  const plan = planGlobalPtcAdopt({ enabled: true, rows: { native: { disabled: true }, minimal: { complete: false } } })
+test('plan: a partial patch writes only the missing row', () => {
+  const plan = planGlobalPtcAdopt({ enabled: true, rows: { native: { disabled: true } } })
   assert.equal(plan.action, 'adopt')
   assert.equal(plan.writeNative, false)
   assert.equal(plan.writePtc, true)
-  assert.equal(plan.writeMinimal, false)
-})
-
-test('readMinimalRow: absent complete reads as the official default (true)', () => {
-  assert.deepEqual(readMinimalRow({ config: { plugins: [{ id: 'persona', config: {} }] } }), { complete: true })
-})
-
-test('readMinimalRow: a plugin list without persona is opaque', () => {
-  assert.deepEqual(readMinimalRow({ config: { plugins: [{ id: 'tool-fs' }] } }), { opaque: true })
-})
-
-test('readMinimalRow: a non-list plugin shape is opaque', () => {
-  assert.deepEqual(readMinimalRow({ config: {} }), { opaque: true })
 })
 
 test('report: detail wins over reason', () => {
@@ -119,7 +116,25 @@ test('report: detail wins over reason', () => {
   assert.match(globalPtcReport({ status: 'skip-disabled', reason: 'off' }), /off/)
 })
 
-// ── writer ────────────────────────────────────────────────────────────────
+// ── receipt ──────────────────────────────────────────────────────────────
+
+test('fingerprint: key order does not matter, content does', () => {
+  assert.equal(rowFingerprint({ a: 1, b: { c: 2, d: 3 } }), rowFingerprint({ b: { d: 3, c: 2 }, a: 1 }))
+  assert.notEqual(rowFingerprint({ a: 1 }), rowFingerprint({ a: 2 }))
+  assert.notEqual(rowFingerprint({ a: 1 }), rowFingerprint({ a: 1, extra: true }))
+})
+
+test('receipt: an empty receipt owns nothing', () => {
+  assert.deepEqual(emptyReceipt(), { version: 1, rows: {} })
+})
+
+test('receipt: malformed receipts are refused, never guessed', () => {
+  assert.throws(() => validateReceipt({ version: 2, rows: {} }), /refusing to guess/)
+  assert.throws(() => validateReceipt({ version: 1, rows: { 'tool-executor-native': 'nope' } }), /malformed fingerprint/)
+  assert.throws(() => validateReceipt({ version: 1, rows: { 'some-other-row': 'a'.repeat(64) } }), /unexpected owned row/)
+})
+
+// ── writer ──────────────────────────────────────────────────────────────
 
 async function withPatch(t, initial) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-global-ptc-'))
@@ -129,14 +144,23 @@ async function withPatch(t, initial) {
   const yamlModule = await realYaml()
   if (!yamlModule) return { skip: true }
   const io = {
-    readFile: async () => readFileSync(file, 'utf8'),
-    writeFileAtomic: async (_file, data) => writeFileSync(file, data),
+    readFile: async (target) => readFileSync(target, 'utf8'),
+    writeFileAtomic: async (target, data) => writeFileSync(target, data),
     yaml: async () => yamlModule,
   }
-  return { io, file, yamlModule, read: () => readFileSync(file, 'utf8') }
+  return {
+    io,
+    dir,
+    file,
+    yamlModule,
+    read: () => readFileSync(file, 'utf8'),
+    receipt: () => {
+      try { return JSON.parse(readFileSync(join(dir, OWNERSHIP_FILENAME), 'utf8')) } catch { return undefined }
+    },
+  }
 }
 
-test('writer: adopts onto a patch and verifies by reread', async (t) => {
+test('writer: adopts onto a patch and records ownership', async (t) => {
   const h = await withPatch(t, '# my patch\n[]\n')
   if (h.skip) return t.skip('no yaml module available')
   const result = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
@@ -144,8 +168,8 @@ test('writer: adopts onto a patch and verifies by reread', async (t) => {
   const text = h.read()
   assert.match(text, /tool-executor-native/)
   assert.match(text, /tool-executor-ptc/)
-  assert.match(text, /preset-minimal/)
-  assert.match(text, /complete: false/)
+  const receipt = h.receipt()
+  assert.deepEqual(Object.keys(receipt.rows).sort(), [EXECUTOR_NATIVE_ROW, EXECUTOR_PTC_ROW].sort())
 })
 
 test('writer: a second run is idempotent', async (t) => {
@@ -158,15 +182,6 @@ test('writer: a second run is idempotent', async (t) => {
   assert.equal(h.read(), first)
 })
 
-test('writer: comments survive the edit', async (t) => {
-  const h = await withPatch(t, '# keep me\nextends: []\nrows:\n  - id: x\n# trailing\n')
-  if (h.skip) return t.skip('no yaml module available')
-  // A patch shaped as a mapping is refused, so nothing is written.
-  const result = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
-  assert.equal(result.status, 'skip-shape')
-  assert.equal(h.read(), '# keep me\nextends: []\nrows:\n  - id: x\n# trailing\n')
-})
-
 test('writer: a broken YAML document is refused', async (t) => {
   const h = await withPatch(t, '- id: [unclosed\n')
   if (h.skip) return t.skip('no yaml module available')
@@ -174,7 +189,7 @@ test('writer: a broken YAML document is refused', async (t) => {
   assert.ok(['skip-parse', 'skip-shape'].includes(result.status), result.status)
 })
 
-test('writer: lift removes our rows only', async (t) => {
+test('writer: lift removes only rows this switch wrote', async (t) => {
   const h = await withPatch(t, '- id: keep-me\n  disabled: true\n')
   if (h.skip) return t.skip('no yaml module available')
   await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
@@ -184,21 +199,28 @@ test('writer: lift removes our rows only', async (t) => {
   const text = h.read()
   assert.doesNotMatch(text, /tool-executor-native/)
   assert.doesNotMatch(text, /tool-executor-ptc/)
-  assert.doesNotMatch(text, /preset-minimal/)
   assert.match(text, /keep-me/)
 })
 
-test('writer: lift leaves a user row that differs from ours', async (t) => {
+test('writer: P0 — OFF never deletes a user-handwritten same-value row', async (t) => {
+  const h = await withPatch(t, USER_HANDWRITTEN)
+  if (h.skip) return t.skip('no yaml module available')
+  const before = h.read()
+  const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
+  assert.equal(lifted.status, 'unchanged', 'a patch this switch never wrote has nothing to lift')
+  assert.equal(h.read(), before, 'the user file must be byte-identical')
+})
+
+test('writer: P0 — OFF leaves a row the user edited after the switch wrote it', async (t) => {
   const h = await withPatch(t, '[]\n')
   if (h.skip) return t.skip('no yaml module available')
   await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
-  // The user flips the native row back on; lift must now leave it alone.
+  // The user then flips the native row back on (a different value).
   const edited = h.read().replace(`- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: true`, `- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: false`)
   writeFileSync(h.file, edited)
   const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
-  assert.equal(lifted.status, 'lifted')
-  const text = h.read()
-  assert.match(text, new RegExp(`${EXECUTOR_NATIVE_ROW}\\n  disabled: false`))
+  assert.equal(lifted.status, 'kept-user-choice')
+  assert.match(h.read(), new RegExp(`${EXECUTOR_NATIVE_ROW}\\n  disabled: false`))
 })
 
 test('writer: lift on a patch without our rows changes nothing', async (t) => {
@@ -208,4 +230,23 @@ test('writer: lift on a patch without our rows changes nothing', async (t) => {
   const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
   assert.equal(lifted.status, 'unchanged')
   assert.equal(h.read(), before)
+})
+
+test('writer: adopt then lift round-trips to the original bytes', async (t) => {
+  const h = await withPatch(t, '- id: keep-me\n  disabled: true\n')
+  if (h.skip) return t.skip('no yaml module available')
+  const before = h.read()
+  await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
+  await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
+  assert.equal(h.read(), before)
+  assert.deepEqual(h.receipt().rows, {})
+})
+
+test('ownership: a receipt store reads back what it wrote', async (t) => {
+  const h = await withPatch(t, '[]\n')
+  if (h.skip) return t.skip('no yaml module available')
+  const store = globalPtcOwnership(h.io, h.file)
+  assert.deepEqual(await store.read(), { version: 1, rows: {} })
+  await store.write({ version: 1, rows: { [EXECUTOR_NATIVE_ROW]: 'a'.repeat(64) } })
+  assert.deepEqual((await store.read()).rows, { [EXECUTOR_NATIVE_ROW]: 'a'.repeat(64) })
 })

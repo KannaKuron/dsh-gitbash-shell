@@ -547,12 +547,22 @@ export function mountInlineTools(ctx, deps) {
     // a face with NEITHER tool carries no verdict. Five tries at 250ms, then
     // give up quietly — a slower composition simply gets no inline patch.
     if (attempt < 5 && !names.includes('bash') && !names.includes('pwsh')) {
-      const timer = setTimeout(() => { try { reconcile(agent, { attempt: attempt + 1 }) } catch { /* never crash on a timer */ } }, 250)
-      timer.unref?.()
-      const state = tracked.get(agent)
-      if (state) state.timer = timer
-      else tracked.set(agent, { ...newState(), timer })
-      return
+      // Hand the retry chain back to the caller. `agent/created` is SERIAL and
+      // awaits whatever the listener returns, so a bare `return` admitted the
+      // agent against a face that was not wired yet (review P2). Resolve only
+      // after the retried reconcile settles, so the chain is awaited end to end.
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          Promise.resolve()
+            .then(() => reconcile(agent, { attempt: attempt + 1 }))
+            .catch(() => { /* never crash on a timer */ })
+            .finally(() => resolve())
+        }, 250)
+        timer.unref?.()
+        const state = tracked.get(agent)
+        if (state) state.timer = timer
+        else tracked.set(agent, { ...newState(), timer })
+      })
     }
     let state = tracked.get(agent)
     if (state?.timer) { clearTimeout(state.timer); state.timer = undefined }
