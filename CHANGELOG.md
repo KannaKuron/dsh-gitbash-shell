@@ -3,16 +3,18 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
-## Unreleased — 2026-11-09
+## v0.52.0 — 2026-11-09
 
-**类型**: feat / fix / docs（全局 PTC SDK 开关与配置所有权；版本号由维护者发版时统一 bump）
+**类型**: feat / fix / docs（全局 PTC SDK 开关与配置所有权；关闭提示与卸载边界）
 
 - **新增 `globalPtcSdk`（默认关）**：设置卡控制 profile root executor，只写 `tool-executor-native: disabled true` 与 `tool-executor-ptc: disabled false`；未显式挂 scoped native executor 的 agent 经 `run_code` SDK 使用工具，SDK 含 Git Bash、无独立 pwsh。写入 profile patch，重启 DSH 后生效。
 - **minimal 明确不支持**：不复述 `preset-minimal`；其 `persona.complete: true` 会抹掉 SDK。需要 minimal + PTC 的部署自行维护 preset 覆盖。README / README_EN / AGENTS 与 21 门设置卡文案同步说明。
 - **ownership receipt 防数据丢失**：patch 旁 `.gitbash-global-ptc-ownership.json` 只登记实际写入的行与「规范化数据 + YAML 注释」指纹。用户手写同值行不认领；后续改值、加配置或只加注释都视为用户编辑并保留。receipt 损坏 fail-closed。
 - **组合安全的逐行恢复与卸载还原**：OFF / 禁用 / 卸载按 receipt 逐行 lift；splice 前按 base 默认与保留行模拟，必须恰好一个 enabled executor，否则保留对应行与 receipt 并返回 `kept-user-choice`。一行被改不阻断另一行「组合安全」的撤回；部分恢复返回 `lifted-partial` 并指出需人工处理的行。dispose 等正在进行的 adopt 后，以同一把 profile 锁执行 lift，失败只记录日志。
 - **PTC 首步 readiness**：`agent/created` 等待 bash 挂载；空 face 的有界重试也纳入等待。每次重试有独立 record；superseding reconcile 清 timer 后让旧 created Promise 等待本次 reconcile / Bash mount，dispose 才直接 settle；正常 firing 先按 identity 摘除当前 record，避免提前 resolve 下一 attempt。
-- **验证**：Windows / Node 24 完整 `npm test` **410 pass / 0 fail / 0 skip**；空 face 正常重试、foreign bash 取消、替代 reconcile 挂 Bash、agent dispose 取消四例，以及 comment-only / missing-sibling 的双向 executor 组合回归已进 CI。真实 Desktop GUI、真实模型及卸载时的整实例 patch 回滚仍未验证。
+- **关闭后的可见提示**：设置卡在 `globalPtcSdk` 关闭时显示 21 语言 `gptc.manualHint`，说明若 PTC 仍生效，profile patch 的两个 executor 行可能已被修改并保留；应检查这两行或宿主日志中的 `kept-user-choice` / `lifted-partial`。文档明确这不是故障，而是所有权保护的结果。
+- **CLI 停服卸载的盲区**：dispose 只在宿主运行且插件 fiber 被销毁时执行；先停宿主再从命令行卸载/禁用不会加载插件，executor 行会留在 patch。README / README_EN / AGENTS 写明卸载前先关 `globalPtcSdk`（非 volatile，会重挂并归还），确认日志后再停服，或按 receipt 手工删除两行。
+- **验证**：PR 作者在 Windows / Node 24 报告完整 `npm test` **410 pass / 0 fail / 0 skip**；本机 macOS 复核 **410 项 / 409 pass / 1 platform skip / 0 fail**（skip 为仅 Windows 可执行的真机路径用例），`node --check` 与 `git diff --check` 通过。空 face 正常重试、foreign bash 取消、替代 reconcile 挂 Bash、agent dispose 取消四例，以及 comment-only / missing-sibling 的双向 executor 组合回归已进 CI。真实 Desktop GUI、真实模型及卸载时的整实例 patch 回滚仍未验证。
 - **链接**：[PR #44](https://github.com/KannaKuron/dsh-gitbash-shell/pull/44)
 
 ## v0.51.0 — 2026-11-07

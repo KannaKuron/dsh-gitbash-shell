@@ -323,6 +323,11 @@ this plugin's Git Bash and no separate `pwsh`. **This writes the profile patch a
 - **Failure boundaries**: a malformed receipt fails closed. Patch writes and rereads use the host atomic writer and
   the same profile lock; a verification failure restores the previous patch bytes. Disposal logs lift failures without
   blocking host shutdown.
+- **Turn the switch off before uninstalling**: `dispose` runs only while the host is up and the plugin fiber is
+  destroyed. Stopping the host first and then removing or disabling the plugin from the CLI never loads the plugin,
+  so the written executor rows stay in the patch. Turn `globalPtcSdk` off in the settings card first (the field is
+  non-volatile, so the plugin remounts and lifts), confirm the log, and only then stop the host; if the host is
+  already stopped, remove the two rows manually using the receipt.
 
 ## POSIX path dialect (introduced in v0.7.0, gated by the `posixPaths` switch)
 

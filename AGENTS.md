@@ -662,6 +662,9 @@
        会造成双 executor / 无 executor 时对应行与 receipt 保留并返回 `kept-user-choice`。无 receipt、
        指纹不符、receipt 损坏均不得猜测删除。卸载 dispose 先等正在进行的 adopt,再用同一把 profile 文件锁
        lift,失败只 log。
+     - **CLI 停服卸载是 dispose 的盲区**:先停宿主再从命令行卸载/禁用插件时,插件代码不会加载,上面的 lift
+       不会执行,行会留在 patch。设置卡在 OFF 时必须给可见提示(21 语言 `gptc.manualHint`);文档写明先关开关
+       (非 volatile,重挂即归还)或按 receipt 手工删两行。**不要**声称 dispose 能覆盖这条路径。
      - 回归必须覆盖:用户手写同值、后续改值、只加注释、部分 lift、adopt→lift 字节回滚、receipt 生命周期、
        禁用/卸载接线。改 `agent/created` 的 PTC readiness 时另跑 `tests/global-ptc-created.mjs` 的空 face、
        取消与 dispose 用例;supersede 清 timer 后旧 Promise 必须链到替代 reconcile / Bash mount,dispose 才可

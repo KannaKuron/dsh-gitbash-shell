@@ -328,22 +328,27 @@ test('wiring: disable/uninstall awaits adoption and lifts under the same lock', 
   assert.match(source, /atomic\.withFileLock\(join\(dirname\(patchPath\), 'package\.json'\), update\)/)
 })
 
-test('settings: 21 real locale entries and the minimal limitation are present', () => {
+test('settings: 21 real locale entries, the minimal limitation, and the OFF hint are present', () => {
   const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
   const labels = [...source.matchAll(/^\t{3}"gptc\.label": "([^"]+)"/gm)].map((match) => match[1])
   const hints = [...source.matchAll(/^\t{3}"gptc\.hint": "([^"]+)"/gm)].map((match) => match[1])
+  const manualHints = [...source.matchAll(/^\t{3}"gptc\.manualHint": "([^"]+)"/gm)].map((match) => match[1])
   assert.equal(labels.length, 21)
   assert.equal(hints.length, 21)
+  assert.equal(manualHints.length, 21)
   // zh-HK / zh-MO / zh-TW intentionally share Traditional Chinese; every
   // other locale has its own text (no 18 copies of the English fallback).
   assert.equal(new Set(labels).size, 19)
   assert.equal(new Set(hints).size, 19)
+  assert.equal(new Set(manualHints).size, 19)
   for (const hint of hints) assert.ok(hint.includes('preset-minimal'), 'every hint names the unsupported preset')
+  for (const hint of manualHints) assert.ok(hint.includes('kept-user-choice'), 'every OFF hint names the preserved-row outcome')
   assert.match(source, /writeField\("globalPtcSdk", true\)/)
   assert.match(source, /t\("gptc\.hint"\)/)
+  assert.ok(source.includes('!gptcOn ? E("p", { className: "gb-hint" }, t("gptc.manualHint")) : null,'), 'the OFF hint renders only when the switch is off')
 })
 
-test('docs: minimal and disposal limits are explicit', () => {
+test('docs: minimal, disposal limits, and the CLI-uninstall blind spot are explicit', () => {
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
   const english = readFileSync(new URL('../README_EN.md', import.meta.url), 'utf8')
   const agents = readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8')
@@ -352,4 +357,7 @@ test('docs: minimal and disposal limits are explicit', () => {
   assert.match(agents, /绝不复述 `preset-minimal`/)
   assert.match(readme, /lifted-partial/)
   assert.match(agents, /comment\/commentBefore/)
+  assert.match(readme, /卸载前先关开关/)
+  assert.match(english, /Turn the switch off before uninstalling/)
+  assert.match(agents, /CLI 停服卸载是 dispose 的盲区/)
 })

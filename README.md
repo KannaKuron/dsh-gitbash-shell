@@ -378,6 +378,9 @@ scoped native executor 的 agent 通过 `run_code` SDK 调用工具。SDK 内含
   对应行及其 receipt 都保留,日志返回 `kept-user-choice` 并明确要求手工处理。
 - **失败边界**:receipt 损坏时拒绝猜测所有权;写入与回读使用宿主原子写和同一把 profile 文件锁,
   校验失败回滚原 patch 字节。卸载恢复只记录失败日志,不阻断宿主关闭。
+- **卸载前先关开关**:`dispose` 只在宿主运行、插件 fiber 被销毁时执行。若先停宿主再从命令行卸载/禁用插件,
+  插件代码不会加载,已写入的 executor 行会留在 patch。请在设置卡关闭 `globalPtcSdk`(该字段非 volatile,
+  会重挂插件并执行归还),确认日志后再停服;已停服时按 receipt 手工删除两行。
 
 ### run_code 后端开关:`pythonRuntime`(默认关,v0.26.0)
 
