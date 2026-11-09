@@ -636,6 +636,14 @@ export function mountInlineTools(ctx, deps) {
         }
       }
     }
+    // The own bash mount is ASYNCHRONOUS (private executor import, class-plugin
+    // mount in the agent scope, registry read-back). Hand the in-flight task
+    // back so the SERIAL `agent/created` emission can WAIT for it: the global
+    // PTC executor resolves its SDK right after creation, and a listener that
+    // returned nothing let that first admission see a face without bash (step
+    // 1 missing, step 2 present). When a scope is already owned (or no bash is
+    // wanted) there is nothing to wait for.
+    return state.pending
   }
 
   const teardown = async (agent) => {
@@ -666,7 +674,22 @@ export function mountInlineTools(ctx, deps) {
   }, 'dsh-gitbash-shell: inline tool patching')
 
   try {
-    ctx.on('agent/created', ({ agent } = {}) => { try { reconcile(agent) } catch { /* never break agent creation */ } })
+    // RETURN the reconcile promise. DSH announces a new agent through the
+    // SERIAL `agent/created` event (`@deepseek-ai/dsh-agent` announce() awaits
+    // `ctx.serial(carrier, 'agent/created', …)`), so the returned promise makes
+    // `agents.create()` wait for this agent's own bash registration. Without
+    // it the global PTC executor resolved its SDK on a face that did not carry
+    // bash yet (step 1 missing, step 2 present).
+    ctx.on('agent/created', ({ agent } = {}) => {
+      try {
+        const pending = reconcile(agent)
+        // Wait for the registration, but never turn a registration failure
+        // into a failed `agents.create()`: provideBash already logs its own
+        // failures, and the host's serial emission rejects the whole
+        // announcement when a listener rejects.
+        return pending && typeof pending.then === 'function' ? pending.catch(() => {}) : pending
+      } catch { /* never break agent creation */ }
+    })
     ctx.on('agent/disposed', ({ agent } = {}) => teardown(agent).catch((error) => {
       log(`agent bash tool cleanup failed: ${error?.message ?? error}`)
     }))
