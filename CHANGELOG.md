@@ -12,6 +12,7 @@
 - **设置卡**：实验原生执行行下方新增「路径工具」行，21 语言 `pathTool.label` / `pathTool.hint`，切换即时写 `pathTool`。文案写明工具面可见性在重启 DSH 后更新，以及 `gitbash_native` / fail-closed 不受影响。
 - **不采用按 run_code 自动隐藏**：工具面不随检测结果漂移；需要精简时由用户显式关闭，且默认 true 保持向后兼容。
 - **测试**：path-tool 执行门禁与注册切换 2 例、runtime-preview 独立开关 1 例、client-regressions 设置卡双向写入与 21 词典 1 例、smoke 静态接线 1 例。完整 `npm test` **414 项 / 413 pass / 0 fail / 1 platform skip**（约 1.7s）；隔离 dsh 0.2.2-rc.1 的 runtime-preview 新用例通过（基线与改动后同为 8 个既有失败，非本次回归）。
+- **隔离 Web 验证**：隔离 dsh 0.2.2-rc.1 Web 实例实测设置卡：关闭「路径工具」后行状态变「已关闭」、`profiles/web/cordis.patch.yml` 写入 `pathTool: false`，页面重载后仍保持关闭；恢复后写回 `pathTool: true`，全程无 pageerror。Windows 真机工具面（工具隐藏与注销）仍未覆盖，由 CI 的 Windows 行与组合门控兜底。
 - **链接**：[issue #45](https://github.com/KannaKuron/dsh-gitbash-shell/issues/45)
 
 ## v0.52.0 — 2026-11-09
