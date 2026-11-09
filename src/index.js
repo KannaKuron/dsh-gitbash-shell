@@ -502,20 +502,19 @@ export const Config = Schema === null ? undefined : Schema.object({
    */
   fastctxTools: Schema.boolean().default(false).volatile(),
   /**
-   * Run every agent through the GLOBAL PTC run_code SDK instead of a native
-   * per-tool face (default OFF, and deliberately NOT volatile).
+   * Run supported agents through the GLOBAL PTC run_code SDK instead of a
+   * native per-tool face (default OFF, and deliberately NOT volatile).
    *
    * The root executor is a profile-patch decision read at boot, so this is a
    * patch write and not a live toggle: an edit remounts the plugin, which is
-   * the right weight for a change that lands on the next start. OFF writes
-   * nothing and never removes rows the user added.
+   * the right weight for a change that lands on the next start. OFF never
+   * adopts new rows; OFF/disable/uninstall lifts only receipted rows whose
+   * data AND comments are still exactly what this switch wrote.
    *
-   * What it writes (see src/global-ptc.js): `tool-executor-native` off,
-   * `tool-executor-ptc` on, and a `preset-minimal` restatement whose
-   * `persona.complete: false` keeps the SDK from being erased at assembly.
-   * Every write goes through the same guarded atomic writer the persistent
-   * terminal adoption uses, and stands down on any row the user shaped
-   * differently.
+   * What it writes (see src/global-ptc.js): `tool-executor-native` off and
+   * `tool-executor-ptc` on. preset-minimal is deliberately NOT restated: its
+   * complete persona erases the SDK, so minimal is outside this switch's
+   * supported presets and needs a deployment-owned preset override instead.
    */
   globalPtcSdk: Schema.boolean().default(false),
 })
@@ -1873,36 +1872,54 @@ export async function apply(ctx, config = {}) {
   // same atomic write, verify-by-reread and rollback. See src/global-ptc.js
   // for the full rationale and the stand-down matrix.
   //
-  // OFF is not a no-op: it LIFTS the rows this switch wrote (matched by exact
-  // value), so turning the switch back off restores the official native shape
-  // without ever deleting a row the user shaped differently.
+  // OFF is not a no-op: it LIFTS only rows named by the ownership receipt AND
+  // still carrying the recorded data+comment fingerprint. Disable/uninstall
+  // runs the same lift after the in-flight adoption settles, so an enabled
+  // switch cannot strand a PTC root after its settings UI has disappeared.
   try {
     ctx.inject(['profileContext'], (ptcPatchCtx) => {
-      const run = async () => {
-        const patchPath = ptcPatchCtx.get('profileContext')?.patchPath
-        if (typeof patchPath !== 'string' || patchPath.trim() === '') {
-          console.log(`${TAG} global PTC SDK: no profile patch path — nothing to write`)
-          return
-        }
-        const atomic = await resolveHostModule(ctx, '@deepseek-ai/dsh-atomic-write')
-        if (typeof atomic?.withFileLock !== 'function' || typeof atomic?.writeFileAtomic !== 'function') {
-          throw new Error('current host atomic profile-edit capability unavailable')
-        }
-        const enabled = valueOf(config.globalPtcSdk) === true
+      const enabled = valueOf(config.globalPtcSdk) === true
+      let patchPath
+      let atomic
+      const write = (lift) => {
         const update = () => adoptGlobalPtcPatch(
           {
             readFile: (file) => readFileSync(file, 'utf8'),
             writeFileAtomic: (file, data) => atomic.writeFileAtomic(file, data, { mode: 0o600 }),
             yaml: () => resolveHostModule(ctx, 'yaml'),
           },
-          { patchPath, enabled, lift: !enabled },
+          { patchPath, enabled: !lift, lift },
         )
         // Same lock target as the terminal adoption: one serialisation point
-        // for every profile-patch writer in this plugin.
-        const result = await atomic.withFileLock(join(dirname(patchPath), 'package.json'), update)
+        // for every profile-patch writer in this plugin, including disposal.
+        return atomic.withFileLock(join(dirname(patchPath), 'package.json'), update)
+      }
+      const run = async () => {
+        patchPath = ptcPatchCtx.get('profileContext')?.patchPath
+        if (typeof patchPath !== 'string' || patchPath.trim() === '') {
+          console.log(`${TAG} global PTC SDK: no profile patch path — nothing to write`)
+          return
+        }
+        atomic = await resolveHostModule(ctx, '@deepseek-ai/dsh-atomic-write')
+        if (typeof atomic?.withFileLock !== 'function' || typeof atomic?.writeFileAtomic !== 'function') {
+          throw new Error('current host atomic profile-edit capability unavailable')
+        }
+        const result = await write(!enabled)
         console.log(`${TAG} ${globalPtcReport(result)}`)
       }
-      run().catch((error) => console.log(`${TAG} global PTC SDK wiring failed: ${error?.message ?? error}`))
+      const pending = run().catch((error) => console.log(`${TAG} global PTC SDK wiring failed: ${error?.message ?? error}`))
+      ptcPatchCtx.effect(() => async () => {
+        await pending
+        if (!enabled || !patchPath || !atomic) return
+        try {
+          const result = await write(true)
+          console.log(`${TAG} disable/uninstall: ${globalPtcReport(result)}`)
+        } catch (error) {
+          // Disposal must not fail the host shutdown. The log names the manual
+          // follow-up because the patch is persistent by design.
+          console.log(`${TAG} global PTC SDK disable/uninstall lift failed: ${error?.message ?? error}; review the two executor rows in ${patchPath}`)
+        }
+      }, 'dsh-gitbash-shell: global PTC SDK restore')
     })
   } catch (error) {
     console.log(`${TAG} global PTC SDK wiring failed: ${error?.message ?? error}`)

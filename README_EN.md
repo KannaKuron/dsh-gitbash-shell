@@ -300,6 +300,30 @@ there is no second copy and no sync logic.
 **Versions**: the switch itself ships in **this plugin ≥ 0.25.0**; the peer's cooperation
 capability ships in **dsh-ptc-cordis-preset ≥ 0.14.0**.
 
+### Global PTC SDK: `globalPtcSdk` (off by default)
+
+The settings card's **Global PTC SDK** row controls the profile's root executor. OFF adopts no overrides.
+ON writes `tool-executor-native: { disabled: true }` and `tool-executor-ptc: { disabled: false }`, so agents
+without an explicitly scoped native executor reach their tools through the `run_code` SDK. The SDK carries
+this plugin's Git Bash and no separate `pwsh`. **This writes the profile patch and takes effect after a DSH restart.**
+
+- **`preset-minimal` is not covered**: its `persona.complete: true` erases the PTC SDK during prompt assembly,
+  leaving `run_code` without a usable SDK. This switch does not support minimal and deliberately does not restate
+  that preset (which would freeze the official rows). Own a deployment-specific preset override for minimal,
+  or use standard/ptc/cordis instead.
+- **Only unchanged rows written by this switch are lifted**: `.gitbash-global-ptc-ownership.json` beside the patch
+  records the written row ids and their data-plus-YAML-comment fingerprints. Turning the switch off, disabling,
+  or uninstalling the plugin lifts only receipted rows whose fingerprints still match. Handwritten same-value rows,
+  later value/config edits, and added comments are preserved.
+- **Per-row recovery is composition-safe**: before splicing, the writer simulates the base defaults (native ON, PTC OFF)
+  plus every retained row and requires exactly one enabled executor. An untouched sibling is lifted only when that
+  invariant still holds; partial recovery logs `lifted-partial`. If a removal would leave two executors or none
+  (including an opaque `!!js` row), the row and its receipt stay in place and the log says `kept-user-choice`
+  with manual review required.
+- **Failure boundaries**: a malformed receipt fails closed. Patch writes and rereads use the host atomic writer and
+  the same profile lock; a verification failure restores the previous patch bytes. Disposal logs lift failures without
+  blocking host shutdown.
+
 ## POSIX path dialect (introduced in v0.7.0, gated by the `posixPaths` switch)
 
 While commands default to this plugin's own Git Bash tool on Windows, the

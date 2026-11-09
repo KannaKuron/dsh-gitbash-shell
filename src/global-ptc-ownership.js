@@ -39,14 +39,48 @@ export const OWNED_ROWS = ['tool-executor-native', 'tool-executor-ptc']
  * Canonical fingerprint of one written row.
  *
  * Key order is normalised (sorted, recursively) so a re-serialisation of the
- * SAME row never looks like a user edit, while any added/removed/changed key —
- * including a `config` block or a comment-bearing sibling — does.
+ * SAME row never looks like a user edit, while any added/removed/changed key
+ * does. YAML comments are included separately: `toJSON()` drops them, but a
+ * comment is user content and must make the row ineligible for lifting too.
  *
  * @param {unknown} row - plain data (not a yaml node).
+ * @param {string[]} [comments] - ordered comment tokens from the yaml node.
  * @returns {string} sha256 hex
  */
-export function rowFingerprint(row) {
-  return createHash('sha256').update(stableStringify(row)).digest('hex')
+export function rowFingerprint(row, comments = []) {
+  return createHash('sha256').update(stableStringify({ row, comments })).digest('hex')
+}
+
+/**
+ * Fingerprint a yaml AST row, including every comment/commentBefore attached
+ * to the row, its pairs, keys and values. Formatting-only re-serialisation is
+ * ignored; adding, moving or editing a comment is not.
+ * @param {unknown} node - a yaml AST node (plain data is accepted too).
+ * @returns {string} sha256 hex
+ */
+export function yamlRowFingerprint(node) {
+  let plain = node
+  if (node && typeof node === 'object' && typeof node.toJSON === 'function') {
+    try { plain = node.toJSON() } catch { plain = undefined }
+  }
+  return rowFingerprint(plain, collectYamlComments(node))
+}
+
+/** Collect comment tokens without walking yaml's cyclic internal metadata. */
+function collectYamlComments(node) {
+  const comments = []
+  const seen = new WeakSet()
+  const visit = (value) => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return
+    seen.add(value)
+    if (typeof value.commentBefore === 'string') comments.push(`before:${value.commentBefore}`)
+    if (typeof value.comment === 'string') comments.push(`after:${value.comment}`)
+    if (Array.isArray(value.items)) for (const item of value.items) visit(item)
+    visit(value.key)
+    visit(value.value)
+  }
+  visit(node)
+  return comments
 }
 
 /** Deterministic JSON with sorted object keys. */

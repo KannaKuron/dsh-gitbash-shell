@@ -196,7 +196,33 @@ export function mountInlineTools(ctx, deps) {
   const controller = new AbortController()
   let closed = false
   const isLive = (agent, state) => !closed && tracked.get(agent) === state && !state.controller.signal.aborted
-  const newState = () => ({ timer: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, native: undefined, nativeFailed: false, controller: new AbortController(), toolFace: undefined })
+  const newState = () => ({ retry: undefined, scope: undefined, denyPwsh: undefined, denyOpsShell: undefined, pending: undefined, native: undefined, nativeFailed: false, controller: new AbortController(), toolFace: undefined })
+  // Every retry attempt owns one record. Detaching stops the timer without
+  // resolving; settling is separate so a REPLACEMENT reconcile can make the
+  // old created promise await its own Bash mount instead of resolving early.
+  const detachRetry = (state, retry) => {
+    if (!retry || retry.detached) return retry
+    retry.detached = true
+    if (retry.timer) clearTimeout(retry.timer)
+    retry.timer = undefined
+    if (state.retry === retry) state.retry = undefined
+    return retry
+  }
+  const settleRetry = (state, retry) => {
+    if (!retry || retry.settled) return
+    retry.settled = true
+    detachRetry(state, retry)
+    retry.resolve()
+  }
+  const cancelRetry = (state) => {
+    if (state?.retry) settleRetry(state, state.retry)
+  }
+  const followRetry = (state, retry, result) => {
+    if (!retry) return result
+    return Promise.resolve(result)
+      .catch(() => { /* registration failures never fail agent creation */ })
+      .finally(() => settleRetry(state, retry))
+  }
   // toolFace freezes the switch values this agent was created under, so a live
   // settings edit cannot reshape a running face.
   const experimentalEnabled = () => deps.experimentalEnabled?.() !== false
@@ -539,7 +565,12 @@ export function mountInlineTools(ctx, deps) {
     // Undo ONLY our mask before observing the face. schemas() filters a
     // restricted-away pwsh, so it cannot tell us what an ON flip must restore.
     const previous = tracked.get(agent)
-    if (previous?.timer) { clearTimeout(previous.timer); previous.timer = undefined }
+    // A new reconcile supersedes a pending timer, but the OLD created promise
+    // must follow THIS reconcile's result (including an async bash mount).
+    // Only dispose may settle a waiting retry without a ready replacement.
+    const interrupted = previous?.retry && !previous.retry.settled
+      ? detachRetry(previous, previous.retry)
+      : undefined
     if (previous?.denyPwsh) { previous.denyPwsh(); previous.denyPwsh = undefined }
     if (previous?.denyOpsShell) { previous.denyOpsShell(); previous.denyOpsShell = undefined }
     const names = faceNames(agent)
@@ -551,21 +582,27 @@ export function mountInlineTools(ctx, deps) {
       // awaits whatever the listener returns, so a bare `return` admitted the
       // agent against a face that was not wired yet (review P2). Resolve only
       // after the retried reconcile settles, so the chain is awaited end to end.
-      return new Promise((resolve) => {
-        const timer = setTimeout(() => {
+      const state = tracked.get(agent) ?? newState()
+      if (!tracked.has(agent)) tracked.set(agent, state)
+      const waiting = new Promise((resolve) => {
+        const retry = { timer: undefined, resolve, settled: false, detached: false }
+        state.retry = retry
+        retry.timer = setTimeout(() => {
+          if (retry.settled) return
+          // This record is now FIRING, not pending. Detach it before recursing
+          // so the next reconcile cannot cancel/resolve its own continuation
+          // before the new face (or a later attempt) has been observed.
+          detachRetry(state, retry)
           Promise.resolve()
             .then(() => reconcile(agent, { attempt: attempt + 1 }))
             .catch(() => { /* never crash on a timer */ })
-            .finally(() => resolve())
+            .finally(() => settleRetry(state, retry))
         }, 250)
-        timer.unref?.()
-        const state = tracked.get(agent)
-        if (state) state.timer = timer
-        else tracked.set(agent, { ...newState(), timer })
+        retry.timer.unref?.()
       })
+      return followRetry(state, interrupted, waiting)
     }
     let state = tracked.get(agent)
-    if (state?.timer) { clearTimeout(state.timer); state.timer = undefined }
     if (!state) {
       state = newState()
       tracked.set(agent, state)
@@ -653,16 +690,16 @@ export function mountInlineTools(ctx, deps) {
     // returned nothing let that first admission see a face without bash (step
     // 1 missing, step 2 present). When a scope is already owned (or no bash is
     // wanted) there is nothing to wait for.
-    return state.pending
+    return followRetry(state, interrupted, state.pending)
   }
 
   const teardown = async (agent) => {
     const state = tracked.get(agent)
     if (!state) return
     tracked.delete(agent)
+    cancelRetry(state)
     state.controller.abort(new Error('inline bash agent disposed'))
     disposeNativeSlot(state)
-    if (state.timer) clearTimeout(state.timer)
     if (state.denyPwsh) { state.denyPwsh(); state.denyPwsh = undefined }
     if (state.denyOpsShell) { state.denyOpsShell(); state.denyOpsShell = undefined }
     await Promise.all([state.scope?.dispose(), state.pending])

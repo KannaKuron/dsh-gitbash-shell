@@ -46,7 +46,7 @@
  */
 
 import { readPatchRow } from './terminal-bundle.js'
-import { OWNED_ROWS, globalPtcOwnership, rowFingerprint } from './global-ptc-ownership.js'
+import { OWNED_ROWS, globalPtcOwnership, yamlRowFingerprint } from './global-ptc-ownership.js'
 
 /** Root executor row that runs each tool natively on the wire. */
 export const EXECUTOR_NATIVE_ROW = 'tool-executor-native'
@@ -125,14 +125,15 @@ export function planGlobalPtcAdopt(input) {
 /**
  * Extract the current override rows for the two ids this module owns.
  * @param {object} document - a yaml parseDocument result.
- * @returns {{native?: object, ptc?: object, raw?: {native?: unknown, ptc?: unknown}, indices?: {native: number, ptc: number}}}
+ * @returns {{native?: object, ptc?: object, raw?: {native?: unknown, ptc?: unknown}, fingerprints?: {native?: string, ptc?: string}, indices?: {native: number, ptc: number}}}
  */
 export function currentGlobalPtcRows(document) {
   const out = {}
   const raw = {}
+  const fingerprints = {}
   const indices = { native: -1, ptc: -1 }
   const items = document?.contents?.items
-  if (!Array.isArray(items)) return { ...out, raw, indices }
+  if (!Array.isArray(items)) return { ...out, raw, fingerprints, indices }
 
   items.forEach((item, index) => {
     if (!item || typeof item !== 'object') return
@@ -140,14 +141,16 @@ export function currentGlobalPtcRows(document) {
     if (id === EXECUTOR_NATIVE_ROW) {
       indices.native = index
       raw.native = toPlain(item)
+      fingerprints.native = yamlRowFingerprint(item)
       out.native = readPatchRow(raw.native)
     } else if (id === EXECUTOR_PTC_ROW) {
       indices.ptc = index
       raw.ptc = toPlain(item)
+      fingerprints.ptc = yamlRowFingerprint(item)
       out.ptc = readPatchRow(raw.ptc)
     }
   })
-  return { ...out, raw, indices }
+  return { ...out, raw, fingerprints, indices }
 }
 
 /** Convert a yaml node to plain JS data (no anchors, no tags). */
@@ -210,20 +213,61 @@ export async function adoptGlobalPtcPatch(io, input) {
   if (lift === true) {
     return ownership.run(async () => {
       const receipt = await ownership.read()
-      const { raw, indices } = currentGlobalPtcRows(document)
-      const remove = []
+      const snapshot = currentGlobalPtcRows(document)
+      const { fingerprints, indices } = snapshot
+      const candidates = []
+      const edited = []
+      const blocked = []
+      const missing = []
       for (const id of OWNED_ROWS) {
         const recorded = receipt.rows[id]
         if (typeof recorded !== 'string') continue
-        const row = id === EXECUTOR_NATIVE_ROW ? raw.native : raw.ptc
+        const fingerprint = id === EXECUTOR_NATIVE_ROW ? fingerprints.native : fingerprints.ptc
         const index = id === EXECUTOR_NATIVE_ROW ? indices.native : indices.ptc
-        if (index < 0 || row === undefined) continue
-        if (rowFingerprint(row) !== recorded) {
-          return done('lift', 'kept-user-choice', `${id} was edited after this switch wrote it — leaving the row alone`)
+        if (index < 0) {
+          missing.push(id)
+          continue
         }
-        remove.push([id, index])
+        if (fingerprint === undefined) continue
+        if (fingerprint !== recorded) {
+          edited.push(id)
+          continue
+        }
+        candidates.push([id, index])
       }
+
+      // Data ownership alone is not sufficient: deleting one override changes
+      // the OTHER executor back to its base default (native ON, ptc OFF).
+      // Simulate that composition before every splice. If the retained row is
+      // enabled ptc, removing native would enable BOTH executors; if retained
+      // native is disabled, removing ptc would leave NO executor. Opaque rows
+      // are unknown and therefore block lifting too.
+      const proposed = new Set(candidates.map(([id]) => id))
+      const safeToLift = (id) => {
+        const other = id === EXECUTOR_NATIVE_ROW ? EXECUTOR_PTC_ROW : EXECUTOR_NATIVE_ROW
+        if (proposed.has(other)) return true // both return to the official base: native only
+        const otherIndex = other === EXECUTOR_NATIVE_ROW ? indices.native : indices.ptc
+        // The sibling is already absent. Lifting our remaining override
+        // restores the official base in EITHER direction: native ON, ptc OFF.
+        if (otherIndex < 0) return true
+        const fact = other === EXECUTOR_NATIVE_ROW ? snapshot.native : snapshot.ptc
+        if (fact?.opaque === true || typeof fact?.disabled !== 'boolean') return false
+        return id === EXECUTOR_NATIVE_ROW ? fact.disabled === true : fact.disabled === false
+      }
+      const remove = []
+      for (const candidate of candidates) {
+        if (safeToLift(candidate[0])) remove.push(candidate)
+        else blocked.push(candidate[0])
+      }
+      const kept = [...new Set([...edited, ...blocked])]
+      const manualReasons = [
+        edited.length > 0 ? `${edited.join(', ')} was edited after this switch wrote it` : '',
+        blocked.length > 0 ? `lifting ${blocked.join(', ')} would leave zero or two root executors` : '',
+      ].filter(Boolean).join('; ')
       if (remove.length === 0) {
+        if (kept.length > 0) {
+          return done('lift', 'kept-user-choice', `${manualReasons}; no rows were lifted — manual review is required`, { kept })
+        }
         return done('unchanged', 'unchanged', 'no global PTC rows are owned by this switch; nothing changed')
       }
       document.contents.flow = false
@@ -241,17 +285,24 @@ export async function adoptGlobalPtcPatch(io, input) {
       } catch (error) {
         return done('lift', 'write-failed', undefined, { detail: `the atomic write failed (${error?.message ?? error}); the previous patch bytes stand` })
       }
-      // Drop the lifted ids from the receipt so a second OFF is a no-op.
+      // Drop only the lifted ids from the receipt. Edited or composition-
+      // blocking rows stay owned on disk and in the receipt for the next OFF.
       const nextRows = { ...receipt.rows }
       for (const [id] of remove) delete nextRows[id]
+      for (const id of missing) delete nextRows[id]
+      const status = kept.length > 0 ? 'lifted-partial' : 'lifted'
+      const reason = kept.length > 0
+        ? `removed only rows that preserve exactly one root executor; manual review is required for ${kept.join(', ')} (${manualReasons})`
+        : 'removed the global PTC rows this switch wrote'
+      const extra = { wrote: remove.map(([id]) => id), ...(kept.length > 0 ? { kept } : {}) }
       try {
         await ownership.write({ version: 1, rows: nextRows })
       } catch (error) {
         // The patch is already correct; a stale receipt only means a later OFF
         // re-checks fingerprints (and finds the rows gone). Report, do not revert.
-        return done('lift', 'lifted', 'removed the global PTC rows this switch wrote (the receipt could not be updated)', { wrote: remove.map(([id]) => id), detail: `receipt write failed: ${error?.message ?? error}` })
+        return done('lift', status, reason, { ...extra, detail: `receipt write failed: ${error?.message ?? error}` })
       }
-      return done('lift', 'lifted', 'removed the global PTC rows this switch wrote', { wrote: remove.map(([id]) => id) })
+      return done('lift', status, reason, extra)
     })
   }
 
@@ -318,8 +369,8 @@ export async function adoptGlobalPtcPatch(io, input) {
       const receipt = await ownership.read()
       const nextRows = { ...receipt.rows }
       for (const id of wrote) {
-        const row = id === EXECUTOR_NATIVE_ROW ? after.raw.native : after.raw.ptc
-        if (row !== undefined) nextRows[id] = rowFingerprint(row)
+        const fingerprint = id === EXECUTOR_NATIVE_ROW ? after.fingerprints.native : after.fingerprints.ptc
+        if (fingerprint !== undefined) nextRows[id] = fingerprint
       }
       await ownership.write({ version: 1, rows: nextRows })
     } catch (error) {

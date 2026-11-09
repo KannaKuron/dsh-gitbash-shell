@@ -211,7 +211,7 @@ test('writer: P0 — OFF never deletes a user-handwritten same-value row', async
   assert.equal(h.read(), before, 'the user file must be byte-identical')
 })
 
-test('writer: P0 — OFF leaves a row the user edited after the switch wrote it', async (t) => {
+test('writer: OFF lifts an untouched row even when its sibling was edited', async (t) => {
   const h = await withPatch(t, '[]\n')
   if (h.skip) return t.skip('no yaml module available')
   await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
@@ -219,9 +219,77 @@ test('writer: P0 — OFF leaves a row the user edited after the switch wrote it'
   const edited = h.read().replace(`- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: true`, `- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: false`)
   writeFileSync(h.file, edited)
   const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
-  assert.equal(lifted.status, 'kept-user-choice')
-  assert.match(h.read(), new RegExp(`${EXECUTOR_NATIVE_ROW}\\n  disabled: false`))
+  assert.equal(lifted.status, 'lifted-partial')
+  assert.deepEqual(lifted.kept, [EXECUTOR_NATIVE_ROW])
+  const text = h.read()
+  assert.match(text, new RegExp(`${EXECUTOR_NATIVE_ROW}\\n  disabled: false`))
+  assert.doesNotMatch(text, new RegExp(`- id: ${EXECUTOR_PTC_ROW}`))
+  assert.ok(h.receipt().rows[EXECUTOR_NATIVE_ROW])
+  assert.equal(h.receipt().rows[EXECUTOR_PTC_ROW], undefined)
 })
+
+test('writer: a comment added after adopt keeps the row and its comment', async (t) => {
+  // The ptc row is user-owned; only native is adopted (and receipted) here.
+  const h = await withPatch(t, `- id: ${EXECUTOR_PTC_ROW}\n  disabled: false\n`)
+  if (h.skip) return t.skip('no yaml module available')
+  await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
+  const edited = h.read().replace(
+    `- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: true`,
+    `- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: true # keep this note`,
+  )
+  writeFileSync(h.file, edited)
+  const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
+  assert.equal(lifted.status, 'kept-user-choice')
+  const text = h.read()
+  assert.match(text, /# keep this note/)
+  assert.match(text, new RegExp(`- id: ${EXECUTOR_NATIVE_ROW}`))
+  assert.match(text, new RegExp(`- id: ${EXECUTOR_PTC_ROW}`))
+})
+
+for (const id of [EXECUTOR_NATIVE_ROW, EXECUTOR_PTC_ROW]) {
+  test(`writer: a comment-only edit on ${id} never breaks the root executor`, async (t) => {
+    const h = await withPatch(t, '[]\n')
+    if (h.skip) return t.skip('no yaml module available')
+    await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
+    const value = id === EXECUTOR_NATIVE_ROW ? 'true' : 'false'
+    const edited = h.read().replace(`- id: ${id}\n  disabled: ${value}`, `- id: ${id}\n  disabled: ${value} # user note`)
+    writeFileSync(h.file, edited)
+    const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
+    assert.equal(lifted.status, 'kept-user-choice')
+    assert.match(lifted.reason, /zero or two root executors/)
+    assert.equal(h.read(), edited, 'neither executor row is removed when the final composition is unsafe')
+    assert.match(h.read(), /# user note/)
+    assert.ok(h.receipt().rows[EXECUTOR_NATIVE_ROW])
+    assert.ok(h.receipt().rows[EXECUTOR_PTC_ROW])
+  })
+}
+
+test('writer: an unowned disabled native row blocks lifting our ptc row', async (t) => {
+  const h = await withPatch(t, `- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: true\n`)
+  if (h.skip) return t.skip('no yaml module available')
+  await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
+  const before = h.read()
+  const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
+  assert.equal(lifted.status, 'kept-user-choice')
+  assert.equal(h.read(), before, 'lifting ptc would leave no root executor')
+  assert.ok(h.receipt().rows[EXECUTOR_PTC_ROW])
+  assert.equal(h.receipt().rows[EXECUTOR_NATIVE_ROW], undefined)
+})
+
+for (const missingId of [EXECUTOR_NATIVE_ROW, EXECUTOR_PTC_ROW]) {
+  test(`writer: OFF lifts the remaining row when ${missingId} is already missing`, async (t) => {
+    const h = await withPatch(t, '[]\n')
+    if (h.skip) return t.skip('no yaml module available')
+    await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
+    const value = missingId === EXECUTOR_NATIVE_ROW ? 'true' : 'false'
+    const edited = h.read().replace(`- id: ${missingId}\n  disabled: ${value}\n`, '')
+    writeFileSync(h.file, edited)
+    const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
+    assert.equal(lifted.status, 'lifted')
+    assert.doesNotMatch(h.read(), /tool-executor-native|tool-executor-ptc/)
+    assert.deepEqual(h.receipt().rows, {}, 'missing and lifted rows both leave the receipt')
+  })
+}
 
 test('writer: lift on a patch without our rows changes nothing', async (t) => {
   const h = await withPatch(t, '- id: untouched\n')
@@ -249,4 +317,39 @@ test('ownership: a receipt store reads back what it wrote', async (t) => {
   assert.deepEqual(await store.read(), { version: 1, rows: {} })
   await store.write({ version: 1, rows: { [EXECUTOR_NATIVE_ROW]: 'a'.repeat(64) } })
   assert.deepEqual((await store.read()).rows, { [EXECUTOR_NATIVE_ROW]: 'a'.repeat(64) })
+})
+
+test('wiring: disable/uninstall awaits adoption and lifts under the same lock', () => {
+  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  assert.match(source, /ptcPatchCtx\.effect\(\(\) => async \(\) => \{/)
+  assert.match(source, /await pending/)
+  assert.match(source, /const result = await write\(true\)/)
+  assert.match(source, /disable\/uninstall: \$\{globalPtcReport\(result\)\}/)
+  assert.match(source, /atomic\.withFileLock\(join\(dirname\(patchPath\), 'package\.json'\), update\)/)
+})
+
+test('settings: 21 real locale entries and the minimal limitation are present', () => {
+  const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  const labels = [...source.matchAll(/^\t{3}"gptc\.label": "([^"]+)"/gm)].map((match) => match[1])
+  const hints = [...source.matchAll(/^\t{3}"gptc\.hint": "([^"]+)"/gm)].map((match) => match[1])
+  assert.equal(labels.length, 21)
+  assert.equal(hints.length, 21)
+  // zh-HK / zh-MO / zh-TW intentionally share Traditional Chinese; every
+  // other locale has its own text (no 18 copies of the English fallback).
+  assert.equal(new Set(labels).size, 19)
+  assert.equal(new Set(hints).size, 19)
+  for (const hint of hints) assert.ok(hint.includes('preset-minimal'), 'every hint names the unsupported preset')
+  assert.match(source, /writeField\("globalPtcSdk", true\)/)
+  assert.match(source, /t\("gptc\.hint"\)/)
+})
+
+test('docs: minimal and disposal limits are explicit', () => {
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+  const english = readFileSync(new URL('../README_EN.md', import.meta.url), 'utf8')
+  const agents = readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8')
+  assert.match(readme, /不覆盖 `preset-minimal`/)
+  assert.match(english, /`preset-minimal` is not covered/)
+  assert.match(agents, /绝不复述 `preset-minimal`/)
+  assert.match(readme, /lifted-partial/)
+  assert.match(agents, /comment\/commentBefore/)
 })

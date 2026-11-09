@@ -45,10 +45,12 @@ const resolvedThenable = () => ({
 /** Base host face before this plugin acts: the official win32 composition. */
 const BASE_FACE = ['pwsh', 'read', 'edit']
 
-function createRegistry() {
+function createRegistry(initialFace = BASE_FACE) {
   const masks = new WeakMap()
   const registrations = new Map()
   const calls = new Map()
+  const reads = new Map()
+  let baseFace = [...initialFace]
   return {
     restrict(agent, deny) {
       const mask = masks.get(agent) ?? new Set()
@@ -74,10 +76,13 @@ function createRegistry() {
       }
     },
     schemas(agent) {
+      reads.set(agent, (reads.get(agent) ?? 0) + 1)
       const mask = masks.get(agent) ?? new Set()
-      const names = [...BASE_FACE, ...(registrations.get(agent) ?? []).map((entry) => entry.name)]
+      const names = [...baseFace, ...(registrations.get(agent) ?? []).map((entry) => entry.name)]
       return [...new Set(names)].filter((name) => !mask.has(name)).map((name) => ({ name }))
     },
+    setBaseFace(names) { baseFace = [...names] },
+    readCount(agent) { return reads.get(agent) ?? 0 },
     registerCalls(agent, name) {
       return (calls.get(agent) ?? []).filter((entry) => entry === name).length
     },
@@ -93,11 +98,11 @@ function createRegistry() {
  * A faithful "serial" emission: DSH's `ctx.serial` awaits each listener in
  * order, so a listener that returns its promise delays the caller.
  */
-function createFixture({ mountDelayMs = 50 } = {}) {
+function createFixture({ mountDelayMs = 50, initialFace = BASE_FACE } = {}) {
   const listeners = new Map()
   const effects = []
   const logs = []
-  const registry = createRegistry()
+  const registry = createRegistry(initialFace)
   const agentByCtx = new WeakMap()
   const scopesByAgent = new WeakMap()
   const executorScopes = []
@@ -239,6 +244,21 @@ function createFixture({ mountDelayMs = 50 } = {}) {
   }
 }
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Reject a hung created/retry chain instead of letting node --test hang. */
+async function settlesWithin(promise, ms) {
+  let watchdog
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error(`promise did not settle within ${ms}ms`)), ms) }),
+    ])
+  } finally {
+    clearTimeout(watchdog)
+  }
+}
+
 test('global PTC first step: agent/created waits for the own Bash registration', async () => {
   const fixture = createFixture()
   await fixture.ready
@@ -290,4 +310,83 @@ test('global PTC: no duplicate registration on later reconciles, and dispose lea
   // Plugin-level ownership: the shared private executor scope goes away too.
   for (const effect of fixture.effects.reverse()) await effect()
   assert.equal(fixture.executorScopes[0]?.disposed, 1, 'the private executor scope is released on plugin dispose')
+})
+
+test('empty face: created waits for the retry and returns with bash ready', async () => {
+  const fixture = createFixture({ initialFace: ['read', 'edit'] })
+  await fixture.ready
+  const agent = fixture.createAgent('agent-empty-face')
+  let settled = false
+  const created = fixture.emitCreated(agent).then((value) => { settled = true; return value })
+
+  await delay(20)
+  assert.equal(fixture.registry.readCount(agent), 1, 'the empty face was observed once')
+  assert.equal(settled, false, 'created must not resolve against an unwired face')
+
+  fixture.registry.setBaseFace(BASE_FACE)
+  await settlesWithin(created, 2000)
+  assert.ok(fixture.registry.readCount(agent) >= 2, 'the composed face was re-read')
+  assert.equal(fixture.registry.registerCalls(agent, 'bash'), 1)
+  assert.ok(fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'))
+})
+
+test('empty face: a later reconcile cancels the timer but still settles created', async () => {
+  const fixture = createFixture({ initialFace: ['read', 'edit'] })
+  await fixture.ready
+  const agent = fixture.createAgent('agent-reconcile-cancels-retry')
+  const created = fixture.emitCreated(agent)
+  await delay(20)
+  assert.equal(fixture.registry.readCount(agent), 1)
+
+  // A foreign bash arrives before the first tool call. The lazy reconcile
+  // clears the old retry; created must settle without mounting a second bash.
+  fixture.registry.setBaseFace(['bash', 'read', 'edit'])
+  fixture.preExecute(agent)
+  await settlesWithin(created, 500)
+  const reads = fixture.registry.readCount(agent)
+  await delay(350)
+  assert.equal(fixture.registry.readCount(agent), reads, 'the cancelled timer never fires late')
+  assert.equal(fixture.registry.registerCalls(agent, 'bash'), 0, 'the foreign bash is left alone')
+})
+
+test('empty face: superseding reconcile makes created wait for its own bash mount', async () => {
+  const fixture = createFixture({ initialFace: ['read', 'edit'] })
+  await fixture.ready
+  const agent = fixture.createAgent('agent-replacement-mounts-bash')
+  let settled = false
+  const created = fixture.emitCreated(agent).then((value) => { settled = true; return value })
+  await delay(20)
+  assert.equal(fixture.registry.readCount(agent), 1)
+
+  // The replacement reconcile DOES need the own bash. Cancelling the old timer
+  // must not resolve created before this new asynchronous mount has finished.
+  fixture.registry.setBaseFace(BASE_FACE)
+  fixture.preExecute(agent)
+  await delay(20)
+  assert.equal(settled, false, 'created is still waiting for the replacement mount')
+  assert.equal(fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'), false)
+
+  await settlesWithin(created, 2000)
+  assert.equal(fixture.registry.registerCalls(agent, 'bash'), 1)
+  assert.ok(fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'))
+  const reads = fixture.registry.readCount(agent)
+  await delay(350)
+  assert.equal(fixture.registry.readCount(agent), reads, 'the superseded timer never fires late')
+})
+
+test('empty face: agent disposal cancels the retry and still settles created', async () => {
+  const fixture = createFixture({ initialFace: ['read', 'edit'] })
+  await fixture.ready
+  const agent = fixture.createAgent('agent-dispose-cancels-retry')
+  const created = fixture.emitCreated(agent)
+  await delay(20)
+  assert.equal(fixture.registry.readCount(agent), 1)
+
+  await fixture.emitDisposed(agent)
+  await settlesWithin(created, 500)
+  const reads = fixture.registry.readCount(agent)
+  await delay(350)
+  assert.equal(fixture.registry.readCount(agent), reads, 'disposal leaves no late retry')
+  assert.equal(fixture.registry.activeCount(), 0)
+  assert.equal(fixture.registry.registerCalls(agent, 'bash'), 0)
 })
