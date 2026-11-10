@@ -673,6 +673,8 @@
        取消与 dispose 用例;supersede 清 timer 后旧 Promise 必须链到替代 reconcile / Bash mount,dispose 才可
        直接 settle;正常 firing 不得提前 settle 下一 attempt。
 
+10. **日志策略(issue #46)**:健康启动必须静默——preset 注册/退役、工具面接线、侧栏终端接管等成功路径只走 `src/log.js` 的 `debugLog`,仅当 `DSH_GITBASH_DEBUG` 为 `1`/`true`/`yes` 时输出。真正的降级与失败(不可解析的 schemastery、注册/接线失败、拒绝执行)走 `problemLog`(`console.warn`,始终可见),并通过 inline mount 的 `warn` 回调传给各模块。`src/**` 中除 `log.js` 外不得出现 `console.log`;新增生命周期文案时先判断它是否属于“健康启动”,属于就绝不能写进 `console.log`/`problemLog`。smoke 有静态守卫。
+
 ## 当前宿主测试与配置所有权
 
 - 宿主预览使用真实 Native/Ptc executor，`tools.execute({calls,...})` 返回 `results`；不得用旧单调用签名或给 registry 打兼容补丁。

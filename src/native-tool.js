@@ -232,7 +232,7 @@ export function createNativeToolModule(deps) {
         return
       }
       let currentJobs
-      const refresh = registerExperimentalTool(ctx, () => definition({ jobs: currentJobs }), deps.experimentalEnabled, { scope: deps.scope, log: deps.log })
+      const refresh = registerExperimentalTool(ctx, () => definition({ jobs: currentJobs }), deps.experimentalEnabled, { scope: deps.scope, log: deps.log, warn: deps.warn })
       ctx.inject(['jobs'], jobCtx => {
         currentJobs = jobCtx.jobs
         refresh()

@@ -3390,8 +3390,7 @@ window.__ModuleLoader__.load({
 						if (typeof sctx.effect === "function") {
 							sctx.effect(function () { return restore; }, "dsh-gitbash-shell: sidebar path rescue");
 						}
-						console.log(TAG + " right-sidebar path rescue armed (host spelling restored on open)");
-					} catch (error) {
+											} catch (error) {
 						console.warn(TAG + " right-sidebar path rescue failed:", error && error.message ? error.message : error);
 					}
 				});

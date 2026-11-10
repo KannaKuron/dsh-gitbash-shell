@@ -24,6 +24,8 @@
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
+import { debugLog } from './log.js'
+
 /** The peer whose copy must agree with the host. */
 export const SCHEMASTERY_PEER = '@deepseek-ai/schemastery'
 
@@ -117,7 +119,7 @@ export async function loadSchemastery() {
   if (result.z === undefined) {
     console.warn(`${TAG} no resolvable ${SCHEMASTERY_PEER} provides volatile(); the executor Config and the row Config surface are absent (tried: ${wanted.map((w) => `${w.where} -> ${w.entry}`).join('; ') || 'nothing resolved'}). Install a dsh whose schemastery matches its own shell packages.`)
   } else if (reason === 'redirected') {
-    console.log(`${TAG} ${SCHEMASTERY_PEER} taken from the shell packages instead of this plugin's own resolution: ${chosen.entry}`)
+    debugLog(`${TAG} ${SCHEMASTERY_PEER} taken from the shell packages instead of this plugin's own resolution: ${chosen.entry}`)
   }
   return result
 }

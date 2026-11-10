@@ -180,7 +180,8 @@ export async function mountPrivateExecutor(ctx, GitBashSandboxExecutor, createSc
  *   - createScope(fn)  -> cordis createScope
  *   - pwshEnabled()    -> the row switch; TRUE shows the real host pwsh tool,
  *                         false/undefined (default) hides it
- *   - log(message)     -> the plugin's tagged logger
+ *   - log(message)     -> informational logger (debug-gated by the wiring)
+ *   - warn(message)    -> problem logger (always visible)
  *
  * Registration decisions re-run on EVERY agent creation AND once at mount
  * time for every ALREADY-LIVE agent (the dsh-ops-proven shape): this row can
@@ -189,7 +190,7 @@ export async function mountPrivateExecutor(ctx, GitBashSandboxExecutor, createSc
  * race.
  */
 export function mountInlineTools(ctx, deps) {
-  const { tools, agents, createScope, pwshEnabled, log } = deps
+  const { tools, agents, createScope, pwshEnabled, log, warn = log } = deps
   /** Per-agent mounts, masks and cancellation; `agents` above is the host service. */
   const tracked = new Map()
   const pending = new Set()
@@ -283,13 +284,13 @@ export function mountInlineTools(ctx, deps) {
           hostModules[key] = await untilDisposed(resolveHostModule(ctx, name), controller.signal)
         }
         const { createBashToolModule } = await untilDisposed(import('./bash-tool.js'), controller.signal)
-        const module = createBashToolModule({ executor: mounted.executor, log, ...hostModules })
+        const module = createBashToolModule({ executor: mounted.executor, log, warn, ...hostModules })
         const extraModules = []
         if (typeof deps.translatePath === 'function') {
           const { createPathToolModule, PATH_TOOL_NAME } = await untilDisposed(import('./path-tool.js'), controller.signal)
           extraModules.push({ name: PATH_TOOL_NAME, create: scope => createPathToolModule({
             toolsModule: hostModules.toolsModule, translate: deps.translatePath, experimentalEnabled,
-            pathToolEnabled: deps.pathToolEnabled, log, scope,
+            pathToolEnabled: deps.pathToolEnabled, log, warn, scope,
           }) })
           try {
             const localBashModule = await untilDisposed(resolveHostModule(ctx, '@deepseek-ai/dsh-bash-local'), controller.signal)
@@ -304,12 +305,12 @@ export function mountInlineTools(ctx, deps) {
               toolsModule: hostModules.toolsModule, sandboxModule: hostModules.sandboxModule,
               localBashModule, createScope, translateMsysPath: deps.translatePath,
               createNativeOutputAdapter, outputOptions: { OutputCollector: outputModule?.OutputCollector },
-              createArtifactDirectory: deps.createArtifactDirectory, experimentalEnabled, log, scope,
+              createArtifactDirectory: deps.createArtifactDirectory, experimentalEnabled, log, warn, scope,
               slot: tracked.get(scope)?.native,
             }) })
           } catch (error) {
             if (controller.signal.aborted) throw error
-            log(`native tool capability unavailable; bash/path tools remain available: ${error?.message ?? error}`)
+            warn(`native tool capability unavailable; bash/path tools remain available: ${error?.message ?? error}`)
           }
         }
         return { executor: mounted.executor, executorScope, module, extraModules }
@@ -377,7 +378,7 @@ export function mountInlineTools(ctx, deps) {
         } catch (error) {
           if (!isLive(agent, state)) return
           await extraFiber?.dispose()
-          log(`${extra.name} activation failed; bash remains available: ${error?.message ?? error}`)
+          warn(`${extra.name} activation failed; bash remains available: ${error?.message ?? error}`)
           // A failed native mount must not leave the eager slot behind: the
           // tool would be visible but unusable for the agent's whole life.
           if (extra.name === 'gitbash_native') failNativeSlot(state, error)
@@ -400,14 +401,14 @@ export function mountInlineTools(ctx, deps) {
             log('ops shell tools denied for this agent (' + opsShell.join(', ') + '): this host\'s bash is ours; their file/search/background tools stay')
           }
         } catch (error) {
-          log('ops shell denial failed (their shell tools stay available): ' + (error?.message ?? error))
+          warn('ops shell denial failed (their shell tools stay available): ' + (error?.message ?? error))
         }
       }
       retained = true
       log('own bash tool activated for this agent (Git Bash execution; official pwsh tool real but hidden by default)')
     } catch (error) {
       if (isLive(agent, state)) {
-        log(`own bash tool activation failed for this agent: ${error?.message ?? error}`)
+        warn(`own bash tool activation failed for this agent: ${error?.message ?? error}`)
         // The eager slot advertised the native tool before this mount. If the
         // mount itself failed, withdraw it instead of keeping a ghost.
         failNativeSlot(state, error)
@@ -471,7 +472,7 @@ export function mountInlineTools(ctx, deps) {
     // A foreign or earlier owner of the name wins: never shadow a tool we did
     // not create.
     try { if (toolNameOccupied(tools(ctx), 'gitbash_native', agent)) return }
-    catch (error) { log(`gitbash_native eager slot skipped: ${error?.message ?? error}`); return }
+    catch (error) { warn(`gitbash_native eager slot skipped: ${error?.message ?? error}`); return }
     let resolveReady
     let rejectReady
     const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject })
@@ -489,7 +490,7 @@ export function mountInlineTools(ctx, deps) {
       definition = deps.nativeContract({ background: true, execute })
     } catch (error) {
       state.nativeFailed = true
-      log('gitbash_native eager slot creation failed; the legacy late path stays in use: ' + (error?.message ?? error))
+      warn('gitbash_native eager slot creation failed; the legacy late path stays in use: ' + (error?.message ?? error))
       return
     }
     let disposer
@@ -498,7 +499,7 @@ export function mountInlineTools(ctx, deps) {
       if (typeof disposer !== 'function') throw new Error('tools.register returned no disposer')
     } catch (error) {
       state.nativeFailed = true
-      log('gitbash_native eager slot registration failed; the legacy late path stays in use: ' + (error?.message ?? error))
+      warn('gitbash_native eager slot registration failed; the legacy late path stays in use: ' + (error?.message ?? error))
       return
     }
     slot = {
@@ -547,7 +548,7 @@ export function mountInlineTools(ctx, deps) {
     const error = reason instanceof Error ? reason : new Error(String(reason))
     slot.fail(error)
     slot.dispose()
-    log('gitbash_native eager slot withdrawn: ' + error.message)
+    warn('gitbash_native eager slot withdrawn: ' + error.message)
   }
 
   const startBash = (agent, state) => {
@@ -558,7 +559,7 @@ export function mountInlineTools(ctx, deps) {
     void task.finally(() => {
       pending.delete(task)
       if (state.pending === task) state.pending = undefined
-    }).catch((error) => log(`own bash tool cleanup failed: ${error?.message ?? error}`))
+    }).catch((error) => warn(`own bash tool cleanup failed: ${error?.message ?? error}`))
   }
 
   const reconcile = (agent, { attempt = 0 } = {}) => {
@@ -635,7 +636,7 @@ export function mountInlineTools(ctx, deps) {
           const deny = agent.ctx?.tools?.restrict?.({ deny: ['pwsh'] })
           if (typeof deny === 'function') state.denyPwsh = deny
         } catch (error) {
-          log(`pwsh hide failed: ${error?.message ?? error}`)
+          warn(`pwsh hide failed: ${error?.message ?? error}`)
         }
       }
     }
@@ -651,7 +652,7 @@ export function mountInlineTools(ctx, deps) {
       const withdrawn = state.scope
       state.scope = undefined
       if (state.denyOpsShell) { state.denyOpsShell(); state.denyOpsShell = undefined }
-      void Promise.resolve(withdrawn.dispose()).catch((error) => log(`own bash withdrawal failed: ${error?.message ?? error}`))
+      void Promise.resolve(withdrawn.dispose()).catch((error) => warn(`own bash withdrawal failed: ${error?.message ?? error}`))
       log('own bash tool withdrawn for this agent (the tool face carries no pwsh: a preset mask owns the tool set)')
     }
     // Eager native slot: create it while the agent is still settling, so the
@@ -680,7 +681,7 @@ export function mountInlineTools(ctx, deps) {
             log('ops shell tools denied for this agent (' + opsShell.join(', ') + ')')
           }
         } catch (error) {
-          log('ops shell denial failed (their shell tools stay available): ' + (error?.message ?? error))
+          warn('ops shell denial failed (their shell tools stay available): ' + (error?.message ?? error))
         }
       }
     }
@@ -739,7 +740,7 @@ export function mountInlineTools(ctx, deps) {
       } catch { /* never break agent creation */ }
     })
     ctx.on('agent/disposed', ({ agent } = {}) => teardown(agent).catch((error) => {
-      log(`agent bash tool cleanup failed: ${error?.message ?? error}`)
+      warn(`agent bash tool cleanup failed: ${error?.message ?? error}`)
     }))
     // A tool-face switch edit arrives as a volatile update on the LIVE row.
     // Re-reconciling every tracked agent from here reshaped faces that were
@@ -776,7 +777,7 @@ export function mountInlineTools(ctx, deps) {
         const lazyAgent = exec?.agent
         const lazyState = lazyAgent ? tracked.get(lazyAgent) : undefined
         if (lazyState && !lazyState.scope && !lazyState.pending) {
-          try { reconcile(lazyAgent) } catch (error) { log(`lazy re-reconcile failed: ${error?.message ?? error}`) }
+          try { reconcile(lazyAgent) } catch (error) { warn(`lazy re-reconcile failed: ${error?.message ?? error}`) }
         }
         // Judge the call by the face this agent was created with, never by the
         // live switch.
@@ -797,7 +798,7 @@ export function mountInlineTools(ctx, deps) {
       return next()
     })
   } catch (error) {
-    log(`agent lifecycle wiring failed: ${error?.message ?? error}`)
+    warn(`agent lifecycle wiring failed: ${error?.message ?? error}`)
     return
   }
 

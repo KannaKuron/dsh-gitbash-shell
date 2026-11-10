@@ -331,7 +331,7 @@ const FASTCTX_SANDBOX_NOTE = 'FastCtx reads the real filesystem with no workspac
  * checks the live switch and its publication generation, including old SDKs.
  */
 export function mountFastctx(ctx, deps) {
-  const { platform, enabled, createRequireFrom, tools, msysToWin, echo, log } = deps
+  const { platform, enabled, createRequireFrom, tools, msysToWin, echo, log, warn = log } = deps
   if (platform !== 'win32') return
   let disposer = undefined
   let client = undefined
@@ -458,7 +458,7 @@ export function mountFastctx(ctx, deps) {
       toolList = await fresh.listTools()
     } catch (error) {
       if (live() && owner === generation) {
-        log(`FastCtx server start failed (${source}): ${error?.message ?? error}; gb_* tools stay unpublished`)
+        warn(`FastCtx server start failed (${source}): ${error?.message ?? error}; gb_* tools stay unpublished`)
         unavailable = true
       }
       return
@@ -473,7 +473,7 @@ export function mountFastctx(ctx, deps) {
     const registeredNames = []
     const release = () => {
       for (const dispose of registered) {
-        try { dispose() } catch (error) { log(`FastCtx unregister failed: ${error?.message ?? error}`) }
+        try { dispose() } catch (error) { warn(`FastCtx unregister failed: ${error?.message ?? error}`) }
       }
     }
     for (const tool of wanted) {
@@ -529,7 +529,7 @@ export function mountFastctx(ctx, deps) {
           registeredNames.push(gbName(rawName))
         }
       } catch (error) {
-        log(`${gbName(rawName)} registration failed: ${error?.message ?? error}`)
+        warn(`${gbName(rawName)} registration failed: ${error?.message ?? error}`)
       }
     }
     if (!live() || owner !== generation) {
@@ -537,7 +537,7 @@ export function mountFastctx(ctx, deps) {
       return
     }
     if (registered.length === 0) {
-      log('FastCtx published none of the known file tools; nothing registered')
+      warn('FastCtx published none of the known file tools; nothing registered')
       unavailable = true
       return
     }
@@ -557,9 +557,9 @@ export function mountFastctx(ctx, deps) {
   const reconcile = (agent) => {
     try {
       if (!live(agent)) return
-      void publish().catch((error) => log(`FastCtx bridge mount failed: ${error?.message ?? error}`))
+      void publish().catch((error) => warn(`FastCtx bridge mount failed: ${error?.message ?? error}`))
     } catch (error) {
-      log(`FastCtx bridge reconcile failed: ${error?.message ?? error}`)
+      warn(`FastCtx bridge reconcile failed: ${error?.message ?? error}`)
     }
   }
 
@@ -577,6 +577,6 @@ export function mountFastctx(ctx, deps) {
     ctx.on('agent/disposed', ({ agent } = {}) => { agents.delete(agent) })
     ctx.on('loader/volatile-update', () => { reconcile() })
   } catch (error) {
-    log(`FastCtx bridge wiring failed: ${error?.message ?? error}`)
+    warn(`FastCtx bridge wiring failed: ${error?.message ?? error}`)
   }
 }

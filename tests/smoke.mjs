@@ -3452,3 +3452,23 @@ test('v0.35.0 default migration: a variant deployment default follows the switch
   // The hard truth about pinned sessions is still told, with the official lock name.
   assert.match(hostSource, /agent-preset\/locked/)
 })
+
+test('v0.54.0 logging: a healthy start is silent and real problems go to stderr (issue #46)', () => {
+  const host = readFileSync('src/index.js', 'utf8')
+  const policy = readFileSync('src/log.js', 'utf8')
+  // Only the policy module may write informational lines, and only when the
+  // debug flag is explicitly on.
+  assert.doesNotMatch(host, /console\.log/)
+  assert.match(policy, /process\.env\.DSH_GITBASH_DEBUG/)
+  assert.match(policy, /value === '1' \|\| value === 'true' \|\| value === 'yes'/)
+  assert.match(policy, /export function debugLog\(message\) \{\s*if \(DEBUG\) console\.log\(message\)/)
+  assert.match(policy, /export function problemLog\(message\) \{\s*console\.warn\(message\)/)
+  // Successful wiring is debug chatter; the mount hands the same problem
+  // channel to every inline module so a degraded feature stays visible.
+  assert.match(host, /debugLog\(TAG \+ ['"] preset '/)
+  assert.match(host, /warn: \(m\) => problemLog\(TAG \+ ' ' \+ m\)/)
+  for (const file of ['inline-tools.js', 'bash-tool.js', 'path-tool.js', 'native-tool.js', 'experimental-tools.js', 'fastctx-bridge.js']) {
+    const src = readFileSync('src/' + file, 'utf8')
+    assert.doesNotMatch(src, /console\.(log|warn)/, file + ' must log through the shared policy')
+  }
+})

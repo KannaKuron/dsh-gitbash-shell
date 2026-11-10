@@ -16,10 +16,10 @@ const migration = source.slice(source.indexOf('async function migrateVariantDefa
 const declarative = source.slice(source.indexOf('async function runDeclarativeEra('), source.indexOf('\nexport async function apply('))
 
 function runtime(register) {
-  return new Function('cleanupLegacyTrees', 'resolveSkillsDir', 'probeHostExtras', 'effectivePresetIds', 'registerVariant', 'TAG', 'PEER_CAPABILITY', 'peerFact', 'PEER_PYTHON_FIELD', 'peerBackend', 'pythonBackendActive', 'PEER_PYTHON_BACKEND_FIELD', 'PRESET_IDS', 'VARIANT_DEFAULT_SUCCESSORS', migration + declarative + '\nreturn runDeclarativeEra')(
+  return new Function('cleanupLegacyTrees', 'resolveSkillsDir', 'probeHostExtras', 'effectivePresetIds', 'registerVariant', 'TAG', 'PEER_CAPABILITY', 'peerFact', 'PEER_PYTHON_FIELD', 'peerBackend', 'pythonBackendActive', 'PEER_PYTHON_BACKEND_FIELD', 'PRESET_IDS', 'VARIANT_DEFAULT_SUCCESSORS', 'problemLog', 'debugLog', migration + declarative + '\nreturn runDeclarativeEra')(
     () => {}, async () => undefined, async () => ({}), x.effectivePresetIds, register,
     '[host-regression]', x.PEER_CAPABILITY, x.peerFact, x.PEER_PYTHON_FIELD, x.peerBackend,
-    x.pythonBackendActive, x.PEER_PYTHON_BACKEND_FIELD, x.PRESET_IDS, x.VARIANT_DEFAULT_SUCCESSORS,
+    x.pythonBackendActive, x.PEER_PYTHON_BACKEND_FIELD, x.PRESET_IDS, x.VARIANT_DEFAULT_SUCCESSORS, () => {}, () => {},
   )
 }
 

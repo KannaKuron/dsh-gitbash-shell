@@ -299,7 +299,7 @@ function validateBashArgs(args, effectiveMode, validateEscalation) {
  * @param {(message: string) => void} options.log
  * @returns {{ inject: string[], apply: (ctx: object, config?: object) => void }}
  */
-export function createBashToolModule({ executor, toolsModule, sandboxModule, llmModule, log }) {
+export function createBashToolModule({ executor, toolsModule, sandboxModule, llmModule, log, warn = log }) {
   if (!executor || typeof executor.resolve !== 'function' || typeof executor.execute !== 'function') {
     throw new Error('bash-tool: an executor with resolve()/execute() is required')
   }
@@ -374,7 +374,7 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           text: 'Check the [exit code: N] marker on every bash result; investigate failures before moving on.',
         })
       } catch (error) {
-        log(`bash tool prompt section failed: ${error?.message ?? error}`)
+        warn(`bash tool prompt section failed: ${error?.message ?? error}`)
       }
 
       /** One registration of the `bash` tool (index.ts:262, shell → executor). */

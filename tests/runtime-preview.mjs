@@ -546,7 +546,7 @@ test('runtime preview: actual run_code transport receives Unicode/EOF fixes and 
   await mount(ptcExecutor)
   const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   const start = source.indexOf("ctx.on('tools/execute',")
-  const end = source.indexOf("      console.log(TAG + ' MSYS path translation active", start)
+  const end = source.indexOf("      debugLog(TAG + ' MSYS path translation active", start)
   assert.ok(start >= 0 && end > start)
   await mount(ctx => {
     new Function('ctx', 'liveSettings', 'dialectApplies', 'buildTranslateEnv', 'readConfiguredBashPath', 'translateDispatch', 'programLanguageFor', 'rewriteResultPaths', source.slice(start, end))(

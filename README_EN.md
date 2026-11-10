@@ -40,6 +40,10 @@ dsh plugin --profile web add dsh-gitbash-shell
 `dsh.bundle` declaration, appends the package to `dsh.profile.bundles`.
 **Restart the profile's host to activate.**
 
+## Logging
+
+A healthy start is silent: lifecycle notes such as preset registration/retirement, tool-face wiring, and sidebar-terminal adoption are omitted by default. Start the host with `DSH_GITBASH_DEBUG=1` to see those debug lines when troubleshooting. Real degradations and failures (schemastery unresolvable, registration or wiring failures, refused execution) always go to stderr regardless of the flag and are never silenced ([issue #46](https://github.com/KannaKuron/dsh-gitbash-shell/issues/46)).
+
 ## What it does
 
 The bundle patch (`cordis.patch.yml`) is ADDITIVE ONLY (v0.39.0): it inserts

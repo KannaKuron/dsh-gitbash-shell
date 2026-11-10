@@ -79,7 +79,7 @@ test('compatibility: run_code hints truthfully distinguish codePaths ON and OFF'
 test('compatibility: actual prompt listener reads the live codePaths gate', () => {
   const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   const start = source.indexOf("ctx.on('system-prompt/assemble',")
-  const end = source.indexOf("      console.log(TAG + ' prompt-assembly path dialect active", start)
+  const end = source.indexOf("      debugLog(TAG + ' prompt-assembly path dialect active", start)
   assert.ok(start >= 0 && end > start)
   let handler
   let dialect = { posixPaths: true, codePaths: true, subagentDialect: true }

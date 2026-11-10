@@ -1,6 +1,6 @@
 import { toolNameOccupied } from './tool-ownership.js'
 /** Live registration for agent-owned companions; restrict() accepts global names only. */
-export function registerExperimentalTool(ctx, definition, enabled, { scope, log = () => {}, watchKeys = ['experimentalNative'] } = {}) {
+export function registerExperimentalTool(ctx, definition, enabled, { scope, log = () => {}, warn = log, watchKeys = ['experimentalNative'] } = {}) {
   const watched = Array.isArray(watchKeys) ? watchKeys : ['experimentalNative']
   let unregister
   let closed = false
@@ -15,11 +15,11 @@ export function registerExperimentalTool(ctx, definition, enabled, { scope, log 
     try {
       occupied = toolNameOccupied(ctx.tools, candidate.name, scope)
     } catch (error) {
-      log(`${candidate.name} registration skipped: ${error?.message ?? error}`)
+      warn(`${candidate.name} registration skipped: ${error?.message ?? error}`)
       return
     }
     if (occupied) {
-      log(`${candidate.name} registration skipped: an existing tool owns this name`)
+      warn(`${candidate.name} registration skipped: an existing tool owns this name`)
       return
     }
     try {
@@ -27,7 +27,7 @@ export function registerExperimentalTool(ctx, definition, enabled, { scope, log 
     } catch (error) {
       // A registration conflict must not abort a volatile update or prevent
       // another companion's refresh. Other failures remain explicit in logs.
-      log(`${candidate.name} registration failed: ${error?.message ?? error}`)
+      warn(`${candidate.name} registration failed: ${error?.message ?? error}`)
       return
     }
     log(`${candidate.name} registered in the agent-owned scope`)

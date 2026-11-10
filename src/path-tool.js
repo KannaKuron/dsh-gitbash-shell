@@ -276,7 +276,7 @@ export function createPathToolModule(deps = {}) {
         throw new Error('path-tool: ctx.tools.register is unavailable; cannot own the tool registration')
       }
       registerExperimentalTool(ctx, () => definition, enabled, {
-        scope: deps.scope, log: deps.log, watchKeys: ['experimentalNative', 'pathTool'],
+        scope: deps.scope, log: deps.log, warn: deps.warn, watchKeys: ['experimentalNative', 'pathTool'],
       })
     },
   }

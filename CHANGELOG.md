@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.54.0 — 2026-11-10
+
+**类型**: fix / docs（启动日志静默，仅保留问题输出，issue #46）
+
+- **健康启动静默**：新增 `src/log.js`。preset 注册/退役、工具面接线、侧栏终端接管、FastCtx 桥接等生命周期说明改走 `debugLog`，只有 `DSH_GITBASH_DEBUG` 为 `1`/`true`/`yes` 时才输出；默认 `dsh web` 启动不再打印本插件的成功日志。
+- **问题始终可见**：无法解析 schemastery、注册/接线失败、拒绝执行、降级路径统一走 `problemLog`（`console.warn`），不受调试变量影响。inline / bash / path / native / experimental / FastCtx 各模块经 `warn` 回调共用同一通道；客户端半保留原有 `console.warn`。全仓 `src/**` 除 `log.js` 外不再有 `console.log`。
+- **测试**：新增 smoke 静态守卫（日志策略、`DSH_GITBASH_DEBUG`、各模块不得绕过 `problemLog`）；修正 host-regressions 的 `debugLog` 桩，避免未定义引用让 fixture 的 Promise 永久挂起。完整 `npm test` **415 项 / 414 pass / 0 fail / 1 platform skip**。
+- **链接**：[issue #46](https://github.com/KannaKuron/dsh-gitbash-shell/issues/46)
+
 ## v0.53.0 — 2026-11-10
 
 **类型**: feat（路径工具独立开关，issue #45）

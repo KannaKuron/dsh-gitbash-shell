@@ -119,6 +119,10 @@ dsh plugin --profile web add dsh-gitbash-shell
 ② 检测到包声明的 `dsh.bundle` 后把它追加进该 profile 的
 `dsh.profile.bundles`。**重启该 profile 的 host 后生效。**
 
+## 日志
+
+健康启动保持静默：preset 注册/退役、工具面接线、侧栏终端接管等生命周期说明默认不打印。需要排查时用 `DSH_GITBASH_DEBUG=1` 启动 host，才会看到这些调试行。真正的降级与失败（schemastery 不可解析、注册或接线失败、拒绝执行）始终写到 stderr，不受该变量影响，也不会被静默（[issue #46](https://github.com/KannaKuron/dsh-gitbash-shell/issues/46)）。
+
 ## 它做了什么
 
 bundle patch(`cordis.patch.yml`)是**纯新增**(v0.39.0 起):只插入本插件行

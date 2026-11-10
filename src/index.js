@@ -37,6 +37,7 @@ import { dirname, join } from 'node:path'
 import { PRESET_META, minimalPluginsFor, pluginsFor } from './compositions.js'
 import { loadSchemastery } from './schemastery.js'
 import { mountInlineTools } from './inline-tools.js'
+import { debugLog, problemLog } from './log.js'
 import { adoptTerminalBundlePatch, detectTerminalBundle, terminalBundleReport, terminalDialect } from './terminal-bundle.js'
 import { adoptGlobalPtcPatch, globalPtcReport } from './global-ptc.js'
 import { resolveHostModule } from './bash-tool.js'
@@ -89,7 +90,7 @@ try {
   Schema = (await loadSchemastery()).z ?? null
 } catch (error) {
   Schema = null
-  console.warn(
+  problemLog(
     '[gitbash-shell] @deepseek-ai/schemastery is not resolvable here; the row Config surface is absent'
     + ' (the preset registration and the client half do not depend on it): '
     + (error && error.message || String(error)),
@@ -670,7 +671,7 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
     // The user may have selected another shell since our takeover.
     if (now === bashPath) {
       await ctx.get('settings').update(SIDEBAR_NS, { terminalShell: previous })
-      console.log(TAG + " better-sidebar shell restored ('" + previous + "')")
+      debugLog(TAG + " better-sidebar shell restored ('" + previous + "')")
     }
     adopted = false
   }
@@ -682,7 +683,7 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
     previous = current
     await ctx.get('settings').update(SIDEBAR_NS, { terminalShell: bashPath })
     adopted = true
-    console.log(TAG + ' dsh-better-sidebar terminal shell -> Git Bash (' + bashPath + ')')
+    debugLog(TAG + ' dsh-better-sidebar terminal shell -> Git Bash (' + bashPath + ')')
     return true
   }
   const run = () => {
@@ -694,9 +695,9 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
       const ok = await reconcileSidebar(readAdopt())
       if (ok || closed) return
       if (tried < SIDEBAR_TRIES) timer = setTimeout(run, SIDEBAR_RETRY_MS)
-      else console.log(TAG + ' better-sidebar shell adoption skipped: settings unavailable')
+      else problemLog(TAG + ' better-sidebar shell adoption skipped: settings unavailable')
     }).catch((error) => {
-      console.log(TAG + ' better-sidebar shell adoption unavailable: ' + (error?.message ?? error))
+      problemLog(TAG + ' better-sidebar shell adoption unavailable: ' + (error?.message ?? error))
     })
     return serial
   }
@@ -762,12 +763,12 @@ function cleanupLegacyTrees(presetIds) {
     if (state === 'unmodified') {
       try {
         rmSync(target, { recursive: true, force: true })
-        console.log(TAG + ' removed the stale materialized preset at ' + target + ' (directory presets are no longer read on this host; the declarative registration replaces it)')
+        debugLog(TAG + ' removed the stale materialized preset at ' + target + ' (directory presets are no longer read on this host; the declarative registration replaces it)')
       } catch (error) {
-        console.log(TAG + ' stale preset cleanup failed: ' + (error && error.message ? error.message : error))
+        problemLog(TAG + ' stale preset cleanup failed: ' + (error && error.message ? error.message : error))
       }
     } else if (state === 'user-modified') {
-      console.log(TAG + ' a user-modified preset tree remains at ' + target + ' — left untouched (this host ignores it; delete it manually if unwanted)')
+      problemLog(TAG + ' a user-modified preset tree remains at ' + target + ' — left untouched (this host ignores it; delete it manually if unwanted)')
     }
   }
 }
@@ -875,7 +876,7 @@ async function migrateVariantDefault(ctx, readVariants) {
     if (!settings || typeof settings.update !== 'function') return false
     const roster = await ctx.agentPresets.list()
     if (!Array.isArray(roster) || !roster.some((row) => row && row.id === target)) {
-      console.warn(TAG + ' default-preset migration stood down: successor "' + target + '" is not registered. Set an OFFICIAL default or turn variantPresets on.')
+      problemLog(TAG + ' default-preset migration stood down: successor "' + target + '" is not registered. Set an OFFICIAL default or turn variantPresets on.')
       return false
     }
     // A roster read is asynchronous: never overwrite a newer user selection.
@@ -883,14 +884,14 @@ async function migrateVariantDefault(ctx, readVariants) {
     await settings.update('agent-preset-registry', { selectedDefault: target })
     const after = readDefault()
     if (after !== target) {
-      console.warn(TAG + ' default-preset migration did not stick (read back "' + after + '"). Set an OFFICIAL default or turn variantPresets on.')
+      problemLog(TAG + ' default-preset migration did not stick (read back "' + after + '"). Set an OFFICIAL default or turn variantPresets on.')
       return false
     }
-    console.log(TAG + ' deployment default migrated: "' + current + '" -> "' + target
+    debugLog(TAG + ' deployment default migrated: "' + current + '" -> "' + target
       + '" (variantPresets is off). Pinned sessions are unchanged; agent-preset/locked still requires a NEW session.')
     return true
   } catch (error) {
-    console.warn(TAG + ' default-preset migration failed: ' + (error?.message ?? error)
+    problemLog(TAG + ' default-preset migration failed: ' + (error?.message ?? error)
       + '. Set an OFFICIAL default or turn variantPresets on; variants were not retired.')
     return false
   }
@@ -989,10 +990,10 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
           live.delete(presetId)
           try {
             await off()
-            console.log(TAG + " preset '" + presetId + "' retired (peer CPython backend changed; rows are rebuilt)")
+            debugLog(TAG + " preset '" + presetId + "' retired (peer CPython backend changed; rows are rebuilt)")
           } catch (error) {
             live.set(presetId, off)
-            console.log(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
+            problemLog(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
             return // never register replacements after an unverified retirement
           }
         }
@@ -1002,10 +1003,10 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
         live.delete(presetId)
         try {
           await off()
-          console.log(TAG + " preset '" + presetId + "' retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)")
+          debugLog(TAG + " preset '" + presetId + "' retired (dsh-ptc-cordis-preset covers Creation mode on Git Bash)")
         } catch (error) {
           live.set(presetId, off)
-          console.log(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
+          problemLog(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
           return
         }
       }
@@ -1017,22 +1018,22 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
           if (unregister) {
             if (closed) { await unregister(); break }
             live.set(presetId, unregister)
-            console.log(TAG + " preset '" + presetId + "' registered declaratively")
+            debugLog(TAG + " preset '" + presetId + "' registered declaratively")
           }
         } catch (error) {
-          console.log(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
+          problemLog(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
         }
       }
       registeredPython = pythonActive
     }).catch((error) => {
-      console.log(TAG + ' preset reconcile failed: ' + (error && error.message ? error.message : error))
+      problemLog(TAG + ' preset reconcile failed: ' + (error && error.message ? error.message : error))
     })
     return serial
   }
 
   await reconcile()
   if (closed) return
-  console.log(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')'
+  debugLog(TAG + ' registered ' + live.size + ' preset(s) declaratively (' + [...live.keys()].join(', ') + ')'
     + (live.size === 0 ? ' — variantPresets is off: the official presets carry Git Bash through the inline tool patch (see the CHANGELOG)'
       : '')
     + (hostExtras.timeContext || hostExtras.toolSchedule || hostExtras.pluginMarket || hostExtras.compaction
@@ -1061,16 +1062,16 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
         if (nextGitBash !== peerGitBash || nextPython !== peerPython) {
           peerGitBash = nextGitBash
           peerPython = nextPython
-          if (nextPython) console.log(TAG + ' peer reports the experimental CPython run_code backend: workflow rows go off in every variant')
+          if (nextPython) debugLog(TAG + ' peer reports the experimental CPython run_code backend: workflow rows go off in every variant')
           else if (intentPython) {
-            console.log(TAG + ' peer has the CPython switch on but the effective backend is '
+            problemLog(TAG + ' peer has the CPython switch on but the effective backend is '
               + (reportedBackend === undefined ? 'unreported (older peer: the intent stands in)' : reportedBackend)
               + ': workflow rows stay on (reason in the host log)')
           }
           void reconcile()
         }
       } catch (error) {
-        console.log(TAG + ' peer coverage read failed: ' + (error && error.message ? error.message : error))
+        problemLog(TAG + ' peer coverage read failed: ' + (error && error.message ? error.message : error))
       }
       peerCtx.effect(() => () => {
         if (!peerGitBash && !peerPython) return
@@ -1080,7 +1081,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
       }, 'dsh-gitbash-shell: peer coverage release')
     })
   } catch (error) {
-    console.log(TAG + ' peer capability wiring failed: ' + (error && error.message ? error.message : error))
+    problemLog(TAG + ' peer capability wiring failed: ' + (error && error.message ? error.message : error))
   }
 
   // The switches themselves: a volatile Config edit on this row lands as a
@@ -1092,11 +1093,11 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
           && (path[0] === 'suppressPeerCordis' || path[0] === 'variantPresets'))) return
         void reconcile()
       } catch (error) {
-        console.log(TAG + ' dedupe switch handling failed: ' + (error && error.message ? error.message : error))
+        problemLog(TAG + ' dedupe switch handling failed: ' + (error && error.message ? error.message : error))
       }
     })
   } catch (error) {
-    console.log(TAG + ' dedupe switch wiring failed: ' + (error && error.message ? error.message : error))
+    problemLog(TAG + ' dedupe switch wiring failed: ' + (error && error.message ? error.message : error))
   }
 
   // If settings appears after an OFF transition failed closed, retry it.
@@ -1123,10 +1124,10 @@ export async function apply(ctx, config = {}) {
       const shim = installRegisterShim(inspectCtx.get('cordisInspect'))
       if (!shim.installed) return
       inspectCtx.effect(() => () => shim.restore(), 'dsh-gitbash-shell: inspect-registry shim')
-      console.log(`${TAG} inspect-registry compatibility shim active (multiple cordis-mode sessions supported)`)
+      debugLog(`${TAG} inspect-registry compatibility shim active (multiple cordis-mode sessions supported)`)
     })
   } catch (error) {
-    console.log(`${TAG} inspect-registry shim wiring failed: ${error?.message ?? error}`)
+    problemLog(`${TAG} inspect-registry shim wiring failed: ${error?.message ?? error}`)
   }
 
   // Era-aware live settings: every consumer below re-reads the row Config
@@ -1233,13 +1234,13 @@ export async function apply(ctx, config = {}) {
             },
           })
           envCtx.effect(() => unregister, 'dsh-gitbash-shell: shellEnv path-dialect fact')
-          console.log(`${TAG} shellEnv fact registered: ${PATH_DIALECT_KEY} (gated by the posixPaths setting)`)
+          debugLog(`${TAG} shellEnv fact registered: ${PATH_DIALECT_KEY} (gated by the posixPaths setting)`)
         } catch (error) {
-          console.log(`${TAG} shellEnv fact registration failed: ${error?.message ?? error}`)
+          problemLog(`${TAG} shellEnv fact registration failed: ${error?.message ?? error}`)
         }
       })
     } catch (error) {
-      console.log(`${TAG} shellEnv wiring failed: ${error?.message ?? error}`)
+      problemLog(`${TAG} shellEnv wiring failed: ${error?.message ?? error}`)
     }
   }
 
@@ -1312,9 +1313,9 @@ export async function apply(ctx, config = {}) {
         } catch { /* never block assembly */ }
         return next()
       })
-      console.log(TAG + ' prompt-assembly path dialect active (gated by the posixPaths setting)')
+      debugLog(TAG + ' prompt-assembly path dialect active (gated by the posixPaths setting)')
     } catch (error) {
-      console.log(TAG + ' system-prompt/assemble wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' system-prompt/assemble wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -1376,9 +1377,9 @@ export async function apply(ctx, config = {}) {
           } catch { return result }
         })
       })
-      console.log(TAG + ' MSYS path translation active on tool dispatch (arguments and result metadata)')
+      debugLog(TAG + ' MSYS path translation active on tool dispatch (arguments and result metadata)')
     } catch (error) {
-      console.log(TAG + ' tools/execute wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' tools/execute wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -1435,9 +1436,9 @@ export async function apply(ctx, config = {}) {
           return decision
         })
       })
-      console.log(TAG + ' failure dialect active on tools/post-execute (content + error.message)')
+      debugLog(TAG + ' failure dialect active on tools/post-execute (content + error.message)')
     } catch (error) {
-      console.log(TAG + ' tools/post-execute wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' tools/post-execute wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -1471,13 +1472,13 @@ export async function apply(ctx, config = {}) {
               }
             },
           }), 'dsh-gitbash-shell: posix-path context')
-          console.log(TAG + ' unified POSIX-path directive context active (win32, gated by the posixPaths setting)')
+          debugLog(TAG + ' unified POSIX-path directive context active (win32, gated by the posixPaths setting)')
         } catch (error) {
-          console.log(TAG + ' context registration failed: ' + (error?.message ?? error))
+          problemLog(TAG + ' context registration failed: ' + (error?.message ?? error))
         }
       })
     } catch (error) {
-      console.log(TAG + ' systemPrompt inject wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' systemPrompt inject wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -1510,7 +1511,7 @@ export async function apply(ctx, config = {}) {
     }
   }
   const printBashResolution = (phase, resolution) => {
-    console.log(TAG + ' bash resolution' + (phase === '' ? '' : ' (' + phase + ')') + ': '
+    debugLog(TAG + ' bash resolution' + (phase === '' ? '' : ' (' + phase + ')') + ': '
       + bashResolutionReport(resolution).split('\n').join('\n' + TAG + ' '))
   }
   const bootBashResolution = readBashResolution()
@@ -1559,13 +1560,13 @@ export async function apply(ctx, config = {}) {
           }
           const dispose = wctx.webServer.register({ kind: 'prefix', path: route, handler })
           wctx.effect(() => dispose, 'dsh-gitbash-shell: bash status route')
-          console.log(TAG + ' bash status route active at ' + route + ' (read by the guided popup)')
+          debugLog(TAG + ' bash status route active at ' + route + ' (read by the guided popup)')
         } catch (error) {
-          console.log(TAG + ' bash status route failed: ' + (error?.message ?? error))
+          problemLog(TAG + ' bash status route failed: ' + (error?.message ?? error))
         }
       })
     } catch (error) {
-      console.log(TAG + ' bash status route wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' bash status route wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -1598,14 +1599,14 @@ export async function apply(ctx, config = {}) {
         const handler = (req, res) => {
           const fence = fenceToolRequest(req)
           if (!fence.ok) {
-            console.log(TAG + ' path map request refused (' + fence.reason + ')')
+            problemLog(TAG + ' path map request refused (' + fence.reason + ')')
             send(res, 403, { error: 'forbidden', reason: fence.reason })
             return
           }
           const env = buildTranslateEnv(readConfiguredBashPath())
           // One line per read: the browser half fetches this once per page load,
           // so its presence in the log is how a user can tell the rescue is live.
-          console.log(TAG + ' path map read by ' + (req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : '?'))
+          debugLog(TAG + ' path map read by ' + (req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : '?'))
           send(res, 200, {
             platform: process.platform,
             home: env.home ?? null,
@@ -1616,13 +1617,13 @@ export async function apply(ctx, config = {}) {
         }
         const dispose = wctx.webServer.register({ kind: 'prefix', path: route, handler })
         wctx.effect(() => dispose, 'dsh-gitbash-shell: path map route')
-        console.log(TAG + ' MSYS path map route active at ' + route + ' (read by the browser half)')
+        debugLog(TAG + ' MSYS path map route active at ' + route + ' (read by the browser half)')
       } catch (error) {
-        console.log(TAG + ' path map route failed: ' + (error?.message ?? error))
+        problemLog(TAG + ' path map route failed: ' + (error?.message ?? error))
       }
     })
   } catch (error) {
-    console.log(TAG + ' path map route wiring failed: ' + (error?.message ?? error))
+    problemLog(TAG + ' path map route wiring failed: ' + (error?.message ?? error))
   }
 
   // ── winget toolchain route (v0.30.0) ─────────────────────────────────────
@@ -1666,7 +1667,7 @@ export async function apply(ctx, config = {}) {
           const handler = async (req, res) => {
             const fence = fenceToolRequest(req)
             if (!fence.ok) {
-              console.log(TAG + ' toolchain request refused (' + fence.reason + ')')
+              problemLog(TAG + ' toolchain request refused (' + fence.reason + ')')
               send(res, 403, { error: 'forbidden', reason: fence.reason })
               return
             }
@@ -1711,13 +1712,13 @@ export async function apply(ctx, config = {}) {
           }
           const dispose = wctx.webServer.register({ kind: 'prefix', path: route, handler })
           wctx.effect(() => dispose, 'dsh-gitbash-shell: toolchain route')
-          console.log(TAG + ' winget toolchain route active at ' + route + ' (loopback + same-origin fenced)')
+          debugLog(TAG + ' winget toolchain route active at ' + route + ' (loopback + same-origin fenced)')
         } catch (error) {
-          console.log(TAG + ' toolchain route failed: ' + (error?.message ?? error))
+          problemLog(TAG + ' toolchain route failed: ' + (error?.message ?? error))
         }
       })
     } catch (error) {
-      console.log(TAG + ' toolchain route wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' toolchain route wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -1752,19 +1753,19 @@ export async function apply(ctx, config = {}) {
           } catch (error) {
             // adoptTerminalShell reports expected conditions itself; reaching
             // here means something unexpected — say so instead of swallowing it.
-            console.log(`${TAG} official sidebar terminal adoption crashed: ${error?.message ?? error}`)
+            problemLog(`${TAG} official sidebar terminal adoption crashed: ${error?.message ?? error}`)
             return
           }
           if (result.status === 'skip-row-absent' && attempts < 6) {
-            setTimeout(() => { run().catch((error) => console.log(`${TAG} official sidebar terminal adoption retry failed: ${error?.message ?? error}`)) }, 3000)
+            setTimeout(() => { run().catch((error) => problemLog(`${TAG} official sidebar terminal adoption retry failed: ${error?.message ?? error}`)) }, 3000)
             return
           }
-          console.log(`${TAG} ${terminalAdoptReport(result)}`)
+          debugLog(`${TAG} ${terminalAdoptReport(result)}`)
         }
-        run().catch((error) => console.log(`${TAG} official sidebar terminal adoption failed: ${error?.message ?? error}`))
+        run().catch((error) => problemLog(`${TAG} official sidebar terminal adoption failed: ${error?.message ?? error}`))
       })
     } catch (error) {
-      console.log(`${TAG} official sidebar terminal adoption wiring failed: ${error?.message ?? error}`)
+      problemLog(`${TAG} official sidebar terminal adoption wiring failed: ${error?.message ?? error}`)
     }
   }
 
@@ -1791,8 +1792,8 @@ export async function apply(ctx, config = {}) {
           closed = true
           clearTimeout(retry)
           await pending
-          try { console.log(`${TAG} ${opsRestoreReport(await restoreOpsBash(opsEditorCtx.configEditor))}`) }
-          catch (error) { console.log(`${TAG} dsh-ops bash restore crashed: ${error?.message ?? error}`) }
+          try { debugLog(`${TAG} ${opsRestoreReport(await restoreOpsBash(opsEditorCtx.configEditor))}`) }
+          catch (error) { problemLog(`${TAG} dsh-ops bash restore crashed: ${error?.message ?? error}`) }
         }, 'gitbash: dsh-ops bash removal restore')
         const run = () => {
           if (closed) return
@@ -1803,13 +1804,13 @@ export async function apply(ctx, config = {}) {
               retry = setTimeout(run, 3000)
               retry.unref?.()
             }
-            console.log(`${TAG} ${opsAdoptReport(result)}`)
-          })().catch(error => console.log(`${TAG} dsh-ops bash removal failed: ${error?.message ?? error}`))
+            debugLog(`${TAG} ${opsAdoptReport(result)}`)
+          })().catch(error => problemLog(`${TAG} dsh-ops bash removal failed: ${error?.message ?? error}`))
         }
         run()
       })
     } catch (error) {
-      console.log(`${TAG} dsh-ops bash removal wiring failed: ${error?.message ?? error}`)
+      problemLog(`${TAG} dsh-ops bash removal wiring failed: ${error?.message ?? error}`)
     }
   }
 
@@ -1829,14 +1830,14 @@ export async function apply(ctx, config = {}) {
         const run = async () => {
           const patchPath = patchCtx.get('profileContext')?.patchPath
           if (typeof patchPath !== 'string' || patchPath.trim() === '') {
-            console.log(`${TAG} persistent terminal: no profile patch path — nothing to adopt`)
+            problemLog(`${TAG} persistent terminal: no profile patch path — nothing to adopt`)
             return
           }
           let mounted = false
           try {
             mounted = await detectTerminalBundle(ctx)
           } catch (error) {
-            console.log(`${TAG} persistent terminal: bundle detection failed: ${error?.message ?? error}`)
+            problemLog(`${TAG} persistent terminal: bundle detection failed: ${error?.message ?? error}`)
             return
           }
           const resolution = readBashResolution()
@@ -1862,12 +1863,12 @@ export async function apply(ctx, config = {}) {
           if (result.status === 'adopted' || result.status === 'updated' || result.status === 'unchanged') {
             terminalDialect.gitBash = true
           }
-          console.log(`${TAG} ${terminalBundleReport(result)}`)
+          debugLog(`${TAG} ${terminalBundleReport(result)}`)
         }
-        run().catch((error) => console.log(`${TAG} persistent terminal adoption failed: ${error?.message ?? error}`))
+        run().catch((error) => problemLog(`${TAG} persistent terminal adoption failed: ${error?.message ?? error}`))
       })
     } catch (error) {
-      console.log(`${TAG} persistent terminal adoption wiring failed: ${error?.message ?? error}`)
+      problemLog(`${TAG} persistent terminal adoption wiring failed: ${error?.message ?? error}`)
     }
   }
 
@@ -1905,7 +1906,7 @@ export async function apply(ctx, config = {}) {
       const run = async () => {
         patchPath = ptcPatchCtx.get('profileContext')?.patchPath
         if (typeof patchPath !== 'string' || patchPath.trim() === '') {
-          console.log(`${TAG} global PTC SDK: no profile patch path — nothing to write`)
+          problemLog(`${TAG} global PTC SDK: no profile patch path — nothing to write`)
           return
         }
         atomic = await resolveHostModule(ctx, '@deepseek-ai/dsh-atomic-write')
@@ -1913,24 +1914,24 @@ export async function apply(ctx, config = {}) {
           throw new Error('current host atomic profile-edit capability unavailable')
         }
         const result = await write(!enabled)
-        console.log(`${TAG} ${globalPtcReport(result)}`)
+        debugLog(`${TAG} ${globalPtcReport(result)}`)
       }
-      const pending = run().catch((error) => console.log(`${TAG} global PTC SDK wiring failed: ${error?.message ?? error}`))
+      const pending = run().catch((error) => problemLog(`${TAG} global PTC SDK wiring failed: ${error?.message ?? error}`))
       ptcPatchCtx.effect(() => async () => {
         await pending
         if (!enabled || !patchPath || !atomic) return
         try {
           const result = await write(true)
-          console.log(`${TAG} disable/uninstall: ${globalPtcReport(result)}`)
+          debugLog(`${TAG} disable/uninstall: ${globalPtcReport(result)}`)
         } catch (error) {
           // Disposal must not fail the host shutdown. The log names the manual
           // follow-up because the patch is persistent by design.
-          console.log(`${TAG} global PTC SDK disable/uninstall lift failed: ${error?.message ?? error}; review the two executor rows in ${patchPath}`)
+          problemLog(`${TAG} global PTC SDK disable/uninstall lift failed: ${error?.message ?? error}; review the two executor rows in ${patchPath}`)
         }
       }, 'dsh-gitbash-shell: global PTC SDK restore')
     })
   } catch (error) {
-    console.log(`${TAG} global PTC SDK wiring failed: ${error?.message ?? error}`)
+    problemLog(`${TAG} global PTC SDK wiring failed: ${error?.message ?? error}`)
   }
 
   // ── dsh-better-sidebar terminal adoption (Windows only) ────────────────
@@ -1948,7 +1949,7 @@ export async function apply(ctx, config = {}) {
         adoptSidebarShell(ctx, resolution.path, () => liveSettings.adoptSidebar())
         return
       }
-      console.log(TAG + ' sidebar terminal adoption skipped: no Git Bash resolved (nothing is substituted)')
+      problemLog(TAG + ' sidebar terminal adoption skipped: no Git Bash resolved (nothing is substituted)')
     })
   }
 
@@ -1985,7 +1986,7 @@ export async function apply(ctx, config = {}) {
         nativeContract = ({ background, execute }) => nativeModule.nativeToolDefinition({ toolsModule, background, execute })
       }
     } catch (error) {
-      console.log(TAG + ' eager native slot unavailable; gitbash_native stays on the late registration path: ' + (error?.message ?? error))
+      problemLog(TAG + ' eager native slot unavailable; gitbash_native stays on the late registration path: ' + (error?.message ?? error))
     }
     try {
       mountInlineTools(ctx, {
@@ -2025,11 +2026,12 @@ export async function apply(ctx, config = {}) {
           signal?.throwIfAborted()
           return mkdtempSync(join(tmpdir(), 'dsh-gitbash-native-'))
         },
-        log: (m) => console.log(TAG + ' ' + m),
+        log: (m) => debugLog(TAG + ' ' + m),
+        warn: (m) => problemLog(TAG + ' ' + m),
       })
-      console.log(TAG + ' inline tool patch armed (own bash tool over a private Git Bash executor; official pwsh executor untouched)')
+      debugLog(TAG + ' inline tool patch armed (own bash tool over a private Git Bash executor; official pwsh executor untouched)')
     } catch (error) {
-      console.log(TAG + ' inline tool patch wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' inline tool patch wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -2057,7 +2059,7 @@ export async function apply(ctx, config = {}) {
       void migrateVariantDefault(ctx, () => liveSettings.variantPresets())
     })
   } catch (error) {
-    console.log(TAG + ' default-preset migration wiring failed: ' + (error?.message ?? error))
+    problemLog(TAG + ' default-preset migration wiring failed: ' + (error?.message ?? error))
   }
 
   // ── FastCtx bridge (v0.35.0): the gb_* file tools, default ON ────────────
@@ -2088,10 +2090,11 @@ export async function apply(ctx, config = {}) {
           const env = dialect.virtualMounts ? buildTranslateEnv(readConfiguredBashPath()) : null
           return env ? msysEcho(text, env) : windowsToMsys(text)
         },
-        log: (m) => console.log(TAG + ' ' + m),
+        log: (m) => debugLog(TAG + ' ' + m),
+        warn: (m) => problemLog(TAG + ' ' + m),
       })
     } catch (error) {
-      console.log(TAG + ' FastCtx bridge wiring failed: ' + (error?.message ?? error))
+      problemLog(TAG + ' FastCtx bridge wiring failed: ' + (error?.message ?? error))
     }
   }
 
@@ -2099,7 +2102,7 @@ export async function apply(ctx, config = {}) {
   try {
     await runDeclarativeEra(ctx, presetIds, () => liveSettings.suppressPeerCordis(), readBashResolution, () => liveSettings.variantPresets())
   } catch (error) {
-    console.log(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
+    problemLog(TAG + ' declarative registration failed: ' + (error && error.message ? error.message : error))
   }
 }
 // Test surface: pure helpers, no Cordis context required.

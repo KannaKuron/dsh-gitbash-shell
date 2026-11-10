@@ -221,7 +221,7 @@ export class GitBashSandboxExecutor extends SandboxBashExecutor {
   warnConfinedUnconfined(mode) {
     if (this._warnedUnconfined) return
     this._warnedUnconfined = true
-    console.log('dsh-gitbash-shell: experimentalNative is OFF. Requested mode ' + mode
+    console.warn('dsh-gitbash-shell: experimentalNative is OFF. Requested mode ' + mode
       + ' uses an UNCONFINED Git Bash route: shell file-write restrictions are NOT enforced. '
       + 'Official file-tool policy is separate; never bypass its denial through shell.')
   }
