@@ -21,17 +21,17 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { minimalPluginsFor, pluginsFor } from '../src/compositions.js'
 
-/** dsh-v0.2.2-rc.1, packages/bundle/web-app/presets/*.patch.yml.
- * Baseline: the single-generation row set of 0.2.2-rc.1. The full presets
+/** dsh-v0.2.2-rc.2, packages/bundle/web-app/presets/*.patch.yml.
+ * Baseline: the single-generation row set of 0.2.2-rc.2. The full presets
  * carry `config: { applyPatch: false }` on tool-fs, manager/market gates ride
  * the live profile context, subagent uses modelSelection/modelDiscovery, and
  * list-agents lives in tool-subagent-control. Optional rows (time-context,
- * tool-schedule, plugin-market, compaction) are package-probed at runtime, so
- * oursOf passes the full-probe hostExtras set below. */
+ * tool-schedule, plugin-market, compaction, office) are package-probed at
+ * runtime, so oursOf passes the full-probe hostExtras set below. */
 const PRESET_SHA256 = {
-  standard: '3006cc3780cddaa7fb0089e5854e6bbef4409cf1d425930fd835226b95660afd',
-  cordis: '0e8f611644b3c36249808c4d7eb7a40d78006d04da6b55eef1a42797a5a34355',
-  ptc: 'ce02148b1fd575cc93071744180468cd305bdcd50dbfdd3b9b0605c5281d283d',
+  standard: 'e40bb192ed3b835312c2acd2ccd64d3bc4b85f80a7bc95b132cb18fbee190b5d',
+  cordis: '6be896c3d4885f395bf1856753f454cf725709ffdddcc57f1e6b8d8c07181f34',
+  ptc: '838665e063dc8bcab4caf24e41ec848373c434df4262feb981306944e1cec7fd',
   minimal: 'a2a9ba1c9c392a45466708f18bc0aefbf300577f9b544dc06049f73a8a5b3267',
 }
 
@@ -127,8 +127,8 @@ export function flatten(rows, depth = 0) {
 }
 
 /** Our rows for one variant id, with the Git Bash delta applied.
- * The optional-row probe is ON: the alignment target is the 0.2.2-rc.1 text
- * including time-context, tool-schedule, plugin-market and compaction. */
+ * The optional-row probe is ON: the alignment target is the 0.2.2-rc.2 text
+ * including time-context, tool-schedule, plugin-market, compaction and office. */
 function oursOf(variant, platform) {
   const kind = KINDS[variant]
   if (kind === 'minimal') return flatten(minimalPluginsFor({ hostExtras: { compaction: true } }))
@@ -136,7 +136,7 @@ function oursOf(variant, platform) {
   // this audit. This pure composition module has no imports or runtime effects.
   const source = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8').replace(/^export /gm, '')
   const compose = new Function('process', source + '\nreturn pluginsFor')({ platform: platform === 'win32' ? 'win32' : 'linux' })
-  return flatten(compose({ kind, skillsDir: kind === 'cordis' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, profileContext: true } }))
+  return flatten(compose({ kind, skillsDir: kind === 'cordis' || kind === 'standard' ? '<skillsDir>' : undefined, hostExtras: { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, office: true, profileContext: true } }))
 }
 
 const reported = []
@@ -197,7 +197,7 @@ for (const [name, pinned] of Object.entries(PRESET_SHA256)) {
   const pinMatches = digest.startsWith(pinned)
   console.log(`${pinMatches ? 'OK  ' : 'DRIFT'} ${name}.patch.yml sha256=${digest.slice(0, 16)} pinned=${pinned}`)
   if (!pinMatches) {
-    console.error('  the official preset text CHANGED since dsh-v0.2.2-rc.1: re-diff every variant by hand, then update PRESET_SHA256')
+    console.error('  the official preset text CHANGED since dsh-v0.2.2-rc.2: re-diff every variant by hand, then update PRESET_SHA256')
     failed = true
   }
   const rows = rowsOf(text)

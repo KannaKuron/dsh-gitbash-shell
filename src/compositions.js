@@ -3,7 +3,7 @@
  *
  * A preset is a definition registered through agentPresets.register(). This
  * module is the committed, reviewable composition DATA for the four Git Bash
- * variants and mirrors the official 0.2.2-rc.1 presets (packages/bundle/
+ * variants and mirrors the official 0.2.2-rc.2 presets (packages/bundle/
  * web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the Git Bash
  * routing: full variants keep the official platform-gated shell rows, and the
  * inline patch adds OUR bash over a private executor on Windows. The minimal
@@ -23,7 +23,7 @@ function off(value) {
   return value === true ? { disabled: true } : {}
 }
 
-// Plan-mode section, byte-exact from the official 0.2.2-rc.1 patch.yml.
+// Plan-mode section, byte-exact from the official 0.2.2-rc.2 patch.yml.
 const PLAN_SECTION_TAIL = `Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
 Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
@@ -46,7 +46,9 @@ const PLAN_SECTION = `You are in plan mode. Stay in plan mode until the user app
  *   variant mirrors (workflow rows follow it: enabled on standard/cordis,
  *   disabled on ptc).
  * @param {string|undefined} input.skillsDir - Creation authoring skills
- *   directory (cordis variant only; resolved beside the agent-preset package).
+ *   directory (standard/cordis variants; resolved beside the agent-preset
+ *   package). The official rc.2 standard preset carries it on
+ *   skill-filesystem.customSkillDirs too.
  * @param {boolean} [input.pythonActive] - whether the experimental CPython
  *   backend is the one run_code will ACTUALLY use (the peer's effective
  *   backend, not the bare user intent: when its preflight fails the
@@ -69,15 +71,15 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
   const bashDisabled = win
   const pwshDisabled = !win
   const workflowOn = kind !== 'ptc' && pythonActive !== true
-  // The 0.2.2-rc.1 preset row set: explicit tool-executor-native/-ptc rows,
+  // The 0.2.2-rc.2 preset row set: explicit tool-executor-native/-ptc rows,
   // subagent `modelSelection` + `modelDiscovery`, list_agents folded into the
   // tool-subagent-control row, and manager/market rows gated on the live
   // profile context. Optional rows that some profiles strip (time-context,
-  // tool-schedule, plugin market, minimal compaction) are host-probed at boot
+  // tool-schedule, plugin market, minimal compaction, rc.2 office) are host-probed at boot
   // (index.js probeHostExtras, resolved from ctx.baseUrl — the base preset
   // rows mount from) because a row whose package is absent rejects the WHOLE
   // mount.
-  const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false, profileContext = false } = hostExtras
+  const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false, profileContext = false, office = false } = hostExtras
   const rows = [
     {
       id: 'persona',
@@ -111,7 +113,9 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
     { id: 'tool-jobs', name: '@deepseek-ai/dsh-tool-jobs' },
     ...(toolSchedule ? [{ id: 'tool-schedule', name: '@deepseek-ai/dsh-tool-schedule' }] : []),
     ...((kind === 'standard' || kind === 'ptc') ? [
-      { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem' },
+      // rc.2 standard points skill-filesystem at the authoring skills beside
+      // the agent-preset package; ptc ships the row without config.
+      { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem', ...(kind === 'standard' && skillsDir ? { config: { customSkillDirs: [skillsDir] } } : {}) },
       { id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
     ] : []),
     { id: 'command-goal', name: '@deepseek-ai/dsh-command-goal' },
@@ -150,7 +154,10 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
       group: true,
       isolate: { workflowEngine: true },
       config: [
-        { id: 'tool-subagent-control', name: '@deepseek-ai/dsh-tool-subagent-control' },
+        // rc.2 added Config.interrupt (default true); rc.1 has no such key and
+        // would reject it, so only write it when the rc.2 office package proves
+        // this host speaks the rc.2 row dialect.
+        { id: 'tool-subagent-control', name: '@deepseek-ai/dsh-tool-subagent-control', ...(office ? { config: { interrupt: false } } : {}) },
         {
           id: 'tool-subagent',
           name: '@deepseek-ai/dsh-tool-subagent',
@@ -199,16 +206,21 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
     rows.push({ id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' })
   }
   rows.push({ id: 'present', name: '@deepseek-ai/dsh-tool-present' })
+  if (office && (kind === 'standard' || kind === 'ptc')) {
+    // rc.2 shipped the native Office tool in the standard/ptc presets only;
+    // cordis does not carry it.
+    rows.push({ id: 'tool-office', name: '@deepseek-ai/dsh-tool-office' })
+  }
   rows.push({
     id: 'tool-plugin-manager',
     name: '@deepseek-ai/dsh-plugin-manager/tools',
-    // rc.1 official rows: cordis/standard gate it on the live profile
+    // rc.2 official rows: cordis/standard gate it on the live profile
     // context while ptc keeps it off outright.
     ...off(kind === 'ptc' ? true : !profileContext),
   })
   if (pluginMarket) {
     rows.push({
-      // rc.1: cordis gates it on the profile context, standard keeps it off
+      // rc.2: cordis gates it on the profile context, standard keeps it off
       // outright (the union side owns the market there) and ptc keeps it off
       // too.
       id: 'tool-plugin-market',

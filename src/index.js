@@ -778,9 +778,10 @@ function cleanupLegacyTrees(presetIds) {
  *
  * `timeContext` / `toolSchedule` / `pluginMarket` / `compaction` are
  * optional official rows (durable clock readings, reminder tools, the plugin
- * market row, the minimal tool-fs + compaction delta). `profileContext` is the
- * live host service the manager/market rows gate on — read from ctx, not from
- * the package set.
+ * market row, the minimal tool-fs + compaction delta, and the rc.2 native
+ * Office tool). `profileContext` is the live host service the manager/market
+ * rows gate on — read from ctx, not from the package set. The rc.2-only office
+ * probe also gates the rc.2 row dialect (tool-subagent-control.interrupt).
  *
  * A preset row whose package is absent rejects the WHOLE mount, so optional
  * rows ride this probe: each is added only when its package resolves from
@@ -794,7 +795,8 @@ function cleanupLegacyTrees(presetIds) {
  * @param {Function} [resolve] - predicate override for tests; receives a
  *   package specifier, resolves like `require.resolve`, returns boolean.
  * @returns {Promise<{timeContext: boolean, toolSchedule: boolean,
- *   pluginMarket: boolean, compaction: boolean, profileContext: boolean}>}
+ *   pluginMarket: boolean, compaction: boolean, office: boolean,
+ *   profileContext: boolean}>}
  */
 export async function probeHostExtras(ctx, resolve) {
   let ok = resolve
@@ -809,11 +811,12 @@ export async function probeHostExtras(ctx, resolve) {
       ok = () => false
     }
   }
-  const [timeContext, toolSchedule, pluginMarket, compaction] = await Promise.all([
+  const [timeContext, toolSchedule, pluginMarket, compaction, office] = await Promise.all([
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-time-context')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-schedule')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-plugin-market/tools')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-compaction-basic')).then(Boolean),
+    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-office')).then(Boolean),
   ])
   let profileContext = false
   try {
@@ -821,7 +824,7 @@ export async function probeHostExtras(ctx, resolve) {
   } catch {
     profileContext = false
   }
-  return { timeContext, toolSchedule, pluginMarket, compaction, profileContext }
+  return { timeContext, toolSchedule, pluginMarket, compaction, office, profileContext }
 }
 
 /** Run one probe predicate; ANY failure reads as "absent" (a throwing

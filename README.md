@@ -90,23 +90,28 @@ dsh-ptc-cordis-preset 的 `PTC 创造模式` 用户 preset 均不受影响、自
 ### 宿主要求与 preset 对齐
 
 自 v0.49.0 起宿主下限为 **dsh >= 0.2.2-rc.1**:门禁读 `engines.dsh`(rc.1 的 `app-boot` 只要见到该字段就忽略 peer,`semver` 以 `includePrerelease: true` 求值),`peerDependencies` 同步声明并标 `optional`;只服务这一代宿主。四个变体的行集是 `src/compositions.js`
-里已提交的 JS 数据,镜像官方 0.2.2-rc.1 的 standard/minimal/ptc/cordis 行切分并叠加
-Git Bash 增量;跟随 dsh 升级的对齐由冒烟测试
+里已提交的 JS 数据,镜像官方 0.2.2-rc.2 的 standard/minimal/ptc/cordis 行切分并叠加
+Git Bash 增量(rc.1 宿主只少可选行,由探测降级);跟随 dsh 升级的对齐由冒烟测试
 `compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates` 锁住。
 **preset id 保持 `code-gitbash` 不变**——会话钉在 id 上,dsh 0.1.2 把内置 `code`
 改名 `ptc` 时本插件的变体 id 就没有跟随(改名会让已固定的会话报 preset not found)。
 
 **可选官方行按包探测接入**:rc.1 全工具 preset 自带时间上下文(`time-context`)与
 提醒工具(`schedule_*`),极简 preset 自带 image-only `tool-fs` 与专属 compaction 组,
-全工具 preset 另有插件市场(`tool-plugin-market`)。本插件在挂载时按 `ctx.baseUrl`
-探测这些包,可用才纳入对应变体;剥掉某个包的 profile 只降级该行,不会拒绝整棵
-preset 挂载。
+全工具 preset 另有插件市场(`tool-plugin-market`);rc.2 又新增原生 Office 工具
+(`tool-office`)。本插件在挂载时按 `ctx.baseUrl` 探测这些包,可用才纳入对应变体;
+剥掉某个包的 profile 只降级该行,不会拒绝整棵 preset 挂载。`tool-office` 探针同时
+兼作 rc.2 行方言探针:只有能解析该包时才给 `tool-subagent-control` 写
+`config: { interrupt: false }`,rc.1 不会收到这个新配置键。
 
-**0.2.2-rc.1 基线**:官方全工具 preset 的 `tool-fs` 行带
+**0.2.2-rc.2 基线**:官方全工具 preset 的 `tool-fs` 行带
 `config: { applyPatch: false }`,本插件的 standard/cordis/ptc 变体同步,极简变体不加;
-插件管理/市场行按 rc.1 门控(cordis 两者跟 `profileContext`,standard 仅 manager 跟
-`profileContext`,ptc 两者恒禁用)。`dsh.compatibility.dshReleases` 只登记
-0.2.2-rc.1。
+standard 的 `skill-filesystem` 行在解析到官方 preset 包旁 skills 时带
+`customSkillDirs`;standard/ptc 在 present 之后携带 `tool-office`,其
+`tool-subagent-control` 行带 `interrupt: false`。rc.1 宿主由探测降级:没有 office
+包就不写该行与 interrupt 键。插件管理/市场行按 rc.1 门控(cordis 两者跟
+`profileContext`,standard 仅 manager 跟 `profileContext`,ptc 两者恒禁用)。
+`dsh.compatibility.dshReleases` 登记 0.2.2-rc.1 与 0.2.2-rc.2。
 
 ## 安装(公开 npm 插件,推荐)
 

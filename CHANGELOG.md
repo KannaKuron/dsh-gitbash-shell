@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.55.0 — 2026-11-12
+
+**类型**:feat(适配 dsh 0.2.2-rc.2 的 preset 行)
+
+- **官方行对齐 rc.2**:`src/compositions.js` 文件头改为 0.2.2-rc.2;standard 的 `skill-filesystem` 在能解析官方 preset 包旁 skills 时带 `config: { customSkillDirs: [...] }`;standard / ptc 在 present 之后携带 `tool-office`,其 `tool-subagent-control` 行带 `config: { interrupt: false }`。
+- **探测降级**:`src/index.js` 的 `probeHostExtras` 新增 `tool-office` 探针并返回 `office`;office 探针兼作 rc.2 行方言探针,rc.1 宿主没有该包时不写 `interrupt` 与 `tool-office`,不会被未知配置键拒绝。
+- **兼容声明**:`package.json` 的 `dsh.compatibility.dshReleases` 追加 `0.2.2-rc.2`。
+- **测试**:`tests/align-official.mjs` 的 `PRESET_SHA256` 更新为 rc.2 四个 preset(`standard` / `cordis` / `ptc` / `minimal`);冒烟新增 office 探针门控用例。完整 `npm test` **417 项 / 416 pass / 0 fail / 1 platform skip**;`node tests/align-official.mjs /Users/kanna/project/deepseek-harness` 四项 OK。
+
 ## v0.54.1 — 2026-11-12
 
 **类型**: fix（适配 dsh-ops 0.5.3+ 的 OPS (PTC) 模式）

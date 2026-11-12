@@ -1092,6 +1092,33 @@ test('compositions: optional host rows ride the probe, never the default', async
   assert.equal(group.config.some((r) => r.id === 'tool-result-pruner'), false, 'the minimal group carries NO pruner')
   assert.equal(base.some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
 })
+test('compositions: rc.2 office and standard skills rows are probe-gated', async () => {
+  const { pluginsFor } = await import('../src/compositions.js')
+  const row = (rows, id) => rows.find((r) => r.id === id)
+  const ids = (rows) => rows.map((r) => r.id)
+  const control = (rows) => row(row(rows, 'delegation').config, 'tool-subagent-control')
+  // rc.2: the office probe is also the rc.2 row-dialect probe. With it on,
+  // standard/ptc mount tool-office right after present and turn the new
+  // subagent-control interrupt flag off (matching the official patches).
+  for (const kind of ['standard', 'ptc']) {
+    const rows = pluginsFor({ kind, skillsDir: '/skills', hostExtras: { office: true } })
+    assert.deepEqual(control(rows).config, { interrupt: false }, kind)
+    assert.equal(ids(rows).indexOf('tool-office'), ids(rows).indexOf('present') + 1, kind)
+    assert.deepEqual(row(rows, 'tool-office'), { id: 'tool-office', name: '@deepseek-ai/dsh-tool-office' }, kind)
+  }
+  // standard carries the rc.2 authoring-skills config; ptc ships the row bare.
+  assert.deepEqual(row(pluginsFor({ kind: 'standard', skillsDir: '/skills' }), 'skill-filesystem').config, { customSkillDirs: ['/skills'] })
+  assert.equal(row(pluginsFor({ kind: 'ptc', skillsDir: '/skills' }), 'skill-filesystem').config, undefined)
+  // cordis mirrors the official cordis patch: interrupt:false, NO tool-office.
+  const cordis = pluginsFor({ kind: 'cordis', skillsDir: '/skills', hostExtras: { office: true } })
+  assert.deepEqual(control(cordis).config, { interrupt: false })
+  assert.equal(ids(cordis).includes('tool-office'), false)
+  // An rc.1 host (no office package) must receive neither the new key nor row.
+  const legacy = pluginsFor({ kind: 'standard', skillsDir: '/skills' })
+  assert.equal(control(legacy).config, undefined)
+  assert.equal(ids(legacy).includes('tool-office'), false)
+})
+
 test('compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates', async () => {
   const { pluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
@@ -1124,10 +1151,11 @@ test('compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates', 
 })
 test('probeHostExtras resolves from the host base and degrades to false', async () => {
   const { probeHostExtras } = await import('../src/index.js')
-  const all = { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, profileContext: false }
-  const none = { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, profileContext: false }
+  const all = { timeContext: true, toolSchedule: true, pluginMarket: true, compaction: true, office: true, profileContext: false }
+  const none = { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, office: false, profileContext: false }
   assert.deepEqual(await probeHostExtras(undefined, () => true), all)
   assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { ...none, toolSchedule: true })
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-office'), { ...none, office: true })
   // a throwing resolver reads as "absent" — never rejects the boot
   assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), none)
   // default resolver from this test file's base: official host packages absent → all false
