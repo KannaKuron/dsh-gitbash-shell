@@ -230,15 +230,16 @@ Two boundaries: whatever the script prints lands in the command's output (do not
 in it), and the file must exist — bash silently ignores a missing `BASH_ENV`, so a typo
 behaves exactly like "not set". `~` expands to the home directory.
 
-## Cooperation with dsh-ops: one bash per face (v0.50.0; dsh-ops 0.5.0 single row)
+## Cooperation with dsh-ops: one bash per face (v0.50.0; dsh-ops 0.5.0+ single row)
 
 The host cannot turn "visible but denied" into "hidden": `tools.restrict` filters
 only the inherited surface, while dsh-ops registers `ops_bash` in each agent's
 OWN layer. dsh-ops 0.5.0 collapsed the old component and preset-mode rows into
 one `dsh-ops` row and moved shell publication behind the `bash` key of each
 built-in mode section. This plugin writes `bash: false` into `minimal`,
-`standard`, `ptc` and `cordis` through the official `configEditor` channel, so
-`ops_bash` is not registered for those modes while the plugin is enabled. It
+`standard`, `ptc` and `cordis` through the official `configEditor` channel — and,
+on dsh-ops 0.5.3+, into `ops-ptc` when that row actually publishes the section —
+so `ops_bash` is not registered for those modes while the plugin is enabled. It
 never touches `global.bash`, `presets.<custom id>`, the pwsh7 overlay, file
 tools or background jobs (`bash` gates `mountSessionBash` only; pwsh uses
 `mountBundledPwsh`).
@@ -254,8 +255,10 @@ Three edges: (1) an override left behind by uninstalling while dsh was shut down
 can be cleared from the dsh-ops settings card, or by reinstalling and then
 disabling this plugin so the restore hook runs; (2) if you manually set the
 value back to `true`, that is your choice and this plugin leaves it alone;
-(3) 0.5.0 only affects the four built-in modes — unlisted custom presets are no
-longer integrated globally, and this plugin's `ptc-cordis` plus the `· Git Bash`
+(3) 0.5.0+ only affects the built-in modes — 0.5.0–0.5.2 has four; 0.5.3 adds
+`ops-ptc` (OPS (PTC)), adopted only when the row carries that section, so an
+older row never receives an unknown key. Unlisted custom presets are no longer
+integrated globally, and this plugin's `ptc-cordis` plus the `· Git Bash`
 variant ids are not built-in, so dsh-ops publishes no `ops_bash` there.
 dsh-ptc-cordis-preset v0.26.0 mounts `dsh-ops/integration` for its own file
 tools with `shell: false`, so our bash remains the only command tool.

@@ -19,18 +19,22 @@ import { opsOwnership } from './ops-ownership.js'
  * restricting from our side can hide it. Not registering is the only path.
  *
  * THE SWITCH (dsh-ops 0.5.0, owner decision 2026-11-06): the single
- * `dsh-ops` row owns four built-in mode sections — `minimal`,
+ * `dsh-ops` row owns four core built-in mode sections — `minimal`,
  * `standard`, `ptc`, `cordis` — and each accepts `bash: false`
  * (`src/presets/config.ts`: `bash` wins over the legacy
  * `publishBashTool` alias, then defaults to true; the runtime multiplies
- * it with `global.bash`). Setting those four flags is dsh-ops' own
- * supported configuration, not a hack into someone else's plugin.
+ * it with `global.bash`). Setting those flags is dsh-ops' own supported
+ * configuration, not a hack into someone else's plugin. dsh-ops 0.5.3
+ * adds a fifth built-in mode, `ops-ptc`; it is adopted only when the
+ * editor row actually publishes that section, so a 0.5.0–0.5.2 row never
+ * receives an unknown key.
  *
- * SCOPE (owner decision, 2026-11-06): only the four BUILT-IN modes are
- * touched. `global.bash`, the `presets.<id>` custom bindings and every
- * other dsh-ops setting stay exactly as the user configured them: a custom
- * preset is not ours to police, and the four mode flags are what keep the
- * bash slot ours while this plugin is mounted.
+ * SCOPE (owner decision, 2026-11-06): only the BUILT-IN modes are
+ * touched — the four core modes, plus `ops-ptc` when the row publishes
+ * it. `global.bash`, the `presets.<id>` custom bindings and every other
+ * dsh-ops setting stay exactly as the user configured them: a custom
+ * preset is not ours to police, and the built-in mode flags are what keep
+ * the bash slot ours while this plugin is mounted.
  *
  * WHY THIS MODULE TALKS TO configEditor (same discipline as
  * terminal-shell.js): the write must survive restarts and must be undoable.
@@ -59,7 +63,7 @@ import { opsOwnership } from './ops-ownership.js'
  * PRODUCT DECISION (owner, 2026-10-19): while this plugin is installed, the
  * bash tool is OURS — dsh-ops is kept for its file, search and background
  * enhancements only, and there is NO settings switch for this behavior. A
- * user who flips one of the four mode flags back to true in the settings card
+ * user who flips one of the built-in mode flags back to true in the settings card
  * is overridden again on our next boot; the supported way to use ops_bash is
  * to disable this plugin (which also restores the flags — the dispose hook).
  *
@@ -76,8 +80,14 @@ import { opsOwnership } from './ops-ownership.js'
 /** The single Loader row dsh-ops 0.5.0 mounts. */
 export const OPS_ROW_ID = 'dsh-ops'
 
-/** The built-in mode sections that can publish ops_bash (0.5.0 shape). */
+/** The four core built-in mode sections that can publish ops_bash (0.5.0 shape). */
 export const OPS_MODES = Object.freeze(['minimal', 'standard', 'ptc', 'cordis'])
+
+/** The fifth built-in mode section introduced in dsh-ops 0.5.3. */
+export const OPS_OPTIONAL_MODES = Object.freeze(['ops-ptc'])
+
+/** Every built-in mode section this module can adopt, core modes first. */
+export const OPS_ALL_MODES = Object.freeze([...OPS_MODES, ...OPS_OPTIONAL_MODES])
 
 /** @deprecated Use {@link OPS_ROW_ID}; kept for one release of import compatibility. */
 export const OPS_SHELL_ROW_ID = OPS_ROW_ID
@@ -97,7 +107,7 @@ function isRecord(value) {
  * One layer's mode section, or undefined.
  * @param {object|undefined} row - one configEditor.configuration() entry.
  * @param {'override'|'inherited'} layer - which value layer to read.
- * @param {string} mode - one of {@link OPS_MODES}.
+ * @param {string} mode - one of {@link OPS_ALL_MODES}.
  * @returns {object|undefined} the section.
  */
 function sectionOf(row, layer, mode) {
@@ -105,6 +115,20 @@ function sectionOf(row, layer, mode) {
   if (!isRecord(container)) return undefined
   const section = container[mode]
   return isRecord(section) ? section : undefined
+}
+
+/**
+ * The built-in mode sections this editor row publishes: the core four, plus
+ * `ops-ptc` only when the row contains that section. The presence check is
+ * what keeps the plugin compatible with dsh-ops 0.5.0–0.5.2, whose config
+ * validator rejects an unknown `ops-ptc` key.
+ * @param {object|undefined} row - one configEditor.configuration() entry.
+ * @returns {string[]} the mode names to consider.
+ */
+function modesOf(row) {
+  const optional = OPS_OPTIONAL_MODES.filter((mode) =>
+    sectionOf(row, 'inherited', mode) !== undefined || sectionOf(row, 'override', mode) !== undefined)
+  return [...OPS_MODES, ...optional]
 }
 
 /**
@@ -123,7 +147,7 @@ function boolOf(row, layer, mode, key) {
 /**
  * The effective `global.bash` switch (override wins over inherited; default true).
  * Exported for the tests and for future diagnostics; the plan itself deliberately
- * does NOT skip on it: the four mode flags are what keep ownership stable if the
+ * does NOT skip on it: the built-in mode flags are what keep ownership stable if the
  * user re-enables the global switch without restarting dsh.
  * @param {object|undefined} row - one editor entry.
  * @returns {boolean} the value.
@@ -180,10 +204,10 @@ export function planOpsAdopt(row) {
     return {
       action: 'skip-disabled',
       reason: 'the dsh-ops row is disabled, so it publishes no bash tool',
-      modes: OPS_MODES.map((mode) => ({ mode, action: 'skip-disabled', reason: 'the dsh-ops row is disabled' })),
+      modes: modesOf(row).map((mode) => ({ mode, action: 'skip-disabled', reason: 'the dsh-ops row is disabled' })),
     }
   }
-  const modes = OPS_MODES.map((mode) => {
+  const modes = modesOf(row).map((mode) => {
     if (!effectiveModeEnabled(row, mode)) {
       return { mode, action: 'skip-disabled-mode', reason: 'the ' + mode + ' section is disabled, so it publishes no bash tool' }
     }
@@ -377,7 +401,9 @@ export async function restoreOpsBash(editor) {
     if (!rows.length) return { status: 'skip-row-absent', rows: [], detail: 'no dsh-ops row is mounted' }
     const results = []
     for (const row of rows) {
-      const modes = OPS_MODES.filter(mode => Object.hasOwn(receipt.fields, mode))
+      // Include the optional ops-ptc mode: a receipt written by a 0.5.3+ run
+      // must be liftable even though the core list stays four entries.
+      const modes = OPS_ALL_MODES.filter(mode => Object.hasOwn(receipt.fields, mode))
       if (!modes.length) continue
       if (typeof editor.edit !== 'function') return { status: 'restore-failed', rows: results, detail: 'config editor exposes no edit()' }
       try {
@@ -458,7 +484,7 @@ export function opsModeList(result, actions) {
  */
 export function opsAdoptReport(result) {
   const listed = opsRowList(result)
-  const modes = opsModeList(result, ['adopt', 'present', 'unchanged-inherited-off', 'skip-disabled-mode']) || OPS_MODES.join('/')
+  const modes = opsModeList(result, ['adopt', 'present', 'unchanged-inherited-off', 'skip-disabled-mode']) || OPS_ALL_MODES.join('/')
   switch (result.status) {
     case 'adopted':
       return 'dsh-ops bash removed from the agent face (bash=false on ' + modes + ' of ' + (listed || OPS_ROW_ID) + ' through the official config editor): the host cannot hide own-layer tools, so dsh-ops must simply not register it — disable this plugin any time you want ops_bash back (the removal is lifted automatically)'
@@ -490,7 +516,7 @@ export function opsAdoptReport(result) {
  */
 export function opsRestoreReport(result) {
   const listed = opsRowList(result)
-  const modes = opsModeList(result, ['restore']) || OPS_MODES.join('/')
+  const modes = opsModeList(result, ['restore']) || OPS_ALL_MODES.join('/')
   switch (result.status) {
     case 'restored':
       return 'dsh-ops bash setting restored: the bash override is lifted on ' + modes + ' of ' + (listed || OPS_ROW_ID) + ', ops_bash follows the dsh-ops settings again'

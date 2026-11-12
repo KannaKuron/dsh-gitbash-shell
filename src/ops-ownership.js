@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto'
 
 const profiles = new Map()
 const transient = new WeakMap()
-const MODES = new Set(['minimal', 'standard', 'ptc', 'cordis'])
+// Keep in sync with src/ops-adopt.js: 0.5.3 added the optional `ops-ptc` mode.
+const MODES = new Set(['minimal', 'standard', 'ptc', 'cordis', 'ops-ptc'])
 function validate(value) {
   if (value?.version !== 1 || !value.fields || typeof value.fields !== 'object' || Array.isArray(value.fields)) throw new Error('invalid dsh-ops ownership journal; refusing to guess ownership')
   for (const [mode, field] of Object.entries(value.fields)) {

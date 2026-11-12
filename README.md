@@ -49,10 +49,11 @@ POSIX 宿主上完整保留;
   `/c/` 方言统一:`ops_*` 的入参(含 `root`/`operations[].path`/`protect`)
   自动转换、返回与报错路径自动回流 `/c/`。
 
-- **与 dsh-ops 0.5.0 并存:bash 只留一份(v0.50.0;只支持 0.5.0 单行)**:宿主机制决定「可见但拒绝」到不了「看不见」——
+- **与 dsh-ops 0.5.x 并存:bash 只留一份(v0.50.0;支持 0.5.0+ 单行)**:宿主机制决定「可见但拒绝」到不了「看不见」——
   `tools.restrict` 只能过滤继承面,而 `ops_bash` 注册在 agent 自有层。0.5.0 把 0.4.x 的组件行/mode 行收成
-  一行 `dsh-ops`,shell 发布改由四个内置模式 section 的 `bash` 开关控制。于是本插件经官方 configEditor 通道
-  给 `minimal`/`standard`/`ptc`/`cordis` 各写 `bash:false`:安装本插件时这四个模式的 `ops_bash` 不再注册;
+  一行 `dsh-ops`,shell 发布改由内置模式 section 的 `bash` 开关控制。于是本插件经官方 configEditor 通道
+  给 `minimal`/`standard`/`ptc`/`cordis` 各写 `bash:false`(0.5.3 起若该行还带 `ops-ptc` section,也写):
+  安装本插件时这些模式的 `ops_bash` 不再注册;
   **`global.bash`、`presets.<自定义 id>`、ops 的 pwsh7 overlay、文件/后台增强全部不动**
   ——`bash` 门只套在 `mountSessionBash` 上,pwsh 走 `mountBundledPwsh` 独立路径。
   0.5.0 已移除旧 `dsh-ops-shell`/`dsh-ops-file`/`dsh-ops-mode-*` 行,本版也删掉对应接管逻辑:
@@ -61,8 +62,10 @@ POSIX 宿主上完整保留;
   重新启用又会自动接管。接管前会在 profile 目录的 `.gitbash-ops-ownership.json` 中原子记录实际修改字段的原值，
   重启后仍可精确恢复；用户原先设置的 `bash:false` 不会被认领或删除。升级前留下且没有记录的 `false` 保持原样，
   不猜测它属于用户还是旧插件。三个边界:①关机状态下卸载的残余覆盖,可用 dsh-ops 设置卡恢复默认,或重新安装/停用本插件
-  触发还原;②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它;③**0.5.0 只对四个内置模式生效**:
-  dsh-ops 不再全局接入未列出的自定义 preset,本插件的 `ptc-cordis` 与「· Git Bash」变体 id 不在四个内置模式中,
+  触发还原;②停用时若覆盖值已被你手动改回 `true`,视为你的选择、不动它;③**0.5.0+ 只对内置模式生效**:
+  0.5.0–0.5.2 是四个,0.5.3 起新增第五个 `ops-ptc`(OPS (PTC));只有 editor row 实际带该 section 时本插件
+  才写 `bash:false`,所以老行不会被塞未知键。dsh-ops 不再全局接入未列出的自定义 preset,本插件的
+  `ptc-cordis` 与「· Git Bash」变体 id 不在内置模式中,
   那些会话里 dsh-ops 不会发布 `ops_bash`;dsh-ptc-cordis-preset v0.26.0 自己挂 `dsh-ops/integration` 取文件工具,
   但保持 `shell:false`,所以我们的 bash 仍是唯一命令工具。
   无设置开关——想用 `ops_bash` 就停用本插件,还原是自动的。

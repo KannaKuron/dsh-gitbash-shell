@@ -3,6 +3,15 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.54.1 — 2026-11-12
+
+**类型**: fix（适配 dsh-ops 0.5.3+ 的 OPS (PTC) 模式）
+
+- **条件适配第五个内置模式**：`src/ops-adopt.js` 增加 `OPS_OPTIONAL_MODES = ['ops-ptc']` 与 `OPS_ALL_MODES`；只有 editor row 的 `inherited` / `override` 实际带 `ops-ptc` 段时才纳入，继续写 `bash: false`。dsh-ops 0.5.0–0.5.2 的 row 没有该段，不会收到未知键，配置校验不受影响。
+- **恢复路径同步**：ownership receipt 的合法模式加入 `ops-ptc`，`restoreOpsBash` 按 `OPS_ALL_MODES` 过滤 receipt 字段，0.5.3+ 写入的 receipt 在禁用/卸载时可正常还原；禁用行、禁用模式与 override-only 的既有语义不变。
+- **测试**：新增 `dsh-ops 0.5.3 ops-ptc is adopted only when the row publishes it`，覆盖 inherited、override-only、disabled、旧 row 不写未知键与还原；常量断言更新为 4 核心 + 1 可选。完整 `npm test` **416 项 / 415 pass / 0 fail / 1 platform skip**（约 1.7s）。
+- **文档**：README / README_EN / AGENTS 把“0.5.0 四模式”改为“0.5.0+，0.5.3 起若 row 带 `ops-ptc` 也纳入”，并说明旧版本不写未知键。
+
 ## v0.54.0 — 2026-11-10
 
 **类型**: fix / docs（启动日志静默，仅保留问题输出，issue #46）

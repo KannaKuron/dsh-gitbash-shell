@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   OPS_MODES,
+  OPS_OPTIONAL_MODES,
+  OPS_ALL_MODES,
   OPS_MODE_ROW_IDS,
   OPS_ROW_ID,
   OPS_SHELL_ROW_ID,
@@ -50,7 +52,7 @@ function fakeOpsEditor({ rows = [], failEdit = null, ghostEdit = false, extraRow
       const row = state.rows.find((candidate) => candidate.entry.options.id === entry.options.id)
       if (!row) throw new Error('fake: row vanished')
       const current = { ...row.inherited, ...row.override }
-      for (const mode of OPS_MODES) if (row.inherited?.[mode] || row.override?.[mode]) current[mode] = { ...row.inherited?.[mode], ...row.override?.[mode] }
+      for (const mode of OPS_ALL_MODES) if (row.inherited?.[mode] || row.override?.[mode]) current[mode] = { ...row.inherited?.[mode], ...row.override?.[mode] }
       row.override = change(current, row.inherited ?? {})
     },
   }
@@ -235,13 +237,17 @@ test('ops-adopt: the removal list never grows into dsh-ops background or file to
   assert.match(source, /export const OPS_SHELL_TOOLS = Object\.freeze\(\['ops_bash', 'ops_run'\]\)/)
 })
 
-// ── dsh-ops 0.5.0 (v0.50.0) ────────────────────────────────────────────────
-// 0.5.0 replaced the component roster with ONE row and four nested mode
-// sections. The old row ids no longer exist; writing them would be a no-op.
+// ── dsh-ops 0.5.x (v0.50.0+) ──────────────────────────────────────────────
+// 0.5.0 replaced the component roster with ONE row and four nested core mode
+// sections. 0.5.3 added the fifth built-in mode `ops-ptc`; it is adopted only
+// when the row actually publishes that section. The old row ids no longer
+// exist; writing them would be a no-op.
 
-test('ops-adopt: the row set is the single dsh-ops row with four nested modes', () => {
+test('ops-adopt: the row set is one dsh-ops row with four core modes plus optional ops-ptc', () => {
   assert.equal(OPS_ROW_ID, 'dsh-ops')
   assert.deepEqual([...OPS_MODES], ['minimal', 'standard', 'ptc', 'cordis'])
+  assert.deepEqual([...OPS_OPTIONAL_MODES], ['ops-ptc'])
+  assert.deepEqual([...OPS_ALL_MODES], ['minimal', 'standard', 'ptc', 'cordis', 'ops-ptc'])
   assert.equal(OPS_SHELL_ROW_ID, OPS_ROW_ID, 'the deprecated alias points at the live row')
   assert.deepEqual([...OPS_SHELL_ROW_IDS], [OPS_ROW_ID], 'the 0.4.x row set is gone')
   assert.deepEqual([...OPS_MODE_ROW_IDS], ['dsh-ops-mode-minimal', 'dsh-ops-mode-standard', 'dsh-ops-mode-ptc', 'dsh-ops-mode-cordis'],
@@ -249,10 +255,38 @@ test('ops-adopt: the row set is the single dsh-ops row with four nested modes', 
   const source = readFileSync(new URL('../src/ops-adopt.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   assert.match(source, /OPS_MODES = Object\.freeze\(\['minimal', 'standard', 'ptc', 'cordis'\]\)/)
   assert.match(source, /OPS_ROW_ID = 'dsh-ops'/)
-  assert.match(source, /only the four BUILT-IN modes/i, 'the doc records the dsh-ops 0.5.0 breaking change')
+  assert.match(source, /only the BUILT-IN modes/i, 'the doc records the dsh-ops 0.5.0 breaking change')
+  assert.match(source, /plus `ops-ptc` when the row publishes/i, 'the doc records the dsh-ops 0.5.3 addition')
 })
 
-test('ops-adopt: global.bash is never touched and only the four built-in modes are written', async () => {
+test('ops-adopt: dsh-ops 0.5.3 ops-ptc is adopted only when the row publishes it', async () => {
+  const withOpsPtc = rowOf(OPS_ROW_ID, {}, { 'ops-ptc': { bash: true } })
+  const plan = planOpsAdopt(withOpsPtc)
+  assert.deepEqual(plan.modes.map((row) => row.mode), [...OPS_MODES, 'ops-ptc'])
+  assert.equal(modeActions(plan)['ops-ptc'], 'adopt')
+  assert.equal(modeActions(planOpsAdopt(rowOf(OPS_ROW_ID, { 'ops-ptc': { bash: true } }, {})))['ops-ptc'], 'adopt',
+    'an override-only section also proves the mode exists')
+
+  const disabled = rowOf(OPS_ROW_ID, { 'ops-ptc': { enabled: false } }, { 'ops-ptc': { bash: true } })
+  assert.equal(modeActions(planOpsAdopt(disabled))['ops-ptc'], 'skip-disabled-mode', 'a disabled optional section is never written')
+
+  const editor = fakeOpsEditor({ rows: [withOpsPtc] })
+  const adopted = await adoptOpsBashRemoval(editor)
+  assert.equal(adopted.status, 'adopted')
+  assert.equal(editor.state.rows[0].override['ops-ptc'].bash, false)
+  assert.equal(opsModeList(adopted, ['adopt']), [...OPS_MODES, 'ops-ptc'].join('/'))
+
+  const restored = await restoreOpsBash(editor)
+  assert.equal(restored.status, 'restored')
+  assert.equal(editor.state.rows[0].override['ops-ptc'], undefined, 'inherited true is restored as absent')
+
+  const oldRow = rowOf(OPS_ROW_ID, { global: { bash: true } }, {})
+  const oldEditor = fakeOpsEditor({ rows: [oldRow] })
+  await adoptOpsBashRemoval(oldEditor)
+  assert.equal('ops-ptc' in oldEditor.state.rows[0].override, false, '0.5.0-0.5.2 rows never receive the unknown key')
+})
+
+test('ops-adopt: global.bash is never touched and only published built-in modes are written', async () => {
   const editor = fakeOpsEditor({ rows: [rowOf(OPS_ROW_ID, { global: { bash: true } }, {})] })
   const result = await adoptOpsBashRemoval(editor)
   assert.equal(result.status, 'adopted')
