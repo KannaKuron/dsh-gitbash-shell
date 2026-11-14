@@ -3090,6 +3090,62 @@ window.__ModuleLoader__.load({
 		/** Once per client boot; sessionStorage survives a re-render, not a restart. */
 		var bashPopupShown = false;
 
+		/**
+		 * better-sidebar 0.32 removed the host-side `terminalShell` setting. Its
+		 * terminal tabs now take the shell from the terminal service's remembered
+		 * browser preference (the same `webTerminals.selectShell` the official
+		 * terminal guide uses). Keep the `adoptSidebar` contract on that channel:
+		 * when the host reports a verified Git Bash, point this browser's terminal
+		 * preference at it. Gated by the row's live `adoptSidebar` value, Windows
+		 * only, and the optional service method; older hosts/browsers simply skip.
+		 */
+		function installTerminalShellAdoption(ctx, scope) {
+			var service = null;
+			var selected = "";
+			var busy = false;
+			var stopped = false;
+			function adopt() {
+				if (stopped || busy || !service || typeof service.selectShell !== "function") return;
+				var value = null;
+				try {
+					var snap = scope && typeof scope.getSnapshot === "function" ? scope.getSnapshot() : null;
+					value = snap && snap.status === "ready" && snap.value && typeof snap.value === "object" ? snap.value : null;
+				} catch (error_) { value = null; }
+				if (value === null || value.adoptSidebar === false) return;
+				busy = true;
+				Promise.resolve(fetch(API_PATH, { headers: { accept: "application/json" } }))
+					.then(function (response) { return response.ok ? response.json() : null; })
+					.then(function (data) {
+						if (stopped || !data || data.platform !== "win32" || data.ok !== true) return;
+						var path = typeof data.resolved === "string" ? data.resolved : "";
+						if (path === "" || path === selected) return;
+						try { service.selectShell(path); selected = path; } catch (error_) { /* older service */ }
+					})
+					.catch(function () { /* status route absent on an older host */ })
+					.then(function () { busy = false; });
+			}
+			try {
+				ctx.inject(["webTerminals"], function (tctx) {
+					try { service = tctx.get("webTerminals"); } catch (error_) { service = null; }
+					adopt();
+				});
+			} catch (error_) { /* terminal service is optional */ }
+			if (scope && typeof scope.subscribe === "function") {
+				var unsubscribe = scope.subscribe(adopt);
+				if (typeof ctx.effect === "function") {
+					ctx.effect(function () {
+						return function () {
+							stopped = true;
+							try { unsubscribe(); } catch (error_) { /* already disposed */ }
+						};
+					}, "dsh-gitbash-shell: terminal shell adoption");
+				}
+				adopt();
+			} else {
+				adopt();
+			}
+		}
+
 		function readDismissed() {
 			try { return window.sessionStorage.getItem(DISMISS_KEY) === "1" } catch (error_) { return false }
 		}
@@ -3419,7 +3475,14 @@ window.__ModuleLoader__.load({
 				ctx.inject(["configForms"], function (fctx) {
 					try {
 						var forms = fctx && fctx.configForms;
-						if (forms && typeof forms.get === "function") scope = forms.get(ROW_NAMESPACE);
+						if (forms && typeof forms.get === "function") {
+							scope = forms.get(ROW_NAMESPACE);
+							if (scope) {
+								try { installTerminalShellAdoption(ctx, scope); } catch (error) {
+									console.warn(TAG + " terminal shell adoption wiring failed:", error && error.message ? error.message : error);
+								}
+							}
+						}
 					} catch (error) {
 						console.warn(TAG + " configForms acquisition failed:", error && error.message ? error.message : error);
 					}

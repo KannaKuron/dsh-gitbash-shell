@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.55.1 — 2026-11-15
+
+**类型**:fix(better-sidebar 0.32 的 terminalShell 删除后接管失效,issue #47)
+
+- **根因**:dsh-better-sidebar 从 0.21.0 起已把用户偏好并入 loader 行 Config 并删除 `terminalShell` 字段(issue #47 在 0.32.1 上实测)。宿主半仍按旧版调用 `settings.update('better-sidebar', { terminalShell })`,每次启动被 loader 以 `Config field "terminalShell" is not volatile` 拒绝并打印告警;bundle patch 给该行写的 `config.shell` 也失去落点。
+- **宿主半**:`adoptSidebarShell` 在写入前检查 `settings.describe()` 目标行的 schema dict;没有 `terminalShell` 就只写一条 debug 日志并停止,绝不调用旧 `update`,不再产生每次启动的告警。0.19.1 及更早有该字段时行为完全不变。
+- **客户端半**:0.21+ 的终端 shell 改由终端服务的浏览器本地偏好决定。客户端在 `adoptSidebar` 开启、Windows、状态路由 `ok:true` 时调用 `webTerminals.selectShell(resolved)`;路径来自宿主已验证的 Git Bash,与 Side card / 官方终端菜单使用同一条 `dsh.terminal.shell` 偏好。该偏好是浏览器本地值,换浏览器或清 localStorage 后需要重新选择;卸载本插件不会自动还原。
+- **文档**:README / README_EN / AGENTS 说明 0.31 与 0.32+ 两代通道、浏览器本地语义与 `adoptSidebar: false`。
+- **测试**:新增「row 无 terminalShell schema 字段时不写」与客户端 `webTerminals.selectShell` 接线/开关门控用例。完整 `npm test` **418 项 / 417 pass / 0 fail / 1 platform skip**。
+- **链接**:[issue #47](https://github.com/KannaKuron/dsh-gitbash-shell/issues/47)
+
 ## v0.55.0 — 2026-11-12
 
 **类型**:feat(适配 dsh 0.2.2-rc.2 的 preset 行)

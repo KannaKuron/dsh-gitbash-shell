@@ -547,10 +547,11 @@ return await fs.readFile(resolved.native_path, 'utf8');
 
 ## 与 dsh-better-sidebar 联动
 
-装了 [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar)(v0.15.2+) 时,Windows 上本插件会通过**它的官方设置补丁口**(运行时 `terminalShell` 设置,对方文档明示"settings-page overrides win for terminals opened afterwards")把它打开的终端 shell 指向 Git Bash——**UI 终端标签与模型侧 `terminal_*` 工具统一生效**,不改对方一行代码、新开的终端即生效。此外,**本插件的 bundle patch 还会给对方的行补上 `config.shell`**(启动期解析,连 **tab 标题也会显示 bash**;对方未安装时该行无害跳过)。规则:
+装了 [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar)(v0.15.2+) 时,Windows 上本插件会把它打开的终端 shell 指向 Git Bash——**UI 终端标签与模型侧 `terminal_*` 工具统一生效**,不改对方一行代码、新开的终端即生效。通道随对方版本分两代:
 
-- **插件全权接管**:Windows 上每次启动都无条件把它的 `terminalShell` 设为 Git Bash——即使你在设置页/别处改过,下次插件启动也会改回来;
-- 卸载本插件 → 自动还原为你改之前的原值(回到它的默认解析:pwsh / powershell);
+- **v0.15.2–v0.19.1**:通过对方的运行时 `terminalShell` 设置接管;启动时无条件写入 Git Bash,新终端立即生效。bundle patch 还会给对方的行补 `config.shell`(启动期解析,连 tab 标题也显示 bash;对方未安装时该行无害跳过)。
+- **v0.21.0+**:`terminalShell` 已从对方的行 Config 中删除(issue #47 在 0.32.1 上实测报错)。宿主半探测到字段不存在就不再写旧设置,也不再每次启动告警;客户端半在 Windows 且解析出已验证 Git Bash 时调用终端服务的 `selectShell()`,把**当前浏览器**的终端选择指向它。这是终端服务自己的浏览器本地偏好(与 Side card / 官方终端菜单是同一个),换浏览器或清 localStorage 后需要再选一次;`adoptSidebar: false` 仍然关闭这条接管。
+- **卸载本插件**:v0.31 及更早会还原接管前的值;v0.32+ 的浏览器本地选择不会自动还原,可在终端菜单里重新选择。
 - 想关掉本联动 → 本插件 row 配置加 `adoptSidebar: false`(默认 true)。
 
 ## 许可

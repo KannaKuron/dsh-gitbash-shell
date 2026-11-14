@@ -368,6 +368,12 @@
        `term.label`/`term.hint`。原 `adoptSidebarShell`(dsh-better-sidebar 通道)**保持独立**,两条互不干扰。
      - 改动必须跑冒烟里的「sidebar terminal」六例 + 真机五态(空→写 `name: Git Bash` / **历史 `bash` 名字→改名迁移** /
        同值→不写且 patch md5 未变 / 异值→不写 / 开关关→不写),并保留 README 的三步复验清单。
+     - **better-sidebar 0.21+ 的 `terminalShell` 已删除(issue #47,v0.55.1)**: 对方的终端标签现在用
+       `webTerminals` 终端服务的浏览器本地 shell 偏好(`selectShell`),与官方终端菜单同源。宿主半在
+       `adoptSidebarShell` 的 `run()` 里先查 `settings.describe()` 目标行的 schema dict:没有
+       `terminalShell` 就 debug 日志后停止,**绝不调用 `settings.update`**(否则每 boot 一条 not volatile
+       告警);客户端半在 `adoptSidebar` 开启、Windows、状态路由 `ok:true` 时调用
+       `webTerminals.selectShell(resolved)`。这条偏好是浏览器本地值,卸载不还原;不要再把它写成宿主设置。
 
 5. **无构建**:发布产物就是 src/*(assets 目录已随物化路径删除);npm test 全绿即可;安装不触发 lifecycle
    脚本(保持零 allowBuilds 摩擦)。

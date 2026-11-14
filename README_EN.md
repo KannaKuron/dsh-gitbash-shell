@@ -411,10 +411,11 @@ into that row (only when the row has no shell of its own — an explicit choice 
 
 ## Cooperation with dsh-better-sidebar
 
-When [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (v0.15.2+) is installed, on Windows this plugin adopts its official runtime settings seam (`terminalShell` — by the sidebar's own contract, "settings-page overrides win for terminals opened afterwards"), so both the sidebar's UI terminal tabs and the model-facing `terminal_*` tools open Git Bash — no upstream change, new terminals pick it up immediately. In addition, this bundle's patch also sets `config.shell` on the sidebar's row (boot-time resolution, so the **tab label reads `bash` too**; the row edit is harmless-skipped when the sidebar is not installed). Rules:
+When [dsh-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) (v0.15.2+) is installed, on Windows this plugin points its terminal shell at Git Bash — both the sidebar's UI terminal tabs and the model-facing `terminal_*` tools, with no upstream change and no restart. The seam depends on the sidebar version:
 
-- **The plugin owns the pref while installed and `adoptSidebar` is on (default)**: on every Windows boot it sets `terminalShell` to Git Bash — a value you set elsewhere is overwritten again on the next boot;
-- Removing this plugin restores the previous value (the sidebar returns to what it had before, e.g. its default pwsh / powershell resolution);
+- **v0.15.2–v0.19.1**: adopt the runtime `terminalShell` setting; every Windows boot writes Git Bash unconditionally. The bundle patch also sets `config.shell` on the sidebar row for boot-time resolution (so the tab label reads `bash` too; harmless-skipped when the sidebar is absent).
+- **v0.21.0+**: `terminalShell` is gone from the sidebar's row Config (issue #47 reports the failure on 0.32.1). The host half detects the missing field and stops writing it (no more per-boot warning). On Windows, once a verified Git Bash is resolved, the client half calls the terminal service's `selectShell()`, which sets this browser's terminal preference — the same preference the Side card and official terminal menu use. It is browser-local: another browser or a cleared localStorage needs one more selection. `adoptSidebar: false` still disables it.
+- **Removing this plugin**: v0.31 and earlier restore the previous value; the v0.32+ browser-local preference is not restored automatically — pick another shell in the terminal menu.
 - Disable the adoption with `adoptSidebar: false` in this plugin's row config.
 
 ## License

@@ -654,6 +654,23 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
   let timer = null
   let closed = false
   let serial = Promise.resolve()
+  /* better-sidebar 0.32 dropped `terminalShell` from its row Config; its
+     terminal now takes the shell from the terminal service's browser-local
+     preference. Writing the retired field makes the loader reject the update
+     ("Config field terminalShell is not volatile") on every boot. Probe the
+     live schema first: no field means there is nothing to adopt host-side, so
+     the client half owns the new channel and this helper stays silent. */
+  const legacySidebarShellSupported = () => {
+    const settings = ctx.get('settings')
+    if (!settings || typeof settings.describe !== 'function') return null
+    try {
+      const entry = settings.describe().find((row) => row && row.ns === SIDEBAR_NS)
+      if (!entry) return false
+      const fields = entry.schema && entry.schema.dict
+      if (fields && typeof fields === 'object') return Object.prototype.hasOwnProperty.call(fields, 'terminalShell')
+      return !!entry.value && typeof entry.value === 'object' && Object.prototype.hasOwnProperty.call(entry.value, 'terminalShell')
+    } catch { return null }
+  }
   const readShell = () => {
     const settings = ctx.get('settings')
     if (!settings || typeof settings.update !== 'function') return null
@@ -688,6 +705,10 @@ function adoptSidebarShell(ctx, bashPath, readAdopt) {
   }
   const run = () => {
     if (closed) return serial
+    if (legacySidebarShellSupported() === false) {
+      if (readAdopt() === true) debugLog(TAG + ' better-sidebar has no terminalShell field (0.32+); the terminal service preference is used instead')
+      return serial
+    }
     if (timer) { clearTimeout(timer); timer = null }
     serial = serial.then(async () => {
       if (closed) return

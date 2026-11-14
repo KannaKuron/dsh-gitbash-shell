@@ -737,6 +737,11 @@ test('live settings readers use describe()/update() only (issue #6 follow-up)', 
   // Already adopted: nothing to write.
   const settled = await adopt({ describe: () => [{ ns: 'better-sidebar', value: { terminalShell: 'X:/git/bin/bash.exe' } }] })
   assert.deepEqual(settled, [], 'an already-adopted sidebar is left alone')
+  // better-sidebar 0.32 removed terminalShell from the row schema (issue #47).
+  // The host must probe the schema and stop, not write into a field the loader
+  // will reject on every boot.
+  const retired = await adopt({ describe: () => [{ ns: 'better-sidebar', schema: { dict: {} }, value: { terminalShell: '' } }] })
+  assert.deepEqual(retired, [], 'a row without the terminalShell schema field is not written')
 })
 
 test('the bash init script rides BASH_ENV (issue #37, v0.45.0)', () => {
@@ -1317,6 +1322,44 @@ test('regression (v0.24.2): a full apply() mount completes on a stub ctx', async
       'the sidebar adoption must hand Git Bash to the settings seam',
     )
   }
+})
+
+test('better-sidebar 0.32 terminal selection rides webTerminals (issue #47)', async () => {
+  const client = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+  // The old terminalShell setting is gone; the sidebar's terminal now uses the
+  // terminal service's remembered browser preference. The client half adopts
+  // that channel only with a verified Windows Git Bash and the live switch on.
+  assert.match(client, /ctx\.inject\(\["webTerminals"\]/, 'the optional terminal service is injected')
+  assert.match(client, /service\.selectShell\(path\)/, 'the client selects the verified shell')
+  assert.match(client, /data\.platform !== "win32"/, 'non-Windows hosts are never touched')
+  assert.match(client, /value\.adoptSidebar === false/, 'the live adoptSidebar switch gates the write')
+  assert.match(client, /dsh-gitbash-shell\/api\/status/, 'the verified path comes from the host status route')
+
+  const start = client.indexOf('function installTerminalShellAdoption(')
+  const end = client.indexOf('function MissingBashPopup(', start)
+  const body = client.slice(start, end)
+  const selected = []
+  const fetchStub = async () => ({ ok: true, json: async () => ({ platform: 'win32', ok: true, resolved: 'C:/Git/bin/bash.exe' }) })
+  const installFor = (value) => {
+    const service = { selectShell: (path) => { selected.push(path) } }
+    const ctx = {
+      inject: (names, callback) => callback({ get: (name) => (name === 'webTerminals' ? service : undefined) }),
+      effect: (factory) => { factory() },
+    }
+    const scope = {
+      getSnapshot: () => ({ status: 'ready', value }),
+      subscribe: () => () => {},
+    }
+    const install = new Function('fetch', 'API_PATH', 'TAG', body + '\nreturn installTerminalShellAdoption')(fetchStub, 'status', 'test')
+    install(ctx, scope)
+  }
+  installFor({ adoptSidebar: true })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(selected, ['C:/Git/bin/bash.exe'], 'the live switch adopts the verified path')
+  selected.length = 0
+  installFor({ adoptSidebar: false })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(selected, [], 'adoptSidebar: false stays untouched')
 })
 
 // ── peer dedupe against dsh-ptc-cordis-preset (v0.25.0, their issue #7) ──────
