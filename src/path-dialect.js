@@ -19,10 +19,10 @@ import { join } from 'node:path'
 import { resolveGitBashCached } from './bash-path.js'
 
 /** The full directive text, injected only while posixPaths is on. */
-export const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve in every tool exactly as bash itself resolves them.'
+export const POSIX_DIRECTIVE_TEXT = 'The working shell is Git for Windows bash: paths for tools that run on this machine use MSYS drive roots (/c/Users/...), and those tools accept that form directly — including the bash-native habits (~ home shorthand, /tmp, /dev/null, /usr/bin/...), which resolve exactly as bash itself resolves them. Tools that forward a path to another machine or container (WSL, SSH, remote or container plugins) receive arguments unchanged: give those tools the guest-native path form.'
 
 /** Strict drive-root-only directive (v0.19.0): used while virtualMounts is off. */
-export const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: paths use MSYS drive roots (/c/Users/...), and every tool accepts that form directly.'
+export const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows bash: paths for tools that run on this machine use MSYS drive roots (/c/Users/...), and those tools accept that form directly. Tools that forward a path to another machine or container receive arguments unchanged; give those tools the guest-native path form.'
 
 /**
  * The run_code sentence is added ONLY for assemblies whose tool list actually
@@ -31,8 +31,8 @@ export const POSIX_DIRECTIVE_TEXT_STRICT = 'The working shell is Git for Windows
  * write paths into, so the sentence would be pure noise there. Cheap and
  * honest: the tool list of the very assembly being rendered decides.
  */
-const RUN_CODE_DIRECTIVE_TEXT = ' In a run_code program, compatible plain MSYS path literals are translated on a best-effort basis; interpolated or tagged templates and uncertain syntax are not rewritten. For direct native Node fs/path APIs, prefer explicit Windows drive-letter or cwd-relative paths. Do not rely on literal rewriting for dynamic paths, shell command strings, routes or search data; tool path arguments are translated separately. Shell expansion is unavailable in program strings, so do not rely on $VARS.'
-const RUN_CODE_DIRECTIVE_OFF_TEXT = ' In a run_code program, automatic path-literal rewriting is OFF. Direct native Node fs/path APIs require Windows drive-letter or cwd-relative paths, not MSYS /c/... strings. Tool path arguments are still translated separately; program strings do not perform shell expansion.'
+const RUN_CODE_DIRECTIVE_TEXT = ' In a run_code program, compatible plain MSYS path literals are translated on a best-effort basis; interpolated or tagged templates and uncertain syntax are not rewritten. For direct native Node fs/path APIs, prefer explicit Windows drive-letter or cwd-relative paths. Do not rely on literal rewriting for dynamic paths, shell command strings, routes or search data; path arguments of tools that run on this machine are translated separately, while tools that forward paths to another machine receive them unchanged. Shell expansion is unavailable in program strings, so do not rely on $VARS.'
+const RUN_CODE_DIRECTIVE_OFF_TEXT = ' In a run_code program, automatic path-literal rewriting is OFF. Direct native Node fs/path APIs require Windows drive-letter or cwd-relative paths, not MSYS /c/... strings. Path arguments of tools that run on this machine are still translated separately; tools that forward paths elsewhere receive them unchanged. Program strings do not perform shell expansion.'
 
 /** The run_code sentence for this assembly, or '' when the tool is not offered. */
 export function runCodeHintFor(tools, codePaths = true, programLanguage) {
@@ -50,7 +50,7 @@ export function runCodeHintFor(tools, codePaths = true, programLanguage) {
 // lives there, verifiable at runtime instead of only stated in the prompt.
 export const PATH_DIALECT_KEY = 'DSH_PATH_DIALECT'
 export const PATH_DIALECT_VALUE = 'msys'
-export const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results: MSYS drive roots (/c/Users/...) plus the bash-native mounts (~, /tmp, /dev/null, /usr); every tool accepts these forms directly.'
+export const PATH_DIALECT_DESCRIPTION = 'Path dialect for tool calls and tool results on this machine: MSYS drive roots (/c/Users/...) plus the bash-native mounts (~, /tmp, /dev/null, /usr); tools that run here accept these forms directly. Tools that forward paths to another machine receive them unchanged.'
 
 // v0.21.1 — line endings for the MODEL's git commands live in the EXECUTOR
 // (src/shell.js, withParityEnv): Windows Git defaults to core.autocrlf=true, so
@@ -350,19 +350,66 @@ export function rewriteResultPaths(name, value, env) {
   return value
 }
 
-// ── MSYS drive-root path translation (Windows, EVERY tool dispatch) ────────
+// ── MSYS drive-root path translation (Windows, LOCAL tool dispatch) ────────
 //
 // The directive below tells the model to use POSIX-style MSYS paths (/c/...)
-// for EVERY tool. Bash digests those natively, but the Node-backed file tools
-// resolve an MSYS root against the current drive (/c/Users -> C:/c/Users), so a
-// global tools/execute wrapper rewrites the path-bearing ARGUMENT FIELDS (by
-// field NAME, not by tool name — dynamic tools using the standard field names
-// are covered too) into the drive-letter form the host accepts. The bash
-// command field is deliberately untouched: MSYS roots are Git Bash native
-// there. Defensive by design: the waterfall hands the same mutable exec object
-// to the tool body, but if a future registry freezes it the write throws, is
-// swallowed, and the call proceeds with the model original arguments (the
-// directive still stands).
+// for tools that run ON THIS MACHINE. Bash digests those natively, but the
+// Node-backed file tools resolve an MSYS root against the current drive
+// (/c/Users -> C:/c/Users), so a tools/execute wrapper rewrites the
+// path-bearing ARGUMENT FIELDS (by field NAME, not by tool name — dynamic
+// tools using the standard field names are covered too) into the drive-letter
+// form the host accepts. The gate is per TOOL, not per field: a tool that
+// forwards a path to a WSL/SSH/container/remote guest must receive it
+// unchanged, because /home/x is a valid Linux path there and rewriting it to
+// C:/Program Files/Git/home/x is silent corruption (issue #48). Only names
+// known to execute locally (isLocalToolName) are translated; everything else
+// is passed through by reference. The bash command field is deliberately
+// untouched: MSYS roots are Git Bash native there. Defensive by design: the
+// waterfall hands the same mutable exec object to the tool body, but if a
+// future registry freezes it the write throws, is swallowed, and the call
+// proceeds with the model original arguments (the directive still stands).
+
+/**
+ * Tools whose path arguments are consumed ON THIS MACHINE (issue #48).
+ * Official filesystem/shell tools plus our own bridges; adding a name here is
+ * a promise that the argument reaches a local process, not a remote guest.
+ */
+export const LOCAL_TOOL_NAMES = new Set([
+  'read', 'read_image', 'write', 'edit', 'glob', 'grep', 'present',
+  'bash', 'run_code', 'pwsh',
+])
+/** Prefix families that are always local: dsh-ops (ops_*) and FastCtx (gb_*). */
+export const LOCAL_TOOL_PREFIXES = ['ops_', 'gb_']
+
+/**
+ * Whether one tool's path arguments should be translated to Windows form.
+ * Pure. `extra` is the settings list (exact names and prefix* wildcards).
+ * An unknown tool is NOT local: passing its arguments through unchanged is
+ * the only safe default when the destination is unknowable.
+ * @param {unknown} name - dispatch tool name.
+ * @param {unknown} [extra] - user-configured additional local tool patterns.
+ * @returns {boolean}
+ */
+export function isLocalToolName(name, extra) {
+  if (typeof name !== 'string' || name === '') return false
+  if (LOCAL_TOOL_NAMES.has(name)) return true
+  for (const prefix of LOCAL_TOOL_PREFIXES) {
+    if (name.startsWith(prefix)) return true
+  }
+  if (!Array.isArray(extra)) return false
+  for (const raw of extra) {
+    if (typeof raw !== 'string') continue
+    const entry = raw.trim()
+    if (entry === '') continue
+    if (entry === '*') return true
+    if (entry.endsWith('*')) {
+      if (name.startsWith(entry.slice(0, -1))) return true
+    } else if (name === entry) {
+      return true
+    }
+  }
+  return false
+}
 
 const MSYS_DRIVE_ROOT = /^\/([a-z])\/(.*)$/i
 const MSYS_BARE_DRIVE = /^\/([a-z])$/i
@@ -422,6 +469,9 @@ export function programLanguageFor(ctx, agent) {
  */
 export function translateDispatch(exec, dialect, env, programLanguage) {
   if (!exec || !exec.arguments || typeof exec.arguments !== 'object') return exec?.arguments
+  // One gate for all three faces below (fields, glob split, run_code literals):
+  // a foreign tool's arguments are DATA for another machine, not host paths.
+  if (!isLocalToolName(exec.name, dialect && dialect.localTools)) return exec.arguments
   let translated = translatePathArguments(exec.arguments, env)
   if (exec.name === 'glob' && dialect.globSplit) {
     const globTranslated = translateGlobArguments(translated, env)

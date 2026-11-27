@@ -486,6 +486,15 @@ export const Config = Schema === null ? undefined : Schema.object({
    */
   variantPresets: Schema.boolean().default(false).volatile(),
   /**
+   * Extra tools whose path arguments are consumed ON THIS MACHINE (issue
+   * #48), in addition to the built-in official file/shell tools and the
+   * ops_ and gb_ bridges. Everything else — WSL, SSH, container and unknown
+   * third-party tools — receives its arguments UNCHANGED, because a Linux
+   * guest needs /home/x as /home/x, not C:/Program Files/Git/home/x.
+   * Accepts exact names and prefix* wildcards (e.g. my_tool or my_*).
+   */
+  localTools: Schema.array(Schema.string()).default([]).volatile(),
+  /**
    * Show the host `pwsh` tool to agents (v0.39.0 semantics; default OFF).
    * Route B keeps the official pwsh executor in place, so the tool is REAL
    * PowerShell (7 first per the official resolver) — showing it is a pure
@@ -566,9 +575,11 @@ function makeLiveReader(ctx, config) {
       return {
         posixPaths: false, virtualMounts: false, globSplit: false, errorDialect: false,
         codePaths: false, gitAutocrlf: false, bashPath: '', subagentDialect: true, autoTerminalShell: true,
+        localTools: [],
       }
     }
     const bash = valueOf(config.bashPath)
+    const localTools = valueOf(config.localTools)
     return {
       posixPaths: valueOf(config.posixPaths) === true,
       virtualMounts: valueOf(config.virtualMounts) === true,
@@ -579,6 +590,7 @@ function makeLiveReader(ctx, config) {
       // Default ON: delegated agents keep the dialect unless the user opts out.
       subagentDialect: valueOf(config.subagentDialect) !== false,
       bashPath: typeof bash === 'string' ? bash : '',
+      localTools: Array.isArray(localTools) ? localTools.filter((name) => typeof name === 'string') : [],
       adoptSidebar: valueOf(config.adoptSidebar) !== false,
       // Default ON (v0.29.0): the official terminal is ours unless opted out.
       autoTerminalShell: valueOf(config.autoTerminalShell) !== false,

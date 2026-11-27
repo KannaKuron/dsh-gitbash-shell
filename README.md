@@ -436,14 +436,16 @@ POSIX 形式(`/c/Users/...`、`/c/Program Files/...`)。开关是 settings 命�
 里本插件的「Git Bash 路径方言」卡片上随时切换;不修改任何 preset / 组合文件,标准/极简/
 PTC/创造及用户自建模式一律覆盖。
 
+从 v0.55.2 起,**「统一」只覆盖在本机执行的工具**。宿主在 `tools/execute` 上先过一道工具级闸门:只有白名单里的工具才会翻译路径参数,把路径交给另一台机器或容器的工具(WSL、SSH、远程、容器等插件)原样收到参数,不再被改写成 `C:/Program Files/Git/...`。白名单内置官方文件与 shell 工具(`read`/`write`/`edit`/`read_image`/`glob`/`grep`/`present`/`bash`/`run_code`/`pwsh`)以及 `ops_*`、`gb_*` 桥接;其余工具默认透传,可在设置卡「本机工具」里补名字或 `前缀*` 通配(逗号或空格分隔,如 `my_tool`、`team_*`),对应 Config 键 `localTools`(字符串数组,默认空)。
+
 开启时(仅 Win32),`posixPaths` 门控以下全部行为:
 
 - **提示词源头替换**:组装期(`system-prompt/assemble`)把官方提示词 sections / contexts /
   variables 里的 Windows 绝对路径**原位**改写成 `/c/...`——不增删任何内容、不动工具 schema;
 - **一句话指示**:经 `systemPrompt.context`(order 126)注入全局指示——shell 是 Git for
-  Windows bash,路径用 MSYS 盘根,所有工具都直接接受这种写法——含 `~`、`/tmp`、`/dev/null`、
+  Windows bash,路径用 MSYS 盘根,本机工具都直接接受这种写法,把路径交给另一台机器的工具则收到原样参数——含 `~`、`/tmp`、`/dev/null`、
   `/usr` 等 bash 原生习惯(v0.17.0 起与 Git Bash 挂载表一致地解析);
-- **参数翻译**:`tools/execute` 上把工具的路径参数(`file_path` / `path` / `workdir`,含 present
+- **参数翻译**:`tools/execute` 上把**本机工具**的路径参数(`file_path` / `path` / `workdir`,含 present
   的嵌套 `files[].path`)由 `/c/...` 翻回 `C:/...` 交给 Node 文件工具;bash 的 `command` 字段
   不动——那是 Git Bash 母语;**bash 虚拟路径按 Git Bash 挂载表解析(v0.17.0)**:`/tmp` → 用户
   TEMP、`/dev/null` → Windows NUL 空设备、`~` → 家目录、`/usr` `/bin` `/etc` 等 → Git 安装根,

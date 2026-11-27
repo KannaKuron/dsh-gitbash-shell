@@ -95,15 +95,16 @@
     就绪那一刻安装,与行激活顺序无关;上游形状不符时仍防御式退化为裸挂。动到 shim 需重跑
     「cordis 先挂 + 选 cordis-gitbash 成功」方向验证。
  4b. **统一 POSIX 路径方言 + MSYS 根翻译层(v0.8.0;实现自 v0.48.1 起集中在 `src/path-dialect.js`,index 仅装配与 re-export)**:指令(order 126)升级为
-    「所有工具一律 MSYS 盘根 /c/ 形式」(含改写规则:反斜杠/盘符事实与工具输出
+    「本机工具一律 MSYS 盘根 /c/ 形式」(含改写规则:反斜杠/盘符事实与工具输出
     的 Windows 路径一律转写回 /c/);host 侧全局 tools/execute wrapper 把路径参数
-    字段(file_path/path/workdir,按字段名白名单——动态工具同名字段自动覆盖)
+    字段(file_path/path/workdir,按字段名白名单——动态工具同名字段自动覆盖;但 v0.55.2 起先过工具级闸门,见下)
     的 /x/ 前缀改写为 X:/(Node 文件工具把 /c/ 解析到当前盘符下的错误路径;bash
     的 command 字段不动——那是 Git Bash 母语)。覆盖模型直调、PTC run_code 子
     分发(sub-calls go through its execute)、动态 Cordis 工具。契约注记:
     tools/execute 官方契约写「只能改 signal」,实现层 mutableExec 同对象透传
     给工具体;wrapper 防御式写入(冻结即吞异常降级),上游收紧时自动退化为
     纯指令模式。指令文本改动需同步复核 smoke 的翻译断言。
+    **工具级闸门(v0.55.2,issue #48)**:字段名命中还不够,`translateDispatch` 顶部先判 `isLocalToolName`——只有本机工具(官方文件/shell 工具、`ops_*`、`gb_*`,以及 Config `localTools` 里补的精确名或 `前缀*`)才翻译字段、拆 glob 绝对 pattern、改 run_code 字面量;WSL/SSH/远程/容器/未知工具原样透传,返回同一 arguments 引用。根因是旧实现按字段名无条件命中:`dsh-wsl-tool` 的 `file_path: /home/...` 被改写成 `C:/Program Files/Git/home/...`。新增本机工具时改 `LOCAL_TOOL_NAMES`/`LOCAL_TOOL_PREFIXES` 或让用户填 `localTools`;测试锁在 smoke 的 `issue #48: only tools that run on this machine get the MSYS rewrite`。
     **设置化(v0.9.0;旧 settings.plugin.item 座位已随 v0.32.0 删除,现为 `plugins.bundle.config`
     详情页卡——`configForms` 座位,两段式注册形状不变)**:方言默认关闭,由
     posixPaths(布尔,默认 false)门控;

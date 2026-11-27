@@ -68,14 +68,14 @@ window.__ModuleLoader__.load({
 
 		var zh = {
 			"title": "Git Bash 路径方言",
-			"cardDesc": "所有工具统一 /c/ POSIX 路径形式(默认开启)",
+			"cardDesc": "运行在本机的工具统一 /c/ POSIX 路径形式(默认开启)",
 			"state.label": "当前状态",
 			"state.on": "已启用",
 			"state.off": "已关闭",
 			"switch.on": "启用",
 			"switch.off": "停用",
 			"error": "写入失败",
-			"hint": "启用后:所有工具(bash 命令与 workdir、read/write/edit/read_image/glob/grep 与 present 的路径参数)统一使用 MSYS 盘根 POSIX 路径(/c/Users/...);bash 的原生习惯——~ 家目录、/tmp 临时目录、/dev/null、/usr 等——在所有工具中同样有效(与 Git Bash 挂载表一致),路径参数由宿主自动翻译,模型无感。停用后恢复 dsh 原生行为(文件工具用 Windows 路径)。bash 始终是 Git Bash,不受此开关影响。",
+			"hint": "启用后:本机工具(bash 命令与 workdir、read/write/edit/read_image/glob/grep 与 present 的路径参数)统一使用 MSYS 盘根 POSIX 路径(/c/Users/...);bash 的原生习惯——~ 家目录、/tmp 临时目录、/dev/null、/usr 等——在本机工具中同样有效(与 Git Bash 挂载表一致),路径参数由宿主自动翻译,模型无感;把路径交给 WSL、SSH、容器等另一台机器的工具原样传递(见下方「本机工具」)。停用后恢复 dsh 原生行为(文件工具用 Windows 路径)。bash 始终是 Git Bash,不受此开关影响。",
 			"sec.mode": "模式",
 			"sec.inline": "行内工具",
 			"sec.executor": "执行器",
@@ -98,6 +98,8 @@ window.__ModuleLoader__.load({
 			"bashmiss.close": "关闭",
 			"sub.label": "子代理/队员使用 Git Bash",
 			"sub.hint": "默认开启:子代理与团队队员(含嵌套子代理)的提示词方言、路径参数翻译、结果回显与 DSH_PATH_DIALECT 环境事实与主代理一致。关闭后这些只对主代理生效,子代理按官方 shell 语义运行(提示词不改写、路径参数不翻译);注意 dsh 每个进程只有一个 shell 执行器,所以 Git Bash 二进制本身仍是全局的,此开关管的是方言/翻译层。",
+			"local.label": "本机工具",
+			"local.hint": "只对在本机执行的工具翻译路径参数(内置官方文件与 shell 工具、ops_ 与 gb_ 桥接)。WSL、SSH、容器等把路径交给另一台机器的工具原样传递,需要更多就在此填工具名或前缀通配(如 my_tool、my_*),用逗号或空格分隔。",
 			"term.label": "自动接管侧栏终端",
 			"term.hint": "默认开启:Windows 上把官方「新建终端」的 shell 自动设成探测到的 Git Bash(写进官方 terminal-controller 行的配置,由官方配置编辑器落盘)——没有这一项时,dsh 会按环境默认 shell 启动终端,而 PATH 里的 bash 常常是 WSL 启动器,于是新终端跑的是 Ubuntu。只在该行**没有**自己的 shell 时才写;你已经手动指定过别的 shell 就绝不覆盖,只会在宿主日志里提示。新终端立即生效,已打开的终端保持原样。 注意:关掉这个开关只会阻止**以后**的自动写入,不会删除已经写进 profile 配置的 shell 字段 —— 要彻底恢复原样,请把 profile 的 patch 里 terminal-controller 行的 shell 字段删掉再重启 DSH。",
 			"eol.label": "Git 行尾(与 Linux 一致)",
@@ -161,14 +163,14 @@ window.__ModuleLoader__.load({
 
 		var en = {
 			"title": "Git Bash path dialect",
-			"cardDesc": "One /c/ POSIX path style for every tool (on by default)",
+			"cardDesc": "One /c/ POSIX path style for every tool that runs on this machine (on by default)",
 			"state.label": "Current state",
 			"state.on": "Enabled",
 			"state.off": "Disabled",
 			"switch.on": "Enable",
 			"switch.off": "Disable",
 			"error": "write failed",
-			"hint": "Enabled: every tool (bash commands and workdir, read/write/edit/read_image/glob/grep and present path arguments) uses MSYS drive-root POSIX paths (/c/Users/...); bash-native habits — the ~ home shorthand, /tmp, /dev/null, /usr — resolve in every tool exactly as bash itself resolves them, and the host translates the path fields automatically. Disabled restores dsh-native behavior (Windows paths for file tools). Bash is always Git Bash while the plugin is installed; this switch only governs the cross-tool path dialect.",
+			"hint": "Enabled: local tools (bash commands and workdir, read/write/edit/read_image/glob/grep and present path arguments) uses MSYS drive-root POSIX paths (/c/Users/...); bash-native habits — the ~ home shorthand, /tmp, /dev/null, /usr — resolve in those tools exactly as bash itself resolves them, and the host translates the path fields automatically. Disabled restores dsh-native behavior (Windows paths for file tools). Bash is always Git Bash while the plugin is installed; this switch only governs the cross-tool path dialect.",
 			"sec.mode": "Mode",
 			"sec.inline": "Inline tools",
 			"sec.executor": "Executor",
@@ -191,6 +193,8 @@ window.__ModuleLoader__.load({
 			"bashmiss.close": "Close",
 			"sub.label": "Subagents/teammates use Git Bash",
 			"sub.hint": "On (default): subagents and team members — nested ones included — get the same prompt dialect, path-argument translation, result echo and DSH_PATH_DIALECT fact as the main agent. Off: those apply to the main agent only, and delegated agents run with the official shell semantics (no prompt rewrite, no path translation). Note that dsh has exactly one shell executor per process, so the Git Bash binary stays global; this switch governs the dialect/translation layers.",
+			"local.label": "Local tools",
+			"local.hint": "Path arguments are translated only for tools that run on this machine (official file and shell tools plus the ops_ and gb_ bridges are built in). Tools that forward paths to WSL, SSH, a container or another machine receive them unchanged; add extra names or prefix* wildcards here, separated by commas or spaces.",
 			"term.label": "Adopt the sidebar terminal",
 			"term.hint": "On by default: on Windows the official “new terminal” shell is set to the detected Git Bash (written into the official terminal-controller row through the official config editor). Without it dsh starts the terminal with the environment default shell, and PATH's bash is often the WSL launcher — so the new terminal runs Ubuntu. It only writes when that row has NO shell of its own; an explicit choice is never overwritten, it just gets a host-log line. New terminals pick it up immediately, already-open ones keep their shell. Note: turning this switch off only stops FUTURE writes — it does not remove a shell field already written into the profile config. To restore the original exactly, delete the shell field from the terminal-controller row in the profile patch and restart DSH.",
 			"eol.label": "Git line endings (Linux match)",
@@ -294,6 +298,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "إغلاق",
 				"sub.label": "استخدام الوكلاء الفرعيين لـ Git Bash",
 				"sub.hint": "مُفعَّل (افتراضيًا): يحصل الوكلاء الفرعيون وأعضاء الفريق — بما في ذلك المتداخلون — على لهجة المطالبة وترجمة مسارات الوسائط وصدى النتائج وحقيقة DSH_PATH_DIALECT نفسها التي يحصل عليها الوكيل الرئيسي. عند الإيقاف تُطبَّق هذه على الوكيل الرئيسي فقط ويعمل الوكلاء المفوَّضون بدلالات الصدفة الرسمية (دون إعادة كتابة المطالبة أو ترجمة المسارات). لاحظ أن dsh يملك مُنفِّذ صدفة واحدًا لكل عملية، لذا يبقى ثنائي Git Bash عامًّا؛ هذا المفتاح يحكم طبقتي اللهجة والترجمة.",
+				"local.label": "أدوات محلية",
+				"local.hint": "تُترجم وسائط المسار فقط للأدوات التي تعمل على هذا الجهاز (أدوات الملفات والصدفة الرسمية وجسور ops_ وgb_ مضمنة). الأدوات التي تمرر المسارات إلى WSL أو SSH أو الحاويات أو جهاز آخر تستلمها دون تغيير؛ أضف الأسماء أو أنماط prefix* هنا مفصولة بفواصل أو مسافات.",
 				"term.label": "تبنّي طرفية الشريط الجانبي",
 				"term.hint": "مُفعَّل افتراضيًا: على Windows يُضبط shell الخاص بـ«الطرفية الجديدة» الرسمية على Git Bash المكتشف (يُكتب في صف terminal-controller الرسمي عبر محرر الإعدادات الرسمي). بدونه يبدأ dsh الطرفية بالـ shell الافتراضي للبيئة، وغالبًا ما يكون bash في PATH هو مشغّل WSL فتعمل الطرفية الجديدة على Ubuntu. لا يُكتب إلا عندما لا يملك ذلك الصف shell خاصًا به؛ ولا يُستبدل اختيار صريح أبدًا، بل يُسجَّل سطر في سجل المضيف. الطرفيات الجديدة تسري فورًا، والمفتوحة تبقى كما هي. ملاحظة: إيقاف هذا المفتاح يمنع الكتابات المستقبلية فقط ولا يحذف حقل shell المكتوب بالفعل في إعدادات الملف الشخصي؛ لاستعادة الأصل تمامًا احذف حقل shell من صف terminal-controller في patch الملف الشخصي ثم أعد تشغيل DSH.",
 				"eol.label": "نهايات أسطر Git (مطابقة لينكس)",
@@ -387,6 +393,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Schließen",
 				"sub.label": "Subagenten/Teammitglieder nutzen Git Bash",
 				"sub.hint": "An (Standard): Subagenten und Teammitglieder — auch verschachtelte — erhalten denselben Prompt-Dialekt, dieselbe Pfadargument-Übersetzung, dieselbe Ergebnisanzeige und dieselbe DSH_PATH_DIALECT-Tatsache wie der Hauptagent. Aus: Das gilt nur für den Hauptagenten, delegierte Agenten laufen mit den offiziellen Shell-Semantiken (keine Prompt-Umschreibung, keine Pfadübersetzung). Beachte: dsh hat genau einen Shell-Executor pro Prozess, das Git-Bash-Binary bleibt also global; dieser Schalter steuert die Dialekt-/Übersetzungsschichten.",
+				"local.label": "Lokale Tools",
+				"local.hint": "Pfadargumente werden nur für Tools übersetzt, die auf DIESEM Rechner laufen (offizielle Datei- und Shell-Tools sowie die ops_- und gb_-Brücken sind eingebaut). Tools, die Pfade an WSL, SSH, Container oder einen anderen Rechner weiterreichen, erhalten sie unverändert; hier Namen oder prefix*-Muster ergänzen, durch Kommas oder Leerzeichen getrennt.",
 				"term.label": "Seitenleisten-Terminal übernehmen",
 				"term.hint": "Standardmäßig an: Unter Windows wird die Shell des offiziellen „Neuen Terminals“ auf die erkannte Git Bash gesetzt (geschrieben in die offizielle terminal-controller-Zeile über den offiziellen Konfigurationseditor). Ohne das startet dsh das Terminal mit der Umgebungs-Standardshell, und das bash im PATH ist oft der WSL-Starter — das neue Terminal läuft dann unter Ubuntu. Geschrieben wird nur, wenn diese Zeile KEINE eigene Shell hat; eine ausdrückliche Wahl wird nie überschrieben, sondern nur im Host-Protokoll vermerkt. Neue Terminals übernehmen es sofort, bereits offene behalten ihre Shell. Hinweis: Dieser Schalter verhindert nur KÜNFTIGE Schreibvorgänge — ein bereits in die Profilkonfiguration geschriebenes shell-Feld wird nicht entfernt. Für den exakten Originalzustand das shell-Feld in der terminal-controller-Zeile des Profil-Patchs löschen und DSH neu starten.",
 				"eol.label": "Git-Zeilenenden (Linux-gleich)",
@@ -480,6 +488,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Fermer",
 				"sub.label": "Les sous-agents utilisent Git Bash",
 				"sub.hint": "Activé (par défaut) : les sous-agents et membres d'équipe — y compris imbriqués — reçoivent le même dialecte de prompt, la même traduction des chemins d'arguments, le même écho de résultat et le même fait DSH_PATH_DIALECT que l'agent principal. Désactivé : ces éléments ne s'appliquent qu'à l'agent principal et les agents délégués suivent les sémantiques de shell officielles (pas de réécriture du prompt, pas de traduction des chemins). À noter : dsh n'a qu'un seul exécuteur de shell par processus, le binaire Git Bash reste donc global ; cet interrupteur régit les couches de dialecte et de traduction.",
+				"local.label": "Outils locaux",
+				"local.hint": "Les chemins d'arguments ne sont traduits que pour les outils qui s'exécutent sur CETTE machine (les outils officiels de fichiers et de shell ainsi que les ponts ops_ et gb_ sont inclus). Les outils qui transmettent des chemins à WSL, SSH, un conteneur ou une autre machine les reçoivent inchangés ; ajoutez ici des noms ou des motifs prefix*, séparés par des virgules ou des espaces.",
 				"term.label": "Adopter le terminal latéral",
 				"term.hint": "Activé par défaut : sous Windows, le shell du « nouveau terminal » officiel est réglé sur le Git Bash détecté (écrit dans la ligne officielle terminal-controller via l'éditeur de configuration officiel). Sans cela, dsh démarre le terminal avec le shell par défaut de l'environnement, et le bash du PATH est souvent le lanceur WSL — le nouveau terminal tourne alors sous Ubuntu. L'écriture n'a lieu que si cette ligne n'a AUCUN shell propre ; un choix explicite n'est jamais écrasé, seulement consigné dans le journal de l'hôte. Les nouveaux terminaux en profitent immédiatement, ceux déjà ouverts gardent leur shell. Remarque : désactiver ce commutateur n'empêche que les écritures FUTURES — il ne supprime pas un champ shell déjà écrit dans la configuration du profil. Pour revenir exactement à l'état initial, supprimez le champ shell de la ligne terminal-controller du patch de profil puis redémarrez DSH.",
 				"eol.label": "fins de ligne Git (comme Linux)",
@@ -573,6 +583,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "बंद करें",
 				"sub.label": "सबएजेंट/टीम सदस्य Git Bash इस्तेमाल करें",
 				"sub.hint": "चालू (डिफ़ॉल्ट): सबएजेंट और टीम सदस्य — नेस्टेड सहित — मुख्य एजेंट जैसा ही प्रॉम्प्ट डायलेक्ट, पाथ आर्ग्युमेंट अनुवाद, परिणाम इको और DSH_PATH_DIALECT तथ्य पाते हैं। बंद: ये केवल मुख्य एजेंट पर लागू होते हैं और प्रतिनिधित एजेंट आधिकारिक शेल अर्थ में चलते हैं (प्रॉम्प्ट नहीं बदलता, पाथ अनुवाद नहीं होता)। ध्यान दें: dsh में प्रति प्रोसेस एक ही शेल एक्ज़ीक्यूटर होता है, इसलिए Git Bash बाइनरी वैश्विक रहती है; यह स्विच डायलेक्ट/अनुवाद परतों को नियंत्रित करता है।",
+				"local.label": "स्थानीय टूल",
+				"local.hint": "पाथ आर्ग्युमेंट केवल उन्हीं टूल के लिए अनुवादित होते हैं जो इसी मशीन पर चलते हैं (आधिकारिक फ़ाइल और शेल टूल तथा ops_ व gb_ ब्रिज अंतर्निहित हैं)। जो टूल पाथ को WSL, SSH, कंटेनर या किसी अन्य मशीनへ भेजते हैं, उन्हें पाथ बिना बदले मिलते हैं; यहाँ नाम या prefix* पैटर्न जोड़ें, अल्पविराम या स्पेस से अलग करके।",
 				"term.label": "साइडबार टर्मिनल अपनाएँ",
 				"term.hint": "डिफ़ॉल्ट रूप से चालू: Windows पर आधिकारिक «नया टर्मिनल» का shell पहचाने गए Git Bash पर सेट होता है (आधिकारिक कॉन्फ़िग एडिटर के ज़रिए आधिकारिक terminal-controller पंक्ति में लिखा जाता है)। इसके बिना dsh टर्मिनल को पर्यावरण के डिफ़ॉल्ट shell से शुरू करता है, और PATH का bash अक्सर WSL लॉन्चर होता है — तब नया टर्मिनल Ubuntu पर चलता है। लिखा तभी जाता है जब उस पंक्ति का अपना कोई shell न हो; स्पष्ट चयन कभी अधिलेखित नहीं होता, केवल होस्ट लॉग में दर्ज होता है। नए टर्मिनल तुरंत इसे लेते हैं, खुले हुए अपना shell रखते हैं। ध्यान दें: यह स्विच बंद करने से केवल आगे की लेखन रुकती है — प्रोफ़ाइल कॉन्फ़िग में पहले से लिखा shell फ़ील्ड हटता नहीं। पूरी तरह मूल स्थिति में लौटने के लिए प्रोफ़ाइल patch की terminal-controller पंक्ति से shell फ़ील्ड हटाकर DSH पुनः आरंभ करें।",
 				"eol.label": "Git पंक्ति-अंत (Linux जैसा)",
@@ -666,6 +678,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Tutup",
 				"sub.label": "Subagen/teman tim memakai Git Bash",
 				"sub.hint": "Aktif (bawaan): subagen dan anggota tim — termasuk yang bersarang — mendapat dialek prompt, terjemahan argumen path, gema hasil, dan fakta DSH_PATH_DIALECT yang sama seperti agen utama. Nonaktif: semuanya hanya berlaku untuk agen utama dan agen yang didelegasikan berjalan dengan semantik shell resmi (prompt tidak ditulis ulang, path tidak diterjemahkan). Catatan: dsh hanya punya satu eksekutor shell per proses, jadi biner Git Bash tetap global; sakelar ini mengatur lapisan dialek/terjemahan.",
+				"local.label": "Alat lokal",
+				"local.hint": "Argumen path hanya diterjemahkan untuk alat yang berjalan di mesin INI (alat file dan shell resmi serta jembatan ops_ dan gb_ sudah termasuk). Alat yang meneruskan path ke WSL, SSH, kontainer, atau mesin lain menerimanya tanpa perubahan; tambahkan nama atau pola prefix* di sini, dipisahkan koma atau spasi.",
 				"term.label": "Adopsi terminal sidebar",
 				"term.hint": "Aktif secara bawaan: di Windows, shell «terminal baru» resmi disetel ke Git Bash yang terdeteksi (ditulis ke baris terminal-controller resmi lewat editor konfigurasi resmi). Tanpanya dsh memulai terminal dengan shell bawaan lingkungan, dan bash di PATH sering kali peluncur WSL — terminal baru pun berjalan di Ubuntu. Penulisan hanya terjadi bila baris itu TIDAK punya shell sendiri; pilihan eksplisit tidak pernah ditimpa, hanya dicatat di log host. Terminal baru langsung memakainya, yang sudah terbuka tetap seperti semula. Catatan: mematikan sakelar ini hanya menghentikan penulisan BERIKUTNYA — tidak menghapus bidang shell yang sudah tertulis di konfigurasi profil. Untuk kembali persis seperti semula, hapus bidang shell dari baris terminal-controller di patch profil lalu mulai ulang DSH.",
 				"eol.label": "akhir baris Git (sama seperti Linux)",
@@ -759,6 +773,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Chiudi",
 				"sub.label": "Subagenti/compagni usano Git Bash",
 				"sub.hint": "Attivo (predefinito): subagenti e membri del team — anche annidati — ricevono lo stesso dialetto del prompt, la stessa traduzione dei percorsi negli argomenti, lo stesso eco dei risultati e lo stesso fatto DSH_PATH_DIALECT dell'agente principale. Disattivo: valgono solo per l'agente principale e gli agenti delegati usano le semantiche di shell ufficiali (nessuna riscrittura del prompt, nessuna traduzione dei percorsi). Nota: dsh ha un solo esecutore di shell per processo, quindi il binario Git Bash resta globale; questo interruttore governa gli strati di dialetto e traduzione.",
+				"local.label": "Strumenti locali",
+				"local.hint": "I percorsi negli argomenti vengono tradotti solo per gli strumenti che girano su QUESTA macchina (gli strumenti ufficiali di file e shell e i bridge ops_ e gb_ sono inclusi). Gli strumenti che passano percorsi a WSL, SSH, container o un'altra macchina li ricevono invariati; aggiungi qui nomi o modelli prefix*, separati da virgole o spazi.",
 				"term.label": "Adotta il terminale laterale",
 				"term.hint": "Attivo per impostazione predefinita: su Windows la shell del «nuovo terminale» ufficiale viene impostata sul Git Bash rilevato (scritto nella riga ufficiale terminal-controller tramite l'editor di configurazione ufficiale). Senza questo dsh avvia il terminale con la shell predefinita dell'ambiente, e il bash nel PATH è spesso l'avviatore WSL — così il nuovo terminale gira su Ubuntu. La scrittura avviene solo se quella riga NON ha una shell propria; una scelta esplicita non viene mai sovrascritta, solo annotata nel log dell'host. I nuovi terminali la usano subito, quelli già aperti mantengono la loro shell. Nota: disattivare questo interruttore ferma solo le scritture FUTURE — non rimuove un campo shell già scritto nella configurazione del profilo. Per tornare esattamente allo stato iniziale, elimina il campo shell dalla riga terminal-controller nel patch del profilo e riavvia DSH.",
 				"eol.label": "fine riga Git (come Linux)",
@@ -852,6 +868,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "閉じる",
 				"sub.label": "サブエージェント/チームメンバーも Git Bash を使う",
 				"sub.hint": "オン(既定):サブエージェントとチームメンバー(ネスト含む)は、メインエージェントと同じプロンプト方言・パス引数の翻訳・結果エコー・DSH_PATH_DIALECT の事実を受け取ります。オフ:これらはメインエージェントのみに適用され、委譲されたエージェントは公式の shell セマンティクスで動作します(プロンプト改写なし、パス翻訳なし)。なお dsh はプロセスごとに shell 実行器を 1 つだけ持つため、Git Bash バイナリ自体は常に全体共通です。このスイッチが制御するのは方言/翻訳の層です。",
+				"local.label": "ローカルツール",
+				"local.hint": "パス引数の翻訳は、このマシン上で実行されるツールにのみ適用されます(公式のファイル/シェルツールと ops_/gb_ ブリッジは組み込み済み)。WSL、SSH、コンテナなど別のマシンへパスを渡すツールにはそのまま渡されます。ここに名前または prefix* パターンをカンマか空白区切りで追加してください。",
 				"term.label": "サイドバー端末を引き継ぐ",
 				"term.hint": "既定でオン:Windows では公式の「新しいターミナル」の shell を検出した Git Bash に設定します(公式の設定エディター経由で公式 terminal-controller 行に書き込み)。これがないと dsh は環境既定の shell で端末を起動し、PATH の bash はしばしば WSL ランチャーなので新しい端末は Ubuntu で動きます。書き込むのはその行に独自の shell が**ない**ときだけです。明示的な選択は決して上書きせず、ホストログに記録するだけです。新しい端末には即時反映され、開いている端末はそのままです。 注意:このスイッチを切っても**今後**の自動書き込みが止まるだけで、すでにプロファイル設定に書き込まれた shell フィールドは削除されません。完全に元へ戻すには、プロファイル patch の terminal-controller 行から shell フィールドを削除して DSH を再起動してください。",
 				"eol.label": "Git の行末(Linux と同じ)",
@@ -945,6 +963,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "닫기",
 				"sub.label": "서브에이전트/팀원도 Git Bash 사용",
 				"sub.hint": "켬(기본): 서브에이전트와 팀원(중첩 포함)은 메인 에이전트와 동일한 프롬프트 방언, 경로 인자 번역, 결과 에코, DSH_PATH_DIALECT 사실을 받습니다. 끔: 이것들은 메인 에이전트에만 적용되고 위임된 에이전트는 공식 shell 의미로 동작합니다(프롬프트 재작성 없음, 경로 번역 없음). 참고로 dsh는 프로세스당 shell 실행기가 하나뿐이라 Git Bash 바이너리 자체는 항상 전역입니다. 이 스위치는 방언/번역 계층을 제어합니다.",
+				"local.label": "로컬 도구",
+				"local.hint": "경로 인자는 이 머신에서 실행되는 도구에만 번역됩니다(공식 파일/셸 도구와 ops_/gb_ 브리지는 기본 포함). WSL, SSH, 컨테이너 또는 다른 머신으로 경로를 넘기는 도구는 경로를 그대로 받습니다. 여기에 이름이나 prefix* 패턴을 쉼표 또는 공백으로 구분해 추가하세요.",
 				"term.label": "사이드바 터미널 자동 인수",
 				"term.hint": "기본 켜짐: Windows에서 공식 «새 터미널»의 shell을 감지된 Git Bash로 설정합니다(공식 구성 편집기를 통해 공식 terminal-controller 행에 기록). 이것이 없으면 dsh는 환경 기본 shell로 터미널을 시작하고, PATH의 bash는 흔히 WSL 런처라서 새 터미널이 Ubuntu로 실행됩니다. 해당 행에 자체 shell이 **없을 때만** 기록하며, 명시적 선택은 절대 덮어쓰지 않고 호스트 로그에만 남깁니다. 새 터미널에는 즉시 적용되고 이미 열린 터미널은 그대로입니다. 참고: 이 스위치를 꺼도 앞으로의 자동 쓰기만 멈출 뿐, 이미 프로필 설정에 기록된 shell 필드는 삭제되지 않습니다. 완전히 원래대로 되돌리려면 프로필 patch의 terminal-controller 행에서 shell 필드를 지우고 DSH를 다시 시작하세요.",
 				"eol.label": "Git 줄바꿈(Linux와 동일)",
@@ -1038,6 +1058,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Sluiten",
 				"sub.label": "Subagenten/teammaten gebruiken Git Bash",
 				"sub.hint": "Aan (standaard): subagenten en teamleden — ook geneste — krijgen hetzelfde promptdialect, dezelfde padargument-vertaling, dezelfde resultaat-echo en hetzelfde DSH_PATH_DIALECT-feit als de hoofdagent. Uit: die gelden alleen voor de hoofdagent en gedelegeerde agenten draaien met de officiële shell-semantiek (geen promptherschrijving, geen padvertaling). Let op: dsh heeft één shell-uitvoerder per proces, dus het Git Bash-binary blijft globaal; deze schakelaar beheert de dialect-/vertaallagen.",
+				"local.label": "Lokale tools",
+				"local.hint": "Padargumenten worden alleen vertaald voor tools die op DEZE machine draaien (officiële bestands- en shell-tools plus de ops_- en gb_-bruggen zijn ingebouwd). Tools die paden doorgeven aan WSL, SSH, containers of een andere machine ontvangen ze ongewijzigd; voeg hier namen of prefix*-patronen toe, gescheiden door komma's of spaties.",
 				"term.label": "Zijbalkterminal overnemen",
 				"term.hint": "Standaard aan: op Windows wordt de shell van de officiële ‘nieuwe terminal’ gezet op de gevonden Git Bash (geschreven in de officiële terminal-controller-regel via de officiële configuratie-editor). Zonder dit start dsh de terminal met de omgevings-standaardshell, en de bash in PATH is vaak de WSL-starter — dan draait de nieuwe terminal Ubuntu. Er wordt alleen geschreven als die regel GEEN eigen shell heeft; een expliciete keuze wordt nooit overschreven, alleen in het hostlogboek vermeld. Nieuwe terminals gebruiken het direct, al geopende behouden hun shell. Let op: deze schakelaar uitzetten stopt alleen TOEKOMSTIGE schrijfacties — een al in de profielconfiguratie geschreven shell-veld wordt niet verwijderd. Voor exact de oorspronkelijke staat: verwijder het shell-veld uit de terminal-controller-regel in de profielpatch en herstart DSH.",
 				"eol.label": "Git regeleinden (zoals Linux)",
@@ -1131,6 +1153,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Zamknij",
 				"sub.label": "Subagenci/członkowie zespołu używają Git Bash",
 				"sub.hint": "Wł. (domyślnie): subagenci i członkowie zespołu — także zagnieżdżeni — otrzymują ten sam dialekt podpowiedzi, tłumaczenie argumentów ścieżek, echo wyników i fakt DSH_PATH_DIALECT co agent główny. Wył.: dotyczy to tylko agenta głównego, a agenci delegowani działają według oficjalnej semantyki powłoki (bez przepisywania podpowiedzi i tłumaczenia ścieżek). Uwaga: dsh ma jeden executor powłoki na proces, więc binarka Git Bash pozostaje globalna; ten przełącznik steruje warstwami dialektu i tłumaczenia.",
+				"local.label": "Narzędzia lokalne",
+				"local.hint": "Argumenty ścieżek są tłumaczone tylko dla narzędzi działających na TYM komputerze (oficjalne narzędzia plikowe i powłoki oraz mostki ops_ i gb_ są wbudowane). Narzędzia przekazujące ścieżki do WSL, SSH, kontenera lub innej maszyny otrzymują je bez zmian; dodaj tutaj nazwy lub wzorce prefix*, oddzielone przecinkami lub spacjami.",
 				"term.label": "Przejmij terminal boczny",
 				"term.hint": "Domyślnie włączone: w Windows shell oficjalnego „nowego terminala“ jest ustawiany na wykryty Git Bash (zapis do oficjalnego wiersza terminal-controller przez oficjalny edytor konfiguracji). Bez tego dsh uruchamia terminal z domyślnym shellem środowiska, a bash w PATH to często launcher WSL — nowy terminal działa wtedy w Ubuntu. Zapis następuje tylko wtedy, gdy ten wiersz NIE ma własnego shella; wyraźny wybór nigdy nie jest nadpisywany, trafia jedynie do logu hosta. Nowe terminale korzystają od razu, otwarte zachowują swój shell. Uwaga: wyłączenie tego przełącznika wstrzymuje tylko PRZYSZŁE zapisy — nie usuwa pola shell już zapisanego w konfiguracji profilu. Aby wrócić dokładnie do stanu pierwotnego, usuń pole shell z wiersza terminal-controller w patchu profilu i uruchom DSH ponownie.",
 				"eol.label": "końce linii Git (jak w Linuksie)",
@@ -1224,6 +1248,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Fechar",
 				"sub.label": "Subagentes/membros da equipa usam Git Bash",
 				"sub.hint": "Ligado (padrão): subagentes e membros da equipa — incluindo aninhados — recebem o mesmo dialeto de prompt, tradução de caminhos nos argumentos, eco de resultados e o mesmo facto DSH_PATH_DIALECT que o agente principal. Desligado: isso aplica-se apenas ao agente principal e os agentes delegados correm com a semântica oficial da shell (sem reescrita do prompt nem tradução de caminhos). Nota: o dsh tem um único executor de shell por processo, pelo que o binário Git Bash continua global; este interruptor governa as camadas de dialeto e tradução.",
+				"local.label": "Ferramentas locais",
+				"local.hint": "Os caminhos nos argumentos só são traduzidos para ferramentas que rodam NESTA máquina (as ferramentas oficiais de arquivo e shell e as pontes ops_ e gb_ já estão incluídas). Ferramentas que repassam caminhos para WSL, SSH, contêineres ou outra máquina os recebem sem alteração; adicione aqui nomes ou padrões prefix*, separados por vírgulas ou espaços.",
 				"term.label": "Adotar o terminal lateral",
 				"term.hint": "Ativado por predefinição: no Windows, o shell do «novo terminal» oficial é definido para o Git Bash detetado (escrito na linha oficial terminal-controller através do editor de configuração oficial). Sem isto, o dsh inicia o terminal com o shell predefinido do ambiente, e o bash no PATH é muitas vezes o lançador WSL — o novo terminal corre então em Ubuntu. Só escreve quando essa linha NÃO tem shell próprio; uma escolha explícita nunca é substituída, apenas registada no log do anfitrião. Os novos terminais usam-no de imediato, os já abertos mantêm o seu shell. Nota: desligar este interruptor só impede escritas FUTURAS — não remove um campo shell já escrito na configuração do perfil. Para voltar exatamente ao original, apague o campo shell da linha terminal-controller no patch do perfil e reinicie o dsh.",
 				"eol.label": "fins de linha do Git (como no Linux)",
@@ -1317,6 +1343,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Закрыть",
 				"sub.label": "Субагенты и участники команды используют Git Bash",
 				"sub.hint": "Вкл. (по умолчанию): субагенты и участники команды — включая вложенных — получают тот же диалект подсказки, перевод путей в аргументах, эхо результатов и факт DSH_PATH_DIALECT, что и главный агент. Выкл.: это применяется только к главному агенту, а делегированные агенты работают с официальной семантикой оболочки (без перезаписи подсказки и перевода путей). Учтите: в dsh один исполнитель оболочки на процесс, поэтому сам бинарник Git Bash остаётся общим; этот переключатель управляет слоями диалекта и перевода.",
+				"local.label": "Локальные инструменты",
+				"local.hint": "Пути в аргументах переводятся только для инструментов, работающих на ЭТОЙ машине (официальные файловые и shell-инструменты, а также мосты ops_ и gb_ уже включены). Инструменты, передающие пути в WSL, SSH, контейнер или другую машину, получают их без изменений; добавьте здесь имена или шаблоны prefix*, разделяя запятыми или пробелами.",
 				"term.label": "Перенимать боковой терминал",
 				"term.hint": "Включено по умолчанию: в Windows shell официального «нового терминала» выставляется в найденный Git Bash (запись в официальную строку terminal-controller через официальный редактор конфигурации). Без этого dsh запускает терминал с shell по умолчанию из окружения, а bash в PATH часто оказывается лаунчером WSL — тогда новый терминал работает в Ubuntu. Запись происходит только если у этой строки НЕТ собственного shell; явный выбор никогда не перезаписывается, о нём лишь сообщается в журнале хоста. Новые терминалы подхватывают сразу, уже открытые сохраняют свой shell. Примечание: выключение этого переключателя останавливает только БУДУЩИЕ записи — уже записанное в конфигурацию профиля поле shell не удаляется. Чтобы вернуть всё точно как было, удалите поле shell из строки terminal-controller в патче профиля и перезапустите dsh.",
 				"eol.label": "переводы строк Git (как в Linux)",
@@ -1410,6 +1438,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Stäng",
 				"sub.label": "Subagenter/teammedlemmar använder Git Bash",
 				"sub.hint": "På (standard): subagenter och teammedlemmar — även nästlade — får samma promptdialekt, samma sökvägsöversättning i argument, samma resultat-eko och samma DSH_PATH_DIALECT-faktum som huvudagenten. Av: detta gäller bara huvudagenten och delegerade agenter kör med officiell shell-semantik (ingen promptomskrivning, ingen sökvägsöversättning). Obs: dsh har en enda shell-exekutor per process, så Git Bash-binären är fortfarande global; den här växeln styr dialekt-/översättningslagren.",
+				"local.label": "Lokala verktyg",
+				"local.hint": "Sökvägsargument översätts bara för verktyg som körs på DEN HÄR maskinen (officiella fil- och shellverktyg samt ops_- och gb_-bryggorna ingår). Verktyg som skickar vidare sökvägar till WSL, SSH, containrar eller en annan maskin får dem oförändrade; lägg till namn eller prefix*-mönster här, åtskilda av kommatecken eller mellanslag.",
 				"term.label": "Ta över sidofältsterminalen",
 				"term.hint": "På som standard: i Windows sätts det officiella ”nya terminalens” shell till den hittade Git Bash (skrivs till den officiella terminal-controller-raden via den officiella konfigurationsredigeraren). Utan detta startar dsh terminalen med miljöns standardshell, och bash i PATH är ofta WSL-startaren — då kör den nya terminalen Ubuntu. Det skrivs bara när raden INTE har ett eget shell; ett uttryckligt val skrivs aldrig över, det loggas bara hos värden. Nya terminaler tar det direkt, redan öppna behåller sitt shell. Obs: att stänga av reglaget stoppar bara FRAMTIDA skrivningar — ett shell-fält som redan skrivits till profilkofiguren tas inte bort. För att återställa exakt: ta bort shell-fältet från terminal-controller-raden i profilpatchningen och starta om dsh.",
 				"eol.label": "Git radslut (som Linux)",
@@ -1503,6 +1533,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "ปิด",
 				"sub.label": "ซับเอเจนต์/สมาชิกทีมใช้ Git Bash",
 				"sub.hint": "เปิด (ค่าเริ่มต้น): ซับเอเจนต์และสมาชิกทีม — รวมถึงแบบซ้อน — ได้รับไดอาเลกต์พรอมป์ต์ การแปลพาธในอาร์กิวเมนต์ การสะท้อนผลลัพธ์ และข้อเท็จจริง DSH_PATH_DIALECT เหมือนเอเจนต์หลัก ปิด: สิ่งเหล่านี้มีผลกับเอเจนต์หลักเท่านั้น และเอเจนต์ที่ถูกมอบหมายทำงานด้วยความหมาย shell อย่างเป็นทางการ (ไม่เขียนพรอมป์ต์ใหม่ ไม่แปลพาธ) หมายเหตุ dsh มีตัวรัน shell เดียวต่อโปรเซส ไบนารี Git Bash จึงยังเป็นส่วนกลาง สวิตช์นี้ควบคุมชั้นไดอาเลกต์/การแปล",
+				"local.label": "เครื่องมือภายในเครื่อง",
+				"local.hint": "อาร์กิวเมนต์พาธจะถูกแปลเฉพาะเครื่องมือที่ทำงานบนเครื่องนี้ (เครื่องมือไฟล์และเชลล์อย่างเป็นทางการพร้อมบริดจ์ ops_ และ gb_ รวมอยู่แล้ว) เครื่องมือที่ส่งพาธต่อไปยัง WSL, SSH, คอนเทนเนอร์ หรือเครื่องอื่นจะได้รับพาธตามเดิม เพิ่มชื่อหรือรูปแบบ prefix* ที่นี่ คั่นด้วยจุลภาคหรือช่องว่าง",
 				"term.label": "รับช่วงเทอร์มินัลแถบข้าง",
 				"term.hint": "เปิดโดยค่าเริ่มต้น: บน Windows shell ของ «เทอร์มินัลใหม่» อย่างเป็นทางการจะถูกตั้งเป็น Git Bash ที่ตรวจพบ (เขียนลงแถว terminal-controller อย่างเป็นทางการผ่านตัวแก้ไขการตั้งค่าอย่างเป็นทางการ) หากไม่มีสิ่งนี้ dsh จะเริ่มเทอร์มินัลด้วย shell เริ่มต้นของสภาพแวดล้อม และ bash ใน PATH มักเป็นตัวเรียก WSL เทอร์มินัลใหม่จึงรันเป็น Ubuntu จะเขียนก็ต่อเมื่อแถวนั้นไม่มี shell ของตัวเองเท่านั้น การเลือกที่ผู้ใช้ระบุไว้จะไม่ถูกเขียนทับ เพียงบันทึกในบันทึกของโฮสต์ เทอร์มินัลใหม่ใช้ทันที ส่วนที่เปิดอยู่แล้วคงเดิม หมายเหตุ: การปิดสวิตช์นี้หยุดเฉพาะการเขียนครั้งต่อไป ไม่ได้ลบฟิลด์ shell ที่เขียนลงการตั้งค่าโปรไฟล์แล้ว หากต้องการกลับสู่สภาพเดิมจริง ๆ ให้ลบฟิลด์ shell ออกจากแถว terminal-controller ใน patch ของโปรไฟล์แล้วรีสตาร์ต dsh",
 				"eol.label": "อักขระขึ้นบรรทัด Git (เหมือน Linux)",
@@ -1596,6 +1628,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Kapat",
 				"sub.label": "Alt ajanlar/ekip üyeleri Git Bash kullansın",
 				"sub.hint": "Açık (varsayılan): alt ajanlar ve ekip üyeleri — iç içe olanlar dahil — ana ajanla aynı istem lehçesini, yol argümanı çevirisini, sonuç yankısını ve DSH_PATH_DIALECT gerçeğini alır. Kapalı: bunlar yalnızca ana ajan için geçerlidir ve devredilen ajanlar resmî shell semantiğiyle çalışır (istem yeniden yazılmaz, yollar çevrilmez). Not: dsh'de süreç başına tek bir shell yürütücüsü vardır, bu yüzden Git Bash ikilisi genele aittir; bu anahtar lehçe/çeviri katmanlarını yönetir.",
+				"local.label": "Yerel araçlar",
+				"local.hint": "Yol bağımsız değişkenleri yalnızca BU makinede çalışan araçlar için çevrilir (resmi dosya ve shell araçları ile ops_ ve gb_ köprüleri dahildir). Yolları WSL, SSH, kapsayıcı veya başka bir makineye ileten araçlar yolları olduğu gibi alır; buraya virgül veya boşlukla ayrılmış adlar ya da prefix* kalıpları ekleyin.",
 				"term.label": "Kenar çubuğu terminalini devral",
 				"term.hint": "Varsayılan olarak açık: Windows'ta resmî «yeni terminal»in shell'i algılanan Git Bash olarak ayarlanır (resmî yapılandırma düzenleyicisi üzerinden resmî terminal-controller satırına yazılır). Bu olmadan dsh terminali ortamın varsayılan shell'iyle başlatır ve PATH'teki bash çoğu zaman WSL başlatıcısıdır — yeni terminal Ubuntu'da çalışır. Yalnızca o satırın KENDİ shell'i yoksa yazılır; açık bir seçim asla üzerine yazılmaz, sadece host günlüğüne düşer. Yeni terminaller anında kullanır, açık olanlar kendi shell'ini korur. Not: Bu anahtarı kapatmak yalnızca BUNDAN SONRAKİ yazmaları durdurur — profil yapılandırmasına yazılmış shell alanını silmez. Tam olarak eski hâle dönmek için profil patch'indeki terminal-controller satırından shell alanını silip dsh'yi yeniden başlatın.",
 				"eol.label": "Git satır sonları (Linux gibi)",
@@ -1689,6 +1723,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "Đóng",
 				"sub.label": "Subagent/thành viên nhóm dùng Git Bash",
 				"sub.hint": "Bật (mặc định): subagent và thành viên nhóm — kể cả lồng nhau — nhận cùng phương ngữ prompt, cách dịch đường dẫn trong tham số, tiếng vọng kết quả và sự thật DSH_PATH_DIALECT như agent chính. Tắt: những thứ này chỉ áp dụng cho agent chính, còn agent được ủy quyền chạy theo ngữ nghĩa shell chính thức (không viết lại prompt, không dịch đường dẫn). Lưu ý dsh chỉ có một bộ thực thi shell mỗi tiến trình, nên tệp nhị phân Git Bash vẫn là toàn cục; công tắc này điều khiển tầng phương ngữ/dịch.",
+				"local.label": "Công cụ cục bộ",
+				"local.hint": "Đối số đường dẫn chỉ được dịch cho các công cụ chạy trên máy NÀY (các công cụ tệp và shell chính thức cùng cầu nối ops_ và gb_ đã có sẵn). Các công cụ chuyển đường dẫn tới WSL, SSH, container hoặc máy khác sẽ nhận nguyên trạng; thêm tên hoặc mẫu prefix* tại đây, cách nhau bằng dấu phẩy hoặc dấu cách.",
 				"term.label": "Tiếp quản terminal thanh bên",
 				"term.hint": "Bật theo mặc định: trên Windows, shell của «terminal mới» chính thức được đặt thành Git Bash đã phát hiện (ghi vào dòng terminal-controller chính thức qua trình sửa cấu hình chính thức). Không có nó, dsh khởi động terminal bằng shell mặc định của môi trường, và bash trong PATH thường là trình khởi chạy WSL — terminal mới sẽ chạy Ubuntu. Chỉ ghi khi dòng đó KHÔNG có shell riêng; lựa chọn rõ ràng không bao giờ bị ghi đè, chỉ ghi vào nhật ký máy chủ. Terminal mới dùng ngay, terminal đang mở giữ nguyên. Lưu ý: tắt công tắc này chỉ dừng các lần ghi TIẾP THEO — không xóa trường shell đã ghi vào cấu hình hồ sơ. Để khôi phục y nguyên, hãy xóa trường shell khỏi dòng terminal-controller trong patch của hồ sơ rồi khởi động lại dsh.",
 				"eol.label": "kết thúc dòng Git (giống Linux)",
@@ -1782,6 +1818,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "閂咗佢",
 				"sub.label": "子代理/隊員用 Git Bash",
 				"sub.hint": "預設開啟:子代理同團隊隊員(連嵌套)嘅提示詞方言、路徑參數翻譯、結果回顯同 DSH_PATH_DIALECT 環境事實都同主代理一致。閂咗就淨係主代理有,子代理跟官方 shell 語義行(提示詞唔改寫、路徑參數唔翻譯);留意 dsh 每個進程只有一個 shell 執行器,所以 Git Bash 本身仍然係全局嘅,呢個開關管嘅係方言/翻譯層。",
+				"local.label": "本機工具",
+				"local.hint": "只對在本機執行的工具翻譯路徑參數(內建官方檔案與 shell 工具、ops_ 與 gb_ 橋接)。WSL、SSH、容器等把路徑交給另一台機器的工具原樣傳遞,需要更多就在此填工具名或前綴通配(如 my_tool、my_*),用逗號或空格分隔。",
 				"term.label": "自動接管側欄終端",
 				"term.hint": "預設開啟:Windows 上會將官方「開新終端」嘅 shell 自動設成探測到嘅 Git Bash(寫入官方 terminal-controller 行嘅設定,經官方設定編輯器落盤)。冇呢一項時,dsh 會用環境預設 shell 開終端,而 PATH 嘅 bash 好多時係 WSL 啟動器,於是新終端跑嘅係 Ubuntu。只喺該行**冇**自己嘅 shell 時才寫;你已經手動指定過其他 shell 就絕對唔會覆蓋,淨係喺宿主日誌提你一句。新終端即時生效,已開嘅終端保持原狀。 注意:閂咗呢個開關只係阻止**之後**嘅自動寫入,唔會刪走已經寫入 profile 設定嘅 shell 欄位 —— 想完全還原,請喺 profile 嘅 patch 度刪走 terminal-controller 行嘅 shell 欄位再重啟 DSH。",
 				"eol.label": "Git 行尾(與 Linux 一致)",
@@ -1875,6 +1913,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "閂咗佢",
 				"sub.label": "子代理/隊員用 Git Bash",
 				"sub.hint": "預設開啟:子代理同團隊隊員(連嵌套)嘅提示詞方言、路徑參數翻譯、結果回顯同 DSH_PATH_DIALECT 環境事實都同主代理一致。閂咗就淨係主代理有,子代理跟官方 shell 語義行(提示詞唔改寫、路徑參數唔翻譯);留意 dsh 每個進程只有一個 shell 執行器,所以 Git Bash 本身仍然係全局嘅,呢個開關管嘅係方言/翻譯層。",
+				"local.label": "本機工具",
+				"local.hint": "只對在本機執行的工具翻譯路徑參數(內建官方檔案與 shell 工具、ops_ 與 gb_ 橋接)。WSL、SSH、容器等把路徑交給另一台機器的工具原樣傳遞,需要更多就在此填工具名或前綴通配(如 my_tool、my_*),用逗號或空格分隔。",
 				"term.label": "自動接管側欄終端",
 				"term.hint": "預設開啟:Windows 上會將官方「開新終端」嘅 shell 自動設成探測到嘅 Git Bash(寫入官方 terminal-controller 行嘅設定,經官方設定編輯器落盤)。冇呢一項時,dsh 會用環境預設 shell 開終端,而 PATH 嘅 bash 好多時係 WSL 啟動器,於是新終端跑嘅係 Ubuntu。只喺該行**冇**自己嘅 shell 時才寫;你已經手動指定過其他 shell 就絕對唔會覆蓋,淨係喺宿主日誌提你一句。新終端即時生效,已開嘅終端保持原狀。 注意:閂咗呢個開關只係阻止**之後**嘅自動寫入,唔會刪走已經寫入 profile 設定嘅 shell 欄位 —— 想完全還原,請喺 profile 嘅 patch 度刪走 terminal-controller 行嘅 shell 欄位再重啟 DSH。",
 				"eol.label": "Git 行尾(與 Linux 一致)",
@@ -1968,6 +2008,8 @@ window.__ModuleLoader__.load({
 				"bashmiss.close": "關閉",
 				"sub.label": "子代理/隊員使用 Git Bash",
 				"sub.hint": "預設開啟:子代理與團隊隊員(含巢狀)的提示詞方言、路徑參數翻譯、結果回顯與 DSH_PATH_DIALECT 環境事實都與主代理一致。關閉後僅對主代理生效,子代理依官方 shell 語意執行(提示詞不改寫、路徑參數不翻譯);請注意 dsh 每個行程只有一個 shell 執行器,因此 Git Bash 本身仍是全域的,這個開關管的是方言/翻譯層。",
+				"local.label": "本機工具",
+				"local.hint": "只對在本機執行的工具翻譯路徑參數(內建官方檔案與 shell 工具、ops_ 與 gb_ 橋接)。WSL、SSH、容器等把路徑交給另一台機器的工具原樣傳遞,需要更多就在此填工具名或前綴通配(如 my_tool、my_*),用逗號或空格分隔。",
 				"term.label": "自動接管側邊終端",
 				"term.hint": "預設開啟:Windows 上會把官方「新增終端」的 shell 自動設為探測到的 Git Bash(寫入官方 terminal-controller 列的設定,由官方設定編輯器落盤)。沒有這一項時,dsh 會以環境預設 shell 啟動終端,而 PATH 裡的 bash 往往是 WSL 啟動器,於是新終端跑的是 Ubuntu。只在該列**沒有**自己的 shell 時才寫入;你已手動指定其他 shell 就絕不覆蓋,僅在宿主日誌提示。新終端立即生效,已開啟的終端維持原狀。 注意:關掉這個開關只會阻止**之後**的自動寫入,不會刪除已經寫進 profile 設定的 shell 欄位 —— 要徹底還原,請把 profile 的 patch 裡 terminal-controller 列的 shell 欄位刪掉再重啟 DSH。",
 				"eol.label": "Git 行尾(與 Linux 一致)",
@@ -2404,6 +2446,25 @@ window.__ModuleLoader__.load({
 				});
 			}, [scope, snap.status, mirroredInitScript]);
 
+			/* v0.55.2 (issue #48): the local-tool allowlist. A plain text draft is
+			   enough — hydrate from the mirror until the user types, then keep the
+			   typed text across snapshot refreshes; the save verdict is the only
+			   state the button reports. */
+			var localState = useState({ scope: scope, value: null, saved: false });
+			var mirroredLocalTools = snap.value && Array.isArray(snap.value.localTools) ? snap.value.localTools.join(", ") : "";
+			var localDraft = localState[0].scope === scope && localState[0].value !== null ? localState[0].value : mirroredLocalTools;
+			var setLocalDraft = localState[1];
+			var localSaved = localState[0].scope === scope && localState[0].saved === true;
+			function setLocalSaved(saved) {
+				setLocalDraft(function (previous) {
+					if (previous.scope !== scope || previous.saved === saved) return previous;
+					return Object.assign({}, previous, { saved: saved === true });
+				});
+			}
+			function parseLocalTools(text) {
+				return String(text || "").split(/[,\s]+/).map(function (entry) { return entry.trim(); }).filter(function (entry) { return entry.length > 0; });
+			}
+
 			/* v0.38.0: the card's sections are FOLDERS. All seven stay collapsed
 			   by default — the user scans seven labelled header rows, expands the
 			   one theme they recognise, and finds the switch inside it (user
@@ -2551,6 +2612,21 @@ window.__ModuleLoader__.load({
 					E("button", { type: "button", className: "gb-segBtn" + (!enabled ? " gb-segActive" : ""), onClick: function () { if (enabled) writeField("posixPaths", false); } }, t("switch.off")),
 				),
 				E("p", { className: "gb-hint" }, t("hint")),
+				E("div", { className: "gb-row" },
+					E("span", { className: "gb-rowLabel" }, t("local.label") + ":"),
+				),
+				E("div", { className: "gb-seg" },
+					E("input", { className: "gb-input", type: "text", spellCheck: false, placeholder: "ops_*, my_tool", value: localDraft, onChange: function (e) { setLocalDraft({ scope: scope, value: e.target.value, saved: false, owner: {} }); } }),
+					E("button", {
+						type: "button",
+						className: "gb-saveBtn" + (localSaved ? " gb-saved" : ""),
+						onClick: function () {
+							setLocalSaved(false);
+							writeField("localTools", parseLocalTools(localDraft)).then(function (accepted) { setLocalSaved(accepted === true); });
+						},
+					}, localSaved ? t("bash.saved") : t("bash.save")),
+				),
+				E("p", { className: "gb-hint" }, t("local.hint")),
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("mnts.label") + ":"),
 					E("span", { className: "gb-rowValue" }, mounts ? t("state.on") : t("state.off")),

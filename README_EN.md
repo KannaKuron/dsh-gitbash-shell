@@ -358,17 +358,19 @@ is the `posixPaths` boolean on the `gitbash-shell` row Config; it is **on by def
 **Settings → Plugins**. No preset or composition file is touched, and every mode —
 standard/minimal/PTC/creation and user-authored presets — is covered.
 
+Since v0.55.2 that "every" means **every tool that runs on this machine**. A tool-level gate runs before translation in `tools/execute`: only allow-listed tools get their path arguments translated, while tools that forward paths to another machine or container (WSL, SSH, remote and container plugins) receive them unchanged instead of being rewritten to `C:/Program Files/Git/...`. The built-in allow-list covers the official file and shell tools (`read`/`write`/`edit`/`read_image`/`glob`/`grep`/`present`/`bash`/`run_code`/`pwsh`) plus the `ops_*` and `gb_*` bridges; anything else passes through. Add names or `prefix*` wildcards (comma/space separated, e.g. `my_tool`, `team_*`) under **Local tools** on the settings card — Config key `localTools`, a string array, empty by default.
+
 While it is on (Windows only), `posixPaths` gates all of the following:
 
 - **Source-level rewrite**: during assembly (`system-prompt/assemble`) every Windows absolute
   path in the official prompt's sections, contexts, and variables is rewritten in place to the
   /c/... form — nothing is added or removed, and tool schemas stay untouched;
 - **One-sentence directive**: a global directive via `systemPrompt.context` (order 126) — the
-  shell is Git for Windows bash, paths use MSYS drive roots, and every tool accepts that form
+  shell is Git for Windows bash, paths use MSYS drive roots, and every tool that runs on this machine accepts that form; tools that forward paths elsewhere receive them unchanged
   directly — including the bash-native habits (`~`, `/tmp`, `/dev/null`, `/usr`), which resolve
   exactly as bash itself resolves them (v0.17.0, mirroring the Git Bash mount table);
   directly;
-- **Argument translation**: on `tools/execute` the tools' path arguments (`file_path` / `path` /
+- **Argument translation**: on `tools/execute` the local tools' path arguments (`file_path` / `path` /
   `workdir`, plus present's nested `files[].path`) are translated from /c/... back to C:/... for
   the Node-backed file tools; a bash command's `command` field is left alone — that is Git Bash's
   native form; **bash virtual paths resolve through the Git Bash mount table (v0.17.0)**: /tmp is

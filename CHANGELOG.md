@@ -3,6 +3,19 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.55.2 — 2026-11-27
+
+**类型**:fix(路径方言越界改写 WSL/SSH/容器工具的参数,issue #48)
+
+- **根因**:`tools/execute` 的入参翻译只按**字段名**判定(`file_path`/`path`/`workdir`/`root`),不看工具在哪执行。于是 `dsh-wsl-tool` 的 `file_path: /home/Administrator/...` 被当作本机路径改写成 `C:/Program Files/Git/home/...`(冒号还会经回车/换行转义成 U+F03A),写入实际落在 Git 安装根下;`dsh-wsl-bridge` 则直接 `ENOENT`。插件侧无法补救:它只看到已经改写的字符串。
+- **修法**:翻译层加**工具级闸门**。`translateDispatch` 顶部先判 `isLocalToolName(exec.name, dialect.localTools)`,只有本机工具才翻译字段、拆 glob 绝对 pattern、改 `run_code` 程序里的路径字面量;其余工具原样透传(返回同一 arguments 引用)。内置本机白名单 = 官方文件与 shell 工具(`read`/`write`/`edit`/`read_image`/`glob`/`grep`/`present`/`bash`/`run_code`/`pwsh`)加 `ops_`、`gb_` 桥接前缀。`bash` 的 `command` 字段本来就不翻译,因此 `ssh `、`docker exec` 等命令串不受影响。
+- **配置**:行 Config 新增 `localTools`(字符串数组,默认空,volatile),支持精确工具名与 `前缀*` 通配,用于登记第三方**本机**工具;设置卡「Git Bash 路径方言」新增「本机工具」输入与保存(21 语言新增 `local.label`/`local.hint`)。
+- **提示词**:全局指令与 `PATH_DIALECT_DESCRIPTION` 改为「本机工具用 MSYS 盘根;把路径交给另一台机器/容器的工具收到原样参数,给它们目标机器自己的路径形式」,不再宣称所有工具一律接受 `/c/...`。`run_code` 的两段指令同步。
+- **行为边界**:未知第三方工具默认透传。依赖旧行为翻译的第三方本机工具会拿到 `/c/...` 并显式报错(比静默写到别处好),把名字填进 `localTools` 即可恢复翻译。
+- **测试**:新增冒烟用例 `issue #48: only tools that run on this machine get the MSYS rewrite`(WSL/SSH/docker/MCP/远程工具同引用透传、`wsl_glob` 不拆 pattern、同名 `read` 仍翻译、`localTools` 精确名与通配、`isLocalToolName` 边界)。完整 `npm test` **419 项 / 418 pass / 0 fail / 1 platform skip**;`node --check` 与 `git diff --check` 通过。
+- **验证限制(如实说明)**:翻译 hook 只在 `process.platform === 'win32'` 注册,本机(macOS)无法端到端复现;本次以纯函数单测 + 源码级断言验证,并请 issue 作者在 Windows + WSL 上复验。
+- **链接**:[issue #48](https://github.com/KannaKuron/dsh-gitbash-shell/issues/48)
+
 ## v0.55.1 — 2026-11-15
 
 **类型**:fix(better-sidebar 0.32 的 terminalShell 删除后接管失效,issue #47)

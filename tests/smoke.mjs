@@ -1524,6 +1524,39 @@ test('translateDispatch covers every argument face issue #8 reported', () => {
   assert.equal(translateDispatch({ name: 'read', arguments: relative }, dialect, env), relative)
 })
 
+test('issue #48: only tools that run on this machine get the MSYS rewrite', async () => {
+  const { translateDispatch } = _internal
+  const { isLocalToolName } = await import('../src/path-dialect.js')
+  const env = { tmpDir: 'C:/Users/x/AppData/Local/Temp', home: 'C:/Users/x', gitRoot: 'C:/Program Files/Git' }
+  const dialect = { posixPaths: true, virtualMounts: true, globSplit: true, codePaths: true }
+  const t = (name, args, d = dialect) => translateDispatch({ name, arguments: args }, d, env, 'typescript')
+  // The reported bug: a Linux guest path handed to a WSL tool was rewritten
+  // to C:/Program Files/Git/home/... and written on the host.
+  const wsl = { file_path: '/home/u/notes.txt', path: '/home/u' }
+  assert.equal(t('wsl_write', wsl), wsl, 'a foreign tool keeps its argument object')
+  assert.deepEqual(wsl, { file_path: '/home/u/notes.txt', path: '/home/u' })
+  // The destination is unknowable for these too, so they pass through.
+  for (const name of ['ssh_exec', 'docker_cp', 'mcp__fs__write', 'remote_download_file', 'some_future_tool']) {
+    const args = { file_path: '/home/u/a.txt', path: '/home/u/a.txt', workdir: '/home/u' }
+    assert.equal(t(name, args), args, name + ' must not be rewritten')
+  }
+  // A foreign glob keeps its absolute pattern: no split, no path field.
+  const foreignGlob = { pattern: '/home/u/**/*.js' }
+  assert.equal(t('wsl_glob', foreignGlob), foreignGlob)
+  // The SAME fields on a local tool still translate (the gate is per tool).
+  assert.equal(t('read', { file_path: '/home/u/notes.txt' }).file_path, 'C:/Program Files/Git/home/u/notes.txt')
+  // Settings additions are additive: exact names and prefix* wildcards.
+  const extra = { ...dialect, localTools: ['my_tool', 'team_*'] }
+  assert.equal(t('my_tool', { path: '/c/x' }, extra).path, 'C:/x')
+  assert.equal(t('team_sync', { path: '/c/x' }, extra).path, 'C:/x')
+  assert.equal(t('my_tool', { path: '/c/x' }).path, '/c/x', 'not local without the setting')
+  assert.equal(isLocalToolName('read', undefined), true)
+  assert.equal(isLocalToolName('wsl_write', []), false)
+  assert.equal(isLocalToolName('my_tool', ['my_*']), true)
+  assert.equal(isLocalToolName('other', ['my_*']), false)
+  assert.equal(isLocalToolName('x', [42, '', 'x']), true, 'non-string entries are ignored')
+})
+
 test('issue #8 root cause stays fixed: the dispatch face reads the LIVE dialect', () => {
   const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
   // The legacy namespace reader is GONE (v0.32.1): the namespace API no longer
