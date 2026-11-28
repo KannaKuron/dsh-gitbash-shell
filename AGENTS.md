@@ -19,7 +19,7 @@
 
 ## 单代基线与大版本清理纪律(2026-11-05 起)
 
-- 运行时只服务 `engines.dsh` 声明的下限(当前 `0.2.3-alpha.1`);不为更老宿主保留分支、探测、回退或测试夹具。抬升下限时同步 `package.json` / `dsh.plugin.json` / README / AGENTS / CHANGELOG 与测试,不保留双代。
+- 运行时只服务 `engines.dsh` 声明的下限(当前 `0.2.3-alpha.3`);不为更老宿主保留分支、探测、回退或测试夹具。抬升下限时同步 `package.json` / `dsh.plugin.json` / README / AGENTS / CHANGELOG 与测试,不保留双代。
 - 每次 dsh 大版本或破坏性 rc 适配,重做全仓单代审计:删除只为旧宿主存在的设置面、版本探测、物化资产与测试夹具;旧注释也改写成当前契约,不把历史当现状。
 - 必须保留并写明理由:用户数据迁移(旧物化树、旧 profile 行字段)、跨插件主动兼容(dsh-ops / FastCtx / dsh-ptc-cordis-preset / better-sidebar / terminal bundle)、平台分支、可选官方能力的按包探测与降级。
 - 清理不得改变用户数据:只删 marker 判定为 unmodified 的旧物化树;用户手改或外来目录绝不碰。
@@ -52,7 +52,7 @@
 4) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
-0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.2.3-alpha.1`(兼容门禁 `plugin-compatibility.ts` 优先读 `engines.dsh`,只要存在该字段就忽略 peer,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 同步声明同一 range 并标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),只保留这一代宿主路径。要点:四个变体由 `pluginsFor({ kind, skillsDir, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,单代镜像官方 `0.2.3-alpha.2` standard/minimal/ptc/cordis + Git Bash 增量;可选行由 `hostExtras` 按包探测(见第 8 条);minimal 变体由 `minimalPluginsFor({ bashPath, hostExtras })` 生成;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关直接 `.volatile()`;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**语义能力**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-shell`**(同时是 configForms key)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
+0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.2.3-alpha.3`(兼容门禁 `plugin-compatibility.ts` 优先读 `engines.dsh`,只要存在该字段就忽略 peer,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 同步声明同一 range 并标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),只保留这一代宿主路径。要点:四个变体由 `pluginsFor({ kind, skillsDir, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,单代镜像官方 `0.2.3-alpha.3` standard/minimal/ptc/cordis + Git Bash 增量;可选行由 `hostExtras` 按包探测(见第 8 条);minimal 变体由 `minimalPluginsFor({ bashPath, hostExtras })` 生成;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关直接 `.volatile()`;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**语义能力**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-shell`**(同时是 configForms key)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
 
 1. **执行器替换 full-access argv；Windows 未验证受限能力必须 fail-closed**:
    沙箱/生命周期基础设施沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 必须显式 Git for Windows
@@ -350,7 +350,7 @@
 7. **preset id 永不随官方改名,组合对齐由 fixture 锁死(v0.32.0 收敛)**:`code-gitbash` 保持历史 id
    (会话钉在 id 上,改名即 preset not found——dsh 0.1.2 把内置 `code` 改名 `ptc` 时本插件变体 id
    就没有跟随)。变体组合与官方内置 preset 的对齐由 `tests/smoke.mjs` 的
-   `compositions: alpha.2 executor shape and profile-context gates` 一项锁住(era 资产/marker 维度
+   `compositions: alpha.3 executor shape and profile-context gates` 一项锁住(era 资产/marker 维度
    已随物化路径删除,历史叙事见 CHANGELOG v0.6.0~v0.31.1)。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
@@ -369,12 +369,14 @@
    `time-context`/`tool-schedule` 两行,极简 preset 新增 image-only `tool-fs` 与专属 compaction 组
    (`isolate` 仅 compaction、无 pruner),alpha.4 起全工具 preset 另有 `tool-plugin-market`
    (standard/ptc 关、cordis 随 profileContext);alpha.3 已把 `schedule_*` 从 subagent 的
-   `toolFilter.deny` 移除 ⇒ 插件侧**不再产出任何 toolFilter**。宿主下限已是 `0.2.3-alpha.1`,
+   `toolFilter.deny` 移除 ⇒ 插件侧**不再产出任何 toolFilter**。宿主下限已是 `0.2.3-alpha.3`,
    但这四行仍由 `probeHostExtras(ctx)` 从 **`ctx.baseUrl`**(行挂载同一解析基准)逐包 `require.resolve`
-   探测(time-context、tool-schedule、plugin-market/tools、compaction-basic、tool-office),可用才加行
+   探测(time-context、tool-schedule、plugin-market/tools、compaction-basic、tool-document),可用才加行
    (`timeContext`/`toolSchedule`/`pluginMarket` 仅 standard/ptc/cordis 三个 kind,`compaction`
-   仅 minimal,`office` 仅 standard/ptc);`office` 探针同时兼作 rc.2 行方言探针:只有它能解析时
-   才给 `tool-subagent-control` 写 `interrupt: false` 并追加 `tool-office` 行,rc.1 不写未知键。
+   仅 minimal,`document` 仅 standard/ptc)。官方三套 full preset 自 alpha.3 起 `tool-fs` 无 config、
+   `apply_patch` 随 `edit` 默认开启,本插件不再写 `applyPatch: false`;minimal 的 `tool-fs` 仍
+   `read: false`/`edit: false`,因此 minimal 变体保持不提供 apply_patch。`tool-subagent-control` 现在
+   恒写 `interrupt: false`(0.2.3 的官方行方言),不再需要探针兼作方言判定。
    探测每 boot 一次、reconcile 重注册复用;任何解析异常降级为「不可用」。**不要**把这些行
    写成无条件(包缺失会拒绝整棵挂载)。官方下一版再加行时:先重跑
    `tests/align-official.mjs`(pins 换新 sha)再决定是否新增探测位。
@@ -404,7 +406,7 @@
       `insert[0].config.plugins`),抽出 `- id:` / `name:` / `disabled:` 三行序列,与本插件
       对应变体(`src/compositions.js`)逐条对齐;**提示词**(persona 的 `prefix:`/`suffix:`
       文本)与**工具行**同样要 diff,不要只看 id 名字。smoke 的
-      `compositions: alpha.2 executor shape and profile-context gates` 锁住对齐。
+      `compositions: alpha.3 executor shape and profile-context gates` 锁住对齐。
    ② **行改名是致命项**:dsh 0.1.6-alpha.1 把引擎行 `workflow-worker-thread` 改名 `workflow-ptc`
       并**删除**了旧包(`packages/workflow/workflow-worker-thread` 整包消失)。组合里一行 import
       失败会拒绝**整棵 preset 挂载**(agent-presets `mount.ts`),变体直接不可用——
@@ -430,18 +432,20 @@
       `settings` 服务方法面(`get(ns)` 是否存在)。**这类契约验证不需要 Windows**:用宿主构建里的
       真实类 + 打桩 spawn 驱动即可(`apps/desktop/.desktop-build/targets/*/dsh/node_modules/
       @deepseek-ai/dsh-bash-*`),CHANGELOG v0.24.4 记录的 12 项集成检查就是这么跑的。
-   ⑥ **执行器/呈现架构与 prompt 装配面是独立漂移源(0.2.2-alpha.2 立,v0.44.0 教训)**:
+   ⑥ **执行器/呈现架构与工具面观测是独立漂移源(0.2.2-alpha.2 立,v0.44.0 / v0.57.0 教训)**:
       dsh 0.2.2-alpha.2 把工具执行模式从 `dsh-tools` 配置改成显式执行器行(`tool-executor-native`
-      / `tool-executor-ptc`,`dsh-tools` 的 `mode`/`maxParallelSubCalls` 改 `z.never()` 直接拒绝),
-      同时动了三处只影响"组合形状"的地方:`tool-subagent-list-agents` 行被删除(list_agents 并进
-      `tool-subagent-control` 主行)、subagent 的 `modelSelectionSettings` 改名
-      `modelSelection` + `modelDiscovery`、`tool-presentation` 被 `tool-executor-ptc` 取代。
-      每次跟随升级必须额外核对:①`packages/core/tool-executor-*` 是否新增/改名(新宿主上 PTC
-      形必须挂执行器行,本插件只产出 rc.1 这一形状);②`packages/bundle/web-app/presets/*.patch.yml`
+      / `tool-executor-ptc`,`dsh-tools` 的 `mode`/`maxParallelSubCalls` 改 `z.never()` 直接拒绝);
+      alpha.3 又把这两行改名为 `tool-registry-native`/`tool-registry-ptc`,并删除 `ToolsService` 的
+      `schemas`/`definitions`/`selectExecutor`/`executable`,只余 `register`/`include`/`get`/`getAll`/
+      `restrict`/`guard`/`execute`/`setRoot`。native root 的 `getAll(scope)` 列每个可见工具;PTC root
+      只回 `run_code`(program bindings 故意不暴露在 `ctx.tools` 上)。
+      每次跟随升级必须额外核对:①`packages/core/tool-registry-*` 是否新增/改名(新宿主上 PTC
+      形必须挂 `tool-registry-ptc`,本插件只产出这一形状);②`packages/bundle/web-app/presets/*.patch.yml`
       里 `!!js` 条件行(如 `!!js "!ctx.get('profileContext')"`)对应的服务是否可从 ctx 读到
-      ——声明式组合没有 `!!js`,必须改成注册时求值的 hostExtras 布尔;③`system-prompt/assemble`
-      携带的字段集(`PromptAssembly` 拆分后不再带 `tools`,工具面要从 `ctx.get('tools').schemas(agent)`
-      读回);④工具渲染文案(`renderPromoted` 等)是否又内联了已由 system-prompt 段落承载的指引。
+      ——声明式组合没有 `!!js`,必须改成注册时求值的 hostExtras 布尔;③工具面观测(native 用
+      `getAll(scope)`;PTC 只有 `run_code`,改读 `agentPresets.inspectCompositions` 的 active modules,
+      服务缺失必须 fail closed);④工具渲染文案(`renderPromoted` 等)是否又内联了已由 system-prompt
+      段落承载的指引。
 
 4j. **原生右侧栏的文件路径救援(v0.31.0,用户报告)**:本插件的方言第一次伸到**浏览器 UI**。
      症状:点开对话里的文件链接(链接文本来自 shell 输出,是 `/c/Users/...`),官方右侧栏
@@ -593,13 +597,13 @@
        且无任何线索。修复(三件套,缺一不可):inject 收敛为服务最小面(`tools/systemPrompt/shellEnv`),
        宿主可选服务一律**使用点 `ctx.get()` 可选读取**;cwd 接缝双向兼容(有服务走 `ensure()` 与新版
        官方一致,没有的退回 rc.2 官方 `resolveWorkdir` 的 `policy.workspaceRoot ?? header.cwd`);
-       激活成功必须经 `tools.schemas(agent)` 回读确认在册,不在册打显式失败行。**铁律:镜像宿主模块
+       激活成功必须经自有模块在 `apply()` 内调用 `onRegistered`、由 `waitRegistered` 确认后才继续(alpha.3 起 `tools.schemas(agent)` 已删除,注册表回读不再是可用通道)。**铁律:镜像宿主模块
        时,inject/服务消费面必须取兼容矩阵内最老宿主的形状或可选化——「宿主新版本有」不等于
        「矩阵内都有」;激活/注册类日志必须回读验证,成功日志本身不是证据**(与 §0 静态 import、
        §4j 硬注入、v0.38.2 fiber 时序同一失败家族的第无数课)。
        实验 native 与 Bash 的 cwd 消费共用 `src/session-workdir.js`；native 同样不得硬 inject
        workingDirectory。服务存在时 ensure 错误不得吞掉，只有缺服务才走旧接缝。
-       companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，通过当前宿主公开 `scopeChainOf` 逐层检查 global/祖先/当前 scope 的 schemas，包含在子 scope 隐藏的工具；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
+       companion 激活必须确认 apply 已执行；scope 就绪与实际注册成功分别记录。初始挂载、volatile 开关和 Jobs 刷新必须共用按 agent 检查所有权的注册入口：注销自身注册后，外部全局/同 agent 同名工具均让位，通过当前宿主公开 `scopeChainOf` 逐层检查 global/祖先/当前 scope 的 `getAll()`（alpha.3 起没有 schemas），包含在子 scope 隐藏的工具；检查失败或注册异常记录日志，不阻断其他 companion。让位后保留待命 scope，下一次刷新可恢复。
 
 4m. **native 工具首步稳定(v0.47.1,issue #38)**:任何模型可见工具都不允许在 `agent/created`
      之后才异步注册——step 1 少一个、step 2 补上会重写 provider 前缀,把整段会话缓存打掉
@@ -619,9 +623,13 @@
        `tests/runtime-preview.mjs` 的 eager-slot 用例需要已安装宿主(host-loader),不在
        `npm test` 内。本机无 Windows 时不得声称真机通过,CHANGELOG 必须写明该边界。
 
-4n. **全局 PTC SDK 开关与所有权(`globalPtcSdk`,默认关)**:该开关只写 profile patch 的两个 root executor 行
-     (`tool-executor-native: disabled true`、`tool-executor-ptc: disabled false`),不是 volatile 实时切换,
-     重启 DSH 后生效。**绝不复述 `preset-minimal`**:它的 `persona.complete: true` 会抹掉 SDK,minimal 不在
+4n. **全局 PTC SDK 开关与所有权(`globalPtcSdk`,默认关)**:该开关只写 profile patch 的两个 root registry 行
+     (`tool-registry-native: disabled true`、`tool-registry-ptc: disabled false`)。该字段必须 `.volatile()` 才能被
+     设置卡写入(宿主 settings 拒绝落盘非 volatile 字段,否则报 `Config field ... is not volatile`),但 volatile
+     只代表**可写**,不是实时切换:apply() 仍只读一次,patch 行在重启 DSH 后生效。alpha.3 之前的行名 `tool-executor-native`/`tool-executor-ptc` 已无对应注册表:
+     `LEGACY_EXECUTOR_NATIVE_ROW`/`LEGACY_EXECUTOR_PTC_ROW`(src/global-ptc.js:58-59)仍被 `OWNED_ROWS` 接受,
+     adopt 时把指纹匹配的旧行迁移认领到新行,OFF 时旧行一并 lift;否则 v0.56.0 留下的 receipt 会因
+     `unexpected owned row`(src/global-ptc-ownership.js:119)直接失败,旧行则永远留在 patch 里被引擎 warn-and-skip。**绝不复述 `preset-minimal`**:它的 `persona.complete: true` 会抹掉 SDK,minimal 不在
      本开关支持范围内;需要 minimal + PTC 的部署必须自己维护 preset 覆盖,README/设置卡必须明说。
      - 所有权由 patch 旁 `.gitbash-global-ptc-ownership.json` 记录:只登记本次实际新增的行 id 与指纹;
        用户原先手写的同值行不认领。指纹 = 规范化数据 + YAML AST 上全部 `comment/commentBefore`
@@ -634,18 +642,41 @@
        lift,失败只 log。
      - **CLI 停服卸载是 dispose 的盲区**:先停宿主再从命令行卸载/禁用插件时,插件代码不会加载,上面的 lift
        不会执行,行会留在 patch。设置卡在 OFF 时必须给可见提示(21 语言 `gptc.manualHint`);文档写明先关开关
-       (非 volatile,重挂即归还)或按 receipt 手工删两行。**不要**声称 dispose 能覆盖这条路径。
+       (volatile 仅为可写;关闭意图落盘后**下次启动**归还,卸载时 dispose 归还)或按 receipt 手工删两行。
+       **不要**声称 dispose 能覆盖这条路径。
      - 回归必须覆盖:用户手写同值、后续改值、只加注释、部分 lift、adopt→lift 字节回滚、receipt 生命周期、
        禁用/卸载接线。改 `agent/created` 的 PTC readiness 时另跑 `tests/global-ptc-created.mjs` 的空 face、
        取消与 dispose 用例;supersede 清 timer 后旧 Promise 必须链到替代 reconcile / Bash mount,dispose 才可
        直接 settle;正常 firing 不得提前 settle 下一 attempt。
+
+4o. **工具面观测的 alpha.3 形态(v0.57.0,官方删除 schemas 之后)**:观测仍只有一处实现
+     `observeToolFace(ctx, registry, agent, { onUnavailable })`(`src/inline-tools.js`),但通道换了:
+     - 先 `registry.getAll(agent)`。**不是**恰好一条 `run_code` ⇒ native root,结果原样返回(等价于旧
+       `schemas(agent)` 的工具名面)。
+     - 恰是 `run_code` ⇒ PTC root,program bindings 故意不暴露在 `ctx.tools` 上;改读
+       `ctx.get('agentPresets').inspectCompositions(agent.ctx)` 的 ACTIVE 非 group modules
+       (`{ moduleName, ... }[]`,不含 entryId/config):`@deepseek-ai/dsh-tool-bash`→`bash`、
+       `@deepseek-ai/dsh-tool-pwsh`→`pwsh`、`dsh-ops`/`dsh-ops/*`→`bash` + 四个 ops 名
+       (`ops_inspect_local_file`/`ops_grep`/`ops_bash`/`ops_run`)。
+     - `agentPresets` 服务缺失、抛错或清单为空 ⇒ 调 `onUnavailable`(problemLog)并只返回 `[run_code]`,
+       **fail closed**:不知道有没有 pwsh 就不补 bash,绝不猜。
+     - `provideBash` 不再回读注册表(alpha.3 没有 `schemas`):自有模块在 `apply()` 内调
+       `src/bash-tool.js` 的 `onRegistered?.()`,由 `waitRegistered` 有界等待确认;超时才抛
+       `bash tool did not register for this agent`。extraModules 的 `applied` 标志保持。
+     - 其它读工具名的地方同样走 `getAll`:`src/bash-tool.js` 的 offered 名、`src/index.js` 的
+       prompt 组装、`src/tool-ownership.js:11-24` 的 `toolNameOccupied`(`getAll()` + 逐 owner
+       `getAll(owner)`)。**不得**再出现 `schemas`/`definitions`/`selectExecutor`/`executable`。
+     - **客户端「插件联动」fold 不再看 `configForms`**:ptc-cordis v0.29.0 的空 Config 不再服务
+       `ptc-cordis` 命名空间,`snapshot.status === 'ready'` 恒假。判据改成
+       `slots.entries('plugins.bundle.config')` 里是否存在 `options.key === 'dsh-ptc-cordis-preset'`
+       (`PEER_PLUGIN_KEY`,`src/client.js`),并按该 slot 订阅刷新。
 
 10. **日志策略(issue #46)**:健康启动必须静默——preset 注册/退役、工具面接线、侧栏终端接管等成功路径只走 `src/log.js` 的 `debugLog`,仅当 `DSH_GITBASH_DEBUG` 为 `1`/`true`/`yes` 时输出。真正的降级与失败(不可解析的 schemastery、注册/接线失败、拒绝执行)走 `problemLog`(`console.warn`,始终可见),并通过 inline mount 的 `warn` 回调传给各模块。`src/**` 中除 `log.js` 外不得出现 `console.log`;新增生命周期文案时先判断它是否属于“健康启动”,属于就绝不能写进 `console.log`/`problemLog`。smoke 有静态守卫。
 
 ## 当前宿主测试与配置所有权
 
 - 宿主预览使用真实 Native/Ptc executor，`tools.execute({calls,...})` 返回 `results`；不得用旧单调用签名或给 registry 打兼容补丁。
-- 路由文案由自有 Bash definition 与 PTC prompt section 提供；`system-prompt/assemble` 不拥有工具声明，修改 `schemas()` 的副本不会进入模型请求。
+- 路由文案由自有 Bash definition 与 PTC prompt section 提供；`system-prompt/assemble` 不拥有工具声明，修改 `getAll()` 返回对象的副本不会进入模型请求。
 - 持久终端补全只改 `config.shellPath`，保留其它配置/注释；整个读改写使用与 configEditor 相同的 profile 锁。`disabled`/`shellPath` 是非字面量（如 `!!js`）时视为用户条件，`kept-user-choice` 不写入。
 - dsh-ops 只恢复 `.gitbash-ops-ownership.json` 记录的实际修改字段；原有 false、不明来源的历史 false 和后续用户选择不得认领。恢复的是**原形状**：原本没有 override 的模式删除该字段，不写成显式 `bash: true`。重试计时器、正在进行的接管与恢复都由注入 scope 管理。
 
@@ -709,7 +740,7 @@
 4. 旧物化残留清理改动:手造带 marker 的 unmodified 树 → 启动被删 + 日志;篡改文件成
    user-modified → 保留 + 提示;无 marker 的 foreign 目录 → 绝不碰。
 5. **升级 dsh 后**(v0.14.0 起强制):按第 9 条把四个内置 preset 各核对一遍——行序列 + 提示词 +
-   disabled 默认值;smoke 的 `compositions: full variants mirror the alpha.2 host row split`
+   disabled 默认值;smoke 的 `compositions: full variants mirror the alpha.3 host row split`
    锁住对齐;真机确认声明式注册日志出现四个变体且模式选择器里都能挂载。
 6. **去重改动(§4e,v0.25.0 起)**:隔离实例(`DSH_HOME` 独立 + 新建 profile + 两份插件 `link:` 安装
    + 探针插件定时打印 `agentPresets.list()`)里**真的翻转开关**看名录:默认两侧条目并存 → 写

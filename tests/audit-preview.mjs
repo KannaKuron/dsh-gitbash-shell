@@ -46,7 +46,7 @@ async function fixture(t) {
   const ready = new Promise(resolve => { signalReady = resolve })
   await mount(ctx => {
     ctx.on('tools/change', () => {
-      if (tools.schemas(agent).some(tool => tool.name === 'gitbash_native')) signalReady()
+      if (tools.getAll(agent).some(tool => tool.name === 'gitbash_native')) signalReady()
     })
   })
   await mount(plugin, { variantPresets: false, adoptSidebar: false, autoTerminalShell: false, fastctxTools: false })
@@ -119,7 +119,7 @@ test('audit host: hidden ancestor ownership is preserved, with restoration after
   let refresh
   const owner = childScope.ctx.plugin(ctx => { refresh = registerExperimentalTool(ctx, () => definition('OWN'), () => true, { scope: child }) })
   await owner; cleanups.push(() => owner.dispose())
-  assert.equal(root.get('tools').schemas(child).some(tool => tool.name === 'gitbash_to_native_path'), false)
+  assert.equal(root.get('tools').getAll(child).some(tool => tool.name === 'gitbash_to_native_path'), false)
   foreign(); refresh()
   assert.equal(root.get('tools').get('gitbash_to_native_path', child).description, 'OWN')
 })

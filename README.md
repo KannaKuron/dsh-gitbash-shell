@@ -27,8 +27,11 @@ POSIX 宿主上完整保留;
 - **官方四个模式直接获得 Git Bash**——模式列表保持官方原样,不再新增变体:
   每个会话创建时,本插件探测该模式的工具面,「有 pwsh 无 bash」(官方 Windows
   组合的形态)即在该会话内注册**自有 bash 工具**(对官方 tool-bash 逐调用镜像:
-  后台任务、审批升级、渲染行为不变)。宿主官方 `pwsh` 工具是**真正的
-  PowerShell**(v0.39.0 起,本插件不再替换执行器),默认被隐藏、开关显示——见下一条。
+  后台任务、审批升级、渲染行为不变)。原生根用 `ctx.tools.getAll(scope)` 读工具面;
+  PTC 根只暴露 `run_code`,`ctx.tools` 看不到程序绑定,因此改读当前 preset 的 active
+  modules(`agentPresets.inspectCompositions`),按 `tool-pwsh`/`tool-bash` 行判断。
+  宿主官方 `pwsh` 工具是**真正的 PowerShell**(v0.39.0 起,本插件不再替换执行器),
+  默认被隐藏、开关显示——见下一条。
 - **bash 工具说明附带路由规则**:能用 Git Bash 就用 Git Bash;只有必须用到
   Windows 原生能力(cmdlet/注册表/服务/WMI)时才用 PowerShell;bash 出错在
   bash 里修,禁止在 bash 里嵌 `pwsh -Command`(变量展开与输出编码会在那里坏掉)。
@@ -89,28 +92,32 @@ dsh-ptc-cordis-preset 的 `PTC 创造模式` 用户 preset 均不受影响、自
 
 ### 宿主要求与 preset 对齐
 
-自 v0.56.0 起宿主下限为 **dsh >= 0.2.3-alpha.1**:门禁读 `engines.dsh`(只要见到该字段就忽略 peer,`semver` 以 `includePrerelease: true` 求值),`peerDependencies` 同步声明并标 `optional`;只服务这一代宿主。四个变体的行集是 `src/compositions.js`
-里已提交的 JS 数据,镜像官方 0.2.3-alpha.2 的 standard/minimal/ptc/cordis 行切分并叠加
+自 v0.57.0 起宿主下限为 **dsh >= 0.2.3-alpha.3**:门禁读 `engines.dsh`(只要见到该字段就忽略 peer,`semver` 以 `includePrerelease: true` 求值),`peerDependencies` 同步声明并标 `optional`;只服务这一代宿主。四个变体的行集是 `src/compositions.js`
+里已提交的 JS 数据,镜像官方 0.2.3-alpha.3 的 standard/minimal/ptc/cordis 行切分并叠加
 Git Bash 增量;跟随 dsh 升级的对齐由冒烟测试
-`compositions: alpha.2 executor shape and profile-context gates` 锁住。
+`compositions: alpha.3 executor shape and profile-context gates` 锁住。
 **preset id 保持 `code-gitbash` 不变**——会话钉在 id 上,dsh 0.1.2 把内置 `code`
 改名 `ptc` 时本插件的变体 id 就没有跟随(改名会让已固定的会话报 preset not found)。
 
 **可选官方行按包探测接入**:全工具 preset 自带时间上下文(`time-context`)与提醒工具
 (`schedule_*`),极简 preset 自带 image-only `tool-fs` 与专属 compaction 组,全工具
-preset 另有插件市场(`tool-plugin-market`)与原生 Office 工具(`tool-office`)。本插件在
+preset 另有插件市场(`tool-plugin-market`)与原生文档工具(`tool-document`,工具名
+`document_render`/`document_convert`/`document_recalculate`)。本插件在
 挂载时按 `ctx.baseUrl` 探测这些包,可用才纳入对应变体;剥掉某个包的 profile 只降级
 该行,不会拒绝整棵 preset 挂载。
 
-**0.2.3-alpha.2 基线**:官方全工具 preset 的 `tool-fs` 行带 `config: { applyPatch: false }`,
-本插件的 standard/cordis/ptc 变体同步,极简变体不加;standard 与 ptc 的
-`skill-filesystem` 带 `customSkillDirs`(解析到官方 preset 包旁 skills)并携带
-`tool-skill`;cordis 的 `tool-skill` 带
-`excludedSkills: ['official-plugins', 'personalized-pages']`。standard 在 alpha.2 新增
+**0.2.3-alpha.3 基线**:官方全工具 preset 的 `tool-fs` 行不再带
+`config: { applyPatch: false }`——`apply_patch` 跟随 `edit` 默认开启,本插件的
+standard/cordis/ptc 变体同步;极简变体的 image-only `tool-fs` 仍关闭 `edit`,因此
+`apply_patch` 也保持关闭。PTC 根行改为 `tool-registry-ptc`
+(`@deepseek-ai/dsh-tool-registry-ptc`),native 根仍是 `tool-registry-native`。
+standard 与 ptc 的 `skill-filesystem` 带 `customSkillDirs`(解析到官方 preset 包旁
+skills)并携带 `tool-skill`;cordis 的 `tool-skill` 带
+`excludedSkills: ['official-plugins', 'personalized-pages']`。standard 提供
 `tool-cordis`(ptc 不提供);三套全工具 preset 的 `tool-subagent-control` 都带
 `config: { interrupt: false }`,manager 行全部跟 `profileContext`,market 行三套都
 存在、仅 cordis 跟 `profileContext`(standard/ptc 恒关)。`dsh.compatibility.dshReleases`
-登记 0.2.3-alpha.1 与 0.2.3-alpha.2。
+只登记 0.2.3-alpha.3。
 
 ## 安装(公开 npm 插件,推荐)
 
@@ -366,6 +373,10 @@ preset 会被插件自动清理;宿主官方 PowerShell 执行器原样保留(�
 `ctx.configForms.get('gitbash-shell')` **绑定同一行**、写同一个字段(DSH 官方支持编辑另一个
 插件所拥有的命名空间),所以任一侧改动另一侧立即同步——不存在两份拷贝,也没有同步逻辑。
 
+本插件设置卡上的「插件联动」fold 用 `plugins.bundle.config` 的 slot key 判断对方是否安装
+(`dsh-ptc-cordis-preset`),不再看 `configForms` 命名空间:dsh-ptc-cordis-preset v0.29.0
+起 Config 为空,空 Schema 不再打开该命名空间,旧探测会把已安装的对方误判成「未安装」。
+
 
 **依赖版本**:去重开关本体在**本插件 ≥ 0.25.0**;对方的协作能力在
 **dsh-ptc-cordis-preset ≥ 0.14.0**。
@@ -373,9 +384,14 @@ preset 会被插件自动清理;宿主官方 PowerShell 执行器原样保留(�
 ### 全局 PTC SDK:`globalPtcSdk`(默认关)
 
 设置卡的「Global PTC SDK」控制 profile 的 root executor。默认关闭时不新增任何覆盖;开启后写入
-`tool-executor-native: { disabled: true }` 与 `tool-executor-ptc: { disabled: false }`,让未显式挂载
-scoped native executor 的 agent 通过 `run_code` SDK 调用工具。SDK 内含本插件的 Git Bash,不发布独立 `pwsh`。
+`tool-registry-native: { disabled: true }` 与 `tool-registry-ptc: { disabled: false }`,让未显式挂载
+scoped native registry 的 agent 通过 `run_code` SDK 调用工具。SDK 内含本插件的 Git Bash,不发布独立 `pwsh`。
 **写入的是 profile patch,重启 DSH 后生效。**
+
+v0.57.0 起行名随 dsh 0.2.3-alpha.3 改为 `tool-registry-*`。旧版写入的
+`tool-executor-native`/`tool-executor-ptc` 行不会炸宿主(patch 引擎对缺失行 warn-and-skip),
+但开关在新宿主上不再生效;首次 adopt 会把 receipt 认领且指纹匹配的旧行迁移成新行,
+关闭时也会一并 lift,不把旧行留在 profile 里。
 
 - **不覆盖 `preset-minimal`**:minimal 的 `persona.complete: true` 会在 prompt 组装时抹掉 PTC SDK,
   得到没有可用 SDK 的 `run_code`。本开关**不支持 minimal**,也不替部署复述该 preset(避免冻结官方行集);
@@ -390,8 +406,9 @@ scoped native executor 的 agent 通过 `run_code` SDK 调用工具。SDK 内含
 - **失败边界**:receipt 损坏时拒绝猜测所有权;写入与回读使用宿主原子写和同一把 profile 文件锁,
   校验失败回滚原 patch 字节。卸载恢复只记录失败日志,不阻断宿主关闭。
 - **卸载前先关开关**:`dispose` 只在宿主运行、插件 fiber 被销毁时执行。若先停宿主再从命令行卸载/禁用插件,
-  插件代码不会加载,已写入的 executor 行会留在 patch。请在设置卡关闭 `globalPtcSdk`(该字段非 volatile,
-  会重挂插件并执行归还),确认日志后再停服;已停服时按 receipt 手工删除两行。
+  插件代码不会加载,已写入的 executor 行会留在 patch。请在设置卡关闭 `globalPtcSdk`(该字段必须 volatile
+  才能被写入——宿主 settings 拒绝落盘非 volatile 字段;关闭意图落盘后,**下次启动或卸载 dispose** 才执行
+  归还,不会在点击瞬间撤销),确认日志后再停服;已停服时按 receipt 手工删除两行。
 
 ## POSIX 路径方言(v0.7.0 引入,受 `posixPaths` 开关门控)
 

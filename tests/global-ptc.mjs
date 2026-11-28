@@ -21,6 +21,8 @@ import { pathToFileURL } from 'node:url'
 import {
   EXECUTOR_NATIVE_ROW,
   EXECUTOR_PTC_ROW,
+  LEGACY_EXECUTOR_NATIVE_ROW,
+  LEGACY_EXECUTOR_PTC_ROW,
   adoptGlobalPtcPatch,
   currentGlobalPtcRows,
   globalPtcReport,
@@ -32,6 +34,7 @@ import {
   globalPtcOwnership,
   rowFingerprint,
   validateReceipt,
+  yamlRowFingerprint,
 } from '../src/global-ptc-ownership.js'
 
 /** Resolve a real eemeli `yaml` from the machine (host install preferred). */
@@ -166,8 +169,8 @@ test('writer: adopts onto a patch and records ownership', async (t) => {
   const result = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
   assert.equal(result.status, 'adopted')
   const text = h.read()
-  assert.match(text, /tool-executor-native/)
-  assert.match(text, /tool-executor-ptc/)
+  assert.ok(text.includes(EXECUTOR_NATIVE_ROW), 'the current native-registry row is written')
+  assert.ok(text.includes(EXECUTOR_PTC_ROW), 'the current ptc-registry row is written')
   const receipt = h.receipt()
   assert.deepEqual(Object.keys(receipt.rows).sort(), [EXECUTOR_NATIVE_ROW, EXECUTOR_PTC_ROW].sort())
 })
@@ -193,12 +196,12 @@ test('writer: lift removes only rows this switch wrote', async (t) => {
   const h = await withPatch(t, '- id: keep-me\n  disabled: true\n')
   if (h.skip) return t.skip('no yaml module available')
   await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
-  assert.match(h.read(), /tool-executor-native/)
+  assert.ok(h.read().includes(EXECUTOR_NATIVE_ROW))
   const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
   assert.equal(lifted.status, 'lifted')
   const text = h.read()
-  assert.doesNotMatch(text, /tool-executor-native/)
-  assert.doesNotMatch(text, /tool-executor-ptc/)
+  assert.ok(!text.includes(EXECUTOR_NATIVE_ROW))
+  assert.ok(!text.includes(EXECUTOR_PTC_ROW))
   assert.match(text, /keep-me/)
 })
 
@@ -286,10 +289,52 @@ for (const missingId of [EXECUTOR_NATIVE_ROW, EXECUTOR_PTC_ROW]) {
     writeFileSync(h.file, edited)
     const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
     assert.equal(lifted.status, 'lifted')
-    assert.doesNotMatch(h.read(), /tool-executor-native|tool-executor-ptc/)
+    assert.ok(!h.read().includes(EXECUTOR_NATIVE_ROW))
+    assert.ok(!h.read().includes(EXECUTOR_PTC_ROW))
     assert.deepEqual(h.receipt().rows, {}, 'missing and lifted rows both leave the receipt')
   })
 }
+
+/** A v0.56.0 profile: legacy rows plus the receipt that owned them. */
+function withLegacyOwned(h) {
+  const patch = `- id: ${LEGACY_EXECUTOR_NATIVE_ROW}\n  disabled: true\n- id: ${LEGACY_EXECUTOR_PTC_ROW}\n  disabled: false\n- id: keep-me\n`
+  writeFileSync(h.file, patch)
+  const document = h.yamlModule.parseDocument(patch)
+  const items = document.contents.items
+  writeFileSync(join(h.dir, OWNERSHIP_FILENAME), JSON.stringify({ version: 1, rows: {
+    [LEGACY_EXECUTOR_NATIVE_ROW]: yamlRowFingerprint(items[0]),
+    [LEGACY_EXECUTOR_PTC_ROW]: yamlRowFingerprint(items[1]),
+  } }))
+}
+
+test('writer: ON migrates owned pre-alpha.3 rows to tool-registry rows', async (t) => {
+  const h = await withPatch(t, '[]\n')
+  if (h.skip) return t.skip('no yaml module available')
+  withLegacyOwned(h)
+  const result = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: true })
+  assert.equal(result.status, 'adopted')
+  assert.deepEqual(result.migrated.sort(), [LEGACY_EXECUTOR_NATIVE_ROW, LEGACY_EXECUTOR_PTC_ROW].sort())
+  const text = h.read()
+  assert.ok(!text.includes(LEGACY_EXECUTOR_NATIVE_ROW), 'the dead native row is migrated away')
+  assert.ok(!text.includes(LEGACY_EXECUTOR_PTC_ROW), 'the dead ptc row is migrated away')
+  assert.match(text, new RegExp(`- id: ${EXECUTOR_NATIVE_ROW}\\n  disabled: true`))
+  assert.match(text, new RegExp(`- id: ${EXECUTOR_PTC_ROW}\\n  disabled: false`))
+  assert.match(text, /keep-me/)
+  assert.deepEqual(Object.keys(h.receipt().rows).sort(), [EXECUTOR_NATIVE_ROW, EXECUTOR_PTC_ROW].sort())
+})
+
+test('writer: OFF lifts a v0.56.0 receipt even after the rows stopped existing', async (t) => {
+  const h = await withPatch(t, '[]\n')
+  if (h.skip) return t.skip('no yaml module available')
+  withLegacyOwned(h)
+  const lifted = await adoptGlobalPtcPatch(h.io, { patchPath: h.file, enabled: false, lift: true })
+  assert.equal(lifted.status, 'lifted', 'dead owned rows are pure cleanup, so the composition cannot block them')
+  const text = h.read()
+  assert.ok(!text.includes(LEGACY_EXECUTOR_NATIVE_ROW))
+  assert.ok(!text.includes(LEGACY_EXECUTOR_PTC_ROW))
+  assert.match(text, /keep-me/)
+  assert.deepEqual(h.receipt().rows, {})
+})
 
 test('writer: lift on a patch without our rows changes nothing', async (t) => {
   const h = await withPatch(t, '- id: untouched\n')

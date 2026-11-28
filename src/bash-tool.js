@@ -319,14 +319,19 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
     inject: ['tools', 'systemPrompt', 'shellEnv'],
     apply(ctx, config = {}) {
       const routing = config.routing
+      const onRegistered = typeof config?.onRegistered === 'function' ? config.onRegistered : undefined
+      const register = (definition) => {
+        const unregister = ctx.tools.register(definition)
+        onRegistered?.()
+        return unregister
+      }
       if (routing) {
-        // `selectExecutor` is not part of the public ToolsService surface (the
-        // host's own tool model uses it internally). When a future host drops
-        // it, omit the PTC-only section rather than failing prompt assembly.
-        const offeredSchemas = (scope) => {
+        // alpha.3 removed selectExecutor/definitions; getAll(scope) is the
+        // public root view (native: every visible tool, PTC: run_code).
+        const offeredNames = (scope) => {
           try {
-            if (typeof ctx.tools?.selectExecutor !== 'function') return []
-            return ctx.tools.selectExecutor(scope).describe(ctx.tools.definitions(scope)).schemas ?? []
+            if (typeof ctx.tools?.getAll !== 'function') return []
+            return (ctx.tools.getAll(scope) ?? []).map(tool => ({ name: tool?.name }))
           } catch {
             return []
           }
@@ -335,8 +340,8 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           name: 'gitbash-shell:program-routing',
           order: ctx.systemPrompt.getSectionOrder('TOOL_BASH'),
           text: ({ scope }) => {
-            const owner = scope ?? routing.scope
-            return offeredSchemas(owner).some(tool => tool.name === 'run_code') ? PTC_ROUTING : ''
+            const names = typeof routing.names === 'function' ? routing.names() : offeredNames(scope ?? routing.scope)
+            return names.some(tool => tool.name === 'run_code') ? PTC_ROUTING : ''
           },
         })
       }
@@ -587,9 +592,9 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
           // Definitions contain getters too; reading only names avoids recursion
           // through schemas() -> this description. Do not recommend conditional
           // foreign tools without an admitted step. Core projects this for native/PTC.
-          const names = ctx.tools.definitions(routing.scope)
-            .filter(tool => ctx.tools.executable(tool.name, routing.scope) !== undefined)
-            .map(tool => ({ name: tool.name }))
+          const names = typeof routing.names === 'function'
+            ? routing.names()
+            : (ctx.tools.getAll?.(routing.scope) ?? []).map(tool => ({ name: tool.name }))
           const own = { name: 'bash', description: bashDescription() }
           applyToolRouting([own, ...names.filter(tool => tool.name !== 'bash')], routing.options())
           return own.description
@@ -599,19 +604,19 @@ export function createBashToolModule({ executor, toolsModule, sandboxModule, llm
 
       // The background surface follows the registry (index.ts:536), verbatim.
       if (!backgroundEnabled) {
-        ctx.tools.register(bashTool(undefined))
+        register(bashTool(undefined))
         return
       }
-      let foregroundOnly = ctx.get('jobs') === undefined ? ctx.tools.register(bashTool(undefined)) : undefined
+      let foregroundOnly = ctx.get('jobs') === undefined ? register(bashTool(undefined)) : undefined
       ctx.inject(['jobs'], (jobCtx) => {
         foregroundOnly?.()
         foregroundOnly = undefined
-        const unregister = ctx.tools.register(bashTool(jobCtx.jobs))
+        const unregister = register(bashTool(jobCtx.jobs))
         jobCtx.effect(() => () => {
           unregister()
           try {
             // Cordis FiberState.ACTIVE is the numeric enum member 2.
-            if (ctx.fiber?.state === 2) foregroundOnly = ctx.tools.register(bashTool(undefined))
+            if (ctx.fiber?.state === 2) foregroundOnly = register(bashTool(undefined))
           } catch { /* the scope is going away */ }
         })
       })

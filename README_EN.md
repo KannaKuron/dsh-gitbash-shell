@@ -19,29 +19,34 @@
 
 ### Host requirement & preset alignment
 
-Since v0.56.0 the host floor is **dsh >= 0.2.3-alpha.1**: the gate reads
+Since v0.57.0 the host floor is **dsh >= 0.2.3-alpha.3**: the gate reads
 `engines.dsh` (ignoring the peer whenever that field exists; `semver` evaluates
 with `includePrerelease: true`). `peerDependencies` mirrors the same range and
 stays `optional`; this plugin serves that one generation. The four variants are
 committed JS row sets in `src/compositions.js`, mirroring the official
-0.2.3-alpha.2 standard/minimal/ptc/cordis split plus the Git Bash delta; upgrade
+0.2.3-alpha.3 standard/minimal/ptc/cordis split plus the Git Bash delta; upgrade
 alignment is locked by the smoke test
-`compositions: alpha.2 executor shape and profile-context gates`. **Preset ids
+`compositions: alpha.3 executor shape and profile-context gates`. **Preset ids
 never change** (`code-gitbash` kept its historical id when dsh 0.1.2 renamed
 the built-in `code` to `ptc` — sessions are pinned to ids, and a rename would
 orphan them).
 
 Optional official rows are package-probed from `ctx.baseUrl`: `time-context`,
-`tool-schedule`, `tool-plugin-market`, `tool-office`, and the minimal-only
-compaction group. A missing package only drops that row. In alpha.2 standard and
+`tool-schedule`, `tool-plugin-market`, `tool-document`, and the minimal-only
+compaction group. A missing package only drops that row. In alpha.3 standard and
 ptc carry `customSkillDirs` on `skill-filesystem` plus `tool-skill`; cordis
 carries `tool-skill` with
 `excludedSkills: ['official-plugins', 'personalized-pages']`. Standard also gains
 `tool-cordis` (ptc does not). Every full preset pins
 `config: { interrupt: false }` on `tool-subagent-control`, gates the manager
 row on `profileContext`, and ships a market row that only cordis gates on
-`profileContext` (standard/ptc keep it off). `dsh.compatibility.dshReleases`
-records 0.2.3-alpha.1 and 0.2.3-alpha.2.
+`profileContext` (standard/ptc keep it off). The official `tool-fs` row no
+longer carries `config: { applyPatch: false }`: `apply_patch` follows `edit` and
+is on by default; our standard/cordis/ptc variants follow, while the minimal
+image-only `tool-fs` keeps `edit` off and therefore `apply_patch` off too. The
+PTC root row is `tool-registry-ptc` (`@deepseek-ai/dsh-tool-registry-ptc`);
+the native root stays `tool-registry-native`. `dsh.compatibility.dshReleases`
+records only 0.2.3-alpha.3.
 
 ## Install (public npm package)
 
@@ -78,8 +83,12 @@ The old "replace the executor" three-step patch became runtime work:
 3. **the `gitbash-shell` row**. **v0.35.0 dual form** — by default
    (`variantPresets: false`) it registers NO variants: the inline tool patch
    (`src/inline-tools.js`) registers the own bash tool per agent whenever the
-   tool face says "pwsh yes / bash no"; the official `pwsh` tool (REAL
-   PowerShell) stays hidden behind the `pwshTool` switch (off by default).
+   tool face says "pwsh yes / bash no". A native root lists that face through
+   `ctx.tools.getAll(scope)`; a PTC root exposes only `run_code` and hides its
+   program bindings, so the plugin reads the live preset's ACTIVE modules
+   (`agentPresets.inspectCompositions`) and looks for the `tool-pwsh` and
+   `tool-bash` rows instead. The official `pwsh` tool (REAL PowerShell) stays
+   hidden behind the `pwshTool` switch (off by default).
    Toggling `pwshTool` or `experimentalNative` changes the tool face (visibility/
    registration) for NEW sessions or after a DSH restart only: a running session
    keeps the face it was created with, and saving just writes one host-log line
@@ -319,15 +328,26 @@ plugin's own row Config; the peer's card binds that same row through
 namespace another plugin owns), so a change on either side shows up on the other immediately —
 there is no second copy and no sync logic.
 
+The settings card's own **Plugin cooperation** fold detects the peer through the keyed
+`plugins.bundle.config` slot (`dsh-ptc-cordis-preset`) instead of the `configForms` namespace:
+since dsh-ptc-cordis-preset v0.29.0 an empty Config no longer opens that namespace, and the old
+probe would report an installed peer as missing.
+
 **Versions**: the switch itself ships in **this plugin ≥ 0.25.0**; the peer's cooperation
 capability ships in **dsh-ptc-cordis-preset ≥ 0.14.0**.
 
 ### Global PTC SDK: `globalPtcSdk` (off by default)
 
 The settings card's **Global PTC SDK** row controls the profile's root executor. OFF adopts no overrides.
-ON writes `tool-executor-native: { disabled: true }` and `tool-executor-ptc: { disabled: false }`, so agents
-without an explicitly scoped native executor reach their tools through the `run_code` SDK. The SDK carries
+ON writes `tool-registry-native: { disabled: true }` and `tool-registry-ptc: { disabled: false }`, so agents
+without an explicitly scoped native registry reach their tools through the `run_code` SDK. The SDK carries
 this plugin's Git Bash and no separate `pwsh`. **This writes the profile patch and takes effect after a DSH restart.**
+
+From v0.57.0 the row ids follow dsh 0.2.3-alpha.3 and are `tool-registry-*`. Rows written by older
+versions (`tool-executor-native`/`tool-executor-ptc`) do not break the host (the patch engine warns
+and skips missing ids), but the switch no longer affects a new host. The first adopt migrates
+receipt-owned legacy rows whose fingerprints still match into the new rows; turning the switch off
+lifts them as well, leaving no dead rows behind.
 
 - **`preset-minimal` is not covered**: its `persona.complete: true` erases the PTC SDK during prompt assembly,
   leaving `run_code` without a usable SDK. This switch does not support minimal and deliberately does not restate
@@ -348,8 +368,9 @@ this plugin's Git Bash and no separate `pwsh`. **This writes the profile patch a
 - **Turn the switch off before uninstalling**: `dispose` runs only while the host is up and the plugin fiber is
   destroyed. Stopping the host first and then removing or disabling the plugin from the CLI never loads the plugin,
   so the written executor rows stay in the patch. Turn `globalPtcSdk` off in the settings card first (the field is
-  non-volatile, so the plugin remounts and lifts), confirm the log, and only then stop the host; if the host is
-  already stopped, remove the two rows manually using the receipt.
+  volatile because the host refuses to persist a non-volatile Config field; the off intent is saved immediately but
+  the lift runs on the **next start or at uninstall disposal**, never at click time), confirm the log, and only then
+  stop the host; if the host is already stopped, remove the two rows manually using the receipt.
 
 ## POSIX path dialect (introduced in v0.7.0, gated by the `posixPaths` switch)
 

@@ -16,7 +16,9 @@ import { toolNameOccupied } from './tool-ownership.js'
  *     exact path for variants ("for a per-agent variant, register through that
  *     agent's `agent.ctx` instead", packages/core/tools/src/index.ts);
  *   - `agent/created` fires once per agent with the composed tool face
- *     reachable through `ctx.get('tools').schemas(agent)`.
+ *     reachable through `ctx.get('tools').getAll(agent)` (alpha.3). A PTC
+ *     root lists only run_code, so the shell rows come from the live preset
+ *     inventory (`agentPresets.inspectCompositions`).
  *
  * ROUTE B (v0.39.0, the DSH-Store-compliant architecture). The plugin no
  * longer replaces the host `ctx.shell` executor, so the OFFICIAL tool-bash
@@ -103,6 +105,65 @@ export function inlineNeeds(names, { pwshVisible } = {}) {
  * owner's call: installing dsh-ops buys its enhancements, not a second bash.
  */
 export const OPS_SHELL_TOOLS = Object.freeze(['ops_bash', 'ops_run'])
+
+/**
+ * Read an agent's composed tool face through the alpha.3 public surface.
+ *
+ * The native root answers getAll(agent) with every visible tool. The PTC root
+ * answers with run_code only (its program bindings are deliberately not on
+ * ctx.tools), so the shell rows are read from the live composition inventory:
+ * inspectCompositions() lists every ACTIVE, non-group module of the agent's
+ * mounted preset. dsh-ops is treated as owning the shell: it publishes its own
+ * bash (global.bash default true) and the ops_* file tools.
+ *
+ * Fail closed: when the inventory cannot be read, the caller sees the raw
+ * [run_code] face and the reconcile retry gives up instead of patching a shell
+ * into an unknown composition.
+ */
+export function observeToolFace(ctx, registry, agent, { onUnavailable } = {}) {
+  let listed = []
+  try { listed = registry?.getAll?.(agent) ?? [] } catch { return [] }
+  const names = listed.map(tool => tool?.name).filter(name => typeof name === 'string')
+  if (names.length !== 1 || names[0] !== 'run_code') return names
+
+  let compositions
+  try {
+    const presets = ctx?.get?.('agentPresets')
+    if (!presets || typeof presets.inspectCompositions !== 'function') {
+      onUnavailable?.()
+      return names
+    }
+    compositions = presets.inspectCompositions(agent?.ctx ?? agent)
+  } catch {
+    onUnavailable?.()
+    return names
+  }
+
+  const modules = new Set()
+  for (const inspection of Array.isArray(compositions) ? compositions : []) {
+    for (const module of Array.isArray(inspection?.modules) ? inspection.modules : []) {
+      if (typeof module?.moduleName === 'string') modules.add(module.moduleName)
+    }
+  }
+  if (modules.size === 0) {
+    onUnavailable?.()
+    return names
+  }
+
+  const out = new Set(names)
+  if (modules.has('@deepseek-ai/dsh-tool-bash')) out.add('bash')
+  if (modules.has('@deepseek-ai/dsh-tool-pwsh')) out.add('pwsh')
+  for (const moduleName of modules) {
+    if (moduleName === 'dsh-ops' || moduleName.startsWith('dsh-ops/')) {
+      out.add('bash')
+      out.add('ops_inspect_local_file')
+      out.add('ops_grep')
+      out.add('ops_bash')
+      out.add('ops_run')
+    }
+  }
+  return [...out]
+}
 
 /**
  * The deny reason for an ops shell call on an agent our bash owns (route B
@@ -243,11 +304,18 @@ export function mountInlineTools(ctx, deps) {
   let bashOnce
   /** Set as soon as any face shows ops_* tools (the call-layer guard reads it). */
   let opsSeen = false
+  /** One warning per mount when the PTC composition inventory is unreadable. */
+  let ptcFaceWarned = false
+  const warnPtcFaceOnce = () => {
+    if (ptcFaceWarned) return
+    ptcFaceWarned = true
+    warn('PTC root detected but agentPresets.inspectCompositions is unavailable/empty; the shell face cannot be observed, so no inline bash is patched in (fail-closed)')
+  }
 
   const faceNames = (agent) => {
     try {
       const registry = tools(ctx)
-      return (registry?.schemas?.(agent) ?? []).map((schema) => schema.name).filter((name) => typeof name === 'string')
+      return observeToolFace(ctx, registry, agent, { onUnavailable: warnPtcFaceOnce })
     } catch {
       return []
     }
@@ -340,24 +408,30 @@ export function mountInlineTools(ctx, deps) {
       if (!isLive(agent, state)) return
       const registry = scope.ctx?.get('tools')
       if (!registry || typeof scope.ctx.plugin !== 'function') return
+      /* alpha.3 PTC roots hide program bindings from ctx.tools, so a registry
+         read-back can no longer prove registration. The module reports the
+         successful register() call from inside apply() instead; waiting for
+         that signal keeps the issue #27 false-positive guard (an INACTIVE
+         fiber resolves its await() without ever running apply()). */
+      let registered = false
       const fiber = scope.ctx.plugin({ ...module, apply(toolCtx, config) {
-        return module.apply(toolCtx, { ...config, routing: {
+        return module.apply(toolCtx, { ...config, onRegistered: () => { registered = true }, routing: {
+          names: () => state.toolFace.names,
           scope: agent,
           options: () => ({ pwshVisible: state.toolFace.pwshVisible, ...deps.routingOptions?.(agent) }),
         } })
       } })
       await untilDisposed(fiber, state.controller.signal)
       if (!isLive(agent, state)) return
-      // An INACTIVE fiber resolves its await() without ever running apply()
-      // (issue #27): awaiting the plugin proves nothing, so read the registry
-      // back before claiming success. A miss THROWS — the catch below logs the
-      // explicit activation failure and the finally disposes this half-mounted
-      // scope instead of leaking it for the agent's lifetime (shape credit:
-      // KouzakiUmi's PR #28).
-      const registeredNames = (scope.ctx.get('tools')?.schemas?.(agent) ?? [])
-        .map((schema) => schema && typeof schema.name === 'string' ? schema.name : '')
-      if (registeredNames.includes('bash') === false) {
-        throw new Error('bash tool did not register for this agent (module fiber INACTIVE — this host lacks an injected service the module requires — or the tools read-back is unavailable); bash is NOT available in this session, please report this with your dsh version (issue #27)')
+      const waitRegistered = async () => {
+        const deadline = Date.now() + 1000
+        while (!registered && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 10))
+        }
+        return registered
+      }
+      if (!(await untilDisposed(waitRegistered(), state.controller.signal))) {
+        throw new Error('bash tool did not register for this agent (module fiber INACTIVE — this host lacks an injected service the module requires — or apply() never ran); bash is NOT available in this session, please report this with your dsh version (issue #27)')
       }
       for (const extra of extraModules ?? []) {
         let extraFiber
@@ -564,8 +638,8 @@ export function mountInlineTools(ctx, deps) {
 
   const reconcile = (agent, { attempt = 0 } = {}) => {
     if (closed || !agent?.ctx) return
-    // Undo ONLY our mask before observing the face. schemas() filters a
-    // restricted-away pwsh, so it cannot tell us what an ON flip must restore.
+    // Undo ONLY our mask before observing the face. getAll() reflects the
+    // agent's restriction mask, so the previous deny must be lifted first.
     const previous = tracked.get(agent)
     // A new reconcile supersedes a pending timer, but the OLD created promise
     // must follow THIS reconcile's result (including an async bash mount).
@@ -617,7 +691,9 @@ export function mountInlineTools(ctx, deps) {
     if (state.toolFace === undefined) state.toolFace = {
       pwshVisible: deps.pwshEnabled?.() === true,
       experimental: deps.experimentalEnabled?.() !== false,
+      names: [],
     }
+    state.toolFace.names = names.slice()
     const pwshVisible = state.toolFace.pwshVisible === true
     const needs = inlineNeeds(names, { pwshVisible })
     if (needs.opsPresent) opsSeen = true

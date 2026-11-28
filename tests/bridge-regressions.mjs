@@ -40,7 +40,7 @@ async function bridgeFixture(t, result, callbacks = {}) {
     Object.assign(McpStdio.prototype, originals)
   })
   const registry = {
-    schemas: () => callbacks.faceSchemas ? callbacks.faceSchemas() : [],
+    getAll: () => callbacks.faceSchemas ? callbacks.faceSchemas() : [],
     register(definition) {
       assert.ok(!definitions.has(definition.name), 'the real registry rejects duplicate tool names')
       registrations.push(definition)
@@ -228,7 +228,7 @@ test('FastCtx: disposal owns a pending lazy connection and rejects its caller', 
 test('FastCtx: ops appearing in a later caller owns the surface even without a new agent event', async (t) => {
   let enabled = true
   const fixture = await bridgeFixture(t, {}, { enabled: () => enabled })
-  fixture.registry.schemas = (agent) => agent?.ops ? [{ name: 'ops_replace' }] : []
+  fixture.registry.getAll = (agent) => agent?.ops ? [{ name: 'ops_replace' }] : []
   await assert.rejects(fixture.definition.execute({}, { agent: { ops: true } }), /bridge was stopped/)
   assert.equal(fixture.definitions.size, 0)
   assert.equal(fixture.calls.length, 0)
@@ -245,7 +245,7 @@ test('FastCtx: a concurrent ops agent cancels pending discovery before publicati
   const pending = new Promise((resolve) => { releaseDiscovery = resolve })
   const fixture = await bridgeFixture(t, {}, { pendingBootstrap: true, listTools: () => pending })
   await new Promise(setImmediate)
-  fixture.registry.schemas = (agent) => agent?.ops ? [{ name: 'ops_grep' }] : []
+  fixture.registry.getAll = (agent) => agent?.ops ? [{ name: 'ops_grep' }] : []
   fixture.createAgent({ ops: true })
   releaseDiscovery([{ name: 'inspect_local_file' }])
   await new Promise(setImmediate)

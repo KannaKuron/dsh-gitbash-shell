@@ -6,18 +6,24 @@ export async function prepareToolOwnership(ctx) {
   if (typeof host?.scopeChainOf === 'function') scopeModule = host
 }
 
-/** Inspect each owner's own view: a child's mask must not erase ownership. */
+/** Inspect each owner's own view: a child's mask must not erase ownership.
+ *
+ * alpha.3 removed `schemas()`/`definitions()`; `getAll(scope)` is the public
+ * root view. A PTC root lists only run_code, so bindings stay invisible here —
+ * callers treat the duplicate-registration error as the fallback signal.
+ */
 export function toolNameOccupied(registry, name, scope) {
-  if (typeof registry?.schemas !== 'function') throw new Error('tool ownership inspection unavailable')
-  const global = registry.schemas()
-  if (!Array.isArray(global)) throw new Error('tool ownership inspection unavailable')
-  if (global.some(tool => tool.name === name)) return true
+  if (typeof registry?.getAll !== 'function') throw new Error('tool ownership inspection unavailable')
+  const names = (listed) => Array.isArray(listed) ? listed.map(tool => tool?.name) : undefined
+  const global = names(registry.getAll())
+  if (global === undefined) throw new Error('tool ownership inspection unavailable')
+  if (global.includes(name)) return true
   if (scope === undefined) return false
   if (typeof scopeModule?.scopeChainOf !== 'function') throw new Error('host scope ownership inspection unavailable')
   for (const owner of scopeModule.scopeChainOf(scope)) {
-    const listed = registry.schemas(owner)
-    if (!Array.isArray(listed)) throw new Error('tool ownership inspection unavailable')
-    if (listed.some(tool => tool.name === name)) return true
+    const listed = names(registry.getAll(owner))
+    if (listed === undefined) throw new Error('tool ownership inspection unavailable')
+    if (listed.includes(name)) return true
   }
   return false
 }

@@ -4,7 +4,7 @@
  * WHY THIS EXISTS (review P0)
  * The lift path must never delete a row the USER wrote. Matching on the
  * controlled field alone is not enough: a user who hand-wrote
- * `tool-executor-native: { disabled: true }` before ever toggling this switch
+ * `tool-registry-native: { disabled: true }` before ever toggling this switch
  * has a row that is byte-identical to ours, and "remove only rows whose value
  * is ours" would silently delete their file (and their comments, if they had
  * added any).
@@ -32,8 +32,14 @@ import { dirname, join } from 'node:path'
 /** Receipt filename, resolved next to the profile patch it describes. */
 export const OWNERSHIP_FILENAME = '.gitbash-global-ptc-ownership.json'
 
-/** Row ids this switch may own. */
-export const OWNED_ROWS = ['tool-executor-native', 'tool-executor-ptc']
+/** Row ids this switch may own. The pre-alpha.3 ids stay accepted so a receipt
+ *  written by v0.56.0 remains readable and its dead rows can still be lifted. */
+export const OWNED_ROWS = [
+  'tool-registry-native',
+  'tool-registry-ptc',
+  'tool-executor-native',
+  'tool-executor-ptc',
+]
 
 /**
  * Canonical fingerprint of one written row.

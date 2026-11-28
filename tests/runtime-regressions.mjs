@@ -22,7 +22,7 @@ function inlineFixture({ visible = false, names = ['bash', 'pwsh'], externalDeny
   const agent = makeAgent()
   if (externalDeny.length > 0) masks.set(agent, new Set(externalDeny))
   const agents = [agent]
-  const registry = { schemas: (who) => names.filter(name => !masks.get(who)?.has(name)).map(name => ({ name })) }
+  const registry = { getAll: (who) => names.filter(name => !masks.get(who)?.has(name)).map(name => ({ name })) }
   const ctx = {
     on(name, callback) { listeners.set(name, callback) },
     effect(callback) { effects.push(callback()) },
@@ -36,7 +36,7 @@ function inlineFixture({ visible = false, names = ['bash', 'pwsh'], externalDeny
   })
   return {
     agent, logs,
-    names: (who = agent) => registry.schemas(who).map(schema => schema.name),
+    names: (who = agent) => registry.getAll(who).map(schema => schema.name),
     set: value => { enabled = value; listeners.get('loader/volatile-update')([['pwshTool']]) },
     gate: (who = agent) => listeners.get('tools/pre-execute')({ agent: who, name: 'pwsh' }, () => ({ kind: 'allow' })),
     dispose: async () => { for (const effect of effects.reverse()) await effect() },
@@ -141,14 +141,12 @@ test('runtime: a host without the private executor projection omits PTC routing 
     toolsModule: { defineTool: options => options },
     log() {},
   })
-  const apply = (selectExecutor) => {
+  const apply = (getAll) => {
     sections.length = 0
     module.apply({
       tools: {
-        definitions: () => [],
-        executable: () => undefined,
         register: () => () => {},
-        ...(selectExecutor === undefined ? {} : { selectExecutor }),
+        ...(getAll === undefined ? {} : { getAll }),
       },
       systemPrompt: { section: section => sections.push(section), getSectionOrder: () => 100 },
       get: () => undefined,
@@ -158,7 +156,7 @@ test('runtime: a host without the private executor projection omits PTC routing 
   }
   assert.equal(apply(undefined).text({ scope: {} }), '')
   assert.equal(apply(() => { throw new Error('no executor mounted') }).text({ scope: {} }), '')
-  assert.match(apply(() => ({ describe: () => ({ schemas: [{ name: 'run_code' }] }) })).text({ scope: {} }), /call only bindings actually offered/)
+  assert.match(apply(() => [{ name: 'run_code' }]).text({ scope: {} }), /call only bindings actually offered/)
 })
 
 test('runtime: typed author schema marks required flags without weakening nested outputs', async t => {
@@ -260,7 +258,7 @@ test('runtime: a registration failure is logged without aborting another compani
     // dsh 0.2.2 made tools.view private; touching it would be the regression
     // this trap catches.
     get view() { throw new Error('private tools.view must not be read') },
-    schemas: () => [...definitions.keys()].map(name => ({ name })),
+    getAll: () => [...definitions.keys()].map(name => ({ name })),
     register(definition) {
       if (fail && definition.name === 'path') throw new Error('tool path is already registered in this scope');
       definitions.set(definition.name, definition);
@@ -278,12 +276,12 @@ test('runtime: a registration failure is logged without aborting another compani
   assert.equal(definitions.size, 0);
 });
 
-test('runtime: ownership inspection uses the public schemas listing', () => {
+test('runtime: ownership inspection uses the public getAll listing', () => {
   const definitions = new Map();
   const logs = [];
   const ctx = { tools: {
     get view() { throw new Error('private tools.view must not be read') },
-    schemas: () => [...definitions.values()].map(definition => ({ name: definition.name })),
+    getAll: () => [...definitions.values()].map(definition => ({ name: definition.name })),
     register(definition) {
       definitions.set(definition.name, definition);
       return () => definitions.delete(definition.name);

@@ -83,7 +83,7 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   assert.ok(start >= 0 && end > start)
   let handler
   let dialect = { posixPaths: true, codePaths: true, subagentDialect: true }
-  let toolsService = { definitions: () => [], selectExecutor: () => ({ describe: () => ({ schemas: [{ name: 'run_code' }] }) }) }
+  let toolsService = { getAll: () => [{ name: 'run_code' }] }
   const ctx = {
     on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn },
     get(name) { if (name === 'ptcRuntime') return { language: 'typescript' }; assert.equal(name, 'tools'); return toolsService },
@@ -104,7 +104,7 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   assert.equal(assemble({ session: { header: { origin: 'subagent' } } }), 'BASE')
   // A host without the private executor projection keeps the base section and
   // never fails prompt assembly; run_code is then simply not advertised.
-  toolsService = { definitions: () => [] }
+  toolsService = {}
   dialect = { ...dialect, subagentDialect: true, codePaths: true }
   assert.equal(assemble(), 'BASE')
 })
@@ -283,14 +283,15 @@ test('compatibility: a host WITH workingDirectory keeps the ensure() seam (issue
   assert.equal(getExecuted().workdir, 'C:/ensured/session-cwd', 'ensure() stays the primary cwd source on modern hosts')
 })
 
-test('compatibility: activation success requires a registry read-back, never a bare log (issue #27 false positive)', () => {
+test('compatibility: activation success requires an in-apply register signal, never a bare log (issue #27 false positive)', () => {
   const inlineTools = readFileSync(new URL('../src/inline-tools.js', import.meta.url), 'utf8')
   const bashTool = readFileSync(new URL('../src/bash-tool.js', import.meta.url), 'utf8')
   assert.doesNotMatch(bashTool, /inject: \['tools', 'systemPrompt', 'shellEnv', 'workingDirectory'\]/)
+  assert.match(bashTool, /onRegistered\?\.\(\)/, 'the tool module reports the successful register() call from inside apply()')
   assert.match(inlineTools, /did not register for this agent/, 'the miss THROWS so the catch logs it and the finally disposes the scope (PR #28 shape)')
-  assert.match(inlineTools, /schemas\?\.\(agent\)/, 'the activated log line must be gated on a schemas read-back')
-  assert.match(inlineTools, /includes\('bash'\) === false/)
-  assert.match(inlineTools, /retained = true[\s\S]*activated for this agent/, 'retained (scope ownership) may only be set after the read-back passes')
+  assert.match(inlineTools, /waitRegistered/, 'the host waits for that signal before declaring activation')
+  assert.doesNotMatch(inlineTools, /schemas\?\.\(agent\)/, 'alpha.3 PTC roots hide bindings, so no schemas read-back may remain')
+  assert.match(inlineTools, /retained = true[\s\S]*activated for this agent/, 'retained (scope ownership) may only be set after the register signal passes')
 })
 
 // ── dsh-ops 0.3.0 interop (v0.39.4): one dialect across BOTH tool families ──

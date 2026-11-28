@@ -1,9 +1,9 @@
 /**
- * dsh-gitbash-shell — declarative composition rows (dsh >= 0.2.3-alpha.1).
+ * dsh-gitbash-shell — declarative composition rows (dsh >= 0.2.3-alpha.3).
  *
  * A preset is a definition registered through agentPresets.register(). This
  * module is the committed, reviewable composition DATA for the four Git Bash
- * variants and mirrors the official 0.2.3-alpha.2 presets (packages/bundle/
+ * variants and mirrors the official 0.2.3-alpha.3 presets (packages/bundle/
  * web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the Git Bash
  * routing: full variants keep the official platform-gated shell rows, and the
  * inline patch adds OUR bash over a private executor on Windows. The minimal
@@ -20,7 +20,7 @@ function off(value) {
   return value === true ? { disabled: true } : {}
 }
 
-// Plan-mode section, byte-exact from the official 0.2.3-alpha.2 patch.yml.
+// Plan-mode section, byte-exact from the official 0.2.3-alpha.3 patch.yml.
 const PLAN_SECTION_TAIL = `Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
 Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
@@ -44,7 +44,7 @@ const PLAN_SECTION = `You are in plan mode. Stay in plan mode until the user app
  *   disabled on ptc).
  * @param {string|undefined} input.skillsDir - Authoring skills directory
  *   (standard/ptc/cordis variants; resolved beside the agent-preset package).
- *   The official alpha.2 presets all carry it on
+ *   The official alpha.3 presets all carry it on
  *   skill-filesystem.customSkillDirs.
  * @returns {object[]} the declarative plugins list.
  */
@@ -56,7 +56,7 @@ export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
   const bashDisabled = win
   const pwshDisabled = !win
   const workflowOn = kind !== 'ptc'
-  // The 0.2.3-alpha.2 preset row set: explicit tool-executor-native/-ptc rows,
+  // The 0.2.3-alpha.3 preset row set: explicit tool-registry-native/-ptc rows,
   // subagent `modelSelection` + `modelDiscovery`, list_agents folded into the
   // tool-subagent-control row, and manager/market rows gated on the live
   // profile context. Optional rows that some profiles strip (time-context,
@@ -87,9 +87,9 @@ export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
     ...(timeContext ? [{ id: 'time-context', name: '@deepseek-ai/dsh-time-context' }] : []),
     { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash', ...off(bashDisabled) },
     { id: 'tool-pwsh', name: '@deepseek-ai/dsh-tool-pwsh', ...off(pwshDisabled) },
-    // alpha.2 ships every full-tool preset with apply_patch explicitly OFF
-    // beside edit; mirror that default.
-    { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs', config: { applyPatch: false } },
+    // alpha.3 lets the host derive apply_patch from `edit` (default ON); the
+    // official standard/ptc/cordis rows carry no config override.
+    { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
     {
       id: 'tool-fs-search',
       name: '@deepseek-ai/dsh-tool-fs-search',
@@ -98,7 +98,7 @@ export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
     { id: 'tool-jobs', name: '@deepseek-ai/dsh-tool-jobs' },
     ...(toolSchedule ? [{ id: 'tool-schedule', name: '@deepseek-ai/dsh-tool-schedule' }] : []),
     ...((kind === 'standard' || kind === 'ptc') ? [
-      // alpha.2 standard and ptc both point skill-filesystem at the authoring
+      // alpha.3 standard and ptc both point skill-filesystem at the authoring
       // skills beside the agent-preset package. Cordis carries the same rows
       // later, after tool-cordis, with its excludedSkills filter.
       { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem', ...(skillsDir ? { config: { customSkillDirs: [skillsDir] } } : {}) },
@@ -140,7 +140,7 @@ export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
       group: true,
       isolate: { workflowEngine: true },
       config: [
-        // alpha.2 ships Config.interrupt=false in every full-tool preset.
+        // alpha.3 ships Config.interrupt=false in every full-tool preset.
         { id: 'tool-subagent-control', name: '@deepseek-ai/dsh-tool-subagent-control', config: { interrupt: false } },
         {
           id: 'tool-subagent',
@@ -162,7 +162,7 @@ export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
         // NO tool-subagent-codex / tool-subagent-claude-code / tool-ralph:
         // the official presets retired these disabled placeholder rows (the
         // codex/claude-code provider rows moved to on-demand official plugin
-        // bundles), so omitting them mirrors the shipped alpha.2 row split.
+        // bundles), so omitting them mirrors the shipped alpha.3 row split.
       ],
     },
     { id: 'tool-ask-user', name: '@deepseek-ai/dsh-tool-ask-user' },
@@ -178,12 +178,12 @@ export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
     },
   ]
   if (kind === 'ptc') {
-    // The explicit PTC executor row: the base deployment keeps
-    // tool-executor-native, and this scoped row overrides it for this agent.
-    rows.push({ id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
+    // The explicit PTC registry row: the base deployment keeps
+    // tool-registry-native, and this scoped row overrides it for this agent.
+    rows.push({ id: 'tool-registry-ptc', name: '@deepseek-ai/dsh-tool-registry-ptc' })
   }
   if (kind !== 'ptc') {
-    // alpha.2 added tool-cordis to the standard preset as well; ptc does not
+    // alpha.3 keeps tool-cordis on the standard preset as well; ptc does not
     // carry it. The host composition registers its inspect providers once.
     rows.push({ id: 'tool-cordis', name: '@deepseek-ai/dsh-tool-cordis' })
   }
@@ -193,20 +193,20 @@ export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
   }
   rows.push({ id: 'present', name: '@deepseek-ai/dsh-tool-present' })
   if (office && (kind === 'standard' || kind === 'ptc')) {
-    // alpha.2 ships the native Office tool in the standard/ptc presets only;
+    // alpha.3 ships the document tool in the standard/ptc presets only;
     // cordis does not carry it.
-    rows.push({ id: 'tool-office', name: '@deepseek-ai/dsh-tool-office' })
+    rows.push({ id: 'tool-document', name: '@deepseek-ai/dsh-tool-document' })
   }
   rows.push({
     id: 'tool-plugin-manager',
     name: '@deepseek-ai/dsh-plugin-manager/tools',
-    // alpha.2 official rows: every full-tool preset gates it on the live
+    // alpha.3 official rows: every full-tool preset gates it on the live
     // profile context.
     ...off(!profileContext),
   })
   if (pluginMarket) {
     rows.push({
-      // alpha.2: cordis gates the market on the profile context, while
+      // alpha.3: cordis gates the market on the profile context, while
       // standard and ptc keep it off outright.
       id: 'tool-plugin-market',
       name: '@deepseek-ai/dsh-plugin-market/tools',

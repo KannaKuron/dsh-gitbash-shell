@@ -856,7 +856,7 @@ test('the run_code literal rewrite has its own switch (codePaths)', async () => 
   // The event does not carry tools — read the step's admitted toolSet back
   // from the tools service, so conditional tools are judged exactly as
   // execution judges them.
-  assert.match(text, /registry\.definitions\(scope, assembleContext\?\.toolSet\)/, 'the offered tools must come from the step-admitted set')
+  assert.match(text, /registry\.getAll\(scope\)/, 'the offered tools come from the public alpha.3 root view')
 })
 
 test('the run_code sentence is injected only where the tool exists (v0.20.1)', async () => {
@@ -1013,7 +1013,7 @@ test('the success echo rides tools/execute, so no decision can collide (v0.23.0,
 
 // ── dsh >=0.2.2-rc.1 declarative era ────────────────────────────────────────
 
-test('compositions: full variants mirror the alpha.2 host row split', async () => {
+test('compositions: full variants mirror the alpha.3 host row split', async () => {
   const { pluginsFor, minimalPluginsFor, PRESET_META } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   for (const kind of ['standard', 'cordis']) {
@@ -1023,7 +1023,7 @@ test('compositions: full variants mirror the alpha.2 host row split', async () =
     const delegation = row(rows, 'delegation').config
     assert.notEqual(row(delegation, 'workflow-ptc').disabled, true)
     assert.notEqual(row(delegation, 'tool-workflow').disabled, true)
-    assert.deepEqual(row(delegation, 'tool-subagent-control').config, { interrupt: false }, kind + ': alpha.2 always ships interrupt:false')
+    assert.deepEqual(row(delegation, 'tool-subagent-control').config, { interrupt: false }, kind + ': alpha.3 always ships interrupt:false')
     // ralph is RETIRED: the official presets dropped the three disabled
     // placeholder rows (codex / claude-code / ralph); the codex/claude-code
     // providers moved to on-demand bundles.
@@ -1031,7 +1031,7 @@ test('compositions: full variants mirror the alpha.2 host row split', async () =
     assert.equal(row(rows, 'tool-bash').disabled, process.platform === 'win32' ? true : undefined)
     assert.equal(row(rows, 'tool-pwsh').disabled, process.platform === 'win32' ? undefined : true)
     assert.equal(row(rows, 'tool-plugin-manager').disabled, true, 'no profile context in this fixture -> manager off')
-    // alpha.2 added tool-cordis to standard as well; both full variants carry
+    // alpha.3 keeps tool-cordis on standard as well; both full variants carry
     // the authoring skills directory.
     assert.equal(row(rows, 'tool-cordis').name, '@deepseek-ai/dsh-tool-cordis', kind)
     assert.deepEqual(row(rows, 'skill-filesystem').config.customSkillDirs, ['/s'], kind)
@@ -1044,7 +1044,7 @@ test('compositions: full variants mirror the alpha.2 host row split', async () =
   assert.equal(row(delegation, 'workflow-ptc').disabled, true)
   assert.equal(row(delegation, 'tool-workflow').disabled, true)
   assert.deepEqual(row(delegation, 'tool-subagent-control').config, { interrupt: false })
-  assert.deepEqual(row(ptc, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
+  assert.deepEqual(row(ptc, 'tool-registry-ptc'), { id: 'tool-registry-ptc', name: '@deepseek-ai/dsh-tool-registry-ptc' })
   assert.equal(row(ptc, 'tool-cordis'), undefined)
   assert.deepEqual(row(ptc, 'skill-filesystem').config.customSkillDirs, ['/s'])
   const cordis = pluginsFor({ kind: 'cordis', skillsDir: '/s' })
@@ -1107,41 +1107,41 @@ test('compositions: optional host rows ride the probe, never the default', async
   assert.equal(group.config.some((r) => r.id === 'tool-result-pruner'), false, 'the minimal group carries NO pruner')
   assert.equal(base.some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
 })
-test('compositions: alpha.2 office, skills, and subagent rows match the official patches', async () => {
+test('compositions: alpha.3 document, skills, and subagent rows match the official patches', async () => {
   const { pluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
   const control = (rows) => row(row(rows, 'delegation').config, 'tool-subagent-control')
-  // alpha.2: the office probe only adds tool-office; interrupt:false is the
+  // alpha.3: the office probe only adds tool-document; interrupt:false is the
   // unconditional row dialect in every full-tool preset.
   for (const kind of ['standard', 'ptc']) {
     const rows = pluginsFor({ kind, skillsDir: '/skills', hostExtras: { office: true } })
     assert.deepEqual(control(rows).config, { interrupt: false }, kind)
-    assert.equal(ids(rows).indexOf('tool-office'), ids(rows).indexOf('present') + 1, kind)
-    assert.deepEqual(row(rows, 'tool-office'), { id: 'tool-office', name: '@deepseek-ai/dsh-tool-office' }, kind)
+    assert.equal(ids(rows).indexOf('tool-document'), ids(rows).indexOf('present') + 1, kind)
+    assert.deepEqual(row(rows, 'tool-document'), { id: 'tool-document', name: '@deepseek-ai/dsh-tool-document' }, kind)
     assert.deepEqual(row(rows, 'skill-filesystem').config, { customSkillDirs: ['/skills'] }, kind + ': both standard and ptc carry the authoring skills dir')
   }
   // ptc has no tool-cordis; the full standard variant does.
   assert.equal(ids(pluginsFor({ kind: 'ptc', skillsDir: '/skills' })).includes('tool-cordis'), false)
   assert.equal(row(pluginsFor({ kind: 'standard', skillsDir: '/skills' }), 'tool-cordis').name, '@deepseek-ai/dsh-tool-cordis')
   // cordis mirrors the official cordis patch: tool-cordis BEFORE the skills
-  // pair, the excludedSkills filter, interrupt:false, NO tool-office.
+  // pair, the excludedSkills filter, interrupt:false, NO tool-document.
   const cordis = pluginsFor({ kind: 'cordis', skillsDir: '/skills', hostExtras: { office: true } })
   assert.deepEqual(control(cordis).config, { interrupt: false })
-  assert.equal(ids(cordis).includes('tool-office'), false)
+  assert.equal(ids(cordis).includes('tool-document'), false)
   assert.ok(ids(cordis).indexOf('tool-cordis') < ids(cordis).indexOf('skill-filesystem'))
   assert.deepEqual(row(cordis, 'tool-skill').config, { excludedSkills: ['official-plugins', 'personalized-pages'] })
   // The interrupt key does not depend on the office probe.
   const legacy = pluginsFor({ kind: 'standard', skillsDir: '/skills' })
   assert.deepEqual(control(legacy).config, { interrupt: false })
-  assert.equal(ids(legacy).includes('tool-office'), false)
+  assert.equal(ids(legacy).includes('tool-document'), false)
 })
 
-test('compositions: alpha.2 executor shape and profile-context gates', async () => {
+test('compositions: alpha.3 registry shape and profile-context gates', async () => {
   const { pluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
-  // alpha.2 executor architecture: list_agents folded into the control row, the
+  // alpha.3 registry architecture: list_agents folded into the control row, the
   // subagent config uses modelSelection/modelDiscovery, and PTC mounts the
   // explicit executor row instead of the retired presentation selector.
   const ptc = pluginsFor({ kind: 'ptc', skillsDir: undefined, hostExtras: { profileContext: true } })
@@ -1151,16 +1151,16 @@ test('compositions: alpha.2 executor shape and profile-context gates', async () 
   assert.equal(row(delegation, 'tool-subagent').config.modelSelectionSettings, undefined)
   assert.equal(row(delegation, 'tool-subagent').config.backgroundMode, undefined)
   assert.equal(row(ptc, 'tool-presentation'), undefined)
-  assert.deepEqual(row(ptc, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
+  assert.deepEqual(row(ptc, 'tool-registry-ptc'), { id: 'tool-registry-ptc', name: '@deepseek-ai/dsh-tool-registry-ptc' })
 
-  // alpha.2 manager/market: EVERY full-tool preset gates the manager on the
+  // alpha.3 manager/market: EVERY full-tool preset gates the manager on the
   // live profile context; the market is cordis-only (standard/ptc keep it off).
   for (const kind of ['standard', 'ptc', 'cordis']) {
     const withProfile = pluginsFor({ kind, skillsDir: '/s', hostExtras: { profileContext: true, pluginMarket: true } })
     const marketOn = kind === 'cordis'
     assert.equal(row(withProfile, 'tool-plugin-manager').disabled, undefined, kind + ': manager follows the live profile context')
     assert.equal(row(withProfile, 'tool-plugin-market').disabled, marketOn ? undefined : true, kind)
-    assert.deepEqual(row(withProfile, 'tool-fs').config, { applyPatch: false }, kind + ' ships apply_patch off')
+    assert.equal(row(withProfile, 'tool-fs').config, undefined, kind + ' follows the alpha.3 apply_patch default (on)')
     const without = pluginsFor({ kind, skillsDir: '/s', hostExtras: { profileContext: false, pluginMarket: true } })
     assert.equal(row(without, 'tool-plugin-manager').disabled, true, kind)
     assert.equal(row(without, 'tool-plugin-market').disabled, true, kind)
@@ -1172,12 +1172,12 @@ test('probeHostExtras resolves from the host base and degrades to false', async 
   const none = { timeContext: false, toolSchedule: false, pluginMarket: false, compaction: false, office: false, profileContext: false }
   assert.deepEqual(await probeHostExtras(undefined, () => true), all)
   assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-schedule'), { ...none, toolSchedule: true })
-  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-office'), { ...none, office: true })
+  assert.deepEqual(await probeHostExtras(undefined, (spec) => spec === '@deepseek-ai/dsh-tool-document'), { ...none, office: true })
   // a throwing resolver reads as "absent" — never rejects the boot
   assert.deepEqual(await probeHostExtras(undefined, (spec) => { if (spec === '@deepseek-ai/dsh-time-context') throw new Error('boom'); return false }), none)
   // default resolver from this test file's base: official host packages absent → all false
   assert.deepEqual(await probeHostExtras({}), none)
-  // profileContext is a LIVE service read, not a package fact (alpha.2 rows gate on it)
+  // profileContext is a LIVE service read, not a package fact (alpha.3 rows gate on it)
   assert.deepEqual(await probeHostExtras({ get: (name) => (name === 'profileContext' ? {} : undefined) }, () => false), { ...none, profileContext: true })
   assert.deepEqual(await probeHostExtras({ get: () => { throw new Error('boom') } }, () => false), none)
 })
@@ -1416,13 +1416,13 @@ test('host half: the dedupe switch is wired and defaults OFF', () => {
 
 test('client card: the dedupe row is peer-gated and writes THIS row\'s field', () => {
   const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
-  // the peer row id is a named constant (no scattered literals)
-  assert.match(src, /var PEER_NS = "ptc-cordis"/)
-  // bound through configForms (the official cross-namespace face), subscribed so a
-  // change made on the peer's card repaints this one
-  assert.match(src, /props\.ctx\.get\("configForms"\)/)
-  assert.match(src, /forms\.get\(PEER_NS\)/)
-  assert.match(src, /form\.subscribe\(/)
+  // the peer plugin key is a named constant (no scattered literals)
+  assert.match(src, /var PEER_PLUGIN_KEY = "dsh-ptc-cordis-preset"/)
+  // alpha.3: the empty peer Config no longer opens a configForms namespace;
+  // the keyed plugins.bundle.config slot entry is the durable existence signal
+  assert.match(src, /props\.ctx\.get\("slots"\)/)
+  assert.match(src, /slots\.entries\("plugins\.bundle\.config"\)/)
+  assert.match(src, /slots\.subscribe\("plugins\.bundle\.config", read\)/)
   // the value stays on THIS plugin's row: read from the bound snapshot, written
   // through the card's own writeField (never a second copy of the state)
   assert.match(src, /var dedupe = snap\.value\.suppressPeerCordis === true;/)
@@ -1430,12 +1430,12 @@ test('client card: the dedupe row is peer-gated and writes THIS row\'s field', (
   assert.match(src, /writeField\("suppressPeerCordis", false\)/)
   // drawn only while the peer's entry is served (an absent peer hides it);
   // v0.36.0 regroup: the dedupe row rides under ONE `peerSection` heading
-  assert.match(src, /var peerSection = peerSnap\.status === "ready" \? fold\("sec\.peer"/)
+  assert.match(src, /var peerSection = peerInstalled \? fold\("sec\.peer"/)
   assert.match(src, /\n\t\t\t\tpeerSection,/)
   // the ctx reaches the component: the inject factory carries it as a plain member
   assert.match(src, /return \{ scope: scope, ctx: ctx \};/)
   // hooks stay before the scope's early return (a conditional hook would throw)
-  const hookAt = src.indexOf('var peerState = useState(null);')
+  const hookAt = src.indexOf('var peerState = useState(false);')
   const earlyReturnAt = src.indexOf('if (snap.status !== "ready") return null;')
   assert.ok(hookAt > 0 && earlyReturnAt > hookAt, 'the peer hooks must run before the early return')
   // all three copy keys exist in every dictionary (the parity test also guards this)
@@ -1464,14 +1464,15 @@ test('client card: the body groups switches into seven labelled sections (v0.36.
     'var dialectSection = fold("sec.dialect"',
     'var executorSection = fold("sec.executor"',
     'var terminalSection = fold("sec.terminal"',
-    'var peerSection = peerSnap.status === "ready" ? fold("sec.peer"',
+    'var toolsSection = fold("sec.tools"',
+    'var peerSection = peerInstalled ? fold("sec.peer"',
   ].map((marker) => src.indexOf(marker))
   for (let i = 0; i < order.length; i++) {
     assert.ok(order[i] > 0, 'section ' + i + ' is defined')
   }
   const bodyAt = src.indexOf('var bodyContent = E("div"')
   const bodyText = src.slice(bodyAt, src.indexOf('if (pageView)', bodyAt))
-  const sequenceNames = ['modeSection', 'inlineSection', 'dialectSection', 'executorSection', 'terminalSection', 'peerSection']
+  const sequenceNames = ['modeSection', 'inlineSection', 'dialectSection', 'executorSection', 'terminalSection', 'toolsSection', 'peerSection']
   const sequence = sequenceNames.map((name) => bodyText.indexOf(name))
   for (let i = 0; i < sequence.length; i++) {
     assert.ok(sequence[i] > 0, sequenceNames[i] + ' rides in the body')
@@ -1483,7 +1484,7 @@ test('client card: the body groups switches into seven labelled sections (v0.36.
   assert.doesNotMatch(dialectBlock, /autoTerminalShell/)
   assert.doesNotMatch(dialectBlock, /gitAutocrlf/)
   assert.doesNotMatch(dialectBlock, /bashPath/)
-  const terminalBlock = src.slice(src.indexOf('var terminalSection = fold("sec.terminal"'), src.indexOf('var peerSection = peerSnap.status === "ready" ? fold("sec.peer"'))
+  const terminalBlock = src.slice(src.indexOf('var terminalSection = fold("sec.terminal"'), src.indexOf('var toolsSection = fold("sec.tools"'))
   assert.match(terminalBlock, /autoTerminalShell/)
   assert.match(terminalBlock, /adoptSidebar/)
   assert.match(src, /var inlineSection = fold\("sec\.inline"/)

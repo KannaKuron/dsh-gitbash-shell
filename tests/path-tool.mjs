@@ -226,7 +226,7 @@ test('path-tool: the module owns its registration and reverts it on disposal', (
   const effects = []
   const ctx = {
     tools: {
-      schemas: () => registered.map(definition => ({ name: definition.name })),
+      getAll: () => registered.map(definition => ({ name: definition.name })),
       register(definition) {
         registered.push(definition)
         return () => { registered.pop() }
@@ -325,7 +325,7 @@ test('path switch: pathTool toggles only the path tool registration', () => {
   let experimental = true, pathTool = true;
   const ctx = {
     tools: {
-      schemas: () => registered.map(definition => ({ name: definition.name })),
+      getAll: () => registered.map(definition => ({ name: definition.name })),
       register(definition) {
         registered.push(definition);
         return () => { registered.pop(); };

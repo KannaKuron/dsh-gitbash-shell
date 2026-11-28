@@ -466,20 +466,27 @@ export const Config = Schema === null ? undefined : Schema.object({
   fastctxTools: Schema.boolean().default(false).volatile(),
   /**
    * Run supported agents through the GLOBAL PTC run_code SDK instead of a
-   * native per-tool face (default OFF, and deliberately NOT volatile).
+   * native per-tool face (default OFF).
    *
    * The root executor is a profile-patch decision read at boot, so this is a
-   * patch write and not a live toggle: an edit remounts the plugin, which is
-   * the right weight for a change that lands on the next start. OFF never
-   * adopts new rows; OFF/disable/uninstall lifts only receipted rows whose
-   * data AND comments are still exactly what this switch wrote.
+   * patch write and not a live toggle: the switch's intent is persisted now,
+   * while the patch rows are adopted at the next start (and lifted by the
+   * next start after OFF, or by disposal when this plugin is disabled or
+   * uninstalled). The field is VOLATILE because the host settings seam
+   * refuses to persist a non-volatile Config field ("Config field … is not
+   * volatile") — a non-volatile switch could never be turned on from the
+   * settings card. Volatile here means writable, not live: apply() still
+   * reads the value once and writes the patch for the next boot.
    *
-   * What it writes (see src/global-ptc.js): `tool-executor-native` off and
-   * `tool-executor-ptc` on. preset-minimal is deliberately NOT restated: its
+   * OFF never adopts new rows; OFF/disable/uninstall lifts only receipted
+   * rows whose data AND comments are still exactly what this switch wrote.
+   *
+   * What it writes (see src/global-ptc.js): `tool-registry-native` off and
+   * `tool-registry-ptc` on. preset-minimal is deliberately NOT restated: its
    * complete persona erases the SDK, so minimal is outside this switch's
    * supported presets and needs a deployment-owned preset override instead.
    */
-  globalPtcSdk: Schema.boolean().default(false),
+  globalPtcSdk: Schema.boolean().default(false).volatile(),
 })
 
 /** Read one Config value: a Volatile ref, or a plain value from a test. */
@@ -759,9 +766,9 @@ function cleanupLegacyTrees(presetIds) {
  * `timeContext` / `toolSchedule` / `pluginMarket` / `compaction` are
  * optional official rows (durable clock readings, reminder tools, the plugin
  * market row, the minimal tool-fs + compaction delta, and the rc.2 native
- * Office tool). `profileContext` is the live host service the manager/market
- * rows gate on — read from ctx, not from the package set. The rc.2-only office
- * probe also gates the rc.2 row dialect (tool-subagent-control.interrupt).
+ * Document tool). `profileContext` is the live host service the manager/market
+ * rows gate on — read from ctx, not from the package set. The office probe
+ * also gates the row dialect (tool-subagent-control.interrupt).
  *
  * A preset row whose package is absent rejects the WHOLE mount, so optional
  * rows ride this probe: each is added only when its package resolves from
@@ -769,7 +776,7 @@ function cleanupLegacyTrees(presetIds) {
  * `prepareProfileEntries` mounts preset rows from, so the probe can never
  * disagree with the mounter. Probed once per boot; the profile's package set
  * does not change under a running host. A missing core row is not masked here:
- * the 0.2.2-rc.1 base rows (tool-executor-*, agent-preset, …) are emitted
+ * the 0.2.3-alpha.3 base rows (tool-registry-*, agent-preset, …) are emitted
  * unconditionally, so an inconsistent host fails the mount loudly.
  * @param {object} ctx - cordis context (any fiber of the running host).
  * @param {Function} [resolve] - predicate override for tests; receives a
@@ -796,7 +803,7 @@ export async function probeHostExtras(ctx, resolve) {
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-schedule')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-plugin-market/tools')).then(Boolean),
     Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-compaction-basic')).then(Boolean),
-    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-office')).then(Boolean),
+    Promise.resolve(safeProbe(ok, '@deepseek-ai/dsh-tool-document')).then(Boolean),
   ])
   let profileContext = false
   try {
@@ -1213,12 +1220,12 @@ export async function apply(ctx, config = {}) {
           const offeredTools = (() => {
             try {
               const registry = ctx.get('tools')
-              // The provider's tool model is projected through the private
-              // selectExecutor; without it (or if it throws) there is no public
-              // way to tell whether this step offers run_code, so stay silent.
-              if (typeof registry?.selectExecutor !== 'function') return []
+              // alpha.3 removed the private selectExecutor/definitions projection.
+              // getAll(scope) is the public root view: the native registry lists
+              // every visible tool and the PTC registry lists run_code.
+              if (typeof registry?.getAll !== 'function') return []
               const scope = assembleContext?.scope ?? assembleContext?.agent
-              return registry.selectExecutor(scope).describe(registry.definitions(scope, assembleContext?.toolSet)).schemas ?? []
+              return (registry.getAll(scope) ?? []).map(tool => ({ name: tool?.name }))
             } catch {
               return []
             }

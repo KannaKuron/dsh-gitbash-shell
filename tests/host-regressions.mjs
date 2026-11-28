@@ -92,7 +92,7 @@ test('host: the tool-face settle race has a lazy re-reconcile and a mask stand-d
   // decision while the agent owns no bash scope. Idempotent by scope/pending.
   assert.match(src, /const lazyAgent = exec\?\.agent/, 'the pre-execute hook is the late-settle re-entry point')
   assert.match(src, /if \(lazyState && !lazyState\.scope && !lazyState\.pending\) \{\n\s*try \{ reconcile\(lazyAgent\) \} catch/, 'lazy re-reconcile is guarded by scope/pending and never breaks the tool call')
-  // Stand-down: `names` is observed AFTER lifting our own deny (and schemas()
+  // Stand-down: `names` is observed AFTER lifting our own deny (and getAll()
   // filters preset-restricted tools), so a non-empty pwsh-less face means a
   // preset mask owns the set — our scoped registration stays visible through
   // masks by contract and must be withdrawn before the needsBash check.

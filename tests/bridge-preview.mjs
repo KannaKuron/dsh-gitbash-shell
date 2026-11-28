@@ -41,7 +41,7 @@ test('preview: MCP failures retain isError through the actual host ToolRuntime',
   root.emit('agent/created', { agent })
   await new Promise(setImmediate)
   const tools = root.get('tools')
-  assert.ok(tools.schemas(agent).some((schema) => schema.name === 'gb_inspect_local_file'))
+  assert.ok(tools.getAll(agent).some((schema) => schema.name === 'gb_inspect_local_file'))
   const result = await executeTool(tools, { agent, name: 'gb_inspect_local_file', callId: 'preview-mcp-error', arguments: {}, signal: new AbortController().signal })
   assert.equal(result.isError, true)
   assert.match(result.error.message, /gb_inspect_local_file failed: fixture file not found/)

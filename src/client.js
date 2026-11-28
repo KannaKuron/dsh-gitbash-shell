@@ -48,8 +48,11 @@ window.__ModuleLoader__.load({
 		/** The PEER row this card mirrors: dsh-ptc-cordis-preset's own entry. Only
 		   its existence is read here — the dedupe switch value itself lives on
 		   THIS plugin's row (the single authoritative copy the peer card binds
-		   too) — and the section is drawn only while that entry is served. */
-		var PEER_NS = "ptc-cordis";
+		   too) — and the section is drawn only while that entry is served.
+		   dsh-ptc-cordis-preset's package key on the plugins.bundle.config root.
+		   alpha.3 serves an empty Config for that plugin, so it no longer opens a
+		   configForms namespace; the slot key is the durable existence signal. */
+		var PEER_PLUGIN_KEY = "dsh-ptc-cordis-preset";
 
 		// ── dictionaries ────────────────────────────────────────────────────────
 		// zh/en stay inline; the third languages live in LOCALES below, one entry
@@ -2174,13 +2177,13 @@ window.__ModuleLoader__.load({
 			void tick;
 
 			/* The dedupe row mirrors the PEER's row: it is drawn only where
-			   dsh-ptc-cordis-preset is installed and its entry has reached the
-			   configForms mirror. It stays absent while the peer is not
-			   installed or before its entry appears; the form's own subscribe
-			   bumps the tick so a late-arriving peer row still shows up. */
-			var peerState = useState(null);
-			var peer = peerState[0];
-			var setPeer = peerState[1];
+			   dsh-ptc-cordis-preset is installed. alpha.3 serves the peer's card
+			   from an empty Config, which no longer opens a configForms
+			   namespace — the keyed plugins.bundle.config slot is the durable
+			   existence signal (the same root this card registers under). */
+			var peerState = useState(false);
+			var peerInstalled = peerState[0];
+			var setPeerInstalled = peerState[1];
 
 			/* Terminal toolchain (v0.30.0): the winget catalog behind the
 			   "install / upgrade" buttons. Loaded only once the card is open, and
@@ -2206,17 +2209,21 @@ window.__ModuleLoader__.load({
 			void toolsLoaded;
 
 			useEffect(function () {
-				var forms;
+				var slots;
 				try {
-					forms = props.ctx === undefined || props.ctx === null ? undefined : props.ctx.get("configForms");
-				} catch (error_) { forms = undefined; }
-				if (forms === undefined || forms === null || typeof forms.get !== "function") return undefined;
-				var form;
-				try { form = forms.get(PEER_NS); } catch (error_) { return undefined; }
-				if (form === undefined || form === null || typeof form.getSnapshot !== "function") return undefined;
-				setPeer(form);
-				if (typeof form.subscribe !== "function") return undefined;
-				var unsubscribe = form.subscribe(function () { bumpTick(function (n) { return n + 1; }); });
+					slots = props.ctx === undefined || props.ctx === null ? undefined : props.ctx.get("slots");
+				} catch (error_) { slots = undefined; }
+				if (slots === undefined || slots === null || typeof slots.entries !== "function") return undefined;
+				var read = function () {
+					var entries = [];
+					try { entries = slots.entries("plugins.bundle.config"); } catch (error_) { entries = []; }
+					setPeerInstalled(Array.isArray(entries) && entries.some(function (entry) {
+						return entry !== null && entry !== undefined && entry.options !== undefined && entry.options !== null && entry.options.key === PEER_PLUGIN_KEY;
+					}));
+				};
+				read();
+				if (typeof slots.subscribe !== "function") return undefined;
+				var unsubscribe = slots.subscribe("plugins.bundle.config", read);
 				return typeof unsubscribe === "function" ? unsubscribe : undefined;
 			}, []);
 
@@ -2643,17 +2650,12 @@ window.__ModuleLoader__.load({
 				!gptcOn ? E("p", { className: "gb-hint" }, t("gptc.manualHint")) : null,
 			);
 
-			var peerSnap = { status: "unavailable" };
-			try {
-				if (peer && typeof peer.getSnapshot === "function") peerSnap = peer.getSnapshot();
-			} catch (error_) { /* keep unavailable */ }
-
 			/* ── plugin integrations (v0.36.0) ────────────────────────────────
 			   The dedupe row is the one relationship with
 			   dsh-ptc-cordis-preset: its VALUE lives on OUR row (the peer card
 			   binds the same field through configForms). The section exists
-			   only while the peer serves its row. */
-			var peerSection = peerSnap.status === "ready" ? fold("sec.peer",
+			   only while the peer registers its plugins.bundle.config entry. */
+			var peerSection = peerInstalled ? fold("sec.peer",
 				E("div", { className: "gb-row" },
 					E("span", { className: "gb-rowLabel" }, t("dedupe.label") + ":"),
 					E("span", { className: "gb-rowValue" }, dedupe ? t("state.on") : t("state.off")),

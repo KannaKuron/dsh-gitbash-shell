@@ -63,7 +63,7 @@ export const OPS_PRESENCE_MARKERS = Object.freeze([
 // The HOST registry rejects any tool without an `output` contract (issue #18,
 // root cause 2) — the frozen schema + text renderer the pwsh7
 // definition ships, reused so both families speak one tool-result contract.
-import { TOOL_OUTPUT_SCHEMA, renderTextContent } from './inline-tools.js'
+import { TOOL_OUTPUT_SCHEMA, observeToolFace, renderTextContent } from './inline-tools.js'
 
 /** Payload packages probed, in order: upstream first, the pinned fork second. */
 export const PAYLOAD_PACKAGES = Object.freeze([
@@ -385,7 +385,10 @@ export function mountFastctx(ctx, deps) {
       const registry = tools(ctx)
       const faces = new Set(agent ? [agent, ...agents] : agents.size ? agents : [undefined])
       for (const face of faces) {
-        const names = (registry?.schemas?.(face) ?? []).map((schema) => schema?.name)
+        // Same alpha.3 observation as inline-tools: native getAll(); for a PTC
+        // root, the ACTIVE preset modules (a dsh-ops row publishes ops_* and
+        // must make gb_* stand down, even though PTC hides its bindings).
+        const names = observeToolFace(ctx, registry, face)
         // Any ops_* name means dsh-ops owns the file surface. Matching the
         // prefix (rather than only the listed markers) covers the 0.4.0
         // progressive residents AND the names the marker list does not carry

@@ -3,8 +3,8 @@
  *
  * WHY THIS EXISTS
  * A deployment that wants every agent to reach its tools through the PTC
- * `run_code` SDK instead of a per-tool native face needs the ROOT executor
- * switched: `tool-executor-native` off, `tool-executor-ptc` on. That is a
+ * `run_code` SDK instead of a per-tool native face needs the ROOT registry
+ * switched: `tool-registry-native` off, `tool-registry-ptc` on. That is a
  * profile-patch decision (bundle patches are read BEFORE the profile patch
  * file), so this module writes it the way the official editor would:
  * `yaml`'s parseDocument (comments and !!js expressions survive untouched),
@@ -48,10 +48,15 @@
 import { readPatchRow } from './terminal-bundle.js'
 import { OWNED_ROWS, globalPtcOwnership, yamlRowFingerprint } from './global-ptc-ownership.js'
 
-/** Root executor row that runs each tool natively on the wire. */
-export const EXECUTOR_NATIVE_ROW = 'tool-executor-native'
-/** Root executor row that runs each tool through the PTC run_code SDK. */
-export const EXECUTOR_PTC_ROW = 'tool-executor-ptc'
+/** Root registry row that exposes each tool natively on the wire. */
+export const EXECUTOR_NATIVE_ROW = 'tool-registry-native'
+/** Root registry row that exposes tools through the PTC run_code SDK. */
+export const EXECUTOR_PTC_ROW = 'tool-registry-ptc'
+/** Pre-alpha.3 row ids. They are dead on this host generation, but a receipt
+ *  written by v0.56.0 still names them and the OFF path must be able to lift
+ *  (and migrate) those rows instead of refusing the receipt. */
+export const LEGACY_EXECUTOR_NATIVE_ROW = 'tool-executor-native'
+export const LEGACY_EXECUTOR_PTC_ROW = 'tool-executor-ptc'
 
 /** The value this switch writes for each row. */
 const WANTED = new Map([
@@ -122,35 +127,82 @@ export function planGlobalPtcAdopt(input) {
   }
 }
 
+/** The two slots and the row ids that may carry them in a profile patch. */
+const ROW_PAIRS = [
+  { key: 'native', current: EXECUTOR_NATIVE_ROW, legacy: LEGACY_EXECUTOR_NATIVE_ROW },
+  { key: 'ptc', current: EXECUTOR_PTC_ROW, legacy: LEGACY_EXECUTOR_PTC_ROW },
+]
+
 /**
- * Extract the current override rows for the two ids this module owns.
+ * Extract the current override rows for the two slots this module owns.
+ *
+ * alpha.3 renamed the root rows (`tool-executor-*` -> `tool-registry-*`). A
+ * profile patch written by v0.56.0 still carries the old ids: they are dead on
+ * this host generation, but they must not make an existing receipt invalid or
+ * strand rows the switch owns. `native`/`ptc` below are the EFFECTIVE facts
+ * (current id wins, legacy fallback); `current`/`legacy` keep the split so the
+ * writer can migrate the dead rows without ever overriding an explicit shape.
+ *
  * @param {object} document - a yaml parseDocument result.
- * @returns {{native?: object, ptc?: object, raw?: {native?: unknown, ptc?: unknown}, fingerprints?: {native?: string, ptc?: string}, indices?: {native: number, ptc: number}}}
+ * @returns {{native?: object, ptc?: object, raw: object, fingerprints: object, indices: {native: number, ptc: number}, current: object, legacy: object, currentIndices: object, legacyIndices: object, entries: Map<string, {fact: object, index: number, fingerprint: string, current: boolean}>}}
  */
 export function currentGlobalPtcRows(document) {
-  const out = {}
+  const slots = { native: {}, ptc: {} }
+  const items = document?.contents?.items
+  if (Array.isArray(items)) {
+    items.forEach((item, index) => {
+      if (!item || typeof item !== 'object') return
+      const id = typeof item.get === 'function' ? item.get('id') : item.id
+      for (const pair of ROW_PAIRS) {
+        if (id !== pair.current && id !== pair.legacy) continue
+        slots[pair.key][id === pair.current ? 'current' : 'legacy'] = {
+          index,
+          plain: toPlain(item),
+          fingerprint: yamlRowFingerprint(item),
+        }
+      }
+    })
+  }
+
+  const current = {}
+  const legacy = {}
   const raw = {}
   const fingerprints = {}
   const indices = { native: -1, ptc: -1 }
-  const items = document?.contents?.items
-  if (!Array.isArray(items)) return { ...out, raw, fingerprints, indices }
-
-  items.forEach((item, index) => {
-    if (!item || typeof item !== 'object') return
-    const id = typeof item.get === 'function' ? item.get('id') : item.id
-    if (id === EXECUTOR_NATIVE_ROW) {
-      indices.native = index
-      raw.native = toPlain(item)
-      fingerprints.native = yamlRowFingerprint(item)
-      out.native = readPatchRow(raw.native)
-    } else if (id === EXECUTOR_PTC_ROW) {
-      indices.ptc = index
-      raw.ptc = toPlain(item)
-      fingerprints.ptc = yamlRowFingerprint(item)
-      out.ptc = readPatchRow(raw.ptc)
+  const currentIndices = { native: -1, ptc: -1 }
+  const legacyIndices = { native: -1, ptc: -1 }
+  const entries = new Map()
+  for (const pair of ROW_PAIRS) {
+    const slot = slots[pair.key]
+    if (slot.current) {
+      current[pair.key] = readPatchRow(slot.current.plain)
+      currentIndices[pair.key] = slot.current.index
+      entries.set(pair.current, { fact: current[pair.key], index: slot.current.index, fingerprint: slot.current.fingerprint, current: true })
     }
-  })
-  return { ...out, raw, fingerprints, indices }
+    if (slot.legacy) {
+      legacy[pair.key] = readPatchRow(slot.legacy.plain)
+      legacyIndices[pair.key] = slot.legacy.index
+      entries.set(pair.legacy, { fact: legacy[pair.key], index: slot.legacy.index, fingerprint: slot.legacy.fingerprint, current: false })
+    }
+    const effective = slot.current ?? slot.legacy
+    if (effective) {
+      raw[pair.key] = effective.plain
+      fingerprints[pair.key] = effective.fingerprint
+      indices[pair.key] = effective.index
+    }
+  }
+  return {
+    native: current.native ?? legacy.native,
+    ptc: current.ptc ?? legacy.ptc,
+    raw,
+    fingerprints,
+    indices,
+    current,
+    legacy,
+    currentIndices,
+    legacyIndices,
+    entries,
+  }
 }
 
 /** Convert a yaml node to plain JS data (no anchors, no tags). */
@@ -214,7 +266,6 @@ export async function adoptGlobalPtcPatch(io, input) {
     return ownership.run(async () => {
       const receipt = await ownership.read()
       const snapshot = currentGlobalPtcRows(document)
-      const { fingerprints, indices } = snapshot
       const candidates = []
       const edited = []
       const blocked = []
@@ -222,18 +273,16 @@ export async function adoptGlobalPtcPatch(io, input) {
       for (const id of OWNED_ROWS) {
         const recorded = receipt.rows[id]
         if (typeof recorded !== 'string') continue
-        const fingerprint = id === EXECUTOR_NATIVE_ROW ? fingerprints.native : fingerprints.ptc
-        const index = id === EXECUTOR_NATIVE_ROW ? indices.native : indices.ptc
-        if (index < 0) {
+        const entry = snapshot.entries.get(id)
+        if (entry === undefined) {
           missing.push(id)
           continue
         }
-        if (fingerprint === undefined) continue
-        if (fingerprint !== recorded) {
+        if (entry.fingerprint !== recorded) {
           edited.push(id)
           continue
         }
-        candidates.push([id, index])
+        candidates.push([id, entry.index])
       }
 
       // Data ownership alone is not sufficient: deleting one override changes
@@ -244,13 +293,18 @@ export async function adoptGlobalPtcPatch(io, input) {
       // are unknown and therefore block lifting too.
       const proposed = new Set(candidates.map(([id]) => id))
       const safeToLift = (id) => {
-        const other = id === EXECUTOR_NATIVE_ROW ? EXECUTOR_PTC_ROW : EXECUTOR_NATIVE_ROW
+        // Legacy rows lost their meaning in alpha.3. Deleting an owned one is
+        // pure cleanup: the root composition never referenced it.
+        if (id === LEGACY_EXECUTOR_NATIVE_ROW || id === LEGACY_EXECUTOR_PTC_ROW) return true
+        const pair = ROW_PAIRS.find((candidate) => candidate.current === id)
+        const other = pair.key === 'native' ? EXECUTOR_PTC_ROW : EXECUTOR_NATIVE_ROW
         if (proposed.has(other)) return true // both return to the official base: native only
-        const otherIndex = other === EXECUTOR_NATIVE_ROW ? indices.native : indices.ptc
-        // The sibling is already absent. Lifting our remaining override
-        // restores the official base in EITHER direction: native ON, ptc OFF.
-        if (otherIndex < 0) return true
-        const fact = other === EXECUTOR_NATIVE_ROW ? snapshot.native : snapshot.ptc
+        const otherEntry = snapshot.entries.get(other)
+        // The sibling current row is already absent. Lifting our remaining
+        // override restores the official base in EITHER direction (native ON,
+        // ptc OFF); a dead legacy sibling does not change that.
+        if (otherEntry === undefined) return true
+        const fact = otherEntry.fact
         if (fact?.opaque === true || typeof fact?.disabled !== 'boolean') return false
         return id === EXECUTOR_NATIVE_ROW ? fact.disabled === true : fact.disabled === false
       }
@@ -309,25 +363,49 @@ export async function adoptGlobalPtcPatch(io, input) {
   // ── ADOPT ───────────────────────────────────────────────────────────────
   const rows = currentGlobalPtcRows(document)
   const plan = planGlobalPtcAdopt({ enabled, rows })
-  if (plan.action !== 'adopt') return done(plan.action, plan.action, plan.reason)
+  // alpha.3 renamed both root rows. A patch carrying only the legacy ids is
+  // dead: its effective facts may say "unchanged", yet the switch does
+  // nothing. Treat that (and any half-migrated shape) as a write of the two
+  // CURRENT row ids. An explicit opposite choice still stands (kept-user-choice).
+  const writeNative = rows.current.native === undefined
+  const writePtc = rows.current.ptc === undefined
+  const migrate = plan.action !== 'kept-user-choice' && (writeNative || writePtc) && (rows.native !== undefined || rows.ptc !== undefined)
+  if (plan.action !== 'adopt' && !migrate) return done(plan.action, plan.action, plan.reason)
+  const adoptReason = migrate ? `${plan.reason}; migrating the pre-alpha.3 tool-executor rows to tool-registry rows` : plan.reason
 
   return ownership.run(async () => {
+    const receipt = await ownership.read()
     document.contents.flow = false
     const addFragment = (text) => {
       const fragment = parse(text)
       if (Array.isArray(fragment?.errors) && fragment.errors.length > 0) return undefined
       return fragment?.contents?.items?.[0]
     }
+    // Clean up ONLY legacy rows this switch wrote and the user has not edited
+    // since. A dead row removal cannot change the root composition; an
+    // unowned or edited legacy row stays exactly as the user left it.
+    const migrated = []
+    const legacyRemove = []
+    for (const pair of ROW_PAIRS) {
+      const recorded = receipt.rows[pair.legacy]
+      if (typeof recorded !== 'string') continue
+      const entry = rows.entries.get(pair.legacy)
+      if (entry === undefined || entry.fingerprint !== recorded) continue
+      legacyRemove.push([pair.legacy, entry.index])
+    }
+    for (const [id, index] of legacyRemove.sort((a, b) => b[1] - a[1])) {
+      try { document.contents.items.splice(index, 1); migrated.push(id) } catch { /* reported by verify */ }
+    }
     const wrote = []
-    if (plan.writeNative) {
+    if (writeNative) {
       const row = addFragment(`- id: ${EXECUTOR_NATIVE_ROW}\n  disabled: true\n`)
-      if (row === undefined) return done('adopt', 'write-failed', plan.reason, { detail: 'the native-executor row fragment did not parse; nothing was written' })
+      if (row === undefined) return done('adopt', 'write-failed', adoptReason, { detail: 'the native-registry row fragment did not parse; nothing was written' })
       document.add(row)
       wrote.push(EXECUTOR_NATIVE_ROW)
     }
-    if (plan.writePtc) {
+    if (writePtc) {
       const row = addFragment(`- id: ${EXECUTOR_PTC_ROW}\n  disabled: false\n`)
-      if (row === undefined) return done('adopt', 'write-failed', plan.reason, { detail: 'the ptc-executor row fragment did not parse; nothing was written' })
+      if (row === undefined) return done('adopt', 'write-failed', adoptReason, { detail: 'the ptc-registry row fragment did not parse; nothing was written' })
       document.add(row)
       wrote.push(EXECUTOR_PTC_ROW)
     }
@@ -336,13 +414,13 @@ export async function adoptGlobalPtcPatch(io, input) {
     const serialized = String(document)
     const check = parse(serialized)
     if (Array.isArray(check?.errors) && check.errors.length > 0) {
-      return done('adopt', 'write-failed', plan.reason, { detail: 'the edited patch did not re-parse cleanly; nothing was written' })
+      return done('adopt', 'write-failed', adoptReason, { detail: 'the edited patch did not re-parse cleanly; nothing was written' })
     }
 
     try {
       await io.writeFileAtomic(patchPath, serialized)
     } catch (error) {
-      return done('adopt', 'write-failed', plan.reason, { detail: `the atomic write failed (${error?.message ?? error}); the previous patch bytes stand` })
+      return done('adopt', 'write-failed', adoptReason, { detail: `the atomic write failed (${error?.message ?? error}); the previous patch bytes stand` })
     }
 
     // Verify by re-reading what actually landed on disk.
@@ -351,34 +429,35 @@ export async function adoptGlobalPtcPatch(io, input) {
       reread = parse(await io.readFile(patchPath))
     } catch (error) {
       try { await io.writeFileAtomic(patchPath, before) } catch { /* report the primary failure */ }
-      return done('adopt', 'write-failed', plan.reason, { detail: `the verification read failed (${error?.message ?? error}); rolled back to the previous bytes` })
+      return done('adopt', 'write-failed', adoptReason, { detail: `the verification read failed (${error?.message ?? error}); rolled back to the previous bytes` })
     }
     const after = currentGlobalPtcRows(reread)
     for (const [id, wanted] of WANTED) {
-      const fact = id === EXECUTOR_NATIVE_ROW ? after.native : after.ptc
+      const fact = id === EXECUTOR_NATIVE_ROW ? after.current.native : after.current.ptc
       if (fact?.disabled !== wanted) {
         try { await io.writeFileAtomic(patchPath, before) } catch { /* report the primary failure */ }
-        return done('adopt', 'write-failed', plan.reason, { detail: `the written patch did not read back as intended (${id}); rolled back to the previous bytes` })
+        return done('adopt', 'write-failed', adoptReason, { detail: `the written patch did not read back as intended (${id}); rolled back to the previous bytes` })
       }
     }
 
     // Record ownership ONLY for the rows this switch just wrote. A row that
     // already existed (even with the same value) is the user's and is never
-    // claimed — that is what keeps OFF from deleting it.
+    // claimed — that is what keeps OFF from deleting it. Migrated legacy ids
+    // leave the receipt: their rows are no longer on disk.
+    const nextRows = { ...receipt.rows }
+    for (const id of migrated) delete nextRows[id]
+    for (const id of wrote) {
+      const fingerprint = after.entries.get(id)?.fingerprint
+      if (fingerprint !== undefined) nextRows[id] = fingerprint
+    }
     try {
-      const receipt = await ownership.read()
-      const nextRows = { ...receipt.rows }
-      for (const id of wrote) {
-        const fingerprint = id === EXECUTOR_NATIVE_ROW ? after.fingerprints.native : after.fingerprints.ptc
-        if (fingerprint !== undefined) nextRows[id] = fingerprint
-      }
       await ownership.write({ version: 1, rows: nextRows })
     } catch (error) {
       // The patch is written and correct; without a receipt the rows simply
       // become unowned (OFF will leave them alone). Report, do not revert.
-      return done('adopt', 'adopted', plan.reason, { wrote, detail: `the ownership receipt could not be written (${error?.message ?? error}); OFF will leave these rows alone` })
+      return done('adopt', 'adopted', adoptReason, { wrote, ...(migrated.length > 0 ? { migrated } : {}), detail: `the ownership receipt could not be written (${error?.message ?? error}); OFF will leave these rows alone` })
     }
-    return done('adopt', 'adopted', plan.reason, { wrote })
+    return done('adopt', 'adopted', adoptReason, { wrote, ...(migrated.length > 0 ? { migrated } : {}) })
   })
 }
 

@@ -21,7 +21,7 @@ async function promotionFixture(t, { lossy = false, gapBefore = false, gapChanne
   const ready = new Promise(resolve => { started = resolve })
   class Tools extends Service {
     constructor(ctx) { super(ctx, 'tools') }
-    schemas() { return [...definitions.keys()].map(name => ({ name })) }
+    getAll() { return [...definitions.keys()].map(name => ({ name })) }
     register(definition) {
       return this.ctx.effect(() => {
         definitions.set(definition.name, definition)

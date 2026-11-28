@@ -3,6 +3,23 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.57.0 — 2026-11-29
+
+**类型**:chore / breaking(适配 dsh 0.2.3-alpha.3)+ fix(globalPtcSdk 设置卡写入被拒)
+
+- **兼容下限 alpha.3**:`engines.dsh`、`dsh.compatibility.dsh`、peer `@deepseek-ai/dsh` 统一 `>=0.2.3-alpha.3`(peer 保持 optional);`dsh.compatibility.dshReleases` 只保留 `0.2.3-alpha.3`;`dsh.plugin.json` 同步;`package-lock.json` 同步。
+- **工具面 API 迁移(宿主破坏性删除)**:dsh 0.2.3-alpha.3 的 `ToolsService` 只剩 `register`/`include`/`get`/`getAll`/`restrict`/`guard`/`execute`/`setRoot`,`schemas`/`definitions`/`selectExecutor`/`executable` 全部删除。新增唯一观测入口 `observeToolFace(ctx, registry, agent, { onUnavailable })`(`src/inline-tools.js`):native root 用 `registry.getAll(agent)` 读每个可见工具;PTC root 的 `getAll` 只有 `run_code`,改读 `ctx.get('agentPresets').inspectCompositions(agent.ctx)` 的 ACTIVE 非 group modules,按包名映射 `@deepseek-ai/dsh-tool-bash`→bash、`@deepseek-ai/dsh-tool-pwsh`→pwsh、`dsh-ops`/`dsh-ops/*`→bash + `ops_*`;agentPresets 缺失、抛错或空清单一律 fail closed(只认 `run_code`,不注入自有 bash)并 warn。行内补位因此不再依赖注册表回读。
+- **激活确认改造**:`provideBash` 不再用 `tools.schemas(agent)` 回读 bash 是否注册(alpha.3 无此方法,旧实现会把已挂载的 scope 判失败并 dispose),改为自有模块在 `apply()` 内调用 `onRegistered?.()`、由 `waitRegistered` 等待确认;超时才抛 `bash tool did not register for this agent`(issue #27 的假阳性防线保留)。`bash-tool.js` 的 offered 名、`src/index.js` 的 prompt 组装、`src/tool-ownership.js` 的 `toolNameOccupied` 一并改用 `getAll(scope)`/`getAll(owner)`。
+- **组合对齐 alpha.3**:`src/compositions.js` 镜像官方标准/极简/PTC/创造四份 preset——三套 full preset 的 `tool-fs` 删除 `config: { applyPatch: false }`(官方 alpha.3 起 `apply_patch` 随 `edit` 默认开启;minimal 的 `tool-fs` 仍 `read:false`/`edit:false`,保持不提供);PTC 变体的 `tool-executor-ptc` 改 `tool-registry-ptc` / `@deepseek-ai/dsh-tool-registry-ptc`;`tool-office` 改 `tool-document` / `@deepseek-ai/dsh-tool-document`;office 探针同步改包名。`tests/align-official.mjs` 的 pins 换到 `dsh-v0.2.3-alpha.3`,四变体行序列对齐(standard 33 / cordis 32 / ptc 33 / minimal 11 行)。
+- **全局 PTC 行名迁移**:`src/global-ptc.js` 写 `tool-registry-native`/`tool-registry-ptc`;旧 `tool-executor-native`/`tool-executor-ptc` 作为 `LEGACY_EXECUTOR_NATIVE_ROW`/`LEGACY_EXECUTOR_PTC_ROW` 仍被 `OWNED_ROWS` 接受。adopt 时把 receipt 认领且指纹匹配的旧行迁移成新行,OFF 时旧行一并 lift,避免 v0.56.0 留下的 receipt 因 `unexpected owned row` 直接失败、旧行永远留在 patch 里被引擎 warn-and-skip。
+- **fix:`globalPtcSdk` 设置卡无法开启**:该字段原先故意声明为非 volatile,但宿主 settings 的写入 seam 只接受 volatile 字段(`Config field "globalPtcSdk" is not volatile`),点击「启用」只会被拒,开关是死的(v0.44/PR #44 起)。现改为 `.volatile()`,让设置卡能落盘;语义不变——`apply()` 仍在启动时读一次并写 profile patch,`globalPtcSdk` 的效果在重启后生效,OFF 后由下次启动或卸载 dispose 归还行。README / README_EN / AGENTS 中「非 volatile,重挂即归还」的描述同步改写。
+- **客户端「插件联动」探测**:不再依赖 `configForms.get('ptc-cordis')` 的 snapshot ready(dsh-ptc-cordis-preset v0.29.0 起空 Config 不再开设置命名空间,旧探测因此把该 fold 永久隐藏),改为读 `slots.entries('plugins.bundle.config')` 中 `options.key === 'dsh-ptc-cordis-preset'`,并按该 slot 订阅刷新。设置卡恢复 7 个 fold(模式 / 行内工具 / 路径方言 / 执行器 / 终端 / 终端工具 / 插件联动)。
+- **测试**:完整 `npm test` **413 项 / 412 pass / 0 fail / 1 platform skip**;测试夹具从 `schemas()` 迁到 `getAll()`,`compatibility-regressions` 的 issue #27 用例改锁 `onRegistered`/`waitRegistered` 且不得再现 schemas 回读;新增/更新组合、dedupe slot key 与 global PTC 行名断言。`node --check`、`git diff --check`、`node tests/align-official.mjs /Users/kanna/project/deepseek-harness` 全部通过。
+- **真机验证(dsh 0.2.3-alpha.3 隔离实例)**:插件页「Git Bash Shell」v0.57.0;设置卡 7 个 fold 全部渲染,「插件联动」恢复;模式菜单出现「PTC 创造模式」,`/api/agentPresets/list` 中 `ptc-cordis` 无 `broken`;全程 0 pageerror,仅有 macOS 非 win32 的预期 404 `/dsh-gitbash-shell/api/status`。
+- **真机验证(全局 PTC 开关)**:设置卡点击「启用」不再返回 `Config field "globalPtcSdk" is not volatile`,开关变为「已启用」且 profile patch 写入 `gitbash-shell.config.globalPtcSdk: true`;重启后 patch 出现 `tool-registry-native: { disabled: true }` 与 `tool-registry-ptc: { disabled: false }`,并生成 `.gitbash-global-ptc-ownership.json`;点「停用」落盘为 `false`,再次重启后两行被 lift、receipt 清空为 `{ "version": 1, "rows": {} }`。旧 `tool-executor-*` 行与旧 receipt 的迁移由 `tests/global-ptc.mjs` 的 legacy 用例覆盖。
+- **验证限制(如实说明)**:Windows 专属路线(工具面补位、pwsh 遮蔽、global PTC 切换后的真实 `run_code` 会话)在 macOS 上无法真机执行,相关分支以单元/源码级断言覆盖,标注待 Windows 复验。
+- **发布边界**:本轮只提交 `alpha适配` 分支,不合并 `main`、不发布 npm 包;等 dsh 0.2.3 rc 后再按流程合并与发版。
+
 ## v0.56.0 — 2026-11-28
 
 **类型**:feat / breaking(适配 dsh 0.2.3-alpha.2,宿主下限抬升)

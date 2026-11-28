@@ -162,7 +162,7 @@ test('installed Core native: opt-out during artifact preparation refuses at fina
   const pending = f.direct(request('console.log("MUST_NOT_RUN")'))
   await entered
   f.setExperimental(false)
-  assert.ok(!f.root.get('tools').schemas(f.agent).some(tool => tool.name === 'gitbash_native'))
+  assert.ok(!f.root.get('tools').getAll(f.agent).some(tool => tool.name === 'gitbash_native'))
   finish(DIR)
   await assert.rejects(pending, /disabled by experimentalNative/)
   assert.equal(f.spawned.length, 0)

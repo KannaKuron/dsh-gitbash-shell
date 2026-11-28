@@ -50,7 +50,7 @@ for (const kind of ['standard', 'ptc', 'cordis']) {
       await mount(row.id === 'tool-bash' ? toolBash : toolPwsh)
     }
     const tools = root.get('tools')
-    assert.deepEqual(tools.schemas().map((schema) => schema.name), ['pwsh'])
+    assert.deepEqual(tools.getAll().map((schema) => schema.name), ['pwsh'])
     let agentParent
     await mount({ inject: ['tools'], apply(ctx) { agentParent = ctx } })
     const agent = { session: { header: {} } }, agentScope = createAgentScope(agentParent, agent)
@@ -80,8 +80,8 @@ for (const kind of ['standard', 'ptc', 'cordis']) {
     assert.match(text, /VARIANT_GITBASH_OK/)
     assert.equal(root.reflect.store[root[Context.isolate].shell], official)
     await patch.dispose()
-    assert.ok(!tools.schemas(agent).some((schema) => schema.name === 'bash'))
-    assert.ok(tools.schemas(agent).some((schema) => schema.name === 'pwsh'))
+    assert.ok(!tools.getAll(agent).some((schema) => schema.name === 'bash'))
+    assert.ok(tools.getAll(agent).some((schema) => schema.name === 'pwsh'))
     assert.equal(root.reflect.store[root[Context.isolate].shell], official)
   })
 }

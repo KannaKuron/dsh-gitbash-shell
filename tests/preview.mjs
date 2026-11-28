@@ -58,7 +58,7 @@ test('preview: real host registers and executes Git Bash without replacing Power
   const official = root.reflect.store[root[Context.isolate].shell]
   assert.ok(root.get('shell'), 'the actual official pwsh executor is active')
   const tools = root.get('tools')
-  assert.ok(tools.schemas().some((schema) => schema.name === 'pwsh'))
+  assert.ok(tools.getAll().some((schema) => schema.name === 'pwsh'))
 
   // Reproduce the original failure with the actual executor superclass chain.
   const plain = createScope(root)
@@ -76,7 +76,7 @@ test('preview: real host registers and executes Git Bash without replacing Power
   const agentScope = createAgentScope(agentParent, agent)
   agent.ctx = agentScope.ctx
   own(() => agentScope.dispose())
-  assert.ok(tools.schemas(agent).some((schema) => schema.name === 'pwsh'))
+  assert.ok(tools.getAll(agent).some((schema) => schema.name === 'pwsh'))
   async function startPatch(pwshVisible) {
     let resolveReady
     let rejectReady
@@ -103,11 +103,11 @@ test('preview: real host registers and executes Git Bash without replacing Power
   }
   const patch = await startPatch(true)
   t.diagnostic('own bash tool activated; checking the actual schema list')
-  const names = tools.schemas(agent).map((schema) => schema.name)
+  const names = tools.getAll(agent).map((schema) => schema.name)
   assert.ok(names.includes('bash'), 'bash reaches the actual host tool schema list')
   assert.ok(names.includes('pwsh'), 'the opt-in real PowerShell tool is preserved')
   assert.equal(root.reflect.store[root[Context.isolate].shell], official)
-  assert.ok(!tools.schemas().some((schema) => schema.name === 'bash'), 'bash is per-agent, not global')
+  assert.ok(!tools.getAll().some((schema) => schema.name === 'bash'), 'bash is per-agent, not global')
 
   const run = (name, command) => executeTool(tools, {
     agent, name, callId: `preview-${name}-${Date.now()}`,
@@ -146,21 +146,21 @@ test('preview: real host registers and executes Git Bash without replacing Power
   assert.match(pwsh.content.map((block) => block.text ?? '').join('\n'), /POWERSHELL_PREVIEW_OK/)
   assert.equal(root.reflect.store[root[Context.isolate].shell], official)
   await patch.dispose()
-  assert.ok(!tools.schemas(agent).some((schema) => schema.name === 'bash'), 'plugin disposal unregisters bash')
-  assert.ok(tools.schemas(agent).some((schema) => schema.name === 'pwsh'))
+  assert.ok(!tools.getAll(agent).some((schema) => schema.name === 'bash'), 'plugin disposal unregisters bash')
+  assert.ok(tools.getAll(agent).some((schema) => schema.name === 'pwsh'))
 
   // Also verify the default OFF switch: bash is visible, pwsh is hidden, and
   // removing the inline patch restores the official tool without replacing it.
   const hiddenPatch = await startPatch(false)
-  const defaultNames = tools.schemas(agent).map((schema) => schema.name)
+  const defaultNames = tools.getAll(agent).map((schema) => schema.name)
   assert.ok(defaultNames.includes('bash'))
   assert.ok(!defaultNames.includes('pwsh'))
   const defaultBash = await run('bash', 'printf "DEFAULT_BASH_OK\\n"')
   assert.equal(defaultBash.isError, false, JSON.stringify(defaultBash))
   assert.equal(defaultBash.value.exitCode, 0)
   await hiddenPatch.dispose()
-  assert.ok(tools.schemas(agent).some((schema) => schema.name === 'pwsh'))
-  assert.ok(!tools.schemas(agent).some((schema) => schema.name === 'bash'))
+  assert.ok(tools.getAll(agent).some((schema) => schema.name === 'pwsh'))
+  assert.ok(!tools.getAll(agent).some((schema) => schema.name === 'bash'))
   assert.equal(root.reflect.store[root[Context.isolate].shell], official)
 
   const requireHost = createRequire(join(process.env.DSH_PREVIEW_HOST_DIR, 'package.json'))

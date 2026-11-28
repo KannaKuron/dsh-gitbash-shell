@@ -21,17 +21,18 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { minimalPluginsFor, pluginsFor } from '../src/compositions.js'
 
-/** dsh-v0.2.3-alpha.2, packages/bundle/web-app/presets/*.patch.yml.
- * Baseline: the single-generation row set of 0.2.3-alpha.2. The full presets
- * carry `config: { applyPatch: false }` on tool-fs, manager/market gates ride
- * the live profile context, subagent uses modelSelection/modelDiscovery, and
+/** dsh-v0.2.3-alpha.3, packages/bundle/web-app/presets/*.patch.yml.
+ * Baseline: the single-generation row set of 0.2.3-alpha.3. tool-fs has no
+ * config (apply_patch follows edit and is on by default), the PTC root row is
+ * tool-registry-ptc, Office is tool-document, manager/market gates ride the
+ * live profile context, subagent uses modelSelection/modelDiscovery, and
  * list-agents lives in tool-subagent-control. Optional rows (time-context,
- * tool-schedule, plugin-market, compaction, office) are package-probed at
+ * tool-schedule, plugin-market, compaction, document) are package-probed at
  * runtime, so oursOf passes the full-probe hostExtras set below. */
 const PRESET_SHA256 = {
-  standard: '57c14c305f18f2882cf2ca3f5de70a167c9733fcd88c9137b5b8011a27bc13a0',
-  cordis: '347e15bc11e3b37f119d653447214a86b816c84bc01abdd0fd800e7bb703b38f',
-  ptc: '17e4755203aff21decbf410197e826eda8cecdb04f1e9a3ab68d77fd03adb817',
+  standard: 'c218f397bd59dc25064388c06e0940d21d6bf303bb8e2575c23eda283fbb6a2a',
+  cordis: 'e746052974e7482f1c7f34bae3e3866cdd2c9e3bd7b5a9b7cc4ce0fed91c7ef4',
+  ptc: 'a87b09dd0b757a410afd149991a449e4c35c4f30c672d4e475fc87bf510a2c97',
   minimal: 'a2a9ba1c9c392a45466708f18bc0aefbf300577f9b544dc06049f73a8a5b3267',
 }
 
@@ -127,8 +128,8 @@ export function flatten(rows, depth = 0) {
 }
 
 /** Our rows for one variant id, with the Git Bash delta applied.
- * The optional-row probe is ON: the alignment target is the 0.2.3-alpha.2 text
- * including time-context, tool-schedule, plugin-market, compaction and office. */
+ * The optional-row probe is ON: the alignment target is the 0.2.3-alpha.3 text
+ * including time-context, tool-schedule, plugin-market, compaction and document. */
 function oursOf(variant, platform) {
   const kind = KINDS[variant]
   if (kind === 'minimal') return flatten(minimalPluginsFor({ hostExtras: { compaction: true } }))
@@ -197,7 +198,7 @@ for (const [name, pinned] of Object.entries(PRESET_SHA256)) {
   const pinMatches = digest.startsWith(pinned)
   console.log(`${pinMatches ? 'OK  ' : 'DRIFT'} ${name}.patch.yml sha256=${digest.slice(0, 16)} pinned=${pinned}`)
   if (!pinMatches) {
-    console.error('  the official preset text CHANGED since dsh-v0.2.3-alpha.2: re-diff every variant by hand, then update PRESET_SHA256')
+    console.error('  the official preset text CHANGED since dsh-v0.2.3-alpha.3: re-diff every variant by hand, then update PRESET_SHA256')
     failed = true
   }
   const rows = rowsOf(text)

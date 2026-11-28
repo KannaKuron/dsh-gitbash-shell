@@ -11,7 +11,7 @@
  *
  * WHAT IS REAL HERE. `mountInlineTools`, the real per-agent `reconcile`, the
  * real `startBash`/`provideBash` chain, the real `createBashToolModule` from
- * src/bash-tool.js, the real tools-registry read-back (`schemas(agent)`) and
+ * src/bash-tool.js, the real tools-registry read-back (`getAll(agent)`) and
  * the real `agent/disposed` teardown. THE ONLY STUB is the private executor
  * import (`./shell.js`, whose base class is `@deepseek-ai/dsh-bash-sandbox`):
  * that host peer is not installed in a unit-test checkout, so it is redirected
@@ -75,7 +75,7 @@ function createRegistry(initialFace = BASE_FACE) {
         if (index >= 0) list.splice(index, 1)
       }
     },
-    schemas(agent) {
+    getAll(agent) {
       reads.set(agent, (reads.get(agent) ?? 0) + 1)
       const mask = masks.get(agent) ?? new Set()
       const names = [...baseFace, ...(registrations.get(agent) ?? []).map((entry) => entry.name)]
@@ -160,9 +160,7 @@ function createFixture({ mountDelayMs = 50, initialFace = BASE_FACE } = {}) {
         registrations.push(dispose)
         return dispose
       },
-      schemas: (who) => registry.schemas(who),
-      definitions: () => [],
-      executable: () => undefined,
+      getAll: (who) => registry.getAll(who),
     }
     const scopeCtx = {
       get(name) { return name === 'tools' ? facadeTools : undefined },
@@ -268,7 +266,7 @@ test('global PTC first step: agent/created waits for the own Bash registration',
   // `ctx.agents.create()` awaits before the caller can resolve the SDK.
   await fixture.emitCreated(agent)
 
-  const names = fixture.registry.schemas(agent).map((schema) => schema.name)
+  const names = fixture.registry.getAll(agent).map((schema) => schema.name)
   assert.ok(
     names.includes('bash'),
     `admission after agent/created lacks bash (face: [${names.join(', ')}]); `
@@ -282,7 +280,7 @@ test('global PTC: no duplicate registration on later reconciles, and dispose lea
   await fixture.ready
   const agent = fixture.createAgent('agent-dispose')
   await fixture.emitCreated(agent)
-  assert.ok(fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'))
+  assert.ok(fixture.registry.getAll(agent).some((schema) => schema.name === 'bash'))
 
   // The lazy pre-execute re-reconcile must not mount a second bash tool while
   // the agent-owned scope already exists.
@@ -292,7 +290,7 @@ test('global PTC: no duplicate registration on later reconciles, and dispose lea
   await fixture.emitDisposed(agent)
   assert.equal(fixture.scopeOf(agent)?.state.disposed, 1, 'the agent-owned scope is disposed once')
   assert.equal(
-    fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'),
+    fixture.registry.getAll(agent).some((schema) => schema.name === 'bash'),
     false,
     'the own bash registration is withdrawn with the agent',
   )
@@ -327,7 +325,7 @@ test('empty face: created waits for the retry and returns with bash ready', asyn
   await settlesWithin(created, 2000)
   assert.ok(fixture.registry.readCount(agent) >= 2, 'the composed face was re-read')
   assert.equal(fixture.registry.registerCalls(agent, 'bash'), 1)
-  assert.ok(fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'))
+  assert.ok(fixture.registry.getAll(agent).some((schema) => schema.name === 'bash'))
 })
 
 test('empty face: a later reconcile cancels the timer but still settles created', async () => {
@@ -364,11 +362,11 @@ test('empty face: superseding reconcile makes created wait for its own bash moun
   fixture.preExecute(agent)
   await delay(20)
   assert.equal(settled, false, 'created is still waiting for the replacement mount')
-  assert.equal(fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'), false)
+  assert.equal(fixture.registry.getAll(agent).some((schema) => schema.name === 'bash'), false)
 
   await settlesWithin(created, 2000)
   assert.equal(fixture.registry.registerCalls(agent, 'bash'), 1)
-  assert.ok(fixture.registry.schemas(agent).some((schema) => schema.name === 'bash'))
+  assert.ok(fixture.registry.getAll(agent).some((schema) => schema.name === 'bash'))
   const reads = fixture.registry.readCount(agent)
   await delay(350)
   assert.equal(fixture.registry.readCount(agent), reads, 'the superseded timer never fires late')

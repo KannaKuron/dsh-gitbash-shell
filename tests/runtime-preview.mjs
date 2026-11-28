@@ -114,7 +114,7 @@ async function fixture(t, { existingBash = false, pwshVisible = false, pauseModu
   })
   return {
     root, agent, tools, patch, official, logs, entered, release, activated, failed, agentScopes, deps,
-    names: () => tools.schemas(agent).map(schema => schema.name),
+    names: () => tools.getAll(agent).map(schema => schema.name),
     set: value => { pwshVisible = value; root.emit('loader/volatile-update', [['pwshTool']]) },
     setExperimental: value => { experimental = value; root.emit('loader/volatile-update', [['experimentalNative']]) },
     setPathTool: value => { pathTool = value; root.emit('loader/volatile-update', [['pathTool']]) },
@@ -644,7 +644,7 @@ test('runtime preview: the eager native slot fixes the tool face from agent crea
   const removeJobs = f.root.provide('jobs', {})
   t.after(() => removeJobs())
   f.root.emit('agent/created', { agent: f.agent })
-  const face = () => f.tools.schemas(f.agent).map(schema => ({ name: schema.name, description: schema.description, parameters: schema.parameters }))
+  const face = () => f.tools.getAll(f.agent).map(schema => ({ name: schema.name, description: schema.description, parameters: schema.parameters }))
   const initial = face()
   assert.ok(initial.some(tool => tool.name === 'gitbash_native'), JSON.stringify({ names: initial.map(tool => tool.name), logs: f.logs }))
   assert.ok(!initial.some(tool => tool.name === 'bash'), 'the real mount is still paused, so only the slot can explain the native entry')
