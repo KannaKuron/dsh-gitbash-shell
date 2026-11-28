@@ -263,8 +263,9 @@ test('client: pending, ready and unavailable snapshots call the same hooks', () 
   const unavailable = fixture.render()
   assert.deepEqual(pending.hooks, ready.hooks)
   assert.deepEqual(unavailable.hooks, ready.hooks)
-  // v0.45.0 added the init-script draft hydration alongside the bash-path one.
-  assert.equal(ready.hooks.filter((kind) => kind === 'effect').length, 6)
+  // v0.45.0 added the init-script draft hydration alongside the bash-path one;
+  // the alpha.2 Python PTC removal dropped the Windows-host state hook.
+  assert.equal(ready.hooks.filter((kind) => kind === 'effect').length, 5)
   assert.equal(pending.effects.at(-2)(), undefined)
   assert.equal(pending.effects.at(-1)(), undefined)
   assert.equal(fixture.timers.size, 0)

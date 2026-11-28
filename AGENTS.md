@@ -19,7 +19,7 @@
 
 ## 单代基线与大版本清理纪律(2026-11-05 起)
 
-- 运行时只服务 `engines.dsh` 声明的下限(当前 `0.2.2-rc.1`);不为更老宿主保留分支、探测、回退或测试夹具。抬升下限时同步 `package.json` / `dsh.plugin.json` / README / AGENTS / CHANGELOG 与测试,不保留双代。
+- 运行时只服务 `engines.dsh` 声明的下限(当前 `0.2.3-alpha.1`);不为更老宿主保留分支、探测、回退或测试夹具。抬升下限时同步 `package.json` / `dsh.plugin.json` / README / AGENTS / CHANGELOG 与测试,不保留双代。
 - 每次 dsh 大版本或破坏性 rc 适配,重做全仓单代审计:删除只为旧宿主存在的设置面、版本探测、物化资产与测试夹具;旧注释也改写成当前契约,不把历史当现状。
 - 必须保留并写明理由:用户数据迁移(旧物化树、旧 profile 行字段)、跨插件主动兼容(dsh-ops / FastCtx / dsh-ptc-cordis-preset / better-sidebar / terminal bundle)、平台分支、可选官方能力的按包探测与降级。
 - 清理不得改变用户数据:只删 marker 判定为 unmodified 的旧物化树;用户手改或外来目录绝不碰。
@@ -52,7 +52,7 @@
 4) 发布 `gitBash` 宿主能力服务供 dsh-ptc-cordis-preset 联动。
 
 ## 核心不变量(改代码前必读)
-0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.2.2-rc.1`(兼容门禁 `plugin-compatibility.ts` 优先读 `engines.dsh`,只要存在该字段就忽略 peer,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 同步声明同一 range 并标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),只保留这一代宿主路径。要点:四个变体由 `pluginsFor({ kind, skillsDir, pythonActive, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,单代镜像官方 `0.2.2-rc.2` standard/minimal/ptc/cordis + Git Bash 增量(rc.1 宿主只少可选行);可选行由 `hostExtras` 按包探测(见第 8 条);minimal 变体由 `minimalPluginsFor({ bashPath, hostExtras })` 生成;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关直接 `.volatile()`;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**语义能力**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-shell`**(同时是 configForms key)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
+0. **声明式唯一路径(v0.32.0 起)**:宿主下限 `>=0.2.3-alpha.1`(兼容门禁 `plugin-compatibility.ts` 优先读 `engines.dsh`,只要存在该字段就忽略 peer,`semver.satisfies` 以 `includePrerelease: true` 求值;peer 同步声明同一 range 并标 `peerDependenciesMeta.optional`,否则 autoInstallPeers 场景下对只有 prerelease 的 `@deepseek-ai/dsh` 解析失败),**era/物化/present/rows/detectPeerCoverage 已全部删除**——`apply()` 直走声明式注册 `runDeclarativeEra`(v0.35.0 起受 `variantPresets` 开关门控,默认关=desired 为空集,见 §4l),只保留这一代宿主路径。要点:四个变体由 `pluginsFor({ kind, skillsDir, hostExtras })` / `minimalPluginsFor({ bashPath })` 生成行集(`src/compositions.js`,单代镜像官方 `0.2.3-alpha.2` standard/minimal/ptc/cordis + Git Bash 增量;可选行由 `hostExtras` 按包探测(见第 8 条);minimal 变体由 `minimalPluginsFor({ bashPath, hostExtras })` 生成;minimal 的 PTY 行 `bashPath` 由 index.js 经 `minimalPtyBashPath(readBashResolution)` 每次注册时懒解析喂入——解析失败兜底可见默认路径,见 §4h 的两条硬边界与 issue #15);cordis 变体的 skills 直接指向 `@deepseek-ai/dsh-agent-preset` 包旁目录(现场解析,不拷贝);**preset id 永不随官方改名**(`code-gitbash` 保持历史 id——会话钉在 id 上,改名即 preset not found);预设清单沿用行配置 `presets`(Config 的普通字段,改动触发重挂载);reconcile 必须**先退役再注册**(宿主 registry 拒绝重复 id,与 dsh-ptc-cordis-preset v0.16.0 的翻转教训同款)。**设置面**:host 半**顶层 await 经 `src/schemastery.js` 解析 schemastery** 并导出 `Config`(开关直接 `.volatile()`;拿不到 schemastery 时 `Config = undefined`,插件照常挂载;取哪一份由**语义能力**决定,见 §4k),apply 内 `makeLiveReader(ctx, config)` 供所有翻译层消费点(shellEnv 解析器、prompt 组装、tools/execute、post-execute、posix 指示闭包、adoptSidebar)逐次读取;client 半经 `configForms` 挂详情页设置卡;**挂载行 id `gitbash-shell`**(同时是 configForms key)。**绝不用顶层静态 peer import(v0.24.3 加固)**:`@deepseek-ai/schemastery` 是 peer,普通 Node 从本包位置解析不到它;顶层静态 import 一旦失败,dsh Loader 把插件行的导入失败当**非致命跳过**(`vendor/loader/src/config/entry.ts` `_init()`:logger.error + return,永不建 fiber)⇒ 本插件连 preset 变体、执行器接线与 client 半全部消失,而宿主日志全绿(与 dsh-better-workspace issue #9 同一失败类;已用"除静态 peer import 外完全相同"的夹具插件实证)。冒烟有"不得出现静态导入行"断言。**legacy settings 面已整体删除(v0.32.1)**:宿主侧的 namespace 注册块、makeLiveReader/dialectSettings 的 era 探测、四个 settings.get(ns) 读取器与 client 半的 settingsScope 注入 + settings.plugin.item 旧座位全部移除(宿主 settings 服务只余 describe/update;冒烟守卫「源码不得再出现 settings.register/SETTINGS_NAMESPACE」);设置面只剩行 Config + configForms 详情页卡这一条路。
 
 1. **执行器替换 full-access argv；Windows 未验证受限能力必须 fail-closed**:
    沙箱/生命周期基础设施沿用 `@deepseek-ai/dsh-bash-sandbox`;full-access 必须显式 Git for Windows
@@ -69,7 +69,7 @@
    无解/用户-only cygheap 映射”的历史泛化论断。新 IPC/OS 方案必须实际正负权限验收；文件工具
    policy 另属一层，拒绝不得绕过。侧栏交互终端/minimal PTY不因此获得围栏。
    历史复现见 CHANGELOG v0.13.2；当前实施与独立验证见 CHANGELOG。
-   **0.2.2-rc.1 执行器契约(issue #6 复盘)**:① `Config` 的六个继承字段
+   **执行器契约(0.2.2-rc.1 起;issue #6 复盘)**:① `Config` 的六个继承字段
    (`cwd`/`timeoutMs`/`maxTimeoutMs`/`maxOutputBytes`/`maxSpillBytes`/`graceMs`)**必须
    `.volatile()`** —— 基类把它们读成 `Volatile<T>` 并一律 `.get()`,裸值会让**每一次 shell
    调用**抛 `config.timeoutMs.get is not a function`(整个 `ctx.shell` 失效);插件自己的
@@ -215,54 +215,12 @@
      - ④ **服务契约**:能力名 `ptcCordisPreset`、形状 `{ id, gitBashActive }` 由 dsh-ptc-cordis-preset
        **≥0.14.0** 提供(本插件侧的去重开关自 ≥0.25.0);**该形状变更要同步对方仓库**。改这一层必须跑
        冒烟里的去重判定矩阵与接线断言。
-4f. **run_code 的实验性 Python 后端开关(v0.26.0)**:dsh 的实验性 CPython PTC 后端
-     (`@deepseek-ai/dsh-experimental-ptc-runtime-python`)替换的是 **profile 级** `ptc-runtime` 行,
-     不是 preset 内的行,所以**开关与运行行都归 dsh-ptc-cordis-preset**:权威状态是它那一行
-     (`ptc-cordis`)Config 的布尔 `pythonRuntime`(默认 false),它的 bundle patch 在 boot 时按
-     快照条件 disable base 行 + insert 自己的 runtime 行。**本仓库只做两件事**:
-     - ① **镜像设置卡**(`src/client.js`):`ctx.configForms.get('ptc-cordis')` 读写 **同一个字段** +
-       `subscribe`,默认关;`hasOwnProperty('pythonRuntime')` 为假(对方 < 0.15.0)⇒ 整段不画;
-       对方未装 ⇒ 不画。**绝不引入第二份镜像字段**。win32 上后端构造即抛错(仅 POSIX),卡片因此
-       显示禁用态 + `python.blocked`(POSIX-only),按钮不出现;宿主侧同样拒绝写入。文案 21 语言,
-       必须写明「重启 dsh 后生效」与「原因见宿主启动日志」——后者是因为 `pythonRuntimeIssue`
-       这类"宿主探测原因"**没有**客户端可读通道,契约里明确不提供(加了就是第二份会漂移的状态)。
-     - ② **组合的工作流互斥**(`src/compositions.js` + `src/index.js`):`workflow-ptc` 构造器硬要求
-       `ctx.ptcRuntime.language === 'typescript'`(`packages/workflow/workflow-ptc/src/index.ts:117`),
-       而 preset 行在**独立 PresetTree** 里挂载、**base 行 disable 管不到它** ⇒ python 后端期间选
-       standard/cordis 会让该行抛错,`agent-preset-registry/mount.ts` 的 `audit.failed` 直接拒绝
-       **整棵 preset 挂载**。修法与官方 python 参考组合一致
-       (`snapshots/session/ptc-python-turn/cordis.yml:25-36` 同款禁用两行):`pythonRuntime === true`
-       时**四个变体**的 `workflow-ptc`/`tool-workflow` 一律 `disabled: true`(用户 workflow 设置值
-       保留,关掉后端下次启动恢复);`kind === 'ptc'` 本来就关,不受影响。
-     - **信号来源 = 对方能力服务**:`ctx.provide('ptcCordisPreset', { id, gitBashActive, pythonRuntime, pythonBackend? })`
-       (dsh-ptc-cordis-preset ≥ 0.15.0;`pythonRuntime` 是**用户意图**,≥ 0.15.1 追加
-       `pythonBackend: 'python' | 'node'` **生效态**;两者都支持 getter,读不到一律按保守值);
-       家族纪律同 §4e①——**绝不猜**,也不去读 `agentPresets`/配置文件推断。值变化必须**重注册已经在
-       live 表里的变体**(行内容变了,只增删名录不够),日志
-       `peer reports the experimental CPython run_code backend: workflow rows go off in every variant`。
-     - **互斥的判据是「生效态」,不是「意图」(v0.26.1,重要)**:`pythonBackendActive(capability)`
-       = 意图为真 **且** 生效态为 `'python'`;`pluginsFor` 的形参因此叫 **`pythonActive`**(语义 =
-       run_code 实际会用的后端)。理由:对方的 preflight 失败(包被移除 / 解释器 < 3.10 / win32)时
-       `!!js` 兜底与组合仍跑 Node,若按意图关掉 `workflow-ptc`/`tool-workflow`,用户就是**白丢能力**。
-       未生效时改打 `peer has the CPython switch on but the effective backend is node|unreported …:
-       workflow rows stay on (reason in the host log)`。**旧 peer 回退**:`peerBackend()` 对缺字段/
-       类型不符/getter 抛错返回 `undefined`(绝不把"没报"读成 `'node'`),此时**用意图顶替** ——
-       对方 < 0.15.1 的行为与 v0.26.0 逐字节一致。卡片侧同理:从同一份 peer 快照读可选的
-       `pythonBackend`,意图 on + 生效 `node` 显示 `python.degraded`(21 语言);字段缺省则**不显示**
-       降级态。**注意生效态要进"客户端可读"的那一份**,卡片才能显示真实状态 —— 目前客户端只读得到
-       settings 表单快照(能力服务是宿主侧的,浏览器读不到)。**Lead 裁决 A(2026-09-25)**:ptc 侧
-       **不拒绝**把意图落成 true(不授权任何"回写用户 settings 表单值"的行为)⇒ **"意图 on + 生效
-       node" 这个状态是可达的**;不可达的只是**本插件这行降级显示**(ptc v0.15.1 的 Config schema
-       没有 `pythonBackend`)。现状:ptc 卡显示 on + 红字原因,本插件卡只显示 on(hint 指向宿主日志)。
-       后续项 = 让对方用**加法只读字段**把 `pythonBackend`/`pythonIssue` 投影进行 Config 快照(不动
-       用户意图字段);那一刻本插件**无需改动**即亮起(读的是同一个键)。**不要把"降级提示已生效"
-       写进面向用户的文案或文档。**
-     - 依赖边界:python 运行时包由对方 `optionalDependencies` 声明(**精确 `0.1.7-rc.2`**,不用
-       `next`——npmmirror 会解析到 rc.1 被兼容闸拒);**本仓库不声明该依赖、不 insert 运行行**
-       (两个插件各插一行会让 `ptcRuntime` 二次注册)。改这一层必须跑冒烟里的
-       「python switch」四例 + 真机读数(见 CHANGELOG v0.26.0 的 A/B 装置)。
-     - 另注意:python 后端**仅 POSIX**;本插件的路径方言/执行器面按 `process.platform === 'win32'`
-       门控,因此在它唯一能跑的平台上这些层本来就不生效 —— 两侧无交互,但升级时仍要复核这条前提。
+4f. **Python PTC 后端已随官方删除(v0.56.0)**:dsh 0.2.3-alpha.1 起删除了 `ptc-runtime-python`
+     与实验包 `@deepseek-ai/dsh-experimental-ptc-runtime-python`。本仓库因此删除 `pythonRuntime`
+     镜像设置卡、`pythonActive` 组合互斥、peer `pythonBackend` 读取与全部「python switch」测试/文案;
+     `run_code` 只保留官方 Node/TypeScript 后端。不要再为旧宿主恢复这条路径;`native-executor` 的
+     Python 源码原样透传与 `tests/audit-preview.mjs` 的 Python 用例仍属运行时语言判定,不是 PTC
+     Python 后端。
 
 4g. **子代理/队员的方言开关(v0.27.0,`subagentDialect` 默认 ON)**:用户要求「专门给个设置是否让子代理/队员也使用 Git Bash」。
      - **语义**:默认 ON = 委托代理(子代理、团队队员、嵌套子代理)与主代理享受**同一条方言链路**;OFF = 方言只对主代理生效,委托请求回退官方 shell 语义。
@@ -392,7 +350,7 @@
 7. **preset id 永不随官方改名,组合对齐由 fixture 锁死(v0.32.0 收敛)**:`code-gitbash` 保持历史 id
    (会话钉在 id 上,改名即 preset not found——dsh 0.1.2 把内置 `code` 改名 `ptc` 时本插件变体 id
    就没有跟随)。变体组合与官方内置 preset 的对齐由 `tests/smoke.mjs` 的
-   `compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates` 一项锁住(era 资产/marker 维度
+   `compositions: alpha.2 executor shape and profile-context gates` 一项锁住(era 资产/marker 维度
    已随物化路径删除,历史叙事见 CHANGELOG v0.6.0~v0.31.1)。
 8. **未来破坏点跟踪**:官方宣布会话持久词汇(`tool/code-dispatch*`、日志插件名 `tools-code-mode`、
    `:code:` 子调用段)将在 SESSION_FORMAT_VERSION v0→v1 迁移时改名(dsh 仓库 notes
@@ -411,7 +369,7 @@
    `time-context`/`tool-schedule` 两行,极简 preset 新增 image-only `tool-fs` 与专属 compaction 组
    (`isolate` 仅 compaction、无 pruner),alpha.4 起全工具 preset 另有 `tool-plugin-market`
    (standard/ptc 关、cordis 随 profileContext);alpha.3 已把 `schedule_*` 从 subagent 的
-   `toolFilter.deny` 移除 ⇒ 插件侧**不再产出任何 toolFilter**。宿主下限已是 `0.2.2-rc.1`,
+   `toolFilter.deny` 移除 ⇒ 插件侧**不再产出任何 toolFilter**。宿主下限已是 `0.2.3-alpha.1`,
    但这四行仍由 `probeHostExtras(ctx)` 从 **`ctx.baseUrl`**(行挂载同一解析基准)逐包 `require.resolve`
    探测(time-context、tool-schedule、plugin-market/tools、compaction-basic、tool-office),可用才加行
    (`timeContext`/`toolSchedule`/`pluginMarket` 仅 standard/ptc/cordis 三个 kind,`compaction`
@@ -446,7 +404,7 @@
       `insert[0].config.plugins`),抽出 `- id:` / `name:` / `disabled:` 三行序列,与本插件
       对应变体(`src/compositions.js`)逐条对齐;**提示词**(persona 的 `prefix:`/`suffix:`
       文本)与**工具行**同样要 diff,不要只看 id 名字。smoke 的
-      `compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates` 锁住对齐。
+      `compositions: alpha.2 executor shape and profile-context gates` 锁住对齐。
    ② **行改名是致命项**:dsh 0.1.6-alpha.1 把引擎行 `workflow-worker-thread` 改名 `workflow-ptc`
       并**删除**了旧包(`packages/workflow/workflow-worker-thread` 整包消失)。组合里一行 import
       失败会拒绝**整棵 preset 挂载**(agent-presets `mount.ts`),变体直接不可用——
@@ -521,7 +479,7 @@
        `path.resolve(cwd, msys)` 指向不存在的路径,而救回后的拼写 `existsSync` 为真)。
 
 4k. **schemastery 选一份能产出 Volatile refs 的副本(v0.31.1,issue #12;v0.49.0 单代重写)**:
-     插件**必须**与它继承的执行器基类用**同一套语义**的 schemastery。dsh >=0.2.2-rc.1 的
+     插件**必须**与它继承的执行器基类用**同一套语义**的 schemastery。dsh 0.2.2-rc.1 起的
      `LocalBashExecutor.Config` 把六个字段声明为 `.volatile()` 并一律 `.get()`;用一份
      **没有 `volatile()`** 的 schemastery 构造 Config ⇒ 字段退化成普通值 ⇒ **每次 shell 调用**都
      `TypeError: config.timeoutMs.get is not a function`,整个会话的命令能力归零。
@@ -751,7 +709,7 @@
 4. 旧物化残留清理改动:手造带 marker 的 unmodified 树 → 启动被删 + 日志;篡改文件成
    user-modified → 保留 + 提示;无 marker 的 foreign 目录 → 绝不碰。
 5. **升级 dsh 后**(v0.14.0 起强制):按第 9 条把四个内置 preset 各核对一遍——行序列 + 提示词 +
-   disabled 默认值;smoke 的 `compositions: full variants mirror the rc.1 host row split`
+   disabled 默认值;smoke 的 `compositions: full variants mirror the alpha.2 host row split`
    锁住对齐;真机确认声明式注册日志出现四个变体且模式选择器里都能挂载。
 6. **去重改动(§4e,v0.25.0 起)**:隔离实例(`DSH_HOME` 独立 + 新建 profile + 两份插件 `link:` 安装
    + 探针插件定时打印 `agentPresets.list()`)里**真的翻转开关**看名录:默认两侧条目并存 → 写
@@ -759,19 +717,10 @@
    retired …` 且名录少一条 → 写回 `false` 后出现 `preset 'cordis-gitbash' registered declaratively`
    且名录恢复。非 Windows 机上用探针副本把 `gitBash` 能力的 `active` 强制为 `true` 模拟 win32 语义;
    顺带在无头浏览器确认对方设置卡上的镜像行渲染出来(同一份状态)。
-7. **Python 后端开关改动(§4f,v0.26.0 起;v0.26.1 起三态)**:隔离实例 + 探针插件
-   `ctx.provide('ptcCordisPreset', { id, gitBashActive: true, … })` 跑**三态**:
-   ① `{pythonRuntime:true, pythonBackend:'python'}` → 日志
-   `peer reports the experimental CPython run_code backend: workflow rows go off in every variant`
-   + 四条 `retired … (peer CPython backend changed; rows are rebuilt)`,且四个变体的
-   `workflow-ptc`/`tool-workflow` 都 `disabled: true`;
-   ② `{pythonRuntime:true, pythonBackend:'node'}` → 日志
-   `peer has the CPython switch on but the effective backend is node: workflow rows stay on (reason in the host log)`,
-   **没有**重建日志,`readDocument()` 读数里 standard/cordis 的两行**保持启用**(`code-gitbash` 本就关);
-   ③ `{pythonRuntime:true}`(旧 peer,缺 `pythonBackend`)→ 与 ① 相同(意图顶替,行为与 v0.26.0 一致)。
-   再对其中一态用 `agentPresets.acquireScope('<variant>')` **真挂载**四个变体,要求四条
-   `MOUNT OK`(挂载审计不得有 failed 行);读数用 `readDocument()` 的 dump,不要只看注册成功。
-   非 Windows 机上无法验证 win32 分支(卡片禁用态 / 宿主拒绝),记为模拟验证。
+7. **Python PTC 已删除(§4f,v0.56.0)**:本仓库不再有 `pythonRuntime` 卡片与 peer 后端三态。
+   验证只需确认设置卡只剩 7 个 fold、21 门词典无 `python.*`/`sec.python`、源码与 package 不含
+   `pythonRuntime|pythonBackend|PEER_PYTHON|CPython|experimental-ptc-runtime-python`,且
+   `native-executor` 仍保留 Python 源码原样透传。
 8. **子代理开关改动(§4g,v0.27.0 起)**:隔离实例 + **真** root/child/nested agent(`ctx.agents.create({ parentAgent, meta: { origin: 'subagent', delegationDepth } })`),
    再对每个 agent 调**真的** `systemPrompt.assemble({ agent, scope: agent })`,断言:开关 ON 时三态都拿到方言指令;OFF 时**只有 root** 拿到,
    child/nested 均无(`directive=no`)。macOS 上需把插件副本的两处 `process.platform === 'win32'` 组装门强制打开(执行器/请求面同理),

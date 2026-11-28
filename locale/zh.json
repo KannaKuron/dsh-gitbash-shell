@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Git Bash Shell",
-    "description": "为 Windows 提供 Git for Windows bash 命令通道:自有 bash 工具跑在私有执行器上(官方 PowerShell 执行器原样保留)、全工具统一的 MSYS 路径方言(posixPaths 等开关可实时编辑),四个 * · Git Bash 预设变体可开关。要求 dsh >= 0.2.2-rc.1。"
+    "description": "为 Windows 提供 Git for Windows bash 命令通道:自有 bash 工具跑在私有执行器上(官方 PowerShell 执行器原样保留)、全工具统一的 MSYS 路径方言(posixPaths 等开关可实时编辑),四个 * · Git Bash 预设变体可开关。要求 dsh >= 0.2.3-alpha.1。"
   }
 }

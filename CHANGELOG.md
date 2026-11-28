@@ -3,6 +3,17 @@
 > 倒序排列,新版本条目在最上面。条目格式:`## vX.Y.Z — YYYY-MM-DD` + 类型(feat / fix / docs / chore)+ 要点 + 相关链接。
 > 纪律见 AGENTS.md「变更记录纪律」:发版前先更新本文件并随版本提交;事故复盘、复现与真机验证记录也记在这里。
 
+## v0.56.0 — 2026-11-28
+
+**类型**:feat / breaking(适配 dsh 0.2.3-alpha.2,宿主下限抬升)
+
+- **组合对齐 alpha.2**:`src/compositions.js` 镜像官方 0.2.3-alpha.2 的四份 preset。standard 新增 `tool-cordis`;standard 与 ptc 的 `skill-filesystem` 带 `customSkillDirs` 并携带 `tool-skill`;cordis 的 `tool-skill` 加 `excludedSkills: ['official-plugins', 'personalized-pages']`;三套全工具变体的 `tool-subagent-control` 统一 `config: { interrupt: false }`;manager 行在全部全工具变体跟 `profileContext`;market 行三套都插入,仅 cordis 跟 `profileContext`,standard/ptc 恒关。office 仍只进 standard/ptc,并由包探测决定是否可用。
+- **Python PTC 彻底删除**:官方 0.2.3-alpha.1 起已删除 `ptc-runtime-python` 与实验包 `@deepseek-ai/dsh-experimental-ptc-runtime-python`。本插件随之删除 `pythonRuntime` 镜像设置卡、`pythonActive` 组合互斥、peer `pythonBackend` 读取、Python 后端状态探测、21 门词典与全部 Python switch 测试/文案;`run_code` 只保留官方 Node/TypeScript 后端。`native-executor` 的 Python 源码原样透传与 `tests/audit-preview.mjs` 的 Python 用例属于运行时语言判定,不是 PTC Python 后端,保留。
+- **兼容声明**:`engines.dsh`、`dsh.compatibility.dsh`、peer `@deepseek-ai/dsh` 统一抬到 `>=0.2.3-alpha.1`(peer 保持 optional);`dsh.compatibility.dshReleases` 只登记 `0.2.3-alpha.1` 与 `0.2.3-alpha.2`。`package-lock.json` 同步。
+- **文档与对齐基线**:README / README_EN 的宿主要求与 preset 对齐段落改写为 alpha.2 事实;AGENTS 的宿主下限、组合说明、Python PTC 段落与验证清单同步;两个 locale 描述的版本号更新。`tests/align-official.mjs` 的四份 preset SHA-256 换到 dsh-v0.2.3-alpha.2,审计四项 OK。
+- **测试**:完整 `npm test` **411 项 / 410 pass / 0 fail / 1 platform skip**(删除 8 个 Python 后端测试);`node tests/align-official.mjs /tmp/dsh-alpha-src` 输出 `alignment OK: all four variants mirror the official row sequence`;`node --check` 与 `git diff --check` 通过。
+- **发布边界**:本轮只提交 `alpha适配` 分支,不合并 `main`、不发布 npm 包;等 dsh 0.2.3 rc 出来后再按流程合并与发版。
+
 ## v0.55.2 — 2026-11-27
 
 **类型**:fix(路径方言越界改写 WSL/SSH/容器工具的参数,issue #48)

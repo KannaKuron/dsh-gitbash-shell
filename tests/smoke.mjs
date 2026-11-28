@@ -1013,16 +1013,17 @@ test('the success echo rides tools/execute, so no decision can collide (v0.23.0,
 
 // ── dsh >=0.2.2-rc.1 declarative era ────────────────────────────────────────
 
-test('compositions: full variants mirror the rc.1 host row split', async () => {
+test('compositions: full variants mirror the alpha.2 host row split', async () => {
   const { pluginsFor, minimalPluginsFor, PRESET_META } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   for (const kind of ['standard', 'cordis']) {
     // Every variant gates the manager on the live profile context (absent in
     // this fixture → off).
-    const rows = pluginsFor({ kind, skillsDir: kind === 'cordis' ? '/s' : undefined })
+    const rows = pluginsFor({ kind, skillsDir: '/s' })
     const delegation = row(rows, 'delegation').config
     assert.notEqual(row(delegation, 'workflow-ptc').disabled, true)
     assert.notEqual(row(delegation, 'tool-workflow').disabled, true)
+    assert.deepEqual(row(delegation, 'tool-subagent-control').config, { interrupt: false }, kind + ': alpha.2 always ships interrupt:false')
     // ralph is RETIRED: the official presets dropped the three disabled
     // placeholder rows (codex / claude-code / ralph); the codex/claude-code
     // providers moved to on-demand bundles.
@@ -1030,13 +1031,22 @@ test('compositions: full variants mirror the rc.1 host row split', async () => {
     assert.equal(row(rows, 'tool-bash').disabled, process.platform === 'win32' ? true : undefined)
     assert.equal(row(rows, 'tool-pwsh').disabled, process.platform === 'win32' ? undefined : true)
     assert.equal(row(rows, 'tool-plugin-manager').disabled, true, 'no profile context in this fixture -> manager off')
+    // alpha.2 added tool-cordis to standard as well; both full variants carry
+    // the authoring skills directory.
+    assert.equal(row(rows, 'tool-cordis').name, '@deepseek-ai/dsh-tool-cordis', kind)
+    assert.deepEqual(row(rows, 'skill-filesystem').config.customSkillDirs, ['/s'], kind)
+    if (kind === 'cordis') {
+      assert.deepEqual(row(rows, 'tool-skill').config, { excludedSkills: ['official-plugins', 'personalized-pages'] })
+    }
   }
-  const ptc = pluginsFor({ kind: 'ptc', skillsDir: undefined })
+  const ptc = pluginsFor({ kind: 'ptc', skillsDir: '/s' })
   const delegation = row(ptc, 'delegation').config
   assert.equal(row(delegation, 'workflow-ptc').disabled, true)
   assert.equal(row(delegation, 'tool-workflow').disabled, true)
+  assert.deepEqual(row(delegation, 'tool-subagent-control').config, { interrupt: false })
   assert.deepEqual(row(ptc, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
   assert.equal(row(ptc, 'tool-cordis'), undefined)
+  assert.deepEqual(row(ptc, 'skill-filesystem').config.customSkillDirs, ['/s'])
   const cordis = pluginsFor({ kind: 'cordis', skillsDir: '/s' })
   assert.equal(row(cordis, 'tool-cordis').name, '@deepseek-ai/dsh-tool-cordis')
   assert.deepEqual(row(cordis, 'skill-filesystem').config.customSkillDirs, ['/s'])
@@ -1097,38 +1107,41 @@ test('compositions: optional host rows ride the probe, never the default', async
   assert.equal(group.config.some((r) => r.id === 'tool-result-pruner'), false, 'the minimal group carries NO pruner')
   assert.equal(base.some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
 })
-test('compositions: rc.2 office and standard skills rows are probe-gated', async () => {
+test('compositions: alpha.2 office, skills, and subagent rows match the official patches', async () => {
   const { pluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
   const control = (rows) => row(row(rows, 'delegation').config, 'tool-subagent-control')
-  // rc.2: the office probe is also the rc.2 row-dialect probe. With it on,
-  // standard/ptc mount tool-office right after present and turn the new
-  // subagent-control interrupt flag off (matching the official patches).
+  // alpha.2: the office probe only adds tool-office; interrupt:false is the
+  // unconditional row dialect in every full-tool preset.
   for (const kind of ['standard', 'ptc']) {
     const rows = pluginsFor({ kind, skillsDir: '/skills', hostExtras: { office: true } })
     assert.deepEqual(control(rows).config, { interrupt: false }, kind)
     assert.equal(ids(rows).indexOf('tool-office'), ids(rows).indexOf('present') + 1, kind)
     assert.deepEqual(row(rows, 'tool-office'), { id: 'tool-office', name: '@deepseek-ai/dsh-tool-office' }, kind)
+    assert.deepEqual(row(rows, 'skill-filesystem').config, { customSkillDirs: ['/skills'] }, kind + ': both standard and ptc carry the authoring skills dir')
   }
-  // standard carries the rc.2 authoring-skills config; ptc ships the row bare.
-  assert.deepEqual(row(pluginsFor({ kind: 'standard', skillsDir: '/skills' }), 'skill-filesystem').config, { customSkillDirs: ['/skills'] })
-  assert.equal(row(pluginsFor({ kind: 'ptc', skillsDir: '/skills' }), 'skill-filesystem').config, undefined)
-  // cordis mirrors the official cordis patch: interrupt:false, NO tool-office.
+  // ptc has no tool-cordis; the full standard variant does.
+  assert.equal(ids(pluginsFor({ kind: 'ptc', skillsDir: '/skills' })).includes('tool-cordis'), false)
+  assert.equal(row(pluginsFor({ kind: 'standard', skillsDir: '/skills' }), 'tool-cordis').name, '@deepseek-ai/dsh-tool-cordis')
+  // cordis mirrors the official cordis patch: tool-cordis BEFORE the skills
+  // pair, the excludedSkills filter, interrupt:false, NO tool-office.
   const cordis = pluginsFor({ kind: 'cordis', skillsDir: '/skills', hostExtras: { office: true } })
   assert.deepEqual(control(cordis).config, { interrupt: false })
   assert.equal(ids(cordis).includes('tool-office'), false)
-  // An rc.1 host (no office package) must receive neither the new key nor row.
+  assert.ok(ids(cordis).indexOf('tool-cordis') < ids(cordis).indexOf('skill-filesystem'))
+  assert.deepEqual(row(cordis, 'tool-skill').config, { excludedSkills: ['official-plugins', 'personalized-pages'] })
+  // The interrupt key does not depend on the office probe.
   const legacy = pluginsFor({ kind: 'standard', skillsDir: '/skills' })
-  assert.equal(control(legacy).config, undefined)
+  assert.deepEqual(control(legacy).config, { interrupt: false })
   assert.equal(ids(legacy).includes('tool-office'), false)
 })
 
-test('compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates', async () => {
+test('compositions: alpha.2 executor shape and profile-context gates', async () => {
   const { pluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
-  // rc.1 executor architecture: list_agents folded into the control row, the
+  // alpha.2 executor architecture: list_agents folded into the control row, the
   // subagent config uses modelSelection/modelDiscovery, and PTC mounts the
   // explicit executor row instead of the retired presentation selector.
   const ptc = pluginsFor({ kind: 'ptc', skillsDir: undefined, hostExtras: { profileContext: true } })
@@ -1140,13 +1153,12 @@ test('compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates', 
   assert.equal(row(ptc, 'tool-presentation'), undefined)
   assert.deepEqual(row(ptc, 'tool-executor-ptc'), { id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
 
-  // rc.1 manager/market: cordis and standard gate the manager on the live
-  // profile context; the market is cordis-only. PTC keeps both off.
+  // alpha.2 manager/market: EVERY full-tool preset gates the manager on the
+  // live profile context; the market is cordis-only (standard/ptc keep it off).
   for (const kind of ['standard', 'ptc', 'cordis']) {
     const withProfile = pluginsFor({ kind, skillsDir: '/s', hostExtras: { profileContext: true, pluginMarket: true } })
-    const managerOn = kind === 'cordis' || kind === 'standard'
     const marketOn = kind === 'cordis'
-    assert.equal(row(withProfile, 'tool-plugin-manager').disabled, managerOn ? undefined : true, kind)
+    assert.equal(row(withProfile, 'tool-plugin-manager').disabled, undefined, kind + ': manager follows the live profile context')
     assert.equal(row(withProfile, 'tool-plugin-market').disabled, marketOn ? undefined : true, kind)
     assert.deepEqual(row(withProfile, 'tool-fs').config, { applyPatch: false }, kind + ' ships apply_patch off')
     const without = pluginsFor({ kind, skillsDir: '/s', hostExtras: { profileContext: false, pluginMarket: true } })
@@ -1417,7 +1429,7 @@ test('client card: the dedupe row is peer-gated and writes THIS row\'s field', (
   assert.match(src, /writeField\("suppressPeerCordis", true\)/)
   assert.match(src, /writeField\("suppressPeerCordis", false\)/)
   // drawn only while the peer's entry is served (an absent peer hides it);
-  // v0.36.0 regroup: dedupe and python live under ONE `peerSection` heading
+  // v0.36.0 regroup: the dedupe row rides under ONE `peerSection` heading
   assert.match(src, /var peerSection = peerSnap\.status === "ready" \? fold\("sec\.peer"/)
   assert.match(src, /\n\t\t\t\tpeerSection,/)
   // the ctx reaches the component: the inject factory carries it as a plain member
@@ -1583,191 +1595,23 @@ test('issue #8 root cause stays fixed: the dispatch face reads the LIVE dialect'
   assert.doesNotMatch(code, /SETTINGS_NAMESPACE/, 'the legacy namespace constant must stay deleted')
 })
 
-// ── experimental CPython run_code switch (peer-owned, v0.26.0) ───────────────
+// ── Python PTC removal (dsh 0.2.3-alpha.1) ──────────────────────────────────
 
-test('python switch: the peer fact is read conservatively, getters included', () => {
-  const { peerFact, PEER_PYTHON_FIELD, PEER_CAPABILITY } = _internal
-  assert.equal(PEER_CAPABILITY, 'ptcCordisPreset')
-  assert.equal(PEER_PYTHON_FIELD, 'pythonRuntime')
-  assert.equal(peerFact({ pythonRuntime: true }, PEER_PYTHON_FIELD), true)
-  assert.equal(peerFact({ pythonRuntime: false }, PEER_PYTHON_FIELD), false)
-  // a live getter is honoured (the peer may report the current switch, not a copy)
-  assert.equal(peerFact({ pythonRuntime: () => true }, PEER_PYTHON_FIELD), true)
-  assert.equal(peerFact({ pythonRuntime: () => false }, PEER_PYTHON_FIELD), false)
-  // absent / wrong type / throwing / absent capability: ALWAYS the Node backend
-  assert.equal(peerFact({}, PEER_PYTHON_FIELD), false)
-  assert.equal(peerFact({ pythonRuntime: 'yes' }, PEER_PYTHON_FIELD), false)
-  assert.equal(peerFact({ get pythonRuntime() { throw new Error('nope') } }, PEER_PYTHON_FIELD), false)
-  assert.equal(peerFact(undefined, PEER_PYTHON_FIELD), false)
-  assert.equal(peerFact(null, PEER_PYTHON_FIELD), false)
-})
-
-test('python switch: workflow rows follow the official Python composition', async () => {
-  const { pluginsFor } = await import('../src/compositions.js')
-  const rows = (list) => new Map(list.map((row) => [row.id, row]))
-  const delegationOf = (list) => new Map(rows(list).get('delegation').config.map((row) => [row.id, row]))
-  for (const kind of ['standard', 'cordis']) {
-    // `pythonActive` is the EFFECTIVE backend (v0.26.1): the peer's preflight
-    // passed and the CPython provider really is the one run_code will use.
-    const off = delegationOf(pluginsFor({ kind, gitBash: true, pythonActive: false }))
-    assert.notEqual(off.get('workflow-ptc').disabled, true, kind + ': the default keeps the official row live')
-    assert.notEqual(off.get('tool-workflow').disabled, true, kind + ': idem')
-    const on = delegationOf(pluginsFor({ kind, gitBash: true, pythonActive: true }))
-    assert.equal(on.get('workflow-ptc').disabled, true, kind + ': CPython is TypeScript-less, so workflow-ptc must be off')
-    assert.equal(on.get('tool-workflow').disabled, true, kind + ': the official Python composition disables it too')
-    // and nothing ELSE moves: the rows are byte-identical apart from those two
-    const before = pluginsFor({ kind, gitBash: true, pythonActive: false })
-    const after = pluginsFor({ kind, gitBash: true, pythonActive: true })
-    assert.deepEqual(
-      after.map((row) => row.id),
-      before.map((row) => row.id),
-      kind + ': the switch never adds or removes a row',
-    )
-    assert.deepEqual(rows(after).get('tool-subagent'), rows(before).get('tool-subagent'), kind)
+test('python PTC integration is gone (the official backend was dropped)', () => {
+  for (const file of ['../src/index.js', '../src/client.js', '../src/compositions.js']) {
+    const src = readFileSync(new URL(file, import.meta.url), 'utf8')
+    assert.doesNotMatch(src, /pythonRuntime|pythonBackend|PEER_PYTHON|CPython|experimental-ptc-runtime-python/, file)
   }
-  // the ptc variant is already workflow-free: the switch changes nothing there
-  const ptcOff = pluginsFor({ kind: 'ptc', gitBash: true, pythonActive: false })
-  const ptcOn = pluginsFor({ kind: 'ptc', gitBash: true, pythonActive: true })
-  assert.deepEqual(ptcOn, ptcOff, 'kind=ptc already disables both workflow rows')
-  // minimal has no workflow rows at all
-  const { minimalPluginsFor } = await import('../src/compositions.js')
-  assert.deepEqual(minimalPluginsFor(), minimalPluginsFor())
-})
-
-test('python switch: the host rebuilds variants on the EFFECTIVE backend and inserts NO runtime row', () => {
-  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // read from the peer's published capability (family rule: never guess a peer fact),
-  // and act on the EFFECTIVE backend rather than the bare intent (v0.26.1)
-  assert.match(src, /const nextPython = pythonBackendActive\(coverage\)/)
-  assert.match(src, /const intentPython = peerFact\(coverage, PEER_PYTHON_FIELD\)/)
-  // The ROWS change, so compare/build/commit the SAME immutable round fact.
-  // Reading peerPython again after an await could leave a mixed generation.
-  assert.match(src, /const pythonActive = peerPython/)
-  assert.match(src, /registeredPython !== pythonActive/)
-  assert.match(src, /await registerVariant\(ctx, presetId, \{ skillsDir, pythonActive, hostExtras, readBashResolution \}\)/)
-  assert.match(src, /registeredPython = pythonActive/)
-  const compositions = readFileSync(new URL('../src/compositions.js', import.meta.url), 'utf8')
-  assert.match(compositions, /export function pluginsFor\(\{ kind, skillsDir, pythonActive = false, hostExtras = \{\} \}\)/, 'the composition entry point takes the effective fact')
-  assert.match(compositions, /const workflowOn = kind !== 'ptc' && pythonActive !== true/)
-  // the runtime row belongs to dsh-ptc-cordis-preset alone: our bundle patch
-  // must never target it (two providers would collide)
   const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
   assert.doesNotMatch(patch, /ptc-runtime/)
-  assert.doesNotMatch(patch, /experimental-ptc-runtime-python/)
-  // and we declare no dependency on the experimental package: the peer owns it
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
     assert.equal(pkg[field]?.['@deepseek-ai/dsh-experimental-ptc-runtime-python'], undefined, field)
   }
-})
-
-test("client card: the python row mirrors the PEER's field and is Windows-gated", () => {
-  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
-  assert.match(src, /var PEER_PYTHON_FIELD = "pythonRuntime"/)
-  // drawn only when the peer's snapshot actually carries the field (older peer = nothing)
-  assert.match(src, /Object\.prototype\.hasOwnProperty\.call\(peerSnap\.value, PEER_PYTHON_FIELD\)/)
-  // the value is the peer's; the write goes through the PEER's form, so either
-  // side updates both (one authoritative copy, no mirror field)
-  assert.match(src, /var pythonOn = pythonOffered && peerSnap\.value\[PEER_PYTHON_FIELD\] === true;/)
-  assert.match(src, /peer\.set\(PEER_PYTHON_FIELD, next\)/)
-  assert.doesNotMatch(src, /writeField\("pythonRuntime"/, 'the python switch must not write OUR row')
-  // the contract carries NO peer-reported reason field: a client card can only
-  // read the row snapshot, so inventing one would be a second, drifting state.
-  // The copy points at the host log instead (asserted below).
-  assert.doesNotMatch(src, /pythonRuntimeIssue/)
-  // Windows: the CPython backend refuses to load, so the buttons give way.
-  // v0.36.0 regroup: the row rides INSIDE peerSection, so the gate composes
-  // with the row's own `pythonOffered` condition.
-  assert.match(src, /var winHost = winState\[0\]/)
-  assert.match(src, /pythonOffered && !winHost \? E\("div", \{ className: "gb-seg" \}/)
-  assert.match(src, /pythonOffered && winHost \? E\("p", \{ className: "gb-error" \}, t\("python\.blocked"\)\) : null/)
-  // hooks stay before the scope's early return
-  const hookAt = src.indexOf('var winState = useState(false);')
-  const earlyReturnAt = src.indexOf('if (snap.status !== "ready") return null;')
-  assert.ok(hookAt > 0 && earlyReturnAt > hookAt, 'the windows-host hook must run before the early return')
-  const sectionAt = src.indexOf('var peerSection = peerSnap.status === "ready" ?')
-  const bodyAt = src.indexOf('var bodyContent = E("div", { className: "gb-body" }')
-  assert.ok(sectionAt > 0 && bodyAt > sectionAt, 'the section is built before the body')
-  assert.match(src, /\n\t\t\t\tpeerSection,/)
-  for (const key of ['sec.python', 'python.label', 'python.on', 'python.off', 'python.hint', 'python.blocked']) {
-    const occurrences = [...src.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
-    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
-  }
-  // every hint names the restart and the host-log fallback (the contract's
-  // effectiveness and diagnosis story, identical on both cards)
-  const hints = [...src.matchAll(/"python\.hint": ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]))
-  assert.equal(hints.length, 21, 'one python hint per shipped dictionary')
-  // The two sentences the contract fixes, asserted on the two inline
-  // dictionaries; the 19 third languages carry the same two facts (the tail
-  // was appended to every one of them, and the key-parity test guards the set).
-  assert.ok(hints[0].includes('重启') && hints[0].includes('宿主启动日志'), 'the zh hint states the restart and points at the host log')
-  assert.ok(hints[1].includes('restarting dsh') && hints[1].includes('startup log'), 'the en hint states the restart and points at the host log')
-  for (const hint of hints) assert.ok(hint.length > 120, 'a hint looks truncated: ' + hint.slice(0, 60))
-})
-
-test('python switch: the mutex keys on the EFFECTIVE backend, and an old peer falls back to the intent', () => {
-  const { pythonBackendActive, peerBackend, PEER_PYTHON_BACKEND_FIELD } = _internal
-  assert.equal(PEER_PYTHON_BACKEND_FIELD, 'pythonBackend')
-  // intent on AND the peer reports the CPython backend really active → mutex on
-  assert.equal(pythonBackendActive({ pythonRuntime: true, pythonBackend: 'python' }), true)
-  // intent on but the preflight failed → the composition still runs Node, so the
-  // workflow rows must STAY LIVE (v0.26.1: the whole point of the effective fact)
-  assert.equal(pythonBackendActive({ pythonRuntime: true, pythonBackend: 'node' }), false)
-  // intent off wins regardless of what the backend field claims
-  assert.equal(pythonBackendActive({ pythonRuntime: false, pythonBackend: 'python' }), false)
-  assert.equal(pythonBackendActive({ pythonRuntime: false, pythonBackend: 'node' }), false)
-  // OLD PEER (no effective field) → the intent stands in: pre-0.26.1 behavior
-  assert.equal(pythonBackendActive({ pythonRuntime: true }), true)
-  assert.equal(pythonBackendActive({ pythonRuntime: false }), false)
-  assert.equal(peerBackend({ pythonRuntime: true }), undefined, 'an unreported backend is undefined, never "node"')
-  // getters are honoured on both facts, and nothing throws
-  assert.equal(pythonBackendActive({ pythonRuntime: () => true, pythonBackend: () => 'python' }), true)
-  assert.equal(pythonBackendActive({ pythonRuntime: () => true, pythonBackend: () => 'node' }), false)
-  // anything outside the closed vocabulary falls back to the intent
-  for (const bogus of ['Python', 'cpython', '', 1, null, undefined, {}]) {
-    assert.equal(peerBackend({ pythonRuntime: true, pythonBackend: bogus }), undefined, 'bogus backend: ' + String(bogus))
-    assert.equal(pythonBackendActive({ pythonRuntime: true, pythonBackend: bogus }), true, 'bogus backend falls back: ' + String(bogus))
-  }
-  assert.equal(pythonBackendActive({ get pythonRuntime() { throw new Error('nope') }, pythonBackend: 'python' }), false)
-  assert.equal(pythonBackendActive(undefined), false)
-  assert.equal(peerBackend(null), undefined)
-})
-
-test('python switch: the degraded intent is reported, never acted on', () => {
-  const src = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
-  // the log distinguishes "really switched" from "asked for but not effective",
-  // so an operator can see WHY the workflow rows stayed on
-  assert.ok(src.includes('peer reports the experimental CPython run_code backend: workflow rows go off in every variant'))
-  assert.ok(src.includes('peer has the CPython switch on but the effective backend is '))
-  assert.ok(src.includes(': workflow rows stay on (reason in the host log)'))
-  // an unreported backend says so instead of naming a backend that never ran
-  assert.ok(src.includes("reportedBackend === undefined ? 'unreported (older peer: the intent stands in)' : reportedBackend"))
-  // the decision is one conjunctive helper, so no call site can act on the intent alone
-  assert.ok(src.includes('export function pythonBackendActive(capability) {'))
-  assert.ok(src.includes('if (reported === undefined) return intent'))
-  assert.ok(src.includes("return intent && reported === 'python'"))
-})
-
-test('client card: the python row shows the degraded state when the backend did not take effect', () => {
-  const src = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
-  assert.match(src, /var PEER_PYTHON_BACKEND_FIELD = "pythonBackend"/)
-  // the effective value rides the SAME peer snapshot the intent does
-  assert.match(src, /peerSnap\.value\[PEER_PYTHON_BACKEND_FIELD\]/)
-  assert.match(src, /var pythonDegraded = pythonOn && peerPythonBackend === "node";/)
-  // shown on the state line AND as the reason paragraph
-  assert.match(src, /pythonDegraded \? t\("python\.on"\) \+ " · " \+ t\("python\.degraded"\) : t\("python\.on"\)/)
-  assert.ok(src.includes('pythonDegraded ? E("p", { className: "gb-error" }, t("python.degraded")) : null'), 'the reason paragraph rides the degraded state')
-  // an absent field (older peer) leaves the card exactly as before: no banner
-  assert.ok(src.includes('typeof peerSnap.value[PEER_PYTHON_BACKEND_FIELD] === "string"'), 'a non-string backend field is ignored')
-  for (const key of ['sec.python', 'python.label', 'python.on', 'python.off', 'python.hint', 'python.blocked', 'python.degraded']) {
-    const occurrences = [...src.matchAll(new RegExp('"' + key.replace(/\./g, '\\.') + '":', 'g'))].length
-    assert.ok(occurrences >= 21, key + ' must exist in all 21 dictionaries, saw ' + occurrences)
-  }
-  const degraded = [...src.matchAll(/"python\.degraded": ("(?:[^"\\]|\\.)*")/g)].map((match) => JSON.parse(match[1]))
-  assert.equal(degraded.length, 21, 'one degraded copy per shipped dictionary')
-  assert.ok(degraded[0].includes('后端不可用') && degraded[0].includes('宿主启动日志'), 'zh states the degradation and the log: ' + degraded[0])
-  assert.ok(degraded[1].includes('backend unavailable') && degraded[1].includes('startup log'), 'en states the degradation and the log: ' + degraded[1])
-  for (const copy of degraded) assert.ok(copy.length > 10, 'a degraded copy looks truncated: ' + copy)
+  // The native executor's own Python support is NOT the retired PTC backend:
+  // it recognizes a Python program and leaves its source alone.
+  const nativeSrc = readFileSync(new URL('../src/native-executor.js', import.meta.url), 'utf8')
+  assert.match(nativeSrc, /python/)
 })
 
 // ── delegated agents (subagents / team members) and the dialect (v0.27.0) ────

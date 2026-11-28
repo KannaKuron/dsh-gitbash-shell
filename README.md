@@ -89,29 +89,28 @@ dsh-ptc-cordis-preset 的 `PTC 创造模式` 用户 preset 均不受影响、自
 
 ### 宿主要求与 preset 对齐
 
-自 v0.49.0 起宿主下限为 **dsh >= 0.2.2-rc.1**:门禁读 `engines.dsh`(rc.1 的 `app-boot` 只要见到该字段就忽略 peer,`semver` 以 `includePrerelease: true` 求值),`peerDependencies` 同步声明并标 `optional`;只服务这一代宿主。四个变体的行集是 `src/compositions.js`
-里已提交的 JS 数据,镜像官方 0.2.2-rc.2 的 standard/minimal/ptc/cordis 行切分并叠加
-Git Bash 增量(rc.1 宿主只少可选行,由探测降级);跟随 dsh 升级的对齐由冒烟测试
-`compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates` 锁住。
+自 v0.56.0 起宿主下限为 **dsh >= 0.2.3-alpha.1**:门禁读 `engines.dsh`(只要见到该字段就忽略 peer,`semver` 以 `includePrerelease: true` 求值),`peerDependencies` 同步声明并标 `optional`;只服务这一代宿主。四个变体的行集是 `src/compositions.js`
+里已提交的 JS 数据,镜像官方 0.2.3-alpha.2 的 standard/minimal/ptc/cordis 行切分并叠加
+Git Bash 增量;跟随 dsh 升级的对齐由冒烟测试
+`compositions: alpha.2 executor shape and profile-context gates` 锁住。
 **preset id 保持 `code-gitbash` 不变**——会话钉在 id 上,dsh 0.1.2 把内置 `code`
 改名 `ptc` 时本插件的变体 id 就没有跟随(改名会让已固定的会话报 preset not found)。
 
-**可选官方行按包探测接入**:rc.1 全工具 preset 自带时间上下文(`time-context`)与
-提醒工具(`schedule_*`),极简 preset 自带 image-only `tool-fs` 与专属 compaction 组,
-全工具 preset 另有插件市场(`tool-plugin-market`);rc.2 又新增原生 Office 工具
-(`tool-office`)。本插件在挂载时按 `ctx.baseUrl` 探测这些包,可用才纳入对应变体;
-剥掉某个包的 profile 只降级该行,不会拒绝整棵 preset 挂载。`tool-office` 探针同时
-兼作 rc.2 行方言探针:只有能解析该包时才给 `tool-subagent-control` 写
-`config: { interrupt: false }`,rc.1 不会收到这个新配置键。
+**可选官方行按包探测接入**:全工具 preset 自带时间上下文(`time-context`)与提醒工具
+(`schedule_*`),极简 preset 自带 image-only `tool-fs` 与专属 compaction 组,全工具
+preset 另有插件市场(`tool-plugin-market`)与原生 Office 工具(`tool-office`)。本插件在
+挂载时按 `ctx.baseUrl` 探测这些包,可用才纳入对应变体;剥掉某个包的 profile 只降级
+该行,不会拒绝整棵 preset 挂载。
 
-**0.2.2-rc.2 基线**:官方全工具 preset 的 `tool-fs` 行带
-`config: { applyPatch: false }`,本插件的 standard/cordis/ptc 变体同步,极简变体不加;
-standard 的 `skill-filesystem` 行在解析到官方 preset 包旁 skills 时带
-`customSkillDirs`;standard/ptc 在 present 之后携带 `tool-office`,其
-`tool-subagent-control` 行带 `interrupt: false`。rc.1 宿主由探测降级:没有 office
-包就不写该行与 interrupt 键。插件管理/市场行按 rc.1 门控(cordis 两者跟
-`profileContext`,standard 仅 manager 跟 `profileContext`,ptc 两者恒禁用)。
-`dsh.compatibility.dshReleases` 登记 0.2.2-rc.1 与 0.2.2-rc.2。
+**0.2.3-alpha.2 基线**:官方全工具 preset 的 `tool-fs` 行带 `config: { applyPatch: false }`,
+本插件的 standard/cordis/ptc 变体同步,极简变体不加;standard 与 ptc 的
+`skill-filesystem` 带 `customSkillDirs`(解析到官方 preset 包旁 skills)并携带
+`tool-skill`;cordis 的 `tool-skill` 带
+`excludedSkills: ['official-plugins', 'personalized-pages']`。standard 在 alpha.2 新增
+`tool-cordis`(ptc 不提供);三套全工具 preset 的 `tool-subagent-control` 都带
+`config: { interrupt: false }`,manager 行全部跟 `profileContext`,market 行三套都
+存在、仅 cordis 跟 `profileContext`(standard/ptc 恒关)。`dsh.compatibility.dshReleases`
+登记 0.2.3-alpha.1 与 0.2.3-alpha.2。
 
 ## 安装(公开 npm 插件,推荐)
 
@@ -393,40 +392,6 @@ scoped native executor 的 agent 通过 `run_code` SDK 调用工具。SDK 内含
 - **卸载前先关开关**:`dispose` 只在宿主运行、插件 fiber 被销毁时执行。若先停宿主再从命令行卸载/禁用插件,
   插件代码不会加载,已写入的 executor 行会留在 patch。请在设置卡关闭 `globalPtcSdk`(该字段非 volatile,
   会重挂插件并执行归还),确认日志后再停服;已停服时按 receipt 手工删除两行。
-
-### run_code 后端开关:`pythonRuntime`(默认关,v0.26.0)
-
-dsh 有一个**实验性 CPython 后端**用于 PTC 的 `run_code`
-(`@deepseek-ai/dsh-experimental-ptc-runtime-python`)。它换掉的是 **profile 级**的
-`ptc-runtime` 行(不是 preset 里的行),所以**权威开关属于 dsh-ptc-cordis-preset**:它那一行
-Config 的布尔字段 `pythonRuntime`(默认 `false`),由它在 profile 组合期决定挂哪个后端。
-
-本插件做的是**第二张设置卡**——同装 dsh-ptc-cordis-preset 时,本插件的设置页也会出现这一行,
-通过 `ctx.configForms.get('ptc-cordis')` 读写**同一个字段**,任一侧改动两侧立即同步
-(与 `suppressPeerCordis` 同构,方向相反)。对方没装、或版本低于 0.15.0(没有该字段)时,
-这一行**不显示**。
-
-- **开关关闭(默认)**:`run_code` 用官方 Node/TypeScript 后端,组合与官方逐字节一致。
-- **开关开启**:`run_code` 的语言、生成的 SDK 提示词与工具呈现整体切到 Python(由后端实例的
-  `language`/`executionInstructions` 决定,组合文本不变)。
-- **生效时机**:**重启 dsh 之后生效**(后端行的替换在 profile 组合期求值);设置卡上的状态
-  两侧即时同步,只有后端切换需要重启。若开启后没有生效,原因见 dsh 启动日志。
-- **"想开"与"真的开了"是两件事**:后端不可用(包被移除 / 解释器低于 3.10 / Windows)时,开关的
-  意图仍可为"开",但组合**照旧跑 Node** —— 此时 **workflow 侧不再被连带禁用**(v0.26.1:互斥只看
-  实际生效的后端;v0.26.0 只看意图,会让用户白丢 workflow 能力),**原因见 dsh 启动日志**。
-  > 关于卡片上的"后端不可用,当前仍为 Node"这行提示:本插件已实现该降级文案(21 语言),但它要等
-  > **对方把生效态投影进行 Config 快照**后才会亮起 —— 浏览器只读得到那份快照,而生效态目前只在
-  > 宿主侧的能力服务里(见 AGENTS.md §4f)。在此之前:对方卡片显示"已开启 + 原因",本插件卡片
-  > 显示"已开启"(hint 指向宿主日志)。
-- **平台**:该后端**仅支持 POSIX**——它在 Windows 上构造即抛错,所以 Windows 上开关显示为
-  禁用并注明原因,宿主侧也会拒绝写入。
-- **与 workflow 互斥**:`workflow-ptc` 硬要求 TypeScript 后端(`ctx.ptcRuntime.language ===
-  'typescript'`),官方 Python 组合同样把 `workflow-ptc` / `tool-workflow` 一起禁用。因此**开启
-  期间本插件四个变体的这两行一律禁用**(用户自己的 workflow 设置值保留,关掉后端后下次启动
-  恢复)——不这样做,选标准/创造模式会因一行构造失败而拒绝**整棵 preset 挂载**。
-- **依赖**:python 运行时包由 dsh-ptc-cordis-preset 声明(`optionalDependencies`,
-  `0.1.7-rc.2`);本插件不声明该依赖、也不 insert 任何运行行(两个插件各插一行会造成
-  `ptcRuntime` 二次注册)。
 
 ## POSIX 路径方言(v0.7.0 引入,受 `posixPaths` 开关门控)
 

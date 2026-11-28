@@ -1,19 +1,16 @@
 /**
- * dsh-gitbash-shell — declarative composition rows (dsh >= 0.2.2-rc.1).
+ * dsh-gitbash-shell — declarative composition rows (dsh >= 0.2.3-alpha.1).
  *
  * A preset is a definition registered through agentPresets.register(). This
  * module is the committed, reviewable composition DATA for the four Git Bash
- * variants and mirrors the official 0.2.2-rc.2 presets (packages/bundle/
+ * variants and mirrors the official 0.2.3-alpha.2 presets (packages/bundle/
  * web-app/presets/{standard,minimal,ptc,cordis}.patch.yml) with the Git Bash
  * routing: full variants keep the official platform-gated shell rows, and the
  * inline patch adds OUR bash over a private executor on Windows. The minimal
  * variant instead keeps its persistent Git Bash terminal rows. On non-Windows
  * hosts the official stack stays native. Optional host extras ride
  * hostExtras probes so a package stripped from a profile degrades that row
- * instead of rejecting the whole preset mount. A conditional delta exists
- * while dsh-ptc-cordis-preset reports its experimental-CPython backend
- * ACTIVE: the two workflow rows follow the official Python composition and go
- * off (see `pythonActive` below).
+ * instead of rejecting the whole preset mount.
  */
 
 /** Default Git Bash binary — must match src/shell.js and the patch config. */
@@ -23,7 +20,7 @@ function off(value) {
   return value === true ? { disabled: true } : {}
 }
 
-// Plan-mode section, byte-exact from the official 0.2.2-rc.2 patch.yml.
+// Plan-mode section, byte-exact from the official 0.2.3-alpha.2 patch.yml.
 const PLAN_SECTION_TAIL = `Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
 Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
@@ -45,40 +42,28 @@ const PLAN_SECTION = `You are in plan mode. Stay in plan mode until the user app
  * @param {'standard'|'ptc'|'cordis'} input.kind - which official preset this
  *   variant mirrors (workflow rows follow it: enabled on standard/cordis,
  *   disabled on ptc).
- * @param {string|undefined} input.skillsDir - Creation authoring skills
- *   directory (standard/cordis variants; resolved beside the agent-preset
- *   package). The official rc.2 standard preset carries it on
- *   skill-filesystem.customSkillDirs too.
- * @param {boolean} [input.pythonActive] - whether the experimental CPython
- *   backend is the one run_code will ACTUALLY use (the peer's effective
- *   backend, not the bare user intent: when its preflight fails the
- *   composition still runs Node and the workflow rows must stay live).
- *   `workflow-ptc` hard-requires `ctx.ptcRuntime.language === 'typescript'`
- *   (packages/workflow/workflow-ptc/src/index.ts:117) while the CPython
- *   backend reports 'python', and a throwing preset row rejects the WHOLE
- *   mount (agent-preset-registry mount.ts). The official Python composition
- *   disables both workflow rows for exactly this reason
- *   (snapshots/session/ptc-python-turn/cordis.yml), so while CPython is
- *   active every variant mirrors that: the two rows go off, the user's own
- *   workflow setting is untouched and returns once it is not.
+ * @param {string|undefined} input.skillsDir - Authoring skills directory
+ *   (standard/ptc/cordis variants; resolved beside the agent-preset package).
+ *   The official alpha.2 presets all carry it on
+ *   skill-filesystem.customSkillDirs.
  * @returns {object[]} the declarative plugins list.
  */
-export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras = {} }) {
+export function pluginsFor({ kind, skillsDir, hostExtras = {} }) {
   const win = typeof process !== 'undefined' && process.platform === 'win32'
   // Route B preserves the root PowerShell executor. On Windows the official
   // tool-bash would execute through that executor, so full variants retain the
   // official pwsh face and let the same per-agent inline patch add OUR bash.
   const bashDisabled = win
   const pwshDisabled = !win
-  const workflowOn = kind !== 'ptc' && pythonActive !== true
-  // The 0.2.2-rc.2 preset row set: explicit tool-executor-native/-ptc rows,
+  const workflowOn = kind !== 'ptc'
+  // The 0.2.3-alpha.2 preset row set: explicit tool-executor-native/-ptc rows,
   // subagent `modelSelection` + `modelDiscovery`, list_agents folded into the
   // tool-subagent-control row, and manager/market rows gated on the live
   // profile context. Optional rows that some profiles strip (time-context,
-  // tool-schedule, plugin market, minimal compaction, rc.2 office) are host-probed at boot
-  // (index.js probeHostExtras, resolved from ctx.baseUrl — the base preset
-  // rows mount from) because a row whose package is absent rejects the WHOLE
-  // mount.
+  // tool-schedule, plugin market, minimal compaction, office) are host-probed
+  // at boot (index.js probeHostExtras, resolved from ctx.baseUrl — the base
+  // preset rows mount from) because a row whose package is absent rejects the
+  // WHOLE mount.
   const { timeContext = false, toolSchedule = false, pluginMarket = false, compaction = false, profileContext = false, office = false } = hostExtras
   const rows = [
     {
@@ -102,7 +87,7 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
     ...(timeContext ? [{ id: 'time-context', name: '@deepseek-ai/dsh-time-context' }] : []),
     { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash', ...off(bashDisabled) },
     { id: 'tool-pwsh', name: '@deepseek-ai/dsh-tool-pwsh', ...off(pwshDisabled) },
-    // 0.2.2-rc.1 ships every full-tool preset with apply_patch explicitly OFF
+    // alpha.2 ships every full-tool preset with apply_patch explicitly OFF
     // beside edit; mirror that default.
     { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs', config: { applyPatch: false } },
     {
@@ -113,9 +98,10 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
     { id: 'tool-jobs', name: '@deepseek-ai/dsh-tool-jobs' },
     ...(toolSchedule ? [{ id: 'tool-schedule', name: '@deepseek-ai/dsh-tool-schedule' }] : []),
     ...((kind === 'standard' || kind === 'ptc') ? [
-      // rc.2 standard points skill-filesystem at the authoring skills beside
-      // the agent-preset package; ptc ships the row without config.
-      { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem', ...(kind === 'standard' && skillsDir ? { config: { customSkillDirs: [skillsDir] } } : {}) },
+      // alpha.2 standard and ptc both point skill-filesystem at the authoring
+      // skills beside the agent-preset package. Cordis carries the same rows
+      // later, after tool-cordis, with its excludedSkills filter.
+      { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem', ...(skillsDir ? { config: { customSkillDirs: [skillsDir] } } : {}) },
       { id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
     ] : []),
     { id: 'command-goal', name: '@deepseek-ai/dsh-command-goal' },
@@ -154,10 +140,8 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
       group: true,
       isolate: { workflowEngine: true },
       config: [
-        // rc.2 added Config.interrupt (default true); rc.1 has no such key and
-        // would reject it, so only write it when the rc.2 office package proves
-        // this host speaks the rc.2 row dialect.
-        { id: 'tool-subagent-control', name: '@deepseek-ai/dsh-tool-subagent-control', ...(office ? { config: { interrupt: false } } : {}) },
+        // alpha.2 ships Config.interrupt=false in every full-tool preset.
+        { id: 'tool-subagent-control', name: '@deepseek-ai/dsh-tool-subagent-control', config: { interrupt: false } },
         {
           id: 'tool-subagent',
           name: '@deepseek-ai/dsh-tool-subagent',
@@ -178,7 +162,7 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
         // NO tool-subagent-codex / tool-subagent-claude-code / tool-ralph:
         // the official presets retired these disabled placeholder rows (the
         // codex/claude-code provider rows moved to on-demand official plugin
-        // bundles), so omitting them mirrors the shipped rc.1 row split.
+        // bundles), so omitting them mirrors the shipped alpha.2 row split.
       ],
     },
     { id: 'tool-ask-user', name: '@deepseek-ai/dsh-tool-ask-user' },
@@ -198,31 +182,32 @@ export function pluginsFor({ kind, skillsDir, pythonActive = false, hostExtras =
     // tool-executor-native, and this scoped row overrides it for this agent.
     rows.push({ id: 'tool-executor-ptc', name: '@deepseek-ai/dsh-tool-executor-ptc' })
   }
-  if (kind === 'cordis') {
+  if (kind !== 'ptc') {
+    // alpha.2 added tool-cordis to the standard preset as well; ptc does not
+    // carry it. The host composition registers its inspect providers once.
     rows.push({ id: 'tool-cordis', name: '@deepseek-ai/dsh-tool-cordis' })
   }
   if (kind === 'cordis') {
     rows.push({ id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem', ...(skillsDir ? { config: { customSkillDirs: [skillsDir] } } : {}) })
-    rows.push({ id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' })
+    rows.push({ id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill', config: { excludedSkills: ['official-plugins', 'personalized-pages'] } })
   }
   rows.push({ id: 'present', name: '@deepseek-ai/dsh-tool-present' })
   if (office && (kind === 'standard' || kind === 'ptc')) {
-    // rc.2 shipped the native Office tool in the standard/ptc presets only;
+    // alpha.2 ships the native Office tool in the standard/ptc presets only;
     // cordis does not carry it.
     rows.push({ id: 'tool-office', name: '@deepseek-ai/dsh-tool-office' })
   }
   rows.push({
     id: 'tool-plugin-manager',
     name: '@deepseek-ai/dsh-plugin-manager/tools',
-    // rc.2 official rows: cordis/standard gate it on the live profile
-    // context while ptc keeps it off outright.
-    ...off(kind === 'ptc' ? true : !profileContext),
+    // alpha.2 official rows: every full-tool preset gates it on the live
+    // profile context.
+    ...off(!profileContext),
   })
   if (pluginMarket) {
     rows.push({
-      // rc.2: cordis gates it on the profile context, standard keeps it off
-      // outright (the union side owns the market there) and ptc keeps it off
-      // too.
+      // alpha.2: cordis gates the market on the profile context, while
+      // standard and ptc keep it off outright.
       id: 'tool-plugin-market',
       name: '@deepseek-ai/dsh-plugin-market/tools',
       ...off(kind !== 'cordis' ? true : !profileContext),

@@ -16,16 +16,15 @@ const migration = source.slice(source.indexOf('async function migrateVariantDefa
 const declarative = source.slice(source.indexOf('async function runDeclarativeEra('), source.indexOf('\nexport async function apply('))
 
 function runtime(register) {
-  return new Function('cleanupLegacyTrees', 'resolveSkillsDir', 'probeHostExtras', 'effectivePresetIds', 'registerVariant', 'TAG', 'PEER_CAPABILITY', 'peerFact', 'PEER_PYTHON_FIELD', 'peerBackend', 'pythonBackendActive', 'PEER_PYTHON_BACKEND_FIELD', 'PRESET_IDS', 'VARIANT_DEFAULT_SUCCESSORS', 'problemLog', 'debugLog', migration + declarative + '\nreturn runDeclarativeEra')(
+  return new Function('cleanupLegacyTrees', 'resolveSkillsDir', 'probeHostExtras', 'effectivePresetIds', 'registerVariant', 'TAG', 'PEER_CAPABILITY', 'peerFact', 'PRESET_IDS', 'VARIANT_DEFAULT_SUCCESSORS', 'problemLog', 'debugLog', migration + declarative + '\nreturn runDeclarativeEra')(
     () => {}, async () => undefined, async () => ({}), x.effectivePresetIds, register,
-    '[host-regression]', x.PEER_CAPABILITY, x.peerFact, x.PEER_PYTHON_FIELD, x.peerBackend,
-    x.pythonBackendActive, x.PEER_PYTHON_BACKEND_FIELD, x.PRESET_IDS, x.VARIANT_DEFAULT_SUCCESSORS, () => {}, () => {},
+    '[host-regression]', x.PEER_CAPABILITY, x.peerFact, x.PRESET_IDS, x.VARIANT_DEFAULT_SUCCESSORS, () => {}, () => {},
   )
 }
 
-async function fixture(t, { enabled = false, defaultId = 'standard', registerGate, retireGate, migrate = true, failRetireOnce = false } = {}) {
+async function fixture(t, { enabled = false, defaultId = 'standard', registerGate, retireGate, migrate = true } = {}) {
   const effects = [], listeners = new Map(), injects = new Map(), definitions = new Set(), timeline = []
-  let variants = enabled, selected = defaultId, retirementFailures = failRetireOnce ? 1 : 0
+  let variants = enabled, selected = defaultId
   const settings = {
     async update(namespace, patch) {
       assert.equal(namespace, 'agent-preset-registry')
@@ -40,12 +39,11 @@ async function fixture(t, { enabled = false, defaultId = 'standard', registerGat
     on(name, fn) { listeners.set(name, fn) },
     inject(keys, fn) { injects.set(keys[0], fn) },
   }
-  const register = async (_ctx, id, options) => {
+  const register = async (_ctx, id) => {
     assert.equal(definitions.has(id), false, 'retirement must precede a duplicate registration')
-    definitions.add(id); timeline.push('register:' + id + ':' + options.pythonActive)
+    definitions.add(id); timeline.push('register:' + id)
     if (registerGate) await registerGate.promise
     return async () => {
-      if (retirementFailures-- > 0) throw new Error('fixture retirement failure')
       definitions.delete(id); timeline.push('off:' + id)
       if (retireGate) await retireGate.promise
       timeline.push('retired:' + id)
@@ -138,26 +136,6 @@ test('host: unverifiable default migration does not retire its live variant', as
   f.update(false); await flush()
   assert.equal(f.defaultId, 'standard-gitbash')
   assert.equal(f.definitions.has('standard-gitbash'), true)
-})
-
-test('host: backend rebuild awaits retirement before registering the same id', async (t) => {
-  const gate = deferred(), f = await fixture(t, { enabled: true, retireGate: gate })
-  f.injects.get(x.PEER_CAPABILITY)({ [x.PEER_CAPABILITY]: { pythonRuntime: true, pythonBackend: 'python' }, effect(fn) { return fn() } })
-  await flush()
-  assert.equal(f.timeline.filter((entry) => entry.startsWith('register:')).length, 1)
-  gate.resolve(); await flush()
-  assert.equal(f.timeline.filter((entry) => entry.startsWith('register:')).length, 2)
-  assert.ok(f.timeline.indexOf('retired:standard-gitbash') < f.timeline.indexOf('register:standard-gitbash:true'))
-})
-
-test('host: a failed retirement prevents replacement and remains retryable', async (t) => {
-  const f = await fixture(t, { enabled: true, failRetireOnce: true })
-  f.injects.get(x.PEER_CAPABILITY)({ [x.PEER_CAPABILITY]: { pythonRuntime: true, pythonBackend: 'python' }, effect(fn) { return fn() } })
-  await flush()
-  assert.equal(f.timeline.filter((row) => row.startsWith('register:')).length, 1)
-  assert.equal(f.definitions.has('standard-gitbash'), true)
-  f.update(true); await flush()
-  assert.equal(f.timeline.filter((row) => row.startsWith('register:')).length, 2)
 })
 
 test('host: disposal attempts every unregister even when one fails', async () => {

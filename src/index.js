@@ -133,29 +133,15 @@ export const VARIANT_DEFAULT_SUCCESSORS = Object.freeze({
 export const PEER_COVERED_PRESET_ID = 'cordis-gitbash'
 
 /**
- * Service dsh-ptc-cordis-preset publishes:
- * `{ id, gitBashActive, pythonRuntime, pythonBackend? }`. `pythonRuntime` is
- * the user's INTENT for the experimental CPython run_code backend (the field
- * the settings card writes); `pythonBackend` ('python' | 'node', v0.15.1+,
- * additive) is the backend that is ACTUALLY active after the peer's own
- * preflight — package resolvable, interpreter qualified, POSIX host.
+ * Service dsh-ptc-cordis-preset publishes: `{ id, gitBashActive }`.
  */
 export const PEER_CAPABILITY = 'ptcCordisPreset'
-
-/**
- * The peer's CPython intent field — on its capability AND on its row Config
- * (the field both settings cards read and write).
- */
-export const PEER_PYTHON_FIELD = 'pythonRuntime'
-
-/** The peer's EFFECTIVE backend field on the capability ('python' | 'node'). */
-export const PEER_PYTHON_BACKEND_FIELD = 'pythonBackend'
 
 /**
  * Read one boolean fact off the peer's capability object. A getter is honoured
  * so a live peer can report its current switch rather than a boot-time copy;
  * anything absent, of the wrong type, or throwing reads as false — the
- * conservative direction is always "the official Node backend is in use".
+ * conservative direction is always "the peer is not covering the mode".
  * @param {object|undefined} capability - the peer's published capability.
  * @param {string} field - the field name to read.
  * @returns {boolean} the fact, false when it cannot be established.
@@ -169,45 +155,6 @@ export function peerFact(capability, field) {
   } catch {
     return false
   }
-}
-
-/**
- * The peer's EFFECTIVE run_code backend, as the closed two-value vocabulary it
- * publishes. `undefined` means "the peer does not report one" — an older peer,
- * a getter that threw, or a value outside the vocabulary — and every caller
- * must then fall back to the INTENT, which is the pre-v0.15.1 behavior.
- * @param {object|undefined} capability - the peer's published capability.
- * @returns {'python'|'node'|undefined} the reported backend.
- */
-export function peerBackend(capability) {
-  if (capability === null || capability === undefined) return undefined
-  try {
-    const raw = capability[PEER_PYTHON_BACKEND_FIELD]
-    const value = typeof raw === 'function' ? raw.call(capability) : raw
-    return value === 'python' || value === 'node' ? value : undefined
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * Is the experimental CPython backend ACTUALLY the one run_code will use? The
- * composition's workflow mutex keys on this, never on the bare intent: when the
- * peer's preflight fails (package removed, interpreter too old, win32) the
- * composition still runs Node, so forcing the workflow rows off would cost the
- * user a capability for nothing.
- *
- * An older peer without the effective field reports no backend, and the intent
- * stands in for it — exactly the pre-v0.15.1 behavior, so the linkage never
- * changes shape because a field is missing.
- * @param {object|undefined} capability - the peer's published capability.
- * @returns {boolean} true only while the CPython backend is the active one.
- */
-export function pythonBackendActive(capability) {
-  const intent = peerFact(capability, PEER_PYTHON_FIELD)
-  const reported = peerBackend(capability)
-  if (reported === undefined) return intent
-  return intent && reported === 'python'
 }
 
 /**
@@ -933,12 +880,12 @@ async function migrateVariantDefault(ctx, readVariants) {
   }
 }
 
-async function registerVariant(ctx, presetId, { skillsDir, pythonActive, hostExtras = {}, readBashResolution }) {
+async function registerVariant(ctx, presetId, { skillsDir, hostExtras = {}, readBashResolution }) {
   const meta = PRESET_META[presetId]
   if (!meta) return undefined
   const plugins = meta.kind === 'minimal'
     ? minimalPluginsFor({ bashPath: minimalPtyBashPath(readBashResolution), hostExtras })
-    : pluginsFor({ kind: meta.kind, skillsDir, pythonActive, hostExtras })
+    : pluginsFor({ kind: meta.kind, skillsDir, hostExtras })
   return ctx.agentPresets.register({
     id: presetId,
     name: meta.name,
@@ -951,13 +898,10 @@ async function registerVariant(ctx, presetId, { skillsDir, pythonActive, hostExt
 /**
  * Declarative-era wiring: keep exactly one registration per VARIANT THIS HOST
  * SHOULD SERVE for the plugin's lifetime, and re-reconcile whenever that set
- * changes. Three inputs drive it — the live `suppressPeerCordis` switch, the
+ * changes. Two inputs drive it — the live `suppressPeerCordis` switch and the
  * peer capability appearing (or leaving) via `ctx.inject`, which fires
- * independent of row activation order, and the peer's EFFECTIVE CPython
- * backend (`pythonBackend`, falling back to the `pythonRuntime` intent on a
- * peer that does not report one), which changes the ROWS of every variant —
- * and the peer's own coverage only counts while it reports a Git Bash-
- * materialized preset.
+ * independent of row activation order. The peer's own coverage only counts
+ * while it reports a Git Bash-materialized preset.
  *
  * The roster picks entries up immediately; sessions already pinned to a
  * variant keep their revision until recomposed, so suppressing a variant never
@@ -980,9 +924,6 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   /** presetId -> unregister, i.e. exactly what is live right now. */
   const live = new Map()
   let peerGitBash = false
-  let peerPython = false
-  /** The CPython fact the LIVE registrations were built with. */
-  let registeredPython = false
   let serial = Promise.resolve()
   let closed = false
   ctx.effect(() => async () => {
@@ -1008,32 +949,11 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
     serial = serial.then(async () => {
       if (closed) return
       const want = desired()
-      const pythonActive = peerPython
       // Dynamic OFF repairs the deployment default BEFORE retiring its id.
       // Keep registrations if the official migration cannot be verified.
       if (live.size > 0 && readVariants() !== true
         && !await migrateVariantDefault(ctx, readVariants)) return
       if (closed) return
-      // The peer's EFFECTIVE CPython backend rewrites the workflow rows of
-      // EVERY variant (the official Python composition disables them, and
-      // workflow-ptc refuses a non-TypeScript backend), so a flip re-registers
-      // the live variants instead of leaving stale rows mounted. Same cadence
-      // as the backend swap itself: the peer's patch is evaluated at boot. A
-      // bare INTENT without the effective backend changes nothing here — the
-      // composition still runs Node, so the workflow rows must stay live.
-      if (live.size > 0 && registeredPython !== pythonActive) {
-        for (const [presetId, off] of [...live]) {
-          live.delete(presetId)
-          try {
-            await off()
-            debugLog(TAG + " preset '" + presetId + "' retired (peer CPython backend changed; rows are rebuilt)")
-          } catch (error) {
-            live.set(presetId, off)
-            problemLog(TAG + " preset '" + presetId + "' retirement failed: " + (error && error.message ? error.message : error))
-            return // never register replacements after an unverified retirement
-          }
-        }
-      }
       for (const [presetId, off] of [...live]) {
         if (want.includes(presetId)) continue
         live.delete(presetId)
@@ -1050,7 +970,7 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
         if (closed) break
         if (live.has(presetId)) continue
         try {
-          const unregister = await registerVariant(ctx, presetId, { skillsDir, pythonActive, hostExtras, readBashResolution })
+          const unregister = await registerVariant(ctx, presetId, { skillsDir, hostExtras, readBashResolution })
           if (unregister) {
             if (closed) { await unregister(); break }
             live.set(presetId, unregister)
@@ -1060,7 +980,6 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
           problemLog(TAG + " preset '" + presetId + "' registration failed: " + (error && error.message ? error.message : error))
         }
       }
-      registeredPython = pythonActive
     }).catch((error) => {
       problemLog(TAG + ' preset reconcile failed: ' + (error && error.message ? error.message : error))
     })
@@ -1089,30 +1008,16 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
       try {
         const coverage = peerCtx[PEER_CAPABILITY] ?? peerCtx.get(PEER_CAPABILITY)
         const nextGitBash = peerFact(coverage, 'gitBashActive')
-        // INTENT (what the user asked for) vs EFFECTIVE (what run_code will
-        // actually use). Only the effective fact may cost the user a variant's
-        // workflow rows; the intent alone is reported, never acted on.
-        const intentPython = peerFact(coverage, PEER_PYTHON_FIELD)
-        const reportedBackend = peerBackend(coverage)
-        const nextPython = pythonBackendActive(coverage)
-        if (nextGitBash !== peerGitBash || nextPython !== peerPython) {
+        if (nextGitBash !== peerGitBash) {
           peerGitBash = nextGitBash
-          peerPython = nextPython
-          if (nextPython) debugLog(TAG + ' peer reports the experimental CPython run_code backend: workflow rows go off in every variant')
-          else if (intentPython) {
-            problemLog(TAG + ' peer has the CPython switch on but the effective backend is '
-              + (reportedBackend === undefined ? 'unreported (older peer: the intent stands in)' : reportedBackend)
-              + ': workflow rows stay on (reason in the host log)')
-          }
           void reconcile()
         }
       } catch (error) {
         problemLog(TAG + ' peer coverage read failed: ' + (error && error.message ? error.message : error))
       }
       peerCtx.effect(() => () => {
-        if (!peerGitBash && !peerPython) return
+        if (!peerGitBash) return
         peerGitBash = false
-        peerPython = false
         void reconcile()
       }, 'dsh-gitbash-shell: peer coverage release')
     })
@@ -2142,4 +2047,4 @@ export async function apply(ctx, config = {}) {
   }
 }
 // Test surface: pure helpers, no Cordis context required.
-export const _internal = { PRESET_IDS, VARIANT_DEFAULT_SUCCESSORS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, PEER_PYTHON_FIELD, PEER_PYTHON_BACKEND_FIELD, peerFact, peerBackend, pythonBackendActive, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim, probeHostExtras }
+export const _internal = { PRESET_IDS, VARIANT_DEFAULT_SUCCESSORS, PEER_COVERED_PRESET_ID, PEER_CAPABILITY, isDelegatedAgent, dialectApplies, peerFact, effectivePresetIds, translateDispatch, translateMsysPath, translatePathArguments, rewriteCodePaths, scanCodeLiterals, programPrelude, translateGlobArguments, buildTranslateEnv, rewriteErrorContent, rewriteErrorMessage, rewriteFailureMessage, msysEcho, driveToMsys, pathEcho, ERROR_CONTENT_TOOLS, windowsToMsys, rewriteResultPaths, adoptSidebarShell, MARKER_FILE, classify, hashTree, installRegisterShim, probeHostExtras }

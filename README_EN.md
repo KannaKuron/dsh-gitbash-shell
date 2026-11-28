@@ -19,26 +19,29 @@
 
 ### Host requirement & preset alignment
 
-Since v0.49.0 the host floor is **dsh >= 0.2.2-rc.1**: the gate reads
-`engines.dsh` (rc.1 `app-boot` ignores the peer whenever that field exists;
-`semver` evaluates with `includePrerelease: true`). `peerDependencies` mirrors
-the same range and stays `optional`; this plugin serves that one generation. The four variants are committed JS row sets in
-`src/compositions.js`, mirroring the official 0.2.2-rc.2 standard/minimal/ptc/cordis
-split plus the Git Bash delta (an rc.1 host merely probes fewer optional rows); upgrade alignment is locked by the smoke test
-`compositions: dsh >=0.2.2-rc.1 executor shape and profile-context gates`. **Preset ids
+Since v0.56.0 the host floor is **dsh >= 0.2.3-alpha.1**: the gate reads
+`engines.dsh` (ignoring the peer whenever that field exists; `semver` evaluates
+with `includePrerelease: true`). `peerDependencies` mirrors the same range and
+stays `optional`; this plugin serves that one generation. The four variants are
+committed JS row sets in `src/compositions.js`, mirroring the official
+0.2.3-alpha.2 standard/minimal/ptc/cordis split plus the Git Bash delta; upgrade
+alignment is locked by the smoke test
+`compositions: alpha.2 executor shape and profile-context gates`. **Preset ids
 never change** (`code-gitbash` kept its historical id when dsh 0.1.2 renamed
 the built-in `code` to `ptc` — sessions are pinned to ids, and a rename would
 orphan them).
 
 Optional official rows are package-probed from `ctx.baseUrl`: `time-context`,
-`tool-schedule`, `tool-plugin-market`, the minimal-only compaction group, and —
-new in rc.2 — `tool-office`. A missing package only drops that row. The office
-probe doubles as the rc.2 row-dialect probe: `tool-subagent-control` gets
-`config: { interrupt: false }` and standard/ptc get the `tool-office` row only
-when the package resolves, so an rc.1 host never receives an unknown config key.
-On rc.2 the standard preset also carries `customSkillDirs` on its
-`skill-filesystem` row. `dsh.compatibility.dshReleases` records 0.2.2-rc.1 and
-0.2.2-rc.2.
+`tool-schedule`, `tool-plugin-market`, `tool-office`, and the minimal-only
+compaction group. A missing package only drops that row. In alpha.2 standard and
+ptc carry `customSkillDirs` on `skill-filesystem` plus `tool-skill`; cordis
+carries `tool-skill` with
+`excludedSkills: ['official-plugins', 'personalized-pages']`. Standard also gains
+`tool-cordis` (ptc does not). Every full preset pins
+`config: { interrupt: false }` on `tool-subagent-control`, gates the manager
+row on `profileContext`, and ships a market row that only cordis gates on
+`profileContext` (standard/ptc keep it off). `dsh.compatibility.dshReleases`
+records 0.2.3-alpha.1 and 0.2.3-alpha.2.
 
 ## Install (public npm package)
 
